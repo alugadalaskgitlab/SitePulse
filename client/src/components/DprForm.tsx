@@ -111,6 +111,17 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
     name: "progress",
   });
 
+  const calculateQuantity = (length?: number, width?: number, thickness?: number, uom?: string) => {
+    if (!length || !width || !uom) return null;
+    if (uom.toLowerCase() === 'sqm') {
+      return length * width;
+    } else if (uom.toLowerCase() === 'cum') {
+      if (!thickness) return null;
+      return length * width * thickness;
+    }
+    return null;
+  };
+
   return (
     <div className="form-section">
       <div className="form-section-title text-blue-600">
@@ -118,110 +129,205 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Activity Progress</h3>
       </div>
       <div className="space-y-4">
-        {fields.map((field, index) => (
-          <Card key={field.id} className="bg-muted/30 relative">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
-              onClick={() => remove(index)}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-            <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <FormField
-                control={control}
-                name={`progress.${index}.activity`}
-                render={({ field }) => (
-                  <FormItem className="col-span-1 md:col-span-2">
-                    <FormLabel>Activity Description</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. BC Laying" {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={control}
-                name={`progress.${index}.side`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Side</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value || undefined}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select side" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="LHS">LHS</SelectItem>
-                        <SelectItem value="RHS">RHS</SelectItem>
-                        <SelectItem value="Median">Median</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-2">
+        {fields.map((field, index) => {
+          const length = control._formValues.progress?.[index]?.length;
+          const width = control._formValues.progress?.[index]?.width;
+          const thickness = control._formValues.progress?.[index]?.thickness;
+          const uom = control._formValues.progress?.[index]?.uom;
+          const calculatedQty = calculateQuantity(length, width, thickness, uom);
+
+          return (
+            <Card key={field.id} className="bg-muted/30 relative">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+                onClick={() => remove(index)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+              <CardContent className="pt-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.activity`}
+                    render={({ field }) => (
+                      <FormItem className="col-span-1 md:col-span-2 lg:col-span-1">
+                        <FormLabel>Activity Description</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. BC Laying" {...field} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.side`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Side</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select side" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="LHS">LHS</SelectItem>
+                            <SelectItem value="RHS">RHS</SelectItem>
+                            <SelectItem value="Median">Median</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.uom`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>UOM</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select UOM" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="sqm">sqm (Length × Width)</SelectItem>
+                            <SelectItem value="cum">cum (Length × Width × Thickness)</SelectItem>
+                            <SelectItem value="m">m</SelectItem>
+                            <SelectItem value="MT">MT</SelectItem>
+                            <SelectItem value="Liters">Liters</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.chainageFrom`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Chainage From</FormLabel>
+                        <FormControl>
+                          <Input placeholder="0+000" {...field} value={field.value || ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.chainageTo`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Chainage To</FormLabel>
+                        <FormControl>
+                          <Input placeholder="0+100" {...field} value={field.value || ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.length`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Length (m)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            step="0.01" 
+                            placeholder="0.00" 
+                            {...field} 
+                            onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
+                            value={field.value || ''}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`progress.${index}.width`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Width (m)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            step="0.01" 
+                            placeholder="0.00" 
+                            {...field} 
+                            onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
+                            value={field.value || ''}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  {uom?.toLowerCase() === 'cum' && (
+                    <FormField
+                      control={control}
+                      name={`progress.${index}.thickness`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Thickness (m)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              step="0.01" 
+                              placeholder="0.00" 
+                              {...field} 
+                              onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
+                              value={field.value || ''}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  <div className="flex flex-col justify-end">
+                    <FormLabel className="text-xs text-muted-foreground">Calculated Qty</FormLabel>
+                    <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary">
+                      {calculatedQty !== null ? calculatedQty.toFixed(2) : '-'}
+                    </div>
+                  </div>
+                </div>
+
                 <FormField
                   control={control}
-                  name={`progress.${index}.chainageFrom`}
+                  name={`progress.${index}.quantity`}
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>From</FormLabel>
+                      <FormLabel>Manual Quantity (override if needed)</FormLabel>
                       <FormControl>
-                        <Input placeholder="0+000" {...field} value={field.value || ''} />
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          placeholder="Leave empty for auto-calculation" 
+                          {...field} 
+                          onChange={e => {
+                            const val = e.target.value;
+                            field.onChange(val === '' ? calculatedQty : parseFloat(val));
+                          }}
+                          value={field.value || ''}
+                        />
                       </FormControl>
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={control}
-                  name={`progress.${index}.chainageTo`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>To</FormLabel>
-                      <FormControl>
-                        <Input placeholder="0+100" {...field} value={field.value || ''} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={control}
-                name={`progress.${index}.quantity`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.01" 
-                        {...field} 
-                        onChange={e => field.onChange(parseFloat(e.target.value))}
-                        value={field.value || ''}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={control}
-                name={`progress.${index}.uom`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>UOM</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Cum" {...field} value={field.value || ''} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
         <Button
           type="button"
           variant="outline"
@@ -241,6 +347,26 @@ function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
     name: "equipment",
   });
 
+  const calculateWorkingHours = (startTime?: string, endTime?: string) => {
+    if (!startTime || !endTime) return null;
+    try {
+      const [startHour, startMin] = startTime.split(':').map(Number);
+      const [endHour, endMin] = endTime.split(':').map(Number);
+      const startMins = startHour * 60 + startMin;
+      const endMins = endHour * 60 + endMin;
+      const diff = endMins - startMins;
+      if (diff < 0) return null;
+      return (diff / 60).toFixed(2);
+    } catch {
+      return null;
+    }
+  };
+
+  const totalDiesel = fields.reduce((sum, _, index) => {
+    const diesel = control._formValues.equipment?.[index]?.diesel || 0;
+    return sum + (typeof diesel === 'number' ? diesel : 0);
+  }, 0);
+
   return (
     <div className="form-section">
       <div className="form-section-title text-orange-600">
@@ -248,61 +374,124 @@ function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Equipment Log</h3>
       </div>
       <div className="space-y-4">
-        {fields.map((field, index) => (
-          <div key={field.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 bg-muted/30 rounded-lg relative">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 text-muted-foreground hover:text-destructive"
-              onClick={() => remove(index)}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-            <FormField
-              control={control}
-              name={`equipment.${index}.machine`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Machine Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. Excavator 01" {...field} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={control}
-              name={`equipment.${index}.operator`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Operator</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Name" {...field} value={field.value || ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-             <FormField
-              control={control}
-              name={`equipment.${index}.diesel`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Diesel (L)</FormLabel>
-                  <FormControl>
-                    <Input 
-                      type="number" 
-                      step="0.1" 
-                      {...field} 
-                      onChange={e => field.onChange(parseFloat(e.target.value))}
-                      value={field.value || ''}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+        {fields.map((field, index) => {
+          const startTime = control._formValues.equipment?.[index]?.startTime;
+          const endTime = control._formValues.equipment?.[index]?.endTime;
+          const workingHours = calculateWorkingHours(startTime, endTime);
+
+          return (
+            <Card key={field.id} className="bg-muted/30 relative">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+                onClick={() => remove(index)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+              <CardContent className="pt-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={control}
+                    name={`equipment.${index}.machine`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Machine Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Excavator 01" {...field} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`equipment.${index}.operator`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Operator Name (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Name" {...field} value={field.value || ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={control}
+                    name={`equipment.${index}.startTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Start Time</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="time" 
+                            {...field} 
+                            value={field.value || ''}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`equipment.${index}.endTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Time</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="time" 
+                            {...field} 
+                            value={field.value || ''}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex flex-col justify-end">
+                    <FormLabel className="text-xs text-muted-foreground">Working Hours</FormLabel>
+                    <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary">
+                      {workingHours !== null ? `${workingHours} hrs` : '-'}
+                    </div>
+                  </div>
+                </div>
+
+                <FormField
+                  control={control}
+                  name={`equipment.${index}.diesel`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Diesel Issued (Liters)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.1" 
+                          placeholder="0.0" 
+                          {...field} 
+                          onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          );
+        })}
+
+        {fields.length > 0 && (
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex justify-between items-center">
+            <div>
+              <p className="text-sm text-muted-foreground">Total Diesel Issued</p>
+              <p className="text-2xl font-bold text-primary">{totalDiesel.toFixed(1)} L</p>
+            </div>
           </div>
-        ))}
+        )}
+
         <Button
           type="button"
           variant="outline"
