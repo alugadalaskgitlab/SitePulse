@@ -339,9 +339,13 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                           {...field} 
                           onChange={e => {
                             const val = e.target.value;
-                            field.onChange(val === '' ? calculatedQty : parseFloat(val));
+                            if (val === '') {
+                              field.onChange(calculatedQty || undefined);
+                            } else {
+                              field.onChange(parseFloat(val));
+                            }
                           }}
-                          value={field.value || ''}
+                          value={field.value !== null && field.value !== undefined ? field.value : ''}
                         />
                       </FormControl>
                     </FormItem>
