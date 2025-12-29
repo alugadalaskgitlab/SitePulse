@@ -11,7 +11,7 @@ export const dprs = pgTable("dprs", {
   date: date("date").notNull(),
   site: text("site").notNull(),
   engineer: text("engineer").notNull(),
-  role: text("role").default("engineer"), // "engineer" or "admin"
+  role: text("role").default("engineer"), // "engineer", "manager", or "admin"
   createdAt: timestamp("created_at").defaultNow(),
 });
 

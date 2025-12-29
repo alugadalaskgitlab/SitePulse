@@ -11,7 +11,18 @@ export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
-  const isAdmin = dpr?.role === "admin";
+  
+  const canEdit = dpr?.role === "manager" || dpr?.role === "admin";
+  const canDelete = dpr?.role === "admin";
+  
+  const getRoleLabel = (role?: string) => {
+    switch(role) {
+      case "engineer": return "Site Engineer (View Only)";
+      case "manager": return "Project Manager (Can Edit)";
+      case "admin": return "Admin (Full Control)";
+      default: return "Unknown";
+    }
+  };
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8" /></div>;
   if (error || !dpr) return <div className="p-20 text-center text-red-500">Failed to load report.</div>;
@@ -29,17 +40,27 @@ export default function DprDetails() {
           <div>
             <h1 className="text-2xl font-bold font-display">Report Details</h1>
             <p className="text-xs text-muted-foreground mt-1">
-              {isAdmin ? "✓ Admin Access" : "View Only - Engineer"}
+              {getRoleLabel(dpr.role)}
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          {!isAdmin && (
+        <div className="flex gap-2 flex-wrap justify-end">
+          {!canEdit && (
             <Button variant="outline" disabled className="text-muted-foreground cursor-not-allowed">
-              Edit (Admin Only)
+              Edit (Manager/Admin Only)
             </Button>
           )}
-          {isAdmin && (
+          {canEdit && (
+            <Button variant="secondary" className="gap-2">
+              Edit Report
+            </Button>
+          )}
+          {!canDelete && (
+            <Button variant="outline" disabled className="text-muted-foreground cursor-not-allowed">
+              Delete (Admin Only)
+            </Button>
+          )}
+          {canDelete && (
             <Button variant="destructive" size="sm" className="gap-2">
               Delete Report
             </Button>

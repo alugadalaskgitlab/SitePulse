@@ -86,7 +86,7 @@ export function DprForm() {
             name="role"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Role</FormLabel>
+                <FormLabel>Role Level</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value || "engineer"}>
                   <FormControl>
                     <SelectTrigger>
@@ -94,8 +94,9 @@ export function DprForm() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="engineer">Engineer</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="engineer">Site Engineer (View Only)</SelectItem>
+                    <SelectItem value="manager">Project Manager (Edit)</SelectItem>
+                    <SelectItem value="admin">Admin (Full Control)</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
