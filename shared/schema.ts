@@ -11,6 +11,7 @@ export const dprs = pgTable("dprs", {
   date: date("date").notNull(),
   site: text("site").notNull(),
   engineer: text("engineer").notNull(),
+  role: text("role").default("engineer"), // "engineer" or "admin"
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -38,6 +39,7 @@ export const equipmentLogs = pgTable("equipment_logs", {
   startTime: text("start_time"),
   endTime: text("end_time"),
   diesel: real("diesel"),
+  task: text("task"), // e.g., "Rolling WMM", "Watering shoulders"
 });
 
 // Labour Log

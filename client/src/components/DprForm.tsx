@@ -20,6 +20,7 @@ export function DprForm() {
       date: new Date().toISOString().split('T')[0],
       site: "",
       engineer: "",
+      role: "engineer",
       progress: [],
       equipment: [],
       labour: [],
@@ -40,7 +41,7 @@ export function DprForm() {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
         {/* Header Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-card p-6 rounded-xl border shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 bg-card p-6 rounded-xl border shadow-sm">
           <FormField
             control={form.control}
             name="date"
@@ -76,6 +77,27 @@ export function DprForm() {
                 <FormControl>
                   <Input placeholder="John Doe" {...field} />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="role"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Role</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value || "engineer"}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="engineer">Engineer</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -459,25 +481,39 @@ function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
                   </div>
                 </div>
 
-                <FormField
-                  control={control}
-                  name={`equipment.${index}.diesel`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Diesel Issued (Liters)</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.1" 
-                          placeholder="0.0" 
-                          {...field} 
-                          onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
-                          value={field.value || ''}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={control}
+                    name={`equipment.${index}.diesel`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Diesel Issued (Liters)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            step="0.1" 
+                            placeholder="0.0" 
+                            {...field} 
+                            onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
+                            value={field.value || ''}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`equipment.${index}.task`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Task Performed (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Rolling WMM, Watering shoulders" {...field} value={field.value || ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </CardContent>
             </Card>
           );
