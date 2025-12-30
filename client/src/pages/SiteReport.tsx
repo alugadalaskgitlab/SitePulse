@@ -433,6 +433,7 @@ export default function SiteReport() {
                     <TableHead>Vehicle No.</TableHead>
                     <TableHead>Supplier</TableHead>
                     <TableHead>Location/Task</TableHead>
+                    <TableHead>Receipt No.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -449,6 +450,7 @@ export default function SiteReport() {
                       <TableCell>{item.vehicleNumber || '-'}</TableCell>
                       <TableCell>{item.supplier || '-'}</TableCell>
                       <TableCell>{item.location || '-'}</TableCell>
+                      <TableCell>{item.receiptNumber || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

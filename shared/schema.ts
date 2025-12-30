@@ -63,6 +63,7 @@ export const materialLogs = pgTable("material_logs", {
   uom: text("uom"),
   vehicleNumber: text("vehicle_number"),
   location: text("location"), // Location/task of unloading
+  receiptNumber: text("receipt_number"), // Receipt number for received materials
 });
 
 // DPR Version History (for manager edits as copies)

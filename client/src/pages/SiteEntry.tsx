@@ -47,6 +47,7 @@ interface MaterialEntry {
   vehicleNumber: string;
   supplier: string;
   location: string;
+  receiptNumber: string;
 }
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
@@ -105,7 +106,7 @@ export default function SiteEntry() {
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([
-    { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }
+    { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }
   ]);
 
   // Calculate length from chainage if not manually entered
@@ -169,7 +170,7 @@ export default function SiteEntry() {
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
-      setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }]);
+      setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }]);
     }
   };
 
@@ -783,18 +784,31 @@ export default function SiteEntry() {
                   data-testid={`input-material-supplier-${idx}`}
                 />
               </div>
+              <div>
+                <Label className="text-xs">Location/Task</Label>
+                <Input
+                  placeholder="Unloading location"
+                  value={entry.location}
+                  onChange={(e) => {
+                    const updated = [...materials];
+                    updated[idx].location = e.target.value;
+                    setMaterials(updated);
+                  }}
+                  data-testid={`input-material-location-${idx}`}
+                />
+              </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <Label className="text-xs">Location/Task</Label>
+                  <Label className="text-xs">Receipt No.</Label>
                   <Input
-                    placeholder="Unloading location"
-                    value={entry.location}
+                    placeholder="Receipt number"
+                    value={entry.receiptNumber}
                     onChange={(e) => {
                       const updated = [...materials];
-                      updated[idx].location = e.target.value;
+                      updated[idx].receiptNumber = e.target.value;
                       setMaterials(updated);
                     }}
-                    data-testid={`input-material-location-${idx}`}
+                    data-testid={`input-material-receipt-${idx}`}
                   />
                 </div>
                 <div className="flex items-end">

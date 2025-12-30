@@ -239,6 +239,9 @@ export class DatabaseStorage implements IStorage {
             supplier: m.supplier,
             quantity: m.quantity,
             uom: m.uom,
+            vehicleNumber: m.vehicleNumber,
+            location: m.location,
+            receiptNumber: m.receiptNumber,
           }))
         );
       }

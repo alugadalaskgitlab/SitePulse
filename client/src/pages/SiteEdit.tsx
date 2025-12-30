@@ -47,6 +47,7 @@ interface MaterialEntry {
   vehicleNumber: string;
   supplier: string;
   location: string;
+  receiptNumber: string;
 }
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
@@ -122,7 +123,7 @@ export default function SiteEdit() {
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([
-    { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }
+    { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }
   ]);
 
   useEffect(() => {
@@ -175,6 +176,7 @@ export default function SiteEdit() {
           vehicleNumber: m.vehicleNumber || "",
           supplier: m.supplier || "",
           location: m.location || "",
+          receiptNumber: m.receiptNumber || "",
         })));
       }
     }
@@ -246,7 +248,7 @@ export default function SiteEdit() {
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
-      setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }]);
+      setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }]);
     }
   };
 
@@ -829,6 +831,21 @@ export default function SiteEdit() {
                       setMaterials(updated);
                     }}
                     data-testid={`input-material-location-${idx}`}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Label className="text-xs">Receipt No.</Label>
+                  <Input
+                    placeholder="Receipt number"
+                    value={entry.receiptNumber}
+                    onChange={(e) => {
+                      const updated = [...materials];
+                      updated[idx].receiptNumber = e.target.value;
+                      setMaterials(updated);
+                    }}
+                    data-testid={`input-material-receipt-${idx}`}
                   />
                 </div>
                 <div className="flex items-end">
