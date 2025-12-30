@@ -57,8 +57,37 @@ export const materialLogs = pgTable("material_logs", {
   dprId: integer("dpr_id").notNull(),
   type: text("type").notNull(), // Received, Issued
   material: text("material").notNull(),
+  supplier: text("supplier"), // Supplier name for received materials
   quantity: real("quantity"),
   uom: text("uom"),
+});
+
+// DPR Version History (for manager edits as copies)
+export const dprVersions = pgTable("dpr_versions", {
+  id: serial("id").primaryKey(),
+  originalDprId: integer("original_dpr_id").notNull(),
+  dprId: integer("dpr_id").notNull(), // ID of the copied DPR
+  editedBy: text("edited_by").notNull(), // "manager" or "admin"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Plant Module - Plant Reports
+export const plantReports = pgTable("plant_reports", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  siteName: text("site_name").notNull(),
+  role: text("role").default("engineer"), // "engineer", "manager", or "admin"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Plant Production Log
+export const plantProduction = pgTable("plant_production", {
+  id: serial("id").primaryKey(),
+  plantReportId: integer("plant_report_id").notNull(),
+  material: text("material").notNull(),
+  quantity: real("quantity"),
+  uom: text("uom"),
+  supplier: text("supplier"), // Supplier name
 });
 
 // === RELATIONS ===
@@ -68,6 +97,20 @@ export const dprsRelations = relations(dprs, ({ many }) => ({
   equipment: many(equipmentLogs),
   labour: many(labourLogs),
   materials: many(materialLogs),
+  versions: many(dprVersions),
+}));
+
+export const dprVersionsRelations = relations(dprVersions, ({ one }) => ({
+  originalDpr: one(dprs, { fields: [dprVersions.originalDprId], references: [dprs.id] }),
+  versionDpr: one(dprs, { fields: [dprVersions.dprId], references: [dprs.id] }),
+}));
+
+export const plantReportsRelations = relations(plantReports, ({ many }) => ({
+  production: many(plantProduction),
+}));
+
+export const plantProductionRelations = relations(plantProduction, ({ one }) => ({
+  plantReport: one(plantReports, { fields: [plantProduction.plantReportId], references: [plantReports.id] }),
 }));
 
 export const progressRelations = relations(progressEntries, ({ one }) => ({
@@ -93,12 +136,17 @@ export const insertProgressSchema = createInsertSchema(progressEntries).omit({ i
 export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id: true, dprId: true });
 export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true });
 export const insertMaterialSchema = createInsertSchema(materialLogs).omit({ id: true, dprId: true });
+export const insertPlantReportSchema = createInsertSchema(plantReports).omit({ id: true, createdAt: true });
+export const insertPlantProductionSchema = createInsertSchema(plantProduction).omit({ id: true, plantReportId: true });
 
 export type Dpr = typeof dprs.$inferSelect;
 export type ProgressEntry = typeof progressEntries.$inferSelect;
 export type EquipmentLog = typeof equipmentLogs.$inferSelect;
 export type LabourLog = typeof labourLogs.$inferSelect;
 export type MaterialLog = typeof materialLogs.$inferSelect;
+export type DprVersion = typeof dprVersions.$inferSelect;
+export type PlantReport = typeof plantReports.$inferSelect;
+export type PlantProduction = typeof plantProduction.$inferSelect;
 
 // Composite Request Type for Creating a Full DPR
 export const createDprRequestSchema = insertDprSchema.extend({

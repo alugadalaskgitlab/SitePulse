@@ -656,7 +656,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
       </div>
       <div className="space-y-4">
         {fields.map((field, index) => (
-          <div key={field.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end p-4 bg-muted/30 rounded-lg relative">
+          <div key={field.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end p-4 bg-muted/30 rounded-lg relative">
              <Button
               type="button"
               variant="ghost"
@@ -691,10 +691,22 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
               control={control}
               name={`materials.${index}.material`}
               render={({ field }) => (
-                <FormItem className="col-span-2">
+                <FormItem>
                   <FormLabel>Material Name</FormLabel>
                   <FormControl>
                      <Input placeholder="e.g. Cement" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`materials.${index}.supplier`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Supplier</FormLabel>
+                  <FormControl>
+                     <Input placeholder="e.g. ABC Corp" {...field} value={field.value || ''} />
                   </FormControl>
                 </FormItem>
               )}

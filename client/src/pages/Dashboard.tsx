@@ -9,37 +9,65 @@ import {
   MapPin, 
   HardHat,
   ChevronRight,
-  Loader2
+  Loader2,
+  Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
+
+type AccessLevel = "user" | "manager" | "admin";
 
 export default function Dashboard() {
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
   });
+  const [access, setAccess] = useState<AccessLevel>("user");
   
   const { data: dprs, isLoading } = useDprs(filters);
   const handleExport = useExportDprs();
+
+  if (access === "user") {
+    return <PinAuth onSuccess={(role) => setAccess(role)} />;
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Dashboard</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Dashboard</h1>
+            <div className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200 text-xs font-semibold flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              {access === "admin" ? "Admin" : "Manager"} Access
+            </div>
+          </div>
           <p className="text-muted-foreground mt-1">Overview of daily progress reports across all sites.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <Button variant="outline" onClick={handleExport} className="gap-2">
             <Download className="w-4 h-4" /> Export Excel
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setAccess("user")}
+            data-testid="button-logout"
+          >
+            Lock
           </Button>
           <Link href="/dpr/new">
             <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25">
               <Plus className="w-4 h-4" /> New Report
+            </Button>
+          </Link>
+          <Link href="/plant">
+            <Button variant="outline" className="gap-2">
+              <HardHat className="w-4 h-4" /> Plant Module
             </Button>
           </Link>
         </div>

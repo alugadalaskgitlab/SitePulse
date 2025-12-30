@@ -265,6 +265,7 @@ export default function DprDetails() {
                   <TableRow>
                     <TableHead>Type</TableHead>
                     <TableHead>Material</TableHead>
+                    <TableHead>Supplier</TableHead>
                     <TableHead className="text-right">Quantity</TableHead>
                     <TableHead>UOM</TableHead>
                   </TableRow>
@@ -278,6 +279,7 @@ export default function DprDetails() {
                         </Badge>
                       </TableCell>
                       <TableCell className="font-medium">{item.material}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{item.supplier || '-'}</TableCell>
                       <TableCell className="text-right">{item.quantity}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>

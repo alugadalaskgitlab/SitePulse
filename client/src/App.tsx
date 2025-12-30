@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import Dashboard from "@/pages/Dashboard";
 import NewDpr from "@/pages/NewDpr";
 import DprDetails from "@/pages/DprDetails";
+import Plant from "@/pages/Plant";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
             <Route path="/" component={Dashboard} />
             <Route path="/dpr/new" component={NewDpr} />
             <Route path="/dpr/:id" component={DprDetails} />
+            <Route path="/plant" component={Plant} />
             <Route component={NotFound} />
           </Switch>
         </div>
