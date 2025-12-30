@@ -1,19 +1,32 @@
+import { useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
-import { Link, useRoute } from "wouter";
-import { ChevronLeft, Calendar, User, MapPin, Loader2, Printer } from "lucide-react";
+import { Link, useRoute, useLocation } from "wouter";
+import { ChevronLeft, Calendar, User, MapPin, Loader2, Printer, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PinAuth } from "@/components/PinAuth";
+import { useAccess } from "@/lib/access-context";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+const MANAGER_PIN = "1234";
+const ADMIN_PIN = "5678";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
+  const [, setLocation] = useLocation();
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
+  const { access, canEdit, canDelete } = useAccess();
+  const { toast } = useToast();
   
-  const canEdit = dpr?.role === "manager" || dpr?.role === "admin";
-  const canDelete = dpr?.role === "admin";
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");
+  const [pendingAction, setPendingAction] = useState<"edit" | "delete" | null>(null);
   
   const getRoleLabel = (role?: string) => {
     switch(role) {
@@ -24,48 +37,178 @@ export default function DprDetails() {
     }
   };
 
+  const cloneMutation = useMutation({
+    mutationFn: async ({ role, pin }: { role: string; pin: string }) => {
+      const response = await apiRequest("POST", `/api/dprs/${id}/clone`, { editedBy: role, pin });
+      return response.json();
+    },
+    onSuccess: (newDpr) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      toast({
+        title: "Report Cloned",
+        description: "A copy has been created for editing. Redirecting...",
+      });
+      setLocation(`/dpr/${newDpr.id}`);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to clone report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (pin: string) => {
+      await apiRequest("DELETE", `/api/dprs/${id}`, { pin });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      toast({
+        title: "Report Deleted",
+        description: "The report has been deleted.",
+      });
+      setLocation("/");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditClick = () => {
+    if (canEdit) {
+      const pin = access === "manager" ? MANAGER_PIN : ADMIN_PIN;
+      cloneMutation.mutate({ role: access, pin });
+    } else {
+      setPendingAction("edit");
+      setTargetRole("manager");
+      setShowPinModal(true);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    if (canDelete) {
+      if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
+        deleteMutation.mutate(ADMIN_PIN);
+      }
+    } else {
+      setPendingAction("delete");
+      setTargetRole("admin");
+      setShowPinModal(true);
+    }
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinModal(false);
+    
+    if (pendingAction === "delete" && role === "admin") {
+      if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
+        deleteMutation.mutate(pin);
+      }
+    } else if (pendingAction === "edit") {
+      cloneMutation.mutate({ role, pin });
+    }
+    setPendingAction(null);
+  };
+
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8" /></div>;
   if (error || !dpr) return <div className="p-20 text-center text-red-500">Failed to load report.</div>;
 
+  // Group materials by Material + UOM + Supplier for detailed abstract
+  const materialAbstract = dpr.materials.reduce((acc: any[], m: any) => {
+    const key = `${m.material}|${m.uom}|${m.supplier || 'Unknown'}`;
+    const existing = acc.find(item => item.key === key);
+    if (existing) {
+      existing.totalQty += m.quantity || 0;
+      existing.trips += 1;
+    } else {
+      acc.push({
+        key,
+        material: m.material,
+        uom: m.uom,
+        supplier: m.supplier || 'Unknown',
+        totalQty: m.quantity || 0,
+        trips: 1,
+      });
+    }
+    return acc;
+  }, []);
+
+  // Group by material for summary cards
+  const materialSummary = dpr.materials.reduce((acc: any[], m: any) => {
+    const key = `${m.material}|${m.uom}`;
+    const existing = acc.find(item => item.key === key);
+    if (existing) {
+      existing.totalQty += m.quantity || 0;
+      existing.trips += 1;
+    } else {
+      acc.push({
+        key,
+        material: m.material,
+        uom: m.uom,
+        totalQty: m.quantity || 0,
+        trips: 1,
+      });
+    }
+    return acc;
+  }, []);
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
+      {showPinModal && (
+        <PinAuth
+          targetRole={targetRole}
+          onSuccess={handlePinSuccess}
+          onClose={() => {
+            setShowPinModal(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
+
       {/* Header Actions */}
       <div className="flex items-center justify-between print:hidden flex-col md:flex-row gap-4">
         <div className="flex items-center gap-4">
           <Link href="/">
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>
           </Link>
           <div>
             <h1 className="text-2xl font-bold font-display">Report Details</h1>
             <p className="text-xs text-muted-foreground mt-1">
-              {getRoleLabel(dpr.role)}
+              Current Access: {getRoleLabel(access)}
             </p>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          {!canEdit && (
-            <Button variant="outline" disabled className="text-muted-foreground cursor-not-allowed">
-              Edit (Manager/Admin Only)
-            </Button>
-          )}
-          {canEdit && (
-            <Button variant="secondary" className="gap-2">
-              Edit Report
-            </Button>
-          )}
-          {!canDelete && (
-            <Button variant="outline" disabled className="text-muted-foreground cursor-not-allowed">
-              Delete (Admin Only)
-            </Button>
-          )}
-          {canDelete && (
-            <Button variant="destructive" size="sm" className="gap-2">
-              Delete Report
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => window.print()} className="gap-2">
+          <Button 
+            variant="secondary" 
+            className="gap-2"
+            onClick={handleEditClick}
+            disabled={cloneMutation.isPending}
+            data-testid="button-edit-dpr"
+          >
+            <Edit className="w-4 h-4" />
+            {cloneMutation.isPending ? "Cloning..." : "Edit Report"}
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            className="gap-2"
+            onClick={handleDeleteClick}
+            disabled={deleteMutation.isPending}
+            data-testid="button-delete-dpr"
+          >
+            <Trash2 className="w-4 h-4" />
+            {deleteMutation.isPending ? "Deleting..." : "Delete Report"}
+          </Button>
+          <Button variant="outline" onClick={() => window.print()} className="gap-2" data-testid="button-print">
             <Printer className="w-4 h-4" /> Print
           </Button>
         </div>
@@ -74,7 +217,7 @@ export default function DprDetails() {
       {/* Report Info Header */}
       <div className="bg-card border rounded-xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
             <Calendar className="w-5 h-5" />
           </div>
           <div>
@@ -83,7 +226,7 @@ export default function DprDetails() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+           <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400">
             <MapPin className="w-5 h-5" />
           </div>
           <div>
@@ -92,7 +235,7 @@ export default function DprDetails() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+           <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
             <User className="w-5 h-5" />
           </div>
           <div>
@@ -139,13 +282,13 @@ export default function DprDetails() {
                   const displayQty = item.quantity || calculated || '-';
                   
                   return (
-                    <TableRow key={i}>
+                    <TableRow key={i} data-testid={`row-progress-${i}`}>
                       <TableCell className="font-medium">{item.activity}</TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
-                        {item.length || item.width || item.thickness ? `${item.length || '-'}m × ${item.width || '-'}m ${item.thickness ? `× ${item.thickness}m` : ''}` : '-'}
+                        {item.length || item.width || item.thickness ? `${item.length || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` : '-'}
                       </TableCell>
                       <TableCell className="text-right font-semibold">{displayQty}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
@@ -198,7 +341,7 @@ export default function DprDetails() {
                       const hours = calculateHours(item.startTime, item.endTime);
                       
                       return (
-                        <TableRow key={i}>
+                        <TableRow key={i} data-testid={`row-equipment-${i}`}>
                           <TableCell className="font-medium">{item.machine}</TableCell>
                           <TableCell>{item.operator || '-'}</TableCell>
                           <TableCell className="text-sm">{item.task || '-'}</TableCell>
@@ -212,7 +355,7 @@ export default function DprDetails() {
                 <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
                   <p className="text-sm text-muted-foreground">Total Diesel Issued</p>
                   <p className="text-2xl font-bold text-primary">
-                    {dpr.equipment.reduce((sum, e) => sum + (e.diesel || 0), 0).toFixed(1)} L
+                    {dpr.equipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0).toFixed(1)} L
                   </p>
                 </div>
               </>
@@ -238,7 +381,7 @@ export default function DprDetails() {
                 </TableHeader>
                 <TableBody>
                   {dpr.labour.map((item: any, i: number) => (
-                    <TableRow key={i}>
+                    <TableRow key={i} data-testid={`row-labour-${i}`}>
                       <TableCell>{item.category}</TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
@@ -251,69 +394,57 @@ export default function DprDetails() {
         </Card>
       </div>
 
+      {/* Materials Abstract */}
       <Card>
         <CardHeader>
-          <CardTitle>Materials Log</CardTitle>
+          <CardTitle>Material Abstract</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {dpr.materials.length === 0 ? (
-              <p className="text-muted-foreground italic">No materials recorded.</p>
-            ) : (
+            <p className="text-muted-foreground italic">No materials recorded.</p>
+          ) : (
             <>
+              {/* Detailed Table with Supplier-wise Breakdown */}
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Type</TableHead>
                     <TableHead>Material</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
                     <TableHead>UOM</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead className="text-right">Total Quantity</TableHead>
+                    <TableHead className="text-right">Trips</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dpr.materials.map((item: any, i: number) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Badge variant={item.type === 'Received' ? 'default' : 'secondary'}>
-                          {item.type}
-                        </Badge>
-                      </TableCell>
+                  {materialAbstract.map((item: any, i: number) => (
+                    <TableRow key={i} data-testid={`row-material-abstract-${i}`}>
                       <TableCell className="font-medium">{item.material}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{item.supplier || '-'}</TableCell>
-                      <TableCell className="text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-muted-foreground">{item.uom}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{item.uom}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">{item.supplier}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.totalQty.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{item.trips}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
 
-              {/* Material Summary */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Total Materials Received</p>
-                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {dpr.materials
-                      .filter((m: any) => m.type === 'Received')
-                      .reduce((sum: number, m: any) => sum + (m.quantity || 0), 0)
-                      .toFixed(2)}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {dpr.materials.filter((m: any) => m.type === 'Received').length} trip(s)
-                  </p>
-                </div>
-
-                <div className="p-4 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Total Materials Issued</p>
-                  <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                    {dpr.materials
-                      .filter((m: any) => m.type === 'Issued')
-                      .reduce((sum: number, m: any) => sum + (m.quantity || 0), 0)
-                      .toFixed(2)}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {dpr.materials.filter((m: any) => m.type === 'Issued').length} issue(s)
-                  </p>
-                </div>
+              {/* Summary Cards by Material */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {materialSummary.map((item: any, i: number) => (
+                  <div 
+                    key={i} 
+                    className="p-4 bg-muted/50 border rounded-lg"
+                    data-testid={`card-material-summary-${i}`}
+                  >
+                    <p className="text-sm font-medium">{item.material}</p>
+                    <p className="text-2xl font-bold">{item.totalQty.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">{item.uom}</span></p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.trips} trip{item.trips > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                ))}
               </div>
             </>
           )}

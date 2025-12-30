@@ -24,6 +24,7 @@ export interface IStorage {
   getDpr(id: number): Promise<DprWithDetails | undefined>;
   createDpr(dpr: CreateDprRequest): Promise<Dpr>;
   cloneDpr(id: number, editedBy: string): Promise<Dpr | undefined>;
+  deleteDpr(id: number): Promise<boolean>;
   
   // Plant Reports
   getPlantReports(): Promise<PlantReport[]>;
@@ -112,12 +113,16 @@ export class DatabaseStorage implements IStorage {
     const original = await this.getDpr(id);
     if (!original) return undefined;
 
+    const now = new Date();
+    const dateTime = now.toISOString().replace('T', ' ').substring(0, 19);
+    const roleName = editedBy === "manager" ? "Manager" : "Admin";
+
     return await db.transaction(async (tx) => {
-      // Create a copy of the DPR
+      // Create a copy of the DPR with timestamp and role tag
       const [newDpr] = await tx.insert(dprs).values({
         date: original.date,
-        site: original.site,
-        engineer: original.engineer + " (Edited by " + editedBy + ")",
+        site: `${original.site} – Copy by ${roleName} – ${dateTime}`,
+        engineer: original.engineer,
         role: editedBy,
       }).returning();
 
@@ -190,6 +195,18 @@ export class DatabaseStorage implements IStorage {
       });
 
       return newDpr;
+    });
+  }
+
+  async deleteDpr(id: number): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
+      await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
+      await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
+      await tx.delete(dprVersions).where(eq(dprVersions.dprId, id));
+      const result = await tx.delete(dprs).where(eq(dprs.id, id));
+      return true;
     });
   }
 

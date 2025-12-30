@@ -9,7 +9,7 @@ const ADMIN_PIN = "5678";
 
 interface PinAuthProps {
   targetRole: "manager" | "admin";
-  onSuccess: (role: "manager" | "admin") => void;
+  onSuccess: (role: "manager" | "admin", pin: string) => void;
   onClose: () => void;
 }
 
@@ -28,7 +28,7 @@ export function PinAuth({ targetRole, onSuccess, onClose }: PinAuthProps) {
     const expectedPin = targetRole === "manager" ? MANAGER_PIN : ADMIN_PIN;
     
     if (pin === expectedPin) {
-      onSuccess(targetRole);
+      onSuccess(targetRole, pin);
     } else {
       setError(`Invalid ${targetRole} PIN. Please try again.`);
       setPin("");

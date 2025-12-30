@@ -32,7 +32,7 @@ export default function Dashboard() {
   const { data: dprs, isLoading } = useDprs(filters);
   const handleExport = useExportDprs();
 
-  const handlePinSuccess = (role: "manager" | "admin") => {
+  const handlePinSuccess = (role: "manager" | "admin", _pin: string) => {
     setAccess(role);
     setShowPinModal(null);
   };

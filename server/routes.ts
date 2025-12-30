@@ -75,14 +75,26 @@ export async function registerRoutes(
   });
 
   // Clone DPR (for manager edits as copies)
+  // Requires manager or admin role with PIN verification
   const cloneSchema = z.object({
-    editedBy: z.enum(["manager", "admin"]).default("manager"),
+    editedBy: z.enum(["manager", "admin"]),
+    pin: z.string().length(4),
   });
+
+  const MANAGER_PIN = "1234";
+  const ADMIN_PIN = "5678";
   
   app.post("/api/dprs/:id/clone", async (req, res) => {
     try {
       const id = Number(req.params.id);
       const input = cloneSchema.parse(req.body);
+      
+      // Server-side PIN validation
+      const expectedPin = input.editedBy === "manager" ? MANAGER_PIN : ADMIN_PIN;
+      if (input.pin !== expectedPin) {
+        return res.status(403).json({ message: "Invalid PIN for role verification" });
+      }
+      
       const cloned = await storage.cloneDpr(id, input.editedBy);
       if (!cloned) {
         return res.status(404).json({ message: "Original DPR not found" });
@@ -96,6 +108,37 @@ export async function registerRoutes(
         });
       }
       res.status(500).json({ message: "Failed to clone DPR" });
+    }
+  });
+
+  // Delete DPR (admin only with PIN verification)
+  const deleteSchema = z.object({
+    pin: z.string().length(4),
+  });
+
+  app.delete("/api/dprs/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = deleteSchema.parse(req.body);
+      
+      // Server-side PIN validation - admin only
+      if (input.pin !== ADMIN_PIN) {
+        return res.status(403).json({ message: "Invalid admin PIN for deletion" });
+      }
+      
+      const deleted = await storage.deleteDpr(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "DPR not found" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to delete DPR" });
     }
   });
 
@@ -138,13 +181,21 @@ export async function registerRoutes(
   });
 
   const plantCloneSchema = z.object({
-    editedBy: z.enum(["manager", "admin"]).default("manager"),
+    editedBy: z.enum(["manager", "admin"]),
+    pin: z.string().length(4),
   });
 
   app.post("/api/plant/:id/clone", async (req, res) => {
     try {
       const id = Number(req.params.id);
       const input = plantCloneSchema.parse(req.body);
+      
+      // Server-side PIN validation
+      const expectedPin = input.editedBy === "manager" ? MANAGER_PIN : ADMIN_PIN;
+      if (input.pin !== expectedPin) {
+        return res.status(403).json({ message: "Invalid PIN for role verification" });
+      }
+      
       const cloned = await storage.clonePlantReport(id, input.editedBy);
       if (!cloned) {
         return res.status(404).json({ message: "Original plant report not found" });
@@ -181,15 +232,32 @@ export async function registerRoutes(
     }
   });
 
+  const plantDeleteSchema = z.object({
+    pin: z.string().length(4),
+  });
+
   app.delete("/api/plant/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
+      const input = plantDeleteSchema.parse(req.body);
+      
+      // Server-side PIN validation - admin only
+      if (input.pin !== ADMIN_PIN) {
+        return res.status(403).json({ message: "Invalid admin PIN for deletion" });
+      }
+      
       const deleted = await storage.deletePlantReport(id);
       if (!deleted) {
         return res.status(404).json({ message: "Plant report not found" });
       }
       res.status(204).send();
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
       res.status(500).json({ message: "Failed to delete plant report" });
     }
   });

@@ -1,30 +1,28 @@
+import { useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Factory, Package, Edit, Trash2, Copy, Loader2, Shield, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Factory, Package, Trash2, Copy, Loader2, Shield, ShieldCheck, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAccess } from "@/lib/access-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { PinAuth } from "@/components/PinAuth";
 import type { PlantReportWithDetails } from "@shared/schema";
+
+const MANAGER_PIN = "1234";
+const ADMIN_PIN = "5678";
 
 export default function PlantDetails() {
   const [, params] = useRoute("/plant/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { access, canEdit, canDelete } = useAccess();
+  
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");
+  const [pendingAction, setPendingAction] = useState<"edit" | "delete" | null>(null);
 
   const { data: report, isLoading, error } = useQuery<PlantReportWithDetails>({
     queryKey: ["/api/plant", params?.id],
@@ -37,8 +35,8 @@ export default function PlantDetails() {
   });
 
   const cloneMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/plant/${params?.id}/clone`, { editedBy: access });
+    mutationFn: async ({ role, pin }: { role: string; pin: string }) => {
+      const response = await apiRequest("POST", `/api/plant/${params?.id}/clone`, { editedBy: role, pin });
       return response.json();
     },
     onSuccess: (data) => {
@@ -59,8 +57,8 @@ export default function PlantDetails() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("DELETE", `/api/plant/${params?.id}`);
+    mutationFn: async (pin: string) => {
+      await apiRequest("DELETE", `/api/plant/${params?.id}`, { pin });
     },
     onSuccess: () => {
       toast({
@@ -78,6 +76,42 @@ export default function PlantDetails() {
       });
     },
   });
+
+  const handleEditClick = () => {
+    if (canEdit) {
+      const pin = access === "manager" ? MANAGER_PIN : ADMIN_PIN;
+      cloneMutation.mutate({ role: access, pin });
+    } else {
+      setPendingAction("edit");
+      setTargetRole("manager");
+      setShowPinModal(true);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    if (canDelete) {
+      if (confirm("Are you sure you want to delete this plant report? This cannot be undone.")) {
+        deleteMutation.mutate(ADMIN_PIN);
+      }
+    } else {
+      setPendingAction("delete");
+      setTargetRole("admin");
+      setShowPinModal(true);
+    }
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinModal(false);
+    
+    if (pendingAction === "delete" && role === "admin") {
+      if (confirm("Are you sure you want to delete this plant report? This cannot be undone.")) {
+        deleteMutation.mutate(pin);
+      }
+    } else if (pendingAction === "edit") {
+      cloneMutation.mutate({ role, pin });
+    }
+    setPendingAction(null);
+  };
 
   const getAccessBadge = () => {
     if (access === "admin") {
@@ -119,6 +153,17 @@ export default function PlantDetails() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {showPinModal && (
+        <PinAuth
+          targetRole={targetRole}
+          onSuccess={handlePinSuccess}
+          onClose={() => {
+            setShowPinModal(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4 flex-wrap">
           <Link href="/plant">
@@ -138,54 +183,35 @@ export default function PlantDetails() {
         </div>
         
         <div className="flex gap-2 flex-wrap">
-          {canEdit && (
-            <Button
-              variant="outline"
-              onClick={() => cloneMutation.mutate()}
-              disabled={cloneMutation.isPending}
-              className="gap-2"
-              data-testid="button-clone-edit"
-            >
-              {cloneMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-              {access === "manager" ? "Clone for Edit" : "Edit (Clone)"}
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            onClick={handleEditClick}
+            disabled={cloneMutation.isPending}
+            className="gap-2"
+            data-testid="button-clone-edit"
+          >
+            {cloneMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Edit className="w-4 h-4" />
+            )}
+            Edit Report
+          </Button>
           
-          {canDelete && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="gap-2" data-testid="button-delete">
-                  <Trash2 className="w-4 h-4" />
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Plant Report</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete this plant report? This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => deleteMutation.mutate()}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {deleteMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      "Delete"
-                    )}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+          <Button 
+            variant="destructive" 
+            className="gap-2" 
+            onClick={handleDeleteClick}
+            disabled={deleteMutation.isPending}
+            data-testid="button-delete"
+          >
+            {deleteMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+            Delete
+          </Button>
         </div>
       </div>
 

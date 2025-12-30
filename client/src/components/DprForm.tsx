@@ -199,7 +199,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                           <SelectContent>
                             <SelectItem value="LHS">LHS</SelectItem>
                             <SelectItem value="RHS">RHS</SelectItem>
-                            <SelectItem value="Median">Median</SelectItem>
+                            <SelectItem value="Full Width">Full Width</SelectItem>
                           </SelectContent>
                         </Select>
                       </FormItem>
