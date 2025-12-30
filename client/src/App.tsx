@@ -13,11 +13,28 @@ import Plant from "@/pages/Plant";
 import PlantNew from "@/pages/PlantNew";
 import PlantDetails from "@/pages/PlantDetails";
 import NotFound from "@/pages/not-found";
+import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
+
+function Watermark() {
+  return (
+    <div 
+      className="fixed inset-0 pointer-events-none flex items-center justify-center z-0"
+      aria-hidden="true"
+    >
+      <img 
+        src={companyLogo} 
+        alt="" 
+        className="w-64 h-64 md:w-80 md:h-80 object-contain opacity-[0.06]"
+      />
+    </div>
+  );
+}
 
 function Router() {
   return (
-    <div className="min-h-screen bg-background">
-      <main className="min-h-screen">
+    <div className="min-h-screen bg-background relative">
+      <Watermark />
+      <main className="min-h-screen relative z-10">
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
             <Route path="/" component={Home} />
