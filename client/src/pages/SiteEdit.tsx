@@ -87,12 +87,18 @@ export default function SiteEdit() {
   const { toast } = useToast();
   const id = parseInt(params?.id || "0");
 
-  // Get PIN from sessionStorage once and store in state (set by SiteReport before navigating)
+  // Get PIN and role from sessionStorage once and store in state (set by SiteReport before navigating)
   const [pin] = useState(() => {
     const storedPin = sessionStorage.getItem(`edit_pin_${id}`) || "";
     // Clear from sessionStorage immediately after reading for security
     sessionStorage.removeItem(`edit_pin_${id}`);
     return storedPin;
+  });
+  
+  const [role] = useState<"manager" | "admin">(() => {
+    const storedRole = sessionStorage.getItem(`auth_role_${id}`) || "manager";
+    sessionStorage.removeItem(`auth_role_${id}`);
+    return storedRole as "manager" | "admin";
   });
 
   const { data: dpr, isLoading } = useDpr(id);
@@ -176,17 +182,23 @@ export default function SiteEdit() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await apiRequest("PATCH", `/api/dprs/${id}`, { pin, data });
+      // Create a new version instead of overwriting original
+      const response = await apiRequest("POST", `/api/dprs/${id}/version`, { 
+        pin, 
+        editedBy: role,
+        data 
+      });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (newVersion) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dprs", id] });
       toast({
-        title: "Report Updated",
-        description: "Your changes have been saved successfully.",
+        title: "New Version Created",
+        description: "Your edited version has been saved successfully.",
       });
-      setLocation(`/site/report/${id}`);
+      // Redirect to the new version's report
+      setLocation(`/site/report/${newVersion.id}`);
     },
     onError: (error: any) => {
       toast({

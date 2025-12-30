@@ -25,6 +25,7 @@ export interface IStorage {
   createDpr(dpr: CreateDprRequest): Promise<Dpr>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string): Promise<Dpr | undefined>;
+  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string): Promise<Dpr>;
   deleteDpr(id: number): Promise<boolean>;
   
   // Plant Reports
@@ -240,6 +241,61 @@ export class DatabaseStorage implements IStorage {
       // Record version history
       await tx.insert(dprVersions).values({
         originalDprId: id,
+        dprId: newDpr.id,
+        editedBy,
+      });
+
+      return newDpr;
+    });
+  }
+
+  async createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string): Promise<Dpr> {
+    const now = new Date();
+    const dateTime = now.toISOString().replace('T', ' ').substring(0, 19);
+    const roleName = editedBy === "manager" ? "Manager" : "Admin";
+
+    return await db.transaction(async (tx) => {
+      // Create new DPR with edited data and timestamp
+      const [newDpr] = await tx.insert(dprs).values({
+        date: dprData.date,
+        site: `${dprData.site} – Edited by ${roleName} – ${dateTime}`,
+        engineer: dprData.engineer,
+        role: editedBy,
+      }).returning();
+
+      const dprId = newDpr.id;
+
+      // Insert edited progress entries
+      if (dprData.progress?.length) {
+        await tx.insert(progressEntries).values(
+          dprData.progress.map(p => ({ ...p, dprId }))
+        );
+      }
+
+      // Insert edited equipment logs
+      if (dprData.equipment?.length) {
+        await tx.insert(equipmentLogs).values(
+          dprData.equipment.map(e => ({ ...e, dprId }))
+        );
+      }
+
+      // Insert edited labour logs
+      if (dprData.labour?.length) {
+        await tx.insert(labourLogs).values(
+          dprData.labour.map(l => ({ ...l, dprId }))
+        );
+      }
+
+      // Insert edited material logs
+      if (dprData.materials?.length) {
+        await tx.insert(materialLogs).values(
+          dprData.materials.map(m => ({ ...m, dprId }))
+        );
+      }
+
+      // Record version history
+      await tx.insert(dprVersions).values({
+        originalDprId: originalId,
         dprId: newDpr.id,
         editedBy,
       });

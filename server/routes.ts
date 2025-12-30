@@ -74,30 +74,30 @@ export async function registerRoutes(
     }
   });
 
-  // Update DPR (for editing)
-  const updatePinSchema = z.object({
-    pin: z.string().length(4),
-    data: createDprRequestSchema,
-  });
-
   const MANAGER_PIN = "1234";
   const ADMIN_PIN = "5678";
 
-  app.patch("/api/dprs/:id", async (req, res) => {
+  // Create a new version of DPR with edited data
+  // Creates a copy with timestamp instead of overwriting original
+  const versionSchema = z.object({
+    pin: z.string().length(4),
+    editedBy: z.enum(["manager", "admin"]),
+    data: createDprRequestSchema,
+  });
+
+  app.post("/api/dprs/:id/version", async (req, res) => {
     try {
-      const id = Number(req.params.id);
-      const input = updatePinSchema.parse(req.body);
+      const originalId = Number(req.params.id);
+      const input = versionSchema.parse(req.body);
       
-      // Server-side PIN validation - manager or admin can edit
-      if (input.pin !== MANAGER_PIN && input.pin !== ADMIN_PIN) {
+      // Server-side PIN validation
+      const expectedPin = input.editedBy === "manager" ? MANAGER_PIN : ADMIN_PIN;
+      if (input.pin !== expectedPin) {
         return res.status(403).json({ message: "Invalid PIN for editing" });
       }
       
-      const updated = await storage.updateDpr(id, input.data);
-      if (!updated) {
-        return res.status(404).json({ message: "DPR not found" });
-      }
-      res.json(updated);
+      const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy);
+      res.status(201).json(newVersion);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -105,7 +105,7 @@ export async function registerRoutes(
           field: err.errors[0].path.join('.'),
         });
       }
-      res.status(500).json({ message: "Failed to update DPR" });
+      res.status(500).json({ message: "Failed to create version" });
     }
   });
 
