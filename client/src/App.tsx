@@ -6,6 +6,7 @@ import { AccessProvider } from "@/lib/access-context";
 import Home from "@/pages/Home";
 import SiteDashboard from "@/pages/SiteDashboard";
 import SiteEntry from "@/pages/SiteEntry";
+import SiteEdit from "@/pages/SiteEdit";
 import SiteSuccess from "@/pages/SiteSuccess";
 import SiteReport from "@/pages/SiteReport";
 import Plant from "@/pages/Plant";
@@ -22,6 +23,7 @@ function Router() {
             <Route path="/" component={Home} />
             <Route path="/site" component={SiteDashboard} />
             <Route path="/site/new" component={SiteEntry} />
+            <Route path="/site/edit/:id" component={SiteEdit} />
             <Route path="/site/success/:id" component={SiteSuccess} />
             <Route path="/site/report/:id" component={SiteReport} />
             <Route path="/plant" component={Plant} />

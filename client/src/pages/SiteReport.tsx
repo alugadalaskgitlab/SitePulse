@@ -79,14 +79,16 @@ export default function SiteReport() {
     setAuthenticatedRole(role);
     setAuthenticatedPin(pin);
     
-    if (role === "manager") {
-      cloneMutation.mutate({ role, pin });
-    }
+    // Store PIN in sessionStorage (not exposed in URL)
+    sessionStorage.setItem(`edit_pin_${id}`, pin);
+    setLocation(`/site/edit/${id}`);
   };
 
   const handleAdminEdit = () => {
     if (authenticatedRole === "admin" && authenticatedPin) {
-      cloneMutation.mutate({ role: "admin", pin: authenticatedPin });
+      // Store PIN in sessionStorage (not exposed in URL)
+      sessionStorage.setItem(`edit_pin_${id}`, authenticatedPin);
+      setLocation(`/site/edit/${id}`);
     }
   };
 

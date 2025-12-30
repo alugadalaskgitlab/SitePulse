@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createPlantReportRequestSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -74,15 +74,47 @@ export async function registerRoutes(
     }
   });
 
+  // Update DPR (for editing)
+  const updatePinSchema = z.object({
+    pin: z.string().length(4),
+    data: createDprRequestSchema,
+  });
+
+  const MANAGER_PIN = "1234";
+  const ADMIN_PIN = "5678";
+
+  app.patch("/api/dprs/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = updatePinSchema.parse(req.body);
+      
+      // Server-side PIN validation - manager or admin can edit
+      if (input.pin !== MANAGER_PIN && input.pin !== ADMIN_PIN) {
+        return res.status(403).json({ message: "Invalid PIN for editing" });
+      }
+      
+      const updated = await storage.updateDpr(id, input.data);
+      if (!updated) {
+        return res.status(404).json({ message: "DPR not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to update DPR" });
+    }
+  });
+
   // Clone DPR (for manager edits as copies)
   // Requires manager or admin role with PIN verification
   const cloneSchema = z.object({
     editedBy: z.enum(["manager", "admin"]),
     pin: z.string().length(4),
   });
-
-  const MANAGER_PIN = "1234";
-  const ADMIN_PIN = "5678";
   
   app.post("/api/dprs/:id/clone", async (req, res) => {
     try {

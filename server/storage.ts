@@ -23,6 +23,7 @@ export interface IStorage {
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
   createDpr(dpr: CreateDprRequest): Promise<Dpr>;
+  updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string): Promise<Dpr | undefined>;
   deleteDpr(id: number): Promise<boolean>;
   
@@ -106,6 +107,55 @@ export class DatabaseStorage implements IStorage {
       }
 
       return newDpr;
+    });
+  }
+
+  async updateDpr(id: number, dprData: CreateDprRequest): Promise<Dpr | undefined> {
+    const existing = await this.getDpr(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      // Update DPR header
+      const [updated] = await tx.update(dprs)
+        .set({
+          date: dprData.date,
+          site: dprData.site,
+          engineer: dprData.engineer,
+        })
+        .where(eq(dprs.id, id))
+        .returning();
+
+      // Delete old entries and insert new ones
+      await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
+      await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
+      await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
+
+      if (dprData.progress?.length) {
+        await tx.insert(progressEntries).values(
+          dprData.progress.map(p => ({ ...p, dprId: id }))
+        );
+      }
+
+      if (dprData.equipment?.length) {
+        await tx.insert(equipmentLogs).values(
+          dprData.equipment.map(e => ({ ...e, dprId: id }))
+        );
+      }
+
+      if (dprData.labour?.length) {
+        await tx.insert(labourLogs).values(
+          dprData.labour.map(l => ({ ...l, dprId: id }))
+        );
+      }
+
+      if (dprData.materials?.length) {
+        await tx.insert(materialLogs).values(
+          dprData.materials.map(m => ({ ...m, dprId: id }))
+        );
+      }
+
+      return updated;
     });
   }
 
