@@ -1,6 +1,5 @@
-const CACHE_NAME = 'hlc-site-reporter-v1';
+const CACHE_NAME = 'hlc-site-reporter-v2';
 const urlsToCache = [
-  '/',
   '/manifest.json',
   '/favicon-16x16.png',
   '/favicon-32x32.png',
@@ -31,13 +30,26 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => caches.match('/'))
+    );
+    return;
+  }
+  
   event.respondWith(
-    caches.match(event.request)
+    fetch(request)
       .then((response) => {
-        if (response) {
-          return response;
+        if (response && response.status === 200) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone);
+          });
         }
-        return fetch(event.request);
+        return response;
       })
+      .catch(() => caches.match(request))
   );
 });
