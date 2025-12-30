@@ -1,0 +1,422 @@
+import { useState } from "react";
+import { useDpr } from "@/hooks/use-dprs";
+import { Link, useRoute, useLocation } from "wouter";
+import { ChevronLeft, Calendar, User, MapPin, Loader2, Printer, Edit, Trash2, Fuel, Home } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PinAuth } from "@/components/PinAuth";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+const MANAGER_PIN = "1234";
+const ADMIN_PIN = "5678";
+
+export default function SiteReport() {
+  const [, params] = useRoute("/site/report/:id");
+  const [, setLocation] = useLocation();
+  const id = parseInt(params?.id || "0");
+  const { data: dpr, isLoading, error } = useDpr(id);
+  const { toast } = useToast();
+  
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [authenticatedRole, setAuthenticatedRole] = useState<"manager" | "admin" | null>(null);
+  const [authenticatedPin, setAuthenticatedPin] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const cloneMutation = useMutation({
+    mutationFn: async ({ role, pin }: { role: string; pin: string }) => {
+      const response = await apiRequest("POST", `/api/dprs/${id}/clone`, { editedBy: role, pin });
+      return response.json();
+    },
+    onSuccess: (newDpr) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      toast({
+        title: "Report Cloned",
+        description: "A new version has been created. Redirecting...",
+      });
+      setLocation(`/site/report/${newDpr.id}`);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to clone report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (pin: string) => {
+      await apiRequest("DELETE", `/api/dprs/${id}`, { pin });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      toast({
+        title: "Report Deleted",
+        description: "The report has been deleted.",
+      });
+      setLocation("/site");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditClick = () => {
+    setShowPinModal(true);
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinModal(false);
+    setAuthenticatedRole(role);
+    setAuthenticatedPin(pin);
+    
+    if (role === "manager") {
+      cloneMutation.mutate({ role, pin });
+    }
+  };
+
+  const handleAdminEdit = () => {
+    if (authenticatedRole === "admin" && authenticatedPin) {
+      cloneMutation.mutate({ role: "admin", pin: authenticatedPin });
+    }
+  };
+
+  const handleAdminDelete = () => {
+    if (authenticatedRole === "admin") {
+      setShowDeleteConfirm(true);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (authenticatedPin) {
+      deleteMutation.mutate(authenticatedPin);
+    }
+    setShowDeleteConfirm(false);
+  };
+
+  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8" /></div>;
+  if (error || !dpr) return <div className="p-20 text-center text-red-500">Failed to load report.</div>;
+
+  // Materials Abstract: Group by Material + UOM
+  const materialsAbstract = dpr.materials.reduce((acc: any[], m: any) => {
+    if (!m.material) return acc;
+    const key = `${m.material}|${m.uom}`;
+    const existing = acc.find(item => item.key === key);
+    if (existing) {
+      existing.total += m.quantity || 0;
+      existing.trips += 1;
+    } else {
+      acc.push({
+        key,
+        material: m.material,
+        uom: m.uom,
+        total: m.quantity || 0,
+        trips: 1,
+      });
+    }
+    return acc;
+  }, []);
+
+  // Total Diesel
+  const totalDiesel = dpr.equipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0);
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
+      {showPinModal && (
+        <PinAuth
+          targetRole="any"
+          onSuccess={handlePinSuccess}
+          onClose={() => setShowPinModal(false)}
+        />
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-md w-full">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-bold mb-2">Delete Report?</h3>
+              <p className="text-muted-foreground mb-6">
+                Are you sure you want to delete this report? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={confirmDelete} disabled={deleteMutation.isPending}>
+                  {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Header Actions */}
+      <div className="flex items-center justify-between print:hidden flex-col md:flex-row gap-4">
+        <div className="flex items-center gap-4">
+          <Link href="/site">
+            <Button variant="ghost" size="icon" data-testid="button-back">
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold font-display">Site Report</h1>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap justify-end">
+          {authenticatedRole === "admin" ? (
+            <>
+              <Button 
+                variant="secondary" 
+                className="gap-2"
+                onClick={handleAdminEdit}
+                disabled={cloneMutation.isPending}
+                data-testid="button-admin-edit"
+              >
+                <Edit className="w-4 h-4" />
+                {cloneMutation.isPending ? "Saving..." : "Edit (Create Version)"}
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="gap-2"
+                onClick={handleAdminDelete}
+                disabled={deleteMutation.isPending}
+                data-testid="button-admin-delete"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete
+              </Button>
+            </>
+          ) : (
+            <Button 
+              variant="secondary" 
+              className="gap-2"
+              onClick={handleEditClick}
+              disabled={cloneMutation.isPending}
+              data-testid="button-edit"
+            >
+              <Edit className="w-4 h-4" />
+              {cloneMutation.isPending ? "Cloning..." : "Edit"}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => window.print()} className="gap-2" data-testid="button-print">
+            <Printer className="w-4 h-4" /> Print
+          </Button>
+          <Link href="/">
+            <Button variant="ghost" className="gap-2" data-testid="button-home">
+              <Home className="w-4 h-4" /> Home
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Report Info Header */}
+      <div className="bg-card border rounded-xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Date</p>
+            <p className="font-semibold">{format(new Date(dpr.date), "PPP")}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+           <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400">
+            <MapPin className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Site Name</p>
+            <p className="font-semibold">{dpr.site}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+           <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
+            <User className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Engineer</p>
+            <p className="font-semibold">{dpr.engineer}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-primary">{dpr.progress.length}</p>
+            <p className="text-sm text-muted-foreground">Activities</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-primary">{dpr.equipment.length}</p>
+            <p className="text-sm text-muted-foreground">Equipment</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-primary">{dpr.labour.reduce((sum: number, l: any) => sum + l.count, 0)}</p>
+            <p className="text-sm text-muted-foreground">Workers</p>
+          </CardContent>
+        </Card>
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Fuel className="w-5 h-5 text-primary" />
+              <p className="text-2xl font-bold text-primary">{totalDiesel.toFixed(1)} L</p>
+            </div>
+            <p className="text-sm text-muted-foreground">Total Diesel</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Activity Progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {dpr.progress.length === 0 ? (
+            <p className="text-muted-foreground italic">No activities recorded.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Activity</TableHead>
+                  <TableHead>Side</TableHead>
+                  <TableHead>From</TableHead>
+                  <TableHead>To</TableHead>
+                  <TableHead className="text-right">Dimensions</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>UOM</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dpr.progress.map((item: any, i: number) => (
+                  <TableRow key={i} data-testid={`row-progress-${i}`}>
+                    <TableCell className="font-medium">{item.activity}</TableCell>
+                    <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
+                    <TableCell>{item.chainageFrom || '-'}</TableCell>
+                    <TableCell>{item.chainageTo || '-'}</TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      {item.length || item.width || item.thickness ? `${item.length || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` : '-'}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{item.uom}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Two Column Layout for Resources */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Equipment Log</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dpr.equipment.length === 0 ? (
+              <p className="text-muted-foreground italic">No equipment usage recorded.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Machine</TableHead>
+                    <TableHead>Operator</TableHead>
+                    <TableHead>Task</TableHead>
+                    <TableHead className="text-right">Diesel (L)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dpr.equipment.map((item: any, i: number) => (
+                    <TableRow key={i} data-testid={`row-equipment-${i}`}>
+                      <TableCell className="font-medium">{item.machine}</TableCell>
+                      <TableCell>{item.operator || '-'}</TableCell>
+                      <TableCell className="text-sm">{item.task || '-'}</TableCell>
+                      <TableCell className="text-right">{item.diesel || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Labour Strength</CardTitle>
+          </CardHeader>
+          <CardContent>
+             {dpr.labour.length === 0 ? (
+              <p className="text-muted-foreground italic">No labour recorded.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Gender</TableHead>
+                    <TableHead className="text-right">Count</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dpr.labour.map((item: any, i: number) => (
+                    <TableRow key={i} data-testid={`row-labour-${i}`}>
+                      <TableCell>{item.category}</TableCell>
+                      <TableCell>{item.gender}</TableCell>
+                      <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Materials Abstract */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Materials Abstract</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {materialsAbstract.length === 0 ? (
+            <p className="text-muted-foreground italic">No materials recorded.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {materialsAbstract.map((item: any, i: number) => (
+                <div 
+                  key={i} 
+                  className="p-4 bg-muted/50 border rounded-lg"
+                  data-testid={`card-material-abstract-${i}`}
+                >
+                  <p className="text-lg font-semibold">{item.material}</p>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <p className="text-2xl font-bold text-primary">{item.total.toFixed(1)}</p>
+                    <p className="text-sm text-muted-foreground">{item.uom}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {item.trips} trip{item.trips > 1 ? 's' : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

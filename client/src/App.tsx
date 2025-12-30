@@ -2,11 +2,12 @@ import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { Sidebar } from "@/components/Sidebar";
 import { AccessProvider } from "@/lib/access-context";
-import Dashboard from "@/pages/Dashboard";
-import NewDpr from "@/pages/NewDpr";
-import DprDetails from "@/pages/DprDetails";
+import Home from "@/pages/Home";
+import SiteDashboard from "@/pages/SiteDashboard";
+import SiteEntry from "@/pages/SiteEntry";
+import SiteSuccess from "@/pages/SiteSuccess";
+import SiteReport from "@/pages/SiteReport";
 import Plant from "@/pages/Plant";
 import PlantNew from "@/pages/PlantNew";
 import PlantDetails from "@/pages/PlantDetails";
@@ -15,13 +16,14 @@ import NotFound from "@/pages/not-found";
 function Router() {
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar />
-      <main className="md:pl-64 min-h-screen">
+      <main className="min-h-screen">
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/dpr/new" component={NewDpr} />
-            <Route path="/dpr/:id" component={DprDetails} />
+            <Route path="/" component={Home} />
+            <Route path="/site" component={SiteDashboard} />
+            <Route path="/site/new" component={SiteEntry} />
+            <Route path="/site/success/:id" component={SiteSuccess} />
+            <Route path="/site/report/:id" component={SiteReport} />
             <Route path="/plant" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />
             <Route path="/plant/:id" component={PlantDetails} />

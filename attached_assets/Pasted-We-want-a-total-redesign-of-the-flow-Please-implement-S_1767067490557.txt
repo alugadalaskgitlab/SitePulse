@@ -1,0 +1,70 @@
+We want a total redesign of the flow. Please implement Site Report module first and keep Plant module changes for later.
+
+A) New App Start Screen (no dashboard first)
+	1.	When the app opens, show only two big buttons:
+	•	Site Report
+	•	Plant Report
+	2.	No PIN prompt on launch.
+	3.	Site Engineer workflow:
+	•	Engineer clicks Site Report → goes to Site Report Entry Form.
+	•	Engineer fills the form → clicks Preview → sees preview of the full report.
+	•	From Preview → engineer clicks Submit Report (final save).
+	•	After submit, show “Report Saved Successfully” + optional “Create New Site Report” button.
+
+B) Dashboard should be accessible from Site flow (for Manager/Admin)
+	4.	After engineer submits, app can show a simple “Back to Home” option.
+	5.	When Manager/Admin opens the app and clicks Site Report, they should be able to go to a Site Dashboard showing:
+	•	List of all submitted site reports (latest first)
+	•	Search / filter by date and site name (basic)
+	•	Clicking a report opens Report View Page
+
+C) PIN-Based Edit/Delete logic (only when clicking Edit)
+	6.	In Report View Page, show an Edit button (visible to everyone).
+	7.	When Edit is clicked → prompt for PIN:
+	•	If Manager PIN is entered:
+	•	Allow editing only that report
+	•	On save, do NOT overwrite original
+	•	Save as a new copy/version with timestamp:
+“Site Report (Edited by Manager) – YYYY-MM-DD HH:MM”
+	•	Keep original intact
+	•	Show “Saved as a new version” confirmation
+	•	If Admin PIN is entered:
+	•	Show Edit + Delete buttons
+	•	Admin can edit (overwrite OR save version—either is fine, but must be consistent)
+	•	Admin can delete that report (with confirmation popup)
+	8.	Important: PIN should be asked only when Edit is clicked, not on app open.
+
+D) Materials Abstract should be grouped (not entry-by-entry)
+	9.	In the Site Report view, the Materials Abstract must be grouped by Material Name + UOM, and show:
+	•	Material Name
+	•	Trips count (number of entries for that material)
+	•	Total Quantity (sum only within same UOM)
+	•	Optional: Supplier-wise split later (not now)
+Example output:
+
+	•	WMM – Trips: 3 – Total: 45.6 (Tons)
+	•	6MM – Trips: 2 – Total: 18.0 (Tons)
+	•	Water – Trips: 3 – Total: 9000 (Liters)
+
+E) Equipment Diesel totals must reflect in report summary
+	10.	From Equipment Log, calculate and show:
+
+	•	Diesel issued per equipment (already shown)
+	•	AND Total Diesel Issued (All Equipment) in the overall Site Report summary
+	•	This total must be visible clearly in the report view.
+
+F) Preview + Stored Calculations must match
+	11.	Ensure that what is shown in Preview is exactly what gets stored and later shown in Report View (including quantities, materials abstract totals, diesel totals).
+
+G) Keep Plant module for later
+	12.	For now, Plant Report button can remain as a placeholder (“Coming next”) OR keep existing module unchanged. We will redesign Plant after Site works perfectly.
+
+⸻
+
+If you need assumptions, implement the simplest working version first but ensure:
+	•	Start screen with two buttons works
+	•	Engineer can create → preview → submit
+	•	Dashboard list + report view works
+	•	Edit triggers PIN and manager/admin behavior works
+	•	Materials abstract grouping works
+	•	Total diesel in report summary works

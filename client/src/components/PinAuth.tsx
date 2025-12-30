@@ -8,12 +8,12 @@ const MANAGER_PIN = "1234";
 const ADMIN_PIN = "5678";
 
 interface PinAuthProps {
-  targetRole: "manager" | "admin";
+  targetRole?: "manager" | "admin" | "any";
   onSuccess: (role: "manager" | "admin", pin: string) => void;
   onClose: () => void;
 }
 
-export function PinAuth({ targetRole, onSuccess, onClose }: PinAuthProps) {
+export function PinAuth({ targetRole = "any", onSuccess, onClose }: PinAuthProps) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -25,15 +25,42 @@ export function PinAuth({ targetRole, onSuccess, onClose }: PinAuthProps) {
 
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    const expectedPin = targetRole === "manager" ? MANAGER_PIN : ADMIN_PIN;
-    
-    if (pin === expectedPin) {
-      onSuccess(targetRole, pin);
+    if (targetRole === "any") {
+      if (pin === ADMIN_PIN) {
+        onSuccess("admin", pin);
+      } else if (pin === MANAGER_PIN) {
+        onSuccess("manager", pin);
+      } else {
+        setError("Invalid PIN. Please try again.");
+        setPin("");
+      }
     } else {
-      setError(`Invalid ${targetRole} PIN. Please try again.`);
-      setPin("");
+      const expectedPin = targetRole === "manager" ? MANAGER_PIN : ADMIN_PIN;
+      if (pin === expectedPin) {
+        onSuccess(targetRole, pin);
+      } else {
+        setError(`Invalid ${targetRole} PIN. Please try again.`);
+        setPin("");
+      }
     }
     setIsLoading(false);
+  };
+
+  const getTitle = () => {
+    if (targetRole === "any") return "Enter PIN to Continue";
+    return targetRole === "admin" ? "Admin Access" : "Manager Access";
+  };
+
+  const getDescription = () => {
+    if (targetRole === "any") {
+      return "Enter Manager PIN (1234) for edit or Admin PIN (5678) for full control";
+    }
+    return `Enter ${targetRole} PIN to unlock ${targetRole === "admin" ? "full control" : "edit"} features`;
+  };
+
+  const getButtonText = () => {
+    if (targetRole === "any") return "Verify PIN";
+    return `Unlock ${targetRole === "admin" ? "Admin" : "Manager"} Access`;
   };
 
   return (
@@ -53,18 +80,22 @@ export function PinAuth({ targetRole, onSuccess, onClose }: PinAuthProps) {
             <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
               targetRole === "admin" 
                 ? "bg-red-100 dark:bg-red-900/30" 
-                : "bg-amber-100 dark:bg-amber-900/30"
+                : targetRole === "manager"
+                  ? "bg-amber-100 dark:bg-amber-900/30"
+                  : "bg-blue-100 dark:bg-blue-900/30"
             }`}>
               <Lock className={`w-6 h-6 ${
                 targetRole === "admin" 
                   ? "text-red-600 dark:text-red-400" 
-                  : "text-amber-600 dark:text-amber-400"
+                  : targetRole === "manager"
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-blue-600 dark:text-blue-400"
               }`} />
             </div>
           </div>
-          <CardTitle>{targetRole === "admin" ? "Admin" : "Manager"} Access</CardTitle>
+          <CardTitle>{getTitle()}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter {targetRole} PIN to unlock {targetRole === "admin" ? "full control" : "edit"} features
+            {getDescription()}
           </p>
         </CardHeader>
         <CardContent>
@@ -100,11 +131,11 @@ export function PinAuth({ targetRole, onSuccess, onClose }: PinAuthProps) {
                     Verifying...
                   </>
                 ) : (
-                  `Unlock ${targetRole === "admin" ? "Admin" : "Manager"} Access`
+                  getButtonText()
                 )}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                {targetRole === "manager" ? "Manager PIN: 1234" : "Admin PIN: 5678"} (for demo)
+                Manager: 1234 | Admin: 5678 (demo)
               </p>
             </div>
           </form>
