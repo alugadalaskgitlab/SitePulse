@@ -57,6 +57,30 @@ const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "
 const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
 const MATERIAL_TYPE_OPTIONS = ["Received", "Issued", "Consumed"];
 
+// Helper to parse chainage like "0+500" or "1+250" into meters
+function parseChainageToMeters(chainage: string): number | null {
+  if (!chainage) return null;
+  const match = chainage.match(/^(\d+)\+(\d+)$/);
+  if (match) {
+    const km = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    return km * 1000 + m;
+  }
+  // Try parsing as plain number
+  const num = parseFloat(chainage);
+  return isNaN(num) ? null : num;
+}
+
+// Calculate length from chainage difference
+function calculateLengthFromChainage(from: string, to: string): number | null {
+  const fromMeters = parseChainageToMeters(from);
+  const toMeters = parseChainageToMeters(to);
+  if (fromMeters !== null && toMeters !== null) {
+    return Math.abs(toMeters - fromMeters);
+  }
+  return null;
+}
+
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -84,12 +108,23 @@ export default function SiteEntry() {
     { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }
   ]);
 
+  // Calculate length from chainage if not manually entered
+  const getEffectiveLength = (entry: ProgressEntry): number | null => {
+    // If length is manually entered, use it
+    if (entry.length !== null && entry.length > 0) {
+      return entry.length;
+    }
+    // Otherwise calculate from chainage
+    return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+  };
+
   const calculateQuantity = (entry: ProgressEntry): number | null => {
-    if (!entry.length || !entry.width) return null;
+    const length = getEffectiveLength(entry);
+    if (!length || !entry.width) return null;
     if (entry.uom === "SQM") {
-      return entry.length * entry.width;
+      return length * entry.width;
     } else if (entry.uom === "CUM" && entry.thickness) {
-      return entry.length * entry.width * entry.thickness;
+      return length * entry.width * entry.thickness;
     }
     return null;
   };
@@ -152,10 +187,14 @@ export default function SiteEntry() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const progressWithCalc = progress.map(p => ({
-        ...p,
-        quantity: p.quantity || calculateQuantity(p)
-      }));
+      const progressWithCalc = progress.map(p => {
+        const effectiveLength = getEffectiveLength(p);
+        return {
+          ...p,
+          length: effectiveLength,
+          quantity: p.quantity || calculateQuantity(p)
+        };
+      });
 
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
@@ -207,10 +246,14 @@ export default function SiteEntry() {
       date: header.date,
       site: header.site,
       engineer: header.engineer,
-      progress: progress.map(p => ({
-        ...p,
-        quantity: p.quantity || calculateQuantity(p)
-      })),
+      progress: progress.map(p => {
+        const effectiveLength = getEffectiveLength(p);
+        return {
+          ...p,
+          length: effectiveLength,
+          quantity: p.quantity || calculateQuantity(p)
+        };
+      }),
       equipment,
       labour,
       materials,

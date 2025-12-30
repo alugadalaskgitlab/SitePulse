@@ -57,21 +57,43 @@ const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "
 const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
 const MATERIAL_TYPE_OPTIONS = ["Received", "Issued", "Consumed"];
 
+// Helper to parse chainage like "0+500" or "1+250" into meters
+function parseChainageToMeters(chainage: string): number | null {
+  if (!chainage) return null;
+  const match = chainage.match(/^(\d+)\+(\d+)$/);
+  if (match) {
+    const km = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    return km * 1000 + m;
+  }
+  // Try parsing as plain number
+  const num = parseFloat(chainage);
+  return isNaN(num) ? null : num;
+}
+
+// Calculate length from chainage difference
+function calculateLengthFromChainage(from: string, to: string): number | null {
+  const fromMeters = parseChainageToMeters(from);
+  const toMeters = parseChainageToMeters(to);
+  if (fromMeters !== null && toMeters !== null) {
+    return Math.abs(toMeters - fromMeters);
+  }
+  return null;
+}
+
 export default function SiteEdit() {
   const [, params] = useRoute("/site/edit/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const id = parseInt(params?.id || "0");
 
-  // Get PIN from sessionStorage (set by SiteReport before navigating)
-  const pin = sessionStorage.getItem(`edit_pin_${id}`) || "";
-
-  // Clear PIN from sessionStorage after reading
-  useEffect(() => {
-    return () => {
-      sessionStorage.removeItem(`edit_pin_${id}`);
-    };
-  }, [id]);
+  // Get PIN from sessionStorage once and store in state (set by SiteReport before navigating)
+  const [pin] = useState(() => {
+    const storedPin = sessionStorage.getItem(`edit_pin_${id}`) || "";
+    // Clear from sessionStorage immediately after reading for security
+    sessionStorage.removeItem(`edit_pin_${id}`);
+    return storedPin;
+  });
 
   const { data: dpr, isLoading } = useDpr(id);
 
@@ -175,12 +197,23 @@ export default function SiteEdit() {
     },
   });
 
+  // Calculate length from chainage if not manually entered
+  const getEffectiveLength = (entry: ProgressEntry): number | null => {
+    // If length is manually entered, use it
+    if (entry.length !== null && entry.length > 0) {
+      return entry.length;
+    }
+    // Otherwise calculate from chainage
+    return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+  };
+
   const calculateQuantity = (entry: ProgressEntry): number | null => {
-    if (!entry.length || !entry.width) return null;
+    const length = getEffectiveLength(entry);
+    if (!length || !entry.width) return null;
     if (entry.uom === "SQM") {
-      return entry.length * entry.width;
+      return length * entry.width;
     } else if (entry.uom === "CUM" && entry.thickness) {
-      return entry.length * entry.width * entry.thickness;
+      return length * entry.width * entry.thickness;
     }
     return null;
   };
@@ -225,10 +258,14 @@ export default function SiteEdit() {
 
     const payload = {
       ...header,
-      progress: progress.filter(p => p.activity).map(p => ({
-        ...p,
-        quantity: calculateQuantity(p) || p.quantity,
-      })),
+      progress: progress.filter(p => p.activity).map(p => {
+        const effectiveLength = getEffectiveLength(p);
+        return {
+          ...p,
+          length: effectiveLength,
+          quantity: calculateQuantity(p) || p.quantity,
+        };
+      }),
       equipment: equipment.filter(e => e.machine),
       labour: labour.filter(l => l.count > 0),
       materials: materials.filter(m => m.material).map(m => ({
