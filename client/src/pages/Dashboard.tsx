@@ -18,16 +18,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PinAuth } from "@/components/PinAuth";
+import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
-
-type AccessLevel = "engineer" | "manager" | "admin";
 
 export default function Dashboard() {
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
   });
-  const [access, setAccess] = useState<AccessLevel>("engineer");
+  const { access, setAccess } = useAccess();
   const [showPinModal, setShowPinModal] = useState<"manager" | "admin" | null>(null);
   
   const { data: dprs, isLoading } = useDprs(filters);

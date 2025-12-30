@@ -3,11 +3,13 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Sidebar } from "@/components/Sidebar";
+import { AccessProvider } from "@/lib/access-context";
 import Dashboard from "@/pages/Dashboard";
 import NewDpr from "@/pages/NewDpr";
 import DprDetails from "@/pages/DprDetails";
 import Plant from "@/pages/Plant";
 import PlantNew from "@/pages/PlantNew";
+import PlantDetails from "@/pages/PlantDetails";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,6 +24,7 @@ function Router() {
             <Route path="/dpr/:id" component={DprDetails} />
             <Route path="/plant" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />
+            <Route path="/plant/:id" component={PlantDetails} />
             <Route component={NotFound} />
           </Switch>
         </div>
@@ -33,8 +36,10 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Toaster />
-      <Router />
+      <AccessProvider>
+        <Toaster />
+        <Router />
+      </AccessProvider>
     </QueryClientProvider>
   );
 }

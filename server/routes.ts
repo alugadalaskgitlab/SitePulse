@@ -137,6 +137,63 @@ export async function registerRoutes(
     }
   });
 
+  const plantCloneSchema = z.object({
+    editedBy: z.enum(["manager", "admin"]).default("manager"),
+  });
+
+  app.post("/api/plant/:id/clone", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = plantCloneSchema.parse(req.body);
+      const cloned = await storage.clonePlantReport(id, input.editedBy);
+      if (!cloned) {
+        return res.status(404).json({ message: "Original plant report not found" });
+      }
+      res.status(201).json(cloned);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to clone plant report" });
+    }
+  });
+
+  app.patch("/api/plant/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = createPlantReportRequestSchema.parse(req.body);
+      const updated = await storage.updatePlantReport(id, input);
+      if (!updated) {
+        return res.status(404).json({ message: "Plant report not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to update plant report" });
+    }
+  });
+
+  app.delete("/api/plant/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const deleted = await storage.deletePlantReport(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Plant report not found" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete plant report" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
 

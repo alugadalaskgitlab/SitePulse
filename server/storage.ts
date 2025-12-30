@@ -8,6 +8,7 @@ import {
   plantReports,
   plantProduction,
   dprVersions,
+  plantVersions,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -28,6 +29,9 @@ export interface IStorage {
   getPlantReports(): Promise<PlantReport[]>;
   getPlantReport(id: number): Promise<PlantReportWithDetails | undefined>;
   createPlantReport(report: CreatePlantReportRequest): Promise<PlantReport>;
+  clonePlantReport(id: number, editedBy: string): Promise<PlantReport | undefined>;
+  updatePlantReport(id: number, report: CreatePlantReportRequest): Promise<PlantReport | undefined>;
+  deletePlantReport(id: number): Promise<boolean>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -223,6 +227,81 @@ export class DatabaseStorage implements IStorage {
       }
 
       return newReport;
+    });
+  }
+
+  async clonePlantReport(id: number, editedBy: string): Promise<PlantReport | undefined> {
+    const original = await this.getPlantReport(id);
+    if (!original) return undefined;
+
+    const now = new Date();
+    const dateTime = now.toISOString().replace('T', ' ').substring(0, 19);
+    const roleName = editedBy === "manager" ? "Manager" : "Admin";
+
+    return await db.transaction(async (tx) => {
+      const [newReport] = await tx.insert(plantReports).values({
+        date: original.date,
+        siteName: `${original.siteName} – Copy by ${roleName} – ${dateTime}`,
+        role: editedBy,
+      }).returning();
+
+      const plantReportId = newReport.id;
+
+      if (original.production?.length) {
+        await tx.insert(plantProduction).values(
+          original.production.map(p => ({
+            plantReportId,
+            material: p.material,
+            quantity: p.quantity,
+            uom: p.uom,
+            supplier: p.supplier,
+          }))
+        );
+      }
+
+      await tx.insert(plantVersions).values({
+        originalPlantId: id,
+        plantId: newReport.id,
+        editedBy,
+      });
+
+      return newReport;
+    });
+  }
+
+  async updatePlantReport(id: number, reportData: CreatePlantReportRequest): Promise<PlantReport | undefined> {
+    const existing = await this.getPlantReport(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(plantReports)
+        .set({
+          date: reportData.date,
+          siteName: reportData.siteName,
+          role: reportData.role || existing.role,
+        })
+        .where(eq(plantReports.id, id))
+        .returning();
+
+      await tx.delete(plantProduction).where(eq(plantProduction.plantReportId, id));
+
+      if (reportData.production?.length) {
+        await tx.insert(plantProduction).values(
+          reportData.production.map(p => ({ ...p, plantReportId: id }))
+        );
+      }
+
+      return updated;
+    });
+  }
+
+  async deletePlantReport(id: number): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      await tx.delete(plantProduction).where(eq(plantProduction.plantReportId, id));
+      await tx.delete(plantVersions).where(eq(plantVersions.plantId, id));
+      await tx.delete(plantVersions).where(eq(plantVersions.originalPlantId, id));
+      const result = await tx.delete(plantReports).where(eq(plantReports.id, id)).returning();
+      return result.length > 0;
     });
   }
 }

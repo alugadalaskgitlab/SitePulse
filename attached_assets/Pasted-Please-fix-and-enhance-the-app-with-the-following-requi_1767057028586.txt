@@ -1,0 +1,103 @@
+Please fix and enhance the app with the following requirements. Current issues: Manager/Admin login exists but still no Edit/Delete options, quantity is not calculated for “m”, diesel total is not shown in overall summary, materials total is wrongly adding different UOMs into one number, plant report route is giving 404, and plant production section is missing.
+
+1) Correct login flow (very important)
+	•	App must NOT ask for PIN on first load.
+	•	Default user = Site Engineer / Plant In-charge should be able to:
+	•	create a new report,
+	•	fill all data,
+	•	view a preview, and
+	•	submit.
+	•	Only on dashboard there must be two buttons:
+	•	Manager Login
+	•	Admin Login
+	•	Only when those buttons are clicked, ask for PIN.
+	•	After successful PIN login, show clear status at top: “Logged in as Manager” or “Logged in as Admin”.
+
+2) Manager/Admin permissions + buttons must actually work
+	•	After Manager/Admin login, each report details page must show buttons:
+	•	Edit (Manager/Admin)
+	•	Delete (Admin only)
+	•	Currently login is not enabling edit/delete — please fix permissions + UI + backend.
+	•	Manager edits must be saved as a new version/copy, not overwrite:
+	•	Example: “Report Copy – Edited by Manager – <date/time>”
+	•	Keep original report unchanged.
+	•	Admin can edit and delete. Admin edit can overwrite OR create a new version (your choice), but delete must be available only for Admin.
+
+3) Quantity calculation fixes (Activity Progress)
+	•	Quantity must auto-calculate correctly for these UOM:
+	•	sqm = length × width
+	•	cum = length × width × thickness/depth
+	•	m (meters) = length only (or “to – from” chainage distance if that’s how you store length)
+	•	Currently “m” is not calculating quantity — fix this.
+	•	Ensure calculated quantity is saved and shown in dashboard report view (not only in entry form).
+
+4) “Side” label change
+	•	In Activity Progress, replace “Median” with “Full Width” (keep LHS/RHS as is).
+	•	Ensure reports display “Full Width” consistently.
+
+5) Diesel totals — must appear in final report summary
+	•	Diesel total is showing inside equipment section, but not in overall totals.
+	•	Add in Total Summary section:
+	•	“Total Diesel Issued (L): ___”
+	•	Ensure this total appears in:
+	•	report view page,
+	•	export/print,
+	•	dashboard report summary.
+
+6) Materials log totals must NOT mix different UOMs
+	•	Current “Total Materials Received 536.5” is wrong if it sums Tons + Nos + Cum etc.
+	•	Replace with material-wise abstract grouped by Material + UOM, showing:
+	•	Material name
+	•	UOM
+	•	Total quantity
+	•	Total trips (count of entries)
+	•	Supplier-wise (optional but preferred)
+Example:
+	•	WMM – Tons – Total 51.5 – Trips 2
+	•	Sand – Cum – Total 12.0 – Trips 1
+	•	Cement – Bags – Total 40 – Trips 2
+
+7) Add Supplier name to materials received (Site + Plant)
+	•	In Materials Received entry form add field:
+	•	Supplier / From
+	•	Show supplier in the report view and in material-wise abstract.
+
+8) Plant module must work end-to-end (routing + dashboard view)
+	•	Fix 404 for /plant/:id (route not registered).
+	•	Plant reports must be:
+	•	created via “New Report – Plant”
+	•	saved
+	•	visible on dashboard list
+	•	clickable to open full plant report view like site reports.
+
+9) Plant module must include production + stock logic (not just received)
+
+Plant report must track per material:
+	•	Opening stock (previous day closing)
+	•	Received today (+ supplier)
+	•	Consumed today (calculated or entered)
+	•	Closing balance
+
+Also add Hot Mix Plant Production section:
+	•	Choose mix type (BC / DBM / etc.)
+	•	Enter production quantity (tons)
+	•	Record actual job mix proportion / bitumen % used that day (editable daily)
+	•	From production + proportions, calculate consumption of each aggregate + bitumen, then auto update “Consumed today”.
+(If auto calculation is complex, allow manual consumed entry but still store mix type, production, proportions.)
+
+10) Plant supporting equipment log (like site)
+
+Plant report should include equipment log for loaders/tippers/tanker etc.:
+	•	Machine
+	•	Task
+	•	Start time
+	•	End time
+	•	Working hours (auto)
+	•	Diesel issued
+And show Total Diesel Issued for Plant in plant report summary.
+
+11) Export/Print
+
+Ensure all new summaries (diesel total, material abstracts, plant production & stock balances) appear in:
+	•	Export Excel
+	•	Print view

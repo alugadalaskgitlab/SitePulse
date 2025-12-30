@@ -90,6 +90,15 @@ export const plantProduction = pgTable("plant_production", {
   supplier: text("supplier"), // Supplier name
 });
 
+// Plant Version History (for manager edits as copies)
+export const plantVersions = pgTable("plant_versions", {
+  id: serial("id").primaryKey(),
+  originalPlantId: integer("original_plant_id").notNull(),
+  plantId: integer("plant_id").notNull(), // ID of the copied Plant Report
+  editedBy: text("edited_by").notNull(), // "manager" or "admin"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const dprsRelations = relations(dprs, ({ many }) => ({
@@ -107,6 +116,12 @@ export const dprVersionsRelations = relations(dprVersions, ({ one }) => ({
 
 export const plantReportsRelations = relations(plantReports, ({ many }) => ({
   production: many(plantProduction),
+  versions: many(plantVersions),
+}));
+
+export const plantVersionsRelations = relations(plantVersions, ({ one }) => ({
+  originalPlant: one(plantReports, { fields: [plantVersions.originalPlantId], references: [plantReports.id] }),
+  versionPlant: one(plantReports, { fields: [plantVersions.plantId], references: [plantReports.id] }),
 }));
 
 export const plantProductionRelations = relations(plantProduction, ({ one }) => ({
@@ -147,6 +162,7 @@ export type MaterialLog = typeof materialLogs.$inferSelect;
 export type DprVersion = typeof dprVersions.$inferSelect;
 export type PlantReport = typeof plantReports.$inferSelect;
 export type PlantProduction = typeof plantProduction.$inferSelect;
+export type PlantVersion = typeof plantVersions.$inferSelect;
 
 // Composite Request Type for Creating a Full DPR
 export const createDprRequestSchema = insertDprSchema.extend({
