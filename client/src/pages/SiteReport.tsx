@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { ChevronLeft, Calendar, User, MapPin, Loader2, Printer, Edit, Trash2, Fuel, Home } from "lucide-react";
@@ -26,6 +26,16 @@ export default function SiteReport() {
   const [authenticatedRole, setAuthenticatedRole] = useState<"manager" | "admin" | null>(null);
   const [authenticatedPin, setAuthenticatedPin] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Restore authenticated role from sessionStorage on mount
+  useEffect(() => {
+    const storedRole = sessionStorage.getItem(`auth_role_${id}`);
+    const storedPin = sessionStorage.getItem(`edit_pin_${id}`);
+    if (storedRole && storedPin) {
+      setAuthenticatedRole(storedRole as "manager" | "admin");
+      setAuthenticatedPin(storedPin);
+    }
+  }, [id]);
 
   const cloneMutation = useMutation({
     mutationFn: async ({ role, pin }: { role: string; pin: string }) => {
@@ -79,13 +89,14 @@ export default function SiteReport() {
     setAuthenticatedRole(role);
     setAuthenticatedPin(pin);
     
-    // Store PIN in sessionStorage (not exposed in URL)
+    // Store PIN and role in sessionStorage (not exposed in URL)
     sessionStorage.setItem(`edit_pin_${id}`, pin);
+    sessionStorage.setItem(`auth_role_${id}`, role);
     setLocation(`/site/edit/${id}`);
   };
 
   const handleAdminEdit = () => {
-    if (authenticatedRole === "admin" && authenticatedPin) {
+    if (authenticatedRole && authenticatedPin) {
       // Store PIN in sessionStorage (not exposed in URL)
       sessionStorage.setItem(`edit_pin_${id}`, authenticatedPin);
       setLocation(`/site/edit/${id}`);
@@ -175,7 +186,7 @@ export default function SiteReport() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          {authenticatedRole === "admin" ? (
+          {authenticatedRole ? (
             <>
               <Button 
                 variant="secondary" 
@@ -187,16 +198,18 @@ export default function SiteReport() {
                 <Edit className="w-4 h-4" />
                 {cloneMutation.isPending ? "Saving..." : "Edit (Create Version)"}
               </Button>
-              <Button 
-                variant="destructive" 
-                className="gap-2"
-                onClick={handleAdminDelete}
-                disabled={deleteMutation.isPending}
-                data-testid="button-admin-delete"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </Button>
+              {authenticatedRole === "admin" && (
+                <Button 
+                  variant="destructive" 
+                  className="gap-2"
+                  onClick={handleAdminDelete}
+                  disabled={deleteMutation.isPending}
+                  data-testid="button-admin-delete"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </Button>
+              )}
             </>
           ) : (
             <Button 
