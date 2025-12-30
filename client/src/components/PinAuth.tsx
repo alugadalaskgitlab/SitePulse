@@ -2,16 +2,18 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Lock, Loader2 } from "lucide-react";
+import { Lock, Loader2, X } from "lucide-react";
 
 const MANAGER_PIN = "1234";
 const ADMIN_PIN = "5678";
 
 interface PinAuthProps {
+  targetRole: "manager" | "admin";
   onSuccess: (role: "manager" | "admin") => void;
+  onClose: () => void;
 }
 
-export function PinAuth({ onSuccess }: PinAuthProps) {
+export function PinAuth({ targetRole, onSuccess, onClose }: PinAuthProps) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -21,15 +23,14 @@ export function PinAuth({ onSuccess }: PinAuthProps) {
     setError("");
     setIsLoading(true);
 
-    // Simulate validation delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    if (pin === MANAGER_PIN) {
-      onSuccess("manager");
-    } else if (pin === ADMIN_PIN) {
-      onSuccess("admin");
+    const expectedPin = targetRole === "manager" ? MANAGER_PIN : ADMIN_PIN;
+    
+    if (pin === expectedPin) {
+      onSuccess(targetRole);
     } else {
-      setError("Invalid PIN. Please try again.");
+      setError(`Invalid ${targetRole} PIN. Please try again.`);
       setPin("");
     }
     setIsLoading(false);
@@ -37,16 +38,33 @@ export function PinAuth({ onSuccess }: PinAuthProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-md shadow-2xl">
+      <Card className="w-full max-w-md shadow-2xl relative">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2"
+          onClick={onClose}
+          data-testid="button-close-pin"
+        >
+          <X className="w-4 h-4" />
+        </Button>
         <CardHeader className="space-y-2 text-center">
           <div className="flex justify-center">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Lock className="w-6 h-6 text-primary" />
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              targetRole === "admin" 
+                ? "bg-red-100 dark:bg-red-900/30" 
+                : "bg-amber-100 dark:bg-amber-900/30"
+            }`}>
+              <Lock className={`w-6 h-6 ${
+                targetRole === "admin" 
+                  ? "text-red-600 dark:text-red-400" 
+                  : "text-amber-600 dark:text-amber-400"
+              }`} />
             </div>
           </div>
-          <CardTitle>Manager/Admin Access</CardTitle>
+          <CardTitle>{targetRole === "admin" ? "Admin" : "Manager"} Access</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter PIN to unlock edit/delete features
+            Enter {targetRole} PIN to unlock {targetRole === "admin" ? "full control" : "edit"} features
           </p>
         </CardHeader>
         <CardContent>
@@ -63,6 +81,7 @@ export function PinAuth({ onSuccess }: PinAuthProps) {
                 maxLength={4}
                 className="text-center text-2xl tracking-widest font-mono"
                 data-testid="input-pin"
+                autoFocus
               />
             </div>
             {error && (
@@ -81,11 +100,11 @@ export function PinAuth({ onSuccess }: PinAuthProps) {
                     Verifying...
                   </>
                 ) : (
-                  "Unlock Access"
+                  `Unlock ${targetRole === "admin" ? "Admin" : "Manager"} Access`
                 )}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                Manager PIN: 1234 | Admin PIN: 5678 (for demo)
+                {targetRole === "manager" ? "Manager PIN: 1234" : "Admin PIN: 5678"} (for demo)
               </p>
             </div>
           </form>

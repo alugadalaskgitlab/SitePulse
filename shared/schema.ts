@@ -164,3 +164,14 @@ export type DprWithDetails = Dpr & {
   labour: LabourLog[];
   materials: MaterialLog[];
 };
+
+// Composite Request Type for Creating a Plant Report
+export const createPlantReportRequestSchema = insertPlantReportSchema.extend({
+  production: z.array(insertPlantProductionSchema).optional(),
+});
+
+export type CreatePlantReportRequest = z.infer<typeof createPlantReportRequestSchema>;
+
+export type PlantReportWithDetails = PlantReport & {
+  production: PlantProduction[];
+};

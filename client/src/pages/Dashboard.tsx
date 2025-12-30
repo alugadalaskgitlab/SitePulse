@@ -4,13 +4,15 @@ import { Link } from "wouter";
 import { 
   Plus, 
   Download, 
-  Search, 
   Calendar, 
   MapPin, 
   HardHat,
   ChevronRight,
   Loader2,
-  Zap
+  Shield,
+  ShieldCheck,
+  Lock,
+  Factory
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,47 +20,71 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 
-type AccessLevel = "user" | "manager" | "admin";
+type AccessLevel = "engineer" | "manager" | "admin";
 
 export default function Dashboard() {
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
   });
-  const [access, setAccess] = useState<AccessLevel>("user");
+  const [access, setAccess] = useState<AccessLevel>("engineer");
+  const [showPinModal, setShowPinModal] = useState<"manager" | "admin" | null>(null);
   
   const { data: dprs, isLoading } = useDprs(filters);
   const handleExport = useExportDprs();
 
-  if (access === "user") {
-    return <PinAuth onSuccess={(role) => setAccess(role)} />;
-  }
+  const handlePinSuccess = (role: "manager" | "admin") => {
+    setAccess(role);
+    setShowPinModal(null);
+  };
+
+  const getAccessBadge = () => {
+    if (access === "admin") {
+      return (
+        <div className="px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-200 text-xs font-semibold flex items-center gap-1">
+          <ShieldCheck className="w-3 h-3" />
+          Admin Access
+        </div>
+      );
+    } else if (access === "manager") {
+      return (
+        <div className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200 text-xs font-semibold flex items-center gap-1">
+          <Shield className="w-3 h-3" />
+          Manager Access
+        </div>
+      );
+    }
+    return (
+      <div className="px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 text-xs font-semibold flex items-center gap-1">
+        <HardHat className="w-3 h-3" />
+        Site Engineer
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      {/* PIN Modal */}
+      {showPinModal && (
+        <PinAuth
+          targetRole={showPinModal}
+          onSuccess={handlePinSuccess}
+          onClose={() => setShowPinModal(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Dashboard</h1>
-            <div className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200 text-xs font-semibold flex items-center gap-1">
-              <Zap className="w-3 h-3" />
-              {access === "admin" ? "Admin" : "Manager"} Access
-            </div>
+            {getAccessBadge()}
           </div>
           <p className="text-muted-foreground mt-1">Overview of daily progress reports across all sites.</p>
         </div>
         <div className="flex gap-3 flex-wrap">
           <Button variant="outline" onClick={handleExport} className="gap-2">
             <Download className="w-4 h-4" /> Export Excel
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setAccess("user")}
-            data-testid="button-logout"
-          >
-            Lock
           </Button>
           <Link href="/dpr/new">
             <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25">
@@ -67,10 +93,57 @@ export default function Dashboard() {
           </Link>
           <Link href="/plant">
             <Button variant="outline" className="gap-2">
-              <HardHat className="w-4 h-4" /> Plant Module
+              <Factory className="w-4 h-4" /> Plant Module
             </Button>
           </Link>
         </div>
+      </div>
+
+      {/* Role Access Buttons */}
+      <div className="flex gap-3 p-4 bg-card border rounded-xl shadow-sm items-center flex-wrap">
+        <span className="text-sm text-muted-foreground font-medium">Access Level:</span>
+        
+        {access === "engineer" ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPinModal("manager")}
+              className="gap-2"
+              data-testid="button-manager-access"
+            >
+              <Shield className="w-4 h-4" />
+              Manager Access
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPinModal("admin")}
+              className="gap-2"
+              data-testid="button-admin-access"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Admin Access
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setAccess("engineer")}
+            className="gap-2"
+            data-testid="button-lock"
+          >
+            <Lock className="w-4 h-4" />
+            Lock (Return to Engineer View)
+          </Button>
+        )}
+        
+        {access !== "engineer" && (
+          <span className="text-xs text-muted-foreground ml-auto">
+            {access === "admin" ? "Full control: Edit & Delete" : "Can edit reports"}
+          </span>
+        )}
       </div>
 
       {/* Filters */}
@@ -82,6 +155,7 @@ export default function Dashboard() {
             className="pl-9"
             value={filters.site}
             onChange={(e) => setFilters(prev => ({ ...prev, site: e.target.value }))}
+            data-testid="input-filter-site"
           />
         </div>
         <div className="relative">
@@ -91,9 +165,10 @@ export default function Dashboard() {
             className="pl-9"
             value={filters.engineer}
             onChange={(e) => setFilters(prev => ({ ...prev, engineer: e.target.value }))}
+            data-testid="input-filter-engineer"
           />
         </div>
-        <Button variant="ghost" onClick={() => setFilters({ site: "", engineer: "" })}>
+        <Button variant="ghost" onClick={() => setFilters({ site: "", engineer: "" })} data-testid="button-clear-filters">
           Clear Filters
         </Button>
       </div>
@@ -133,84 +208,49 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* DPR List */}
+      {/* Reports List */}
       <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Recent Reports</CardTitle>
+        <CardHeader className="border-b">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-muted-foreground" />
+            Recent Reports
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
-            <div className="flex justify-center py-12">
+            <div className="flex justify-center p-12">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : dprs?.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <div className="bg-muted/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileText className="w-8 h-8 opacity-50" />
-              </div>
-              <p>No reports found matching your criteria.</p>
+          ) : !dprs?.length ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <p>No reports found. Create your first report to get started.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {dprs?.map((dpr) => (
-                <div 
-                  key={dpr.id} 
-                  className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-lg border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-200"
-                >
-                  <div className="flex gap-4 items-center">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                      <span className="font-bold font-display text-lg">
-                        {format(new Date(dpr.date), "dd")}
-                      </span>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground">{dpr.site}</h3>
-                      <div className="flex gap-3 mt-1 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <HardHat className="w-3 h-3" /> {dpr.engineer}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" /> {format(new Date(dpr.date), "MMM yyyy")}
-                        </span>
+            <ul className="divide-y">
+              {dprs.map((dpr) => (
+                <li key={dpr.id}>
+                  <Link href={`/dpr/${dpr.id}`}>
+                    <div className="flex items-center justify-between p-4 hover-elevate cursor-pointer group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                          {dpr.site.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium">{dpr.site}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {format(new Date(dpr.date), "MMM d, yyyy")} - {dpr.engineer}
+                          </p>
+                        </div>
                       </div>
+                      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
                     </div>
-                  </div>
-                  
-                  <Link href={`/dpr/${dpr.id}`} className="mt-4 md:mt-0">
-                    <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-primary">
-                      View Details <ChevronRight className="w-4 h-4" />
-                    </Button>
                   </Link>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-// Icon helper
-function FileText(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-      <path d="M10 9H8" />
-      <path d="M16 13H8" />
-      <path d="M16 17H8" />
-    </svg>
   );
 }

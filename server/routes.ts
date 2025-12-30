@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
+import { createPlantReportRequestSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -70,6 +71,69 @@ export async function registerRoutes(
       res.send(buf);
     } catch (err) {
       res.status(500).json({ message: "Failed to export data" });
+    }
+  });
+
+  // Clone DPR (for manager edits as copies)
+  const cloneSchema = z.object({
+    editedBy: z.enum(["manager", "admin"]).default("manager"),
+  });
+  
+  app.post("/api/dprs/:id/clone", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = cloneSchema.parse(req.body);
+      const cloned = await storage.cloneDpr(id, input.editedBy);
+      if (!cloned) {
+        return res.status(404).json({ message: "Original DPR not found" });
+      }
+      res.status(201).json(cloned);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to clone DPR" });
+    }
+  });
+
+  // Plant Report Routes
+  app.get("/api/plant", async (req, res) => {
+    try {
+      const reports = await storage.getPlantReports();
+      res.json(reports);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch plant reports" });
+    }
+  });
+
+  app.get("/api/plant/:id", async (req, res) => {
+    try {
+      const report = await storage.getPlantReport(Number(req.params.id));
+      if (!report) {
+        return res.status(404).json({ message: "Plant report not found" });
+      }
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch plant report" });
+    }
+  });
+
+  app.post("/api/plant", async (req, res) => {
+    try {
+      const input = createPlantReportRequestSchema.parse(req.body);
+      const report = await storage.createPlantReport(input);
+      res.status(201).json(report);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to create plant report" });
     }
   });
 
