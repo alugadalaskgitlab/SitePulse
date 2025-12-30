@@ -294,6 +294,7 @@ export default function SiteEdit() {
         vehicleNumber: m.vehicleNumber || undefined,
         supplier: m.supplier || undefined,
         location: m.location || undefined,
+        receiptNumber: m.receiptNumber || undefined,
       })),
     };
 
