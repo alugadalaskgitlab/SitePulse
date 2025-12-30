@@ -40,7 +40,7 @@ export async function registerRoutes(
   app.post(api.dprs.create.path, async (req, res) => {
     try {
       const input = api.dprs.create.input.parse(req.body);
-      const dpr = await storage.createDpr(input);
+      const dpr = await storage.createDpr(input, input.clientTimestamp);
       res.status(201).json(dpr);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -83,6 +83,7 @@ export async function registerRoutes(
     pin: z.string().length(4),
     editedBy: z.enum(["manager", "admin"]),
     data: createDprRequestSchema,
+    clientTimestamp: z.string().optional(),
   });
 
   app.post("/api/dprs/:id/version", async (req, res) => {
@@ -96,7 +97,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Invalid PIN for editing" });
       }
       
-      const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy);
+      const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy, input.clientTimestamp);
       res.status(201).json(newVersion);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -114,6 +115,7 @@ export async function registerRoutes(
   const cloneSchema = z.object({
     editedBy: z.enum(["manager", "admin"]),
     pin: z.string().length(4),
+    clientTimestamp: z.string().optional(),
   });
   
   app.post("/api/dprs/:id/clone", async (req, res) => {
@@ -127,7 +129,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Invalid PIN for role verification" });
       }
       
-      const cloned = await storage.cloneDpr(id, input.editedBy);
+      const cloned = await storage.cloneDpr(id, input.editedBy, input.clientTimestamp);
       if (!cloned) {
         return res.status(404).json({ message: "Original DPR not found" });
       }

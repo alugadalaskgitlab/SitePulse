@@ -173,6 +173,7 @@ export const createDprRequestSchema = insertDprSchema.extend({
   equipment: z.array(insertEquipmentSchema).optional(),
   labour: z.array(insertLabourSchema).optional(),
   materials: z.array(insertMaterialSchema).optional(),
+  clientTimestamp: z.string().optional(), // Client's local timestamp for accurate time display
 });
 
 export type CreateDprRequest = z.infer<typeof createDprRequestSchema>;

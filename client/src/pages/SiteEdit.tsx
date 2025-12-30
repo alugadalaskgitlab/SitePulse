@@ -183,10 +183,14 @@ export default function SiteEdit() {
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
       // Create a new version instead of overwriting original
+      // Send client's local timestamp for accurate time display
+      const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      
       const response = await apiRequest("POST", `/api/dprs/${id}/version`, { 
         pin, 
         editedBy: role,
-        data 
+        data,
+        clientTimestamp,
       });
       return response.json();
     },

@@ -23,10 +23,10 @@ export interface IStorage {
   // DPRs
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
-  createDpr(dpr: CreateDprRequest): Promise<Dpr>;
+  createDpr(dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
-  cloneDpr(id: number, editedBy: string): Promise<Dpr | undefined>;
-  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string): Promise<Dpr>;
+  cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined>;
+  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr>;
   deleteDpr(id: number): Promise<boolean>;
   
   // Plant Reports
@@ -68,9 +68,10 @@ export class DatabaseStorage implements IStorage {
     return dpr;
   }
 
-  async createDpr(dprData: CreateDprRequest): Promise<Dpr> {
+  async createDpr(dprData: CreateDprRequest, clientTimestamp?: string): Promise<Dpr> {
     // Transaction to insert DPR and all related nested data
-    const submittedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    // Use client-provided timestamp for accurate local time, fall back to server time
+    const submittedAt = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     
     return await db.transaction(async (tx) => {
       // 1. Insert DPR Header with submission timestamp
@@ -164,12 +165,12 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async cloneDpr(id: number, editedBy: string): Promise<Dpr | undefined> {
+  async cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined> {
     const original = await this.getDpr(id);
     if (!original) return undefined;
 
-    const now = new Date();
-    const dateTime = format(now, "yyyy-MM-dd HH:mm:ss");
+    // Use client-provided timestamp for accurate local time, fall back to server time
+    const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : "Admin";
 
     return await db.transaction(async (tx) => {
@@ -253,9 +254,9 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string): Promise<Dpr> {
-    const now = new Date();
-    const dateTime = format(now, "yyyy-MM-dd HH:mm:ss");
+  async createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr> {
+    // Use client-provided timestamp for accurate local time, fall back to server time
+    const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : "Admin";
 
     return await db.transaction(async (tx) => {

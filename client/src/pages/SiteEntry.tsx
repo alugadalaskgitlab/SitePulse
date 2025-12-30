@@ -196,6 +196,9 @@ export default function SiteEntry() {
         };
       });
 
+      // Send client's local timestamp for accurate time display
+      const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
         site: header.site,
@@ -205,6 +208,7 @@ export default function SiteEntry() {
         equipment,
         labour,
         materials,
+        clientTimestamp,
       });
       return response.json();
     },
