@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
-import { ChevronLeft, Calendar, User, MapPin, Loader2, Printer, Edit, Trash2, Fuel, Home } from "lucide-react";
+import { ChevronLeft, Calendar, User, MapPin, Loader2, Printer, Edit, Trash2, Fuel, Home, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
@@ -92,7 +92,7 @@ export default function SiteReport() {
     // Store PIN and role in sessionStorage (not exposed in URL)
     sessionStorage.setItem(`edit_pin_${id}`, pin);
     sessionStorage.setItem(`auth_role_${id}`, role);
-    setLocation(`/site/edit/${id}`);
+    // Stay on report page - user can now choose Edit or Delete
   };
 
   const handleAdminEdit = () => {
@@ -235,7 +235,7 @@ export default function SiteReport() {
       </div>
 
       {/* Report Info Header */}
-      <div className="bg-card border rounded-xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="bg-card border rounded-xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
             <Calendar className="w-5 h-5" />
@@ -263,6 +263,17 @@ export default function SiteReport() {
             <p className="font-semibold">{dpr.engineer}</p>
           </div>
         </div>
+        {dpr.submittedAt && (
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Submitted At</p>
+              <p className="font-semibold text-sm">{dpr.submittedAt}</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}

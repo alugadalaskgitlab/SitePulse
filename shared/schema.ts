@@ -12,6 +12,7 @@ export const dprs = pgTable("dprs", {
   site: text("site").notNull(),
   engineer: text("engineer").notNull(),
   role: text("role").default("engineer"), // "engineer", "manager", or "admin"
+  submittedAt: text("submitted_at"), // Timestamp when report was submitted (local time format)
   createdAt: timestamp("created_at").defaultNow(),
 });
 

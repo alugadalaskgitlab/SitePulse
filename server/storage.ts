@@ -17,6 +17,7 @@ import {
   type PlantReportWithDetails
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { format } from "date-fns";
 
 export interface IStorage {
   // DPRs
@@ -69,12 +70,15 @@ export class DatabaseStorage implements IStorage {
 
   async createDpr(dprData: CreateDprRequest): Promise<Dpr> {
     // Transaction to insert DPR and all related nested data
+    const submittedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    
     return await db.transaction(async (tx) => {
-      // 1. Insert DPR Header
+      // 1. Insert DPR Header with submission timestamp
       const [newDpr] = await tx.insert(dprs).values({
         date: dprData.date,
         site: dprData.site,
-        engineer: dprData.engineer
+        engineer: dprData.engineer,
+        submittedAt: submittedAt,
       }).returning();
 
       const dprId = newDpr.id;
@@ -165,7 +169,7 @@ export class DatabaseStorage implements IStorage {
     if (!original) return undefined;
 
     const now = new Date();
-    const dateTime = now.toISOString().replace('T', ' ').substring(0, 19);
+    const dateTime = format(now, "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : "Admin";
 
     return await db.transaction(async (tx) => {
@@ -251,7 +255,7 @@ export class DatabaseStorage implements IStorage {
 
   async createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string): Promise<Dpr> {
     const now = new Date();
-    const dateTime = now.toISOString().replace('T', ' ').substring(0, 19);
+    const dateTime = format(now, "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : "Admin";
 
     return await db.transaction(async (tx) => {
