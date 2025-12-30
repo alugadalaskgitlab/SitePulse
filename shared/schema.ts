@@ -60,6 +60,8 @@ export const materialLogs = pgTable("material_logs", {
   supplier: text("supplier"), // Supplier name for received materials
   quantity: real("quantity"),
   uom: text("uom"),
+  vehicleNumber: text("vehicle_number"),
+  location: text("location"), // Location/task of unloading
 });
 
 // DPR Version History (for manager edits as copies)

@@ -40,19 +40,22 @@ interface LabourEntry {
 }
 
 interface MaterialEntry {
+  type: string;
   material: string;
   quantity: number | null;
   uom: string;
   vehicleNumber: string;
   supplier: string;
+  location: string;
 }
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
-const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "Dust", "Water", "Bitumen", "Cement"];
-const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips"];
+const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "Water", "Diesel", "Bitumen", "Emulsion", "DBM Mix", "BC Mix", "Cement"];
+const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
+const MATERIAL_TYPE_OPTIONS = ["Received", "Issued", "Consumed"];
 
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
@@ -78,7 +81,7 @@ export default function SiteEntry() {
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([
-    { material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "" }
+    { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }
   ]);
 
   const calculateQuantity = (entry: ProgressEntry): number | null => {
@@ -131,7 +134,7 @@ export default function SiteEntry() {
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
-      setMaterials([...materials, { material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "" }]);
+      setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "" }]);
     }
   };
 
@@ -637,7 +640,25 @@ export default function SiteEntry() {
         </CardHeader>
         <CardContent className="space-y-4">
           {materials.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 p-4 border rounded-lg bg-muted/30">
+              <div>
+                <Label className="text-xs">Type</Label>
+                <Select
+                  value={entry.type}
+                  onValueChange={(val) => {
+                    const updated = [...materials];
+                    updated[idx].type = val;
+                    setMaterials(updated);
+                  }}
+                >
+                  <SelectTrigger data-testid={`select-material-type-${idx}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MATERIAL_TYPE_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-xs">Material</Label>
                 <Select
@@ -702,18 +723,31 @@ export default function SiteEntry() {
                   data-testid={`input-material-vehicle-${idx}`}
                 />
               </div>
+              <div>
+                <Label className="text-xs">Supplier</Label>
+                <Input
+                  placeholder="Supplier"
+                  value={entry.supplier}
+                  onChange={(e) => {
+                    const updated = [...materials];
+                    updated[idx].supplier = e.target.value;
+                    setMaterials(updated);
+                  }}
+                  data-testid={`input-material-supplier-${idx}`}
+                />
+              </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <Label className="text-xs">Supplier</Label>
+                  <Label className="text-xs">Location/Task</Label>
                   <Input
-                    placeholder="Supplier name"
-                    value={entry.supplier}
+                    placeholder="Unloading location"
+                    value={entry.location}
                     onChange={(e) => {
                       const updated = [...materials];
-                      updated[idx].supplier = e.target.value;
+                      updated[idx].location = e.target.value;
                       setMaterials(updated);
                     }}
-                    data-testid={`input-material-supplier-${idx}`}
+                    data-testid={`input-material-location-${idx}`}
                   />
                 </div>
                 <div className="flex items-end">
