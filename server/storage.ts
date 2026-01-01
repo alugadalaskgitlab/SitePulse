@@ -24,6 +24,7 @@ import { format } from "date-fns";
 export interface IStorage {
   // DPRs
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]>;
+  getDprsWithDetails(): Promise<DprWithDetails[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
   createDpr(dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
@@ -60,6 +61,19 @@ export class DatabaseStorage implements IStorage {
       .from(dprs)
       .where(and(...conditions))
       .orderBy(desc(dprs.date));
+  }
+
+  async getDprsWithDetails(): Promise<DprWithDetails[]> {
+    const allDprs = await db.query.dprs.findMany({
+      with: {
+        progress: true,
+        equipment: true,
+        labour: true,
+        materials: true,
+      },
+      orderBy: desc(dprs.date),
+    });
+    return allDprs;
   }
 
   async getDpr(id: number): Promise<DprWithDetails | undefined> {

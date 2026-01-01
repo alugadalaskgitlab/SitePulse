@@ -27,6 +27,16 @@ export async function registerRoutes(
     }
   });
 
+  // Get all DPRs with full details (for admin reports)
+  app.get("/api/dprs/with-details", async (req, res) => {
+    try {
+      const dprs = await storage.getDprsWithDetails();
+      res.json(dprs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch DPRs with details" });
+    }
+  });
+
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
     const dpr = await storage.getDpr(Number(req.params.id));

@@ -66,7 +66,7 @@ export default function AdminReports() {
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
   const { data: dprs = [], isLoading } = useQuery<DprWithDetails[]>({
-    queryKey: ["/api/dprs"],
+    queryKey: ["/api/dprs/with-details"],
     enabled: authenticated,
   });
 
