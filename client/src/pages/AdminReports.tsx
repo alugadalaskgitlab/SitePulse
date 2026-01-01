@@ -118,10 +118,29 @@ export default function AdminReports() {
       if (dateFrom && dpr.date < dateFrom) return false;
       if (dateTo && dpr.date > dateTo) return false;
       if (selectedSite !== "all" && dpr.site !== selectedSite) return false;
-      if (selectedActivity !== "all" && !dpr.progress?.some(p => p.activity === selectedActivity)) return false;
-      if (selectedMaterial !== "all" && !dpr.materials?.some(m => m.material === selectedMaterial)) return false;
-      if (selectedEquipment !== "all" && !dpr.equipment?.some(e => e.machine === selectedEquipment)) return false;
-      if (selectedSupplier !== "all" && !dpr.materials?.some(m => m.supplier === selectedSupplier)) return false;
+      
+      if (selectedActivity !== "all") {
+        const hasMatchingActivity = dpr.progress?.some(p => p.activity === selectedActivity);
+        if (!hasMatchingActivity) return false;
+      }
+      
+      if (selectedEquipment !== "all") {
+        const hasMatchingEquipment = dpr.equipment?.some(e => e.machine === selectedEquipment);
+        if (!hasMatchingEquipment) return false;
+      }
+      
+      const hasMaterialFilter = selectedMaterial !== "all";
+      const hasSupplierFilter = selectedSupplier !== "all";
+      
+      if (hasMaterialFilter || hasSupplierFilter) {
+        const hasMatchingMaterial = dpr.materials?.some(m => {
+          const materialMatch = !hasMaterialFilter || m.material === selectedMaterial;
+          const supplierMatch = !hasSupplierFilter || m.supplier === selectedSupplier;
+          return materialMatch && supplierMatch;
+        });
+        if (!hasMatchingMaterial) return false;
+      }
+      
       return true;
     });
   }, [dprs, dateFrom, dateTo, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
