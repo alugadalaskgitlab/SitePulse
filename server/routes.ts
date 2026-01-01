@@ -74,8 +74,50 @@ export async function registerRoutes(
     }
   });
 
-  const MANAGER_PIN = "1234";
-  const ADMIN_PIN = "5678";
+  // PIN verification route
+  const pinVerifySchema = z.object({
+    pin: z.string().length(4),
+  });
+
+  app.post("/api/auth/verify-pin", async (req, res) => {
+    try {
+      const input = pinVerifySchema.parse(req.body);
+      const isManager = await storage.verifyPin("manager", input.pin);
+      const isAdmin = await storage.verifyPin("admin", input.pin);
+      
+      if (isAdmin) {
+        return res.json({ role: "admin", valid: true });
+      } else if (isManager) {
+        return res.json({ role: "manager", valid: true });
+      } else {
+        return res.json({ role: null, valid: false });
+      }
+    } catch (err) {
+      res.status(400).json({ message: "Invalid request" });
+    }
+  });
+
+  // Change Admin PIN (admin only)
+  const changePinSchema = z.object({
+    currentPin: z.string().length(4),
+    newPin: z.string().length(4),
+  });
+
+  app.post("/api/admin/change-pin", async (req, res) => {
+    try {
+      const input = changePinSchema.parse(req.body);
+      
+      const isAdmin = await storage.verifyPin("admin", input.currentPin);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Invalid current admin PIN" });
+      }
+      
+      await storage.setSetting("admin_pin", input.newPin);
+      res.json({ message: "Admin PIN updated successfully" });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update PIN" });
+    }
+  });
 
   // Create a new version of DPR with edited data
   // Creates a copy with timestamp instead of overwriting original
@@ -91,9 +133,9 @@ export async function registerRoutes(
       const originalId = Number(req.params.id);
       const input = versionSchema.parse(req.body);
       
-      // Server-side PIN validation
-      const expectedPin = input.editedBy === "manager" ? MANAGER_PIN : ADMIN_PIN;
-      if (input.pin !== expectedPin) {
+      // Server-side PIN validation using database
+      const isValid = await storage.verifyPin(input.editedBy, input.pin);
+      if (!isValid) {
         return res.status(403).json({ message: "Invalid PIN for editing" });
       }
       
@@ -123,9 +165,9 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = cloneSchema.parse(req.body);
       
-      // Server-side PIN validation
-      const expectedPin = input.editedBy === "manager" ? MANAGER_PIN : ADMIN_PIN;
-      if (input.pin !== expectedPin) {
+      // Server-side PIN validation using database
+      const isValid = await storage.verifyPin(input.editedBy, input.pin);
+      if (!isValid) {
         return res.status(403).json({ message: "Invalid PIN for role verification" });
       }
       
@@ -155,8 +197,9 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = deleteSchema.parse(req.body);
       
-      // Server-side PIN validation - admin only
-      if (input.pin !== ADMIN_PIN) {
+      // Server-side PIN validation - admin only using database
+      const isAdmin = await storage.verifyPin("admin", input.pin);
+      if (!isAdmin) {
         return res.status(403).json({ message: "Invalid admin PIN for deletion" });
       }
       
@@ -224,9 +267,9 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = plantCloneSchema.parse(req.body);
       
-      // Server-side PIN validation
-      const expectedPin = input.editedBy === "manager" ? MANAGER_PIN : ADMIN_PIN;
-      if (input.pin !== expectedPin) {
+      // Server-side PIN validation using database
+      const isValid = await storage.verifyPin(input.editedBy, input.pin);
+      if (!isValid) {
         return res.status(403).json({ message: "Invalid PIN for role verification" });
       }
       
@@ -275,8 +318,9 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = plantDeleteSchema.parse(req.body);
       
-      // Server-side PIN validation - admin only
-      if (input.pin !== ADMIN_PIN) {
+      // Server-side PIN validation - admin only using database
+      const isAdmin = await storage.verifyPin("admin", input.pin);
+      if (!isAdmin) {
         return res.status(403).json({ message: "Invalid admin PIN for deletion" });
       }
       

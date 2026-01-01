@@ -1,4 +1,5 @@
-import { ChevronLeft, Send, Loader2, Calendar, MapPin, User, Fuel } from "lucide-react";
+import { ChevronLeft, Send, Loader2, Fuel } from "lucide-react";
+import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,36 +69,12 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
         </Button>
       </div>
 
-      {/* Report Header */}
-      <div className="bg-card border rounded-xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Date</p>
-            <p className="font-semibold">{format(new Date(data.date), "PPP")}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400">
-            <MapPin className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Site Name</p>
-            <p className="font-semibold">{data.site}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
-            <User className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Engineer</p>
-            <p className="font-semibold">{data.engineer}</p>
-          </div>
-        </div>
-      </div>
+      {/* Report Header with HLC Logo */}
+      <ReportHeader 
+        date={data.date} 
+        site={data.site} 
+        engineer={data.engineer}
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

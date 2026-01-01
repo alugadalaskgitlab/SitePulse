@@ -9,12 +9,14 @@ import {
   plantProduction,
   dprVersions,
   plantVersions,
+  appSettings,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
   type PlantReport,
   type CreatePlantReportRequest,
-  type PlantReportWithDetails
+  type PlantReportWithDetails,
+  type AppSetting
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { format } from "date-fns";
@@ -36,6 +38,11 @@ export interface IStorage {
   clonePlantReport(id: number, editedBy: string): Promise<PlantReport | undefined>;
   updatePlantReport(id: number, report: CreatePlantReportRequest): Promise<PlantReport | undefined>;
   deletePlantReport(id: number): Promise<boolean>;
+  
+  // App Settings (PIN management)
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string): Promise<void>;
+  verifyPin(role: "manager" | "admin", pin: string): Promise<boolean>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -434,6 +441,36 @@ export class DatabaseStorage implements IStorage {
       const result = await tx.delete(plantReports).where(eq(plantReports.id, id)).returning();
       return result.length > 0;
     });
+  }
+
+  // Default PINs (used as fallback if not set in database)
+  private readonly DEFAULT_MANAGER_PIN = "1234";
+  private readonly DEFAULT_ADMIN_PIN = "5678";
+
+  async getSetting(key: string): Promise<string | null> {
+    const setting = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    return setting.length > 0 ? setting[0].value : null;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    if (existing.length > 0) {
+      await db.update(appSettings)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(appSettings.key, key));
+    } else {
+      await db.insert(appSettings).values({ key, value });
+    }
+  }
+
+  async verifyPin(role: "manager" | "admin", pin: string): Promise<boolean> {
+    if (role === "manager") {
+      const managerPin = await this.getSetting("manager_pin");
+      return pin === (managerPin || this.DEFAULT_MANAGER_PIN);
+    } else {
+      const adminPin = await this.getSetting("admin_pin");
+      return pin === (adminPin || this.DEFAULT_ADMIN_PIN);
+    }
   }
 }
 

@@ -3,9 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lock, Loader2, X } from "lucide-react";
-
-const MANAGER_PIN = "1234";
-const ADMIN_PIN = "5678";
+import { apiRequest } from "@/lib/queryClient";
 
 interface PinAuthProps {
   targetRole?: "manager" | "admin" | "any";
@@ -23,26 +21,28 @@ export function PinAuth({ targetRole = "any", onSuccess, onClose }: PinAuthProps
     setError("");
     setIsLoading(true);
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    if (targetRole === "any") {
-      if (pin === ADMIN_PIN) {
-        onSuccess("admin", pin);
-      } else if (pin === MANAGER_PIN) {
-        onSuccess("manager", pin);
+    try {
+      const response = await apiRequest("POST", "/api/auth/verify-pin", { pin });
+      const result = await response.json();
+      
+      if (result.valid && result.role) {
+        if (targetRole === "any") {
+          onSuccess(result.role, pin);
+        } else if (result.role === targetRole || (targetRole === "manager" && result.role === "admin")) {
+          onSuccess(result.role, pin);
+        } else {
+          setError(`Invalid ${targetRole} PIN. Please try again.`);
+          setPin("");
+        }
       } else {
         setError("Invalid PIN. Please try again.");
         setPin("");
       }
-    } else {
-      const expectedPin = targetRole === "manager" ? MANAGER_PIN : ADMIN_PIN;
-      if (pin === expectedPin) {
-        onSuccess(targetRole, pin);
-      } else {
-        setError(`Invalid ${targetRole} PIN. Please try again.`);
-        setPin("");
-      }
+    } catch (err) {
+      setError("Failed to verify PIN. Please try again.");
+      setPin("");
     }
+    
     setIsLoading(false);
   };
 
@@ -53,7 +53,7 @@ export function PinAuth({ targetRole = "any", onSuccess, onClose }: PinAuthProps
 
   const getDescription = () => {
     if (targetRole === "any") {
-      return "Enter Manager PIN (1234) for edit or Admin PIN (5678) for full control";
+      return "Enter Manager PIN for edit or Admin PIN for full control";
     }
     return `Enter ${targetRole} PIN to unlock ${targetRole === "admin" ? "full control" : "edit"} features`;
   };
@@ -135,7 +135,7 @@ export function PinAuth({ targetRole = "any", onSuccess, onClose }: PinAuthProps
                 )}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                Manager: 1234 | Admin: 5678 (demo)
+                Default PINs: Manager 1234 | Admin 5678
               </p>
             </div>
           </form>

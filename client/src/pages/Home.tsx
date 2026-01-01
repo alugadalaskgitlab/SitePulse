@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { HardHat, Factory } from "lucide-react";
+import { HardHat, Factory, BarChart3, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -41,6 +41,21 @@ export default function Home() {
             </p>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-8 flex gap-4">
+        <Link href="/admin/reports">
+          <Button variant="outline" className="gap-2" data-testid="button-admin-reports">
+            <BarChart3 className="w-4 h-4" />
+            Admin Reports
+          </Button>
+        </Link>
+        <Link href="/admin/settings">
+          <Button variant="ghost" className="gap-2" data-testid="button-admin-settings">
+            <Settings className="w-4 h-4" />
+            Settings
+          </Button>
+        </Link>
       </div>
     </div>
   );

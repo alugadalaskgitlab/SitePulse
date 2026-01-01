@@ -12,6 +12,8 @@ import SiteReport from "@/pages/SiteReport";
 import Plant from "@/pages/Plant";
 import PlantNew from "@/pages/PlantNew";
 import PlantDetails from "@/pages/PlantDetails";
+import AdminSettings from "@/pages/AdminSettings";
+import AdminReports from "@/pages/AdminReports";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -46,6 +48,8 @@ function Router() {
             <Route path="/plant" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />
             <Route path="/plant/:id" component={PlantDetails} />
+            <Route path="/admin/settings" component={AdminSettings} />
+            <Route path="/admin/reports" component={AdminReports} />
             <Route component={NotFound} />
           </Switch>
         </div>
