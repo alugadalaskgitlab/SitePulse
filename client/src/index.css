@@ -109,3 +109,86 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/40;
 }
+
+/* Print Styles */
+@media print {
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: white !important;
+  }
+  
+  .print\\:hidden {
+    display: none !important;
+  }
+  
+  .print\\:block {
+    display: block !important;
+  }
+  
+  /* Force light mode colors for printing */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+  }
+  
+  /* Hide interactive elements */
+  button, 
+  .print-hide,
+  [data-testid*="button-"],
+  header,
+  nav {
+    display: none !important;
+  }
+  
+  /* Show printable content */
+  .print-show {
+    display: block !important;
+  }
+  
+  /* Table styling for print */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+  }
+  
+  th, td {
+    border: 1px solid #e5e7eb !important;
+    padding: 6px 8px !important;
+    text-align: left !important;
+  }
+  
+  th {
+    background-color: #f3f4f6 !important;
+    font-weight: 600 !important;
+  }
+  
+  /* Card styling for print */
+  .print-card {
+    page-break-inside: avoid !important;
+    margin-bottom: 16px !important;
+    border: 1px solid #e5e7eb !important;
+    padding: 12px !important;
+  }
+  
+  /* Page margins */
+  @page {
+    margin: 1cm;
+    size: A4 portrait;
+  }
+  
+  /* Prevent page breaks inside important elements */
+  h1, h2, h3, h4 {
+    page-break-after: avoid !important;
+  }
+  
+  tr {
+    page-break-inside: avoid !important;
+  }
+}

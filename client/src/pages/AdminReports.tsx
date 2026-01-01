@@ -149,6 +149,7 @@ export default function AdminReports() {
       group.dprs.push(dpr);
       
       dpr.progress?.forEach(p => {
+        if (selectedSite !== "all" && dpr.site !== selectedSite) return;
         if (selectedActivity !== "all" && p.activity !== selectedActivity) return;
         if (p.activity) {
           group.activities.push({
@@ -162,6 +163,7 @@ export default function AdminReports() {
       });
       
       dpr.materials?.forEach(m => {
+        if (selectedSite !== "all" && dpr.site !== selectedSite) return;
         if (selectedMaterial !== "all" && m.material !== selectedMaterial) return;
         if (selectedSupplier !== "all" && m.supplier !== selectedSupplier) return;
         if (m.material) {
@@ -178,6 +180,7 @@ export default function AdminReports() {
       });
       
       dpr.equipment?.forEach(e => {
+        if (selectedSite !== "all" && dpr.site !== selectedSite) return;
         if (selectedEquipment !== "all" && e.machine !== selectedEquipment) return;
         const diesel = e.diesel || 0;
         group.totalDiesel += diesel;
@@ -208,7 +211,7 @@ export default function AdminReports() {
     });
     
     return Object.values(groupedByDate).sort((a, b) => b.date.localeCompare(a.date));
-  }, [filteredDprs, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
+  }, [filteredDprs, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
 
   const overallTotals = useMemo(() => {
     let totalDiesel = 0;
@@ -350,11 +353,12 @@ export default function AdminReports() {
     const dateStr = dateFrom && dateTo 
       ? `${format(parseISO(dateFrom), "ddMMMyyyy")}_to_${format(parseISO(dateTo), "ddMMMyyyy")}`
       : format(new Date(), "ddMMMyyyy");
-    XLSX.writeFile(wb, `AdminReport_${dateStr}.xlsx`);
+    const fileName = `AdminReport_${dateStr}.xlsx`;
+    XLSX.writeFile(wb, fileName);
     
     toast({
-      title: "Export Complete",
-      description: "Report exported to Excel successfully.",
+      title: "File Downloaded",
+      description: `"${fileName}" has been saved to your Downloads folder.`,
     });
   };
 
@@ -371,6 +375,18 @@ export default function AdminReports() {
       />
     );
   }
+
+  const getActiveFiltersText = () => {
+    const filters: string[] = [];
+    if (dateFrom) filters.push(`From: ${format(parseISO(dateFrom), "dd MMM yyyy")}`);
+    if (dateTo) filters.push(`To: ${format(parseISO(dateTo), "dd MMM yyyy")}`);
+    if (selectedSite !== "all") filters.push(`Site: ${selectedSite}`);
+    if (selectedActivity !== "all") filters.push(`Activity: ${selectedActivity}`);
+    if (selectedMaterial !== "all") filters.push(`Material: ${selectedMaterial}`);
+    if (selectedSupplier !== "all") filters.push(`Supplier: ${selectedSupplier}`);
+    if (selectedEquipment !== "all") filters.push(`Equipment: ${selectedEquipment}`);
+    return filters.length > 0 ? filters.join(" | ") : "All Data (No Filters Applied)";
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
@@ -397,6 +413,15 @@ export default function AdminReports() {
             Print
           </Button>
         </div>
+      </div>
+
+      <div className="hidden print:block mb-6 border-b pb-4">
+        <h1 className="text-2xl font-bold mb-2">Highlane Constructions - Admin Report</h1>
+        <p className="text-sm text-muted-foreground">Generated: {format(new Date(), "dd MMMM yyyy, hh:mm a")}</p>
+        <p className="text-sm mt-2"><strong>Filters:</strong> {getActiveFiltersText()}</p>
+        <p className="text-sm mt-1">
+          <strong>Summary:</strong> {dateGroupedData.length} day(s) | {overallTotals.totalActivities} activities | {overallTotals.totalMaterialTrips} material trips | {overallTotals.totalHours.toFixed(1)} equipment hours
+        </p>
       </div>
 
       <Card className="print:hidden">
