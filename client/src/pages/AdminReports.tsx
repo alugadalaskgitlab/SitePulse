@@ -145,6 +145,10 @@ export default function AdminReports() {
     });
   }, [dprs, dateFrom, dateTo, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
 
+  const showActivities = selectedActivity !== "all" || (selectedMaterial === "all" && selectedSupplier === "all" && selectedEquipment === "all");
+  const showMaterials = selectedMaterial !== "all" || selectedSupplier !== "all" || (selectedActivity === "all" && selectedEquipment === "all");
+  const showEquipment = selectedEquipment !== "all" || (selectedActivity === "all" && selectedMaterial === "all" && selectedSupplier === "all");
+
   const dateGroupedData = useMemo(() => {
     const groupedByDate: Record<string, DateGroupedData> = {};
     
@@ -167,70 +171,80 @@ export default function AdminReports() {
       const group = groupedByDate[dateKey];
       group.dprs.push(dpr);
       
-      dpr.progress?.forEach(p => {
-        if (selectedSite !== "all" && dpr.site !== selectedSite) return;
-        if (selectedActivity !== "all" && p.activity !== selectedActivity) return;
-        if (p.activity) {
-          group.activities.push({
-            activity: p.activity,
-            uom: p.uom || '',
-            quantity: p.quantity || 0,
-            site: dpr.site,
-            chainage: p.chainageFrom && p.chainageTo ? `${p.chainageFrom} - ${p.chainageTo}` : (p.chainageFrom || p.chainageTo || ''),
-          });
-        }
-      });
+      if (showActivities) {
+        dpr.progress?.forEach(p => {
+          if (selectedSite !== "all" && dpr.site !== selectedSite) return;
+          if (selectedActivity !== "all" && p.activity !== selectedActivity) return;
+          if (p.activity) {
+            group.activities.push({
+              activity: p.activity,
+              uom: p.uom || '',
+              quantity: p.quantity || 0,
+              site: dpr.site,
+              chainage: p.chainageFrom && p.chainageTo ? `${p.chainageFrom} - ${p.chainageTo}` : (p.chainageFrom || p.chainageTo || ''),
+            });
+          }
+        });
+      }
       
-      dpr.materials?.forEach(m => {
-        if (selectedSite !== "all" && dpr.site !== selectedSite) return;
-        if (selectedMaterial !== "all" && m.material !== selectedMaterial) return;
-        if (selectedSupplier !== "all" && m.supplier !== selectedSupplier) return;
-        if (m.material) {
-          group.materials.push({
-            material: m.material,
-            supplier: m.supplier || '-',
-            receiptNo: m.receiptNumber || '-',
-            quantity: m.quantity || 0,
-            uom: m.uom || '',
-            trips: 1,
-            site: dpr.site,
-          });
-        }
-      });
+      if (showMaterials) {
+        dpr.materials?.forEach(m => {
+          if (selectedSite !== "all" && dpr.site !== selectedSite) return;
+          if (selectedMaterial !== "all" && m.material !== selectedMaterial) return;
+          if (selectedSupplier !== "all" && m.supplier !== selectedSupplier) return;
+          if (m.material) {
+            group.materials.push({
+              material: m.material,
+              supplier: m.supplier || '-',
+              receiptNo: m.receiptNumber || '-',
+              quantity: m.quantity || 0,
+              uom: m.uom || '',
+              trips: 1,
+              site: dpr.site,
+            });
+          }
+        });
+      }
       
-      dpr.equipment?.forEach(e => {
-        if (selectedSite !== "all" && dpr.site !== selectedSite) return;
-        if (selectedEquipment !== "all" && e.machine !== selectedEquipment) return;
-        const diesel = e.diesel || 0;
-        group.totalDiesel += diesel;
-        
-        let hours = 0;
-        if (e.startTime && e.endTime) {
-          try {
-            const [startHour, startMin] = e.startTime.split(':').map(Number);
-            const [endHour, endMin] = e.endTime.split(':').map(Number);
-            hours = ((endHour * 60 + endMin) - (startHour * 60 + startMin)) / 60;
-            if (hours < 0) hours = 0;
-          } catch { hours = 0; }
-        }
-        group.totalHours += hours;
-        
-        if (e.machine) {
-          group.equipment.push({
-            machine: e.machine,
-            operator: e.operator || '-',
-            startTime: e.startTime || '-',
-            endTime: e.endTime || '-',
-            hours,
-            diesel,
-            site: dpr.site,
-          });
-        }
-      });
+      if (showEquipment) {
+        dpr.equipment?.forEach(e => {
+          if (selectedSite !== "all" && dpr.site !== selectedSite) return;
+          if (selectedEquipment !== "all" && e.machine !== selectedEquipment) return;
+          const diesel = e.diesel || 0;
+          group.totalDiesel += diesel;
+          
+          let hours = 0;
+          if (e.startTime && e.endTime) {
+            try {
+              const [startHour, startMin] = e.startTime.split(':').map(Number);
+              const [endHour, endMin] = e.endTime.split(':').map(Number);
+              hours = ((endHour * 60 + endMin) - (startHour * 60 + startMin)) / 60;
+              if (hours < 0) hours = 0;
+            } catch { hours = 0; }
+          }
+          group.totalHours += hours;
+          
+          if (e.machine) {
+            group.equipment.push({
+              machine: e.machine,
+              operator: e.operator || '-',
+              startTime: e.startTime || '-',
+              endTime: e.endTime || '-',
+              hours,
+              diesel,
+              site: dpr.site,
+            });
+          }
+        });
+      }
     });
     
-    return Object.values(groupedByDate).sort((a, b) => b.date.localeCompare(a.date));
-  }, [filteredDprs, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
+    const result = Object.values(groupedByDate).filter(group => 
+      group.activities.length > 0 || group.materials.length > 0 || group.equipment.length > 0
+    );
+    
+    return result.sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredDprs, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier, showActivities, showMaterials, showEquipment]);
 
   const overallTotals = useMemo(() => {
     let totalDiesel = 0;
@@ -643,15 +657,21 @@ export default function AdminReports() {
                             </div>
                           </div>
                           <div className="flex gap-2 flex-wrap justify-end">
-                            <Badge variant="secondary" className="gap-1">
-                              <Activity className="w-3 h-3" /> {group.activities.length}
-                            </Badge>
-                            <Badge variant="secondary" className="gap-1">
-                              <Package className="w-3 h-3" /> {group.materials.length}
-                            </Badge>
-                            <Badge variant="outline" className="gap-1">
-                              <Fuel className="w-3 h-3" /> {group.totalDiesel.toFixed(1)}L
-                            </Badge>
+                            {group.activities.length > 0 && (
+                              <Badge variant="secondary" className="gap-1">
+                                <Activity className="w-3 h-3" /> {group.activities.length}
+                              </Badge>
+                            )}
+                            {group.materials.length > 0 && (
+                              <Badge variant="secondary" className="gap-1">
+                                <Package className="w-3 h-3" /> {group.materials.length}
+                              </Badge>
+                            )}
+                            {group.equipment.length > 0 && (
+                              <Badge variant="outline" className="gap-1">
+                                <Fuel className="w-3 h-3" /> {group.totalDiesel.toFixed(1)}L
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </CardHeader>
