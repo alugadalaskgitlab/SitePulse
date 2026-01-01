@@ -16,6 +16,11 @@ import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import type { DprWithDetails } from "@shared/schema";
 
+function getCleanSiteName(site: string): string {
+  const editMarkerIndex = site.indexOf(' – Edited by');
+  return editMarkerIndex > -1 ? site.substring(0, editMarkerIndex).trim() : site;
+}
+
 interface DateGroupedData {
   date: string;
   formattedDate: string;
@@ -26,6 +31,7 @@ interface DateGroupedData {
     quantity: number;
     site: string;
     chainage: string;
+    date: string;
   }>;
   materials: Array<{
     material: string;
@@ -35,6 +41,7 @@ interface DateGroupedData {
     uom: string;
     trips: number;
     site: string;
+    date: string;
   }>;
   equipment: Array<{
     machine: string;
@@ -44,6 +51,7 @@ interface DateGroupedData {
     hours: number;
     diesel: number;
     site: string;
+    date: string;
   }>;
   totalDiesel: number;
   totalHours: number;
@@ -85,7 +93,7 @@ export default function AdminReports() {
 
   const uniqueSites = useMemo(() => {
     const sites = new Set<string>();
-    dprs.forEach(d => sites.add(d.site));
+    dprs.forEach(d => sites.add(getCleanSiteName(d.site)));
     return Array.from(sites).sort();
   }, [dprs]);
 
@@ -117,7 +125,7 @@ export default function AdminReports() {
     return dprs.filter(dpr => {
       if (dateFrom && dpr.date < dateFrom) return false;
       if (dateTo && dpr.date > dateTo) return false;
-      if (selectedSite !== "all" && dpr.site !== selectedSite) return false;
+      if (selectedSite !== "all" && getCleanSiteName(dpr.site) !== selectedSite) return false;
       
       if (selectedActivity !== "all") {
         const hasMatchingActivity = dpr.progress?.some(p => p.activity === selectedActivity);
@@ -171,17 +179,21 @@ export default function AdminReports() {
       const group = groupedByDate[dateKey];
       group.dprs.push(dpr);
       
+      const cleanSite = getCleanSiteName(dpr.site);
+      const formattedRowDate = format(parseISO(dpr.date), "dd MMM");
+      
       if (showActivities) {
         dpr.progress?.forEach(p => {
-          if (selectedSite !== "all" && dpr.site !== selectedSite) return;
+          if (selectedSite !== "all" && cleanSite !== selectedSite) return;
           if (selectedActivity !== "all" && p.activity !== selectedActivity) return;
           if (p.activity) {
             group.activities.push({
               activity: p.activity,
               uom: p.uom || '',
               quantity: p.quantity || 0,
-              site: dpr.site,
+              site: cleanSite,
               chainage: p.chainageFrom && p.chainageTo ? `${p.chainageFrom} - ${p.chainageTo}` : (p.chainageFrom || p.chainageTo || ''),
+              date: formattedRowDate,
             });
           }
         });
@@ -189,7 +201,7 @@ export default function AdminReports() {
       
       if (showMaterials) {
         dpr.materials?.forEach(m => {
-          if (selectedSite !== "all" && dpr.site !== selectedSite) return;
+          if (selectedSite !== "all" && cleanSite !== selectedSite) return;
           if (selectedMaterial !== "all" && m.material !== selectedMaterial) return;
           if (selectedSupplier !== "all" && m.supplier !== selectedSupplier) return;
           if (m.material) {
@@ -200,7 +212,8 @@ export default function AdminReports() {
               quantity: m.quantity || 0,
               uom: m.uom || '',
               trips: 1,
-              site: dpr.site,
+              site: cleanSite,
+              date: formattedRowDate,
             });
           }
         });
@@ -208,7 +221,7 @@ export default function AdminReports() {
       
       if (showEquipment) {
         dpr.equipment?.forEach(e => {
-          if (selectedSite !== "all" && dpr.site !== selectedSite) return;
+          if (selectedSite !== "all" && cleanSite !== selectedSite) return;
           if (selectedEquipment !== "all" && e.machine !== selectedEquipment) return;
           const diesel = e.diesel || 0;
           group.totalDiesel += diesel;
@@ -232,7 +245,8 @@ export default function AdminReports() {
               endTime: e.endTime || '-',
               hours,
               diesel,
-              site: dpr.site,
+              site: cleanSite,
+              date: formattedRowDate,
             });
           }
         });
@@ -687,6 +701,7 @@ export default function AdminReports() {
                             <Table>
                               <TableHeader>
                                 <TableRow>
+                                  <TableHead>Date</TableHead>
                                   <TableHead>Site</TableHead>
                                   <TableHead>Activity</TableHead>
                                   <TableHead>Chainage</TableHead>
@@ -697,6 +712,7 @@ export default function AdminReports() {
                               <TableBody>
                                 {group.activities.map((a, i) => (
                                   <TableRow key={i} data-testid={`row-activity-${group.date}-${i}`}>
+                                    <TableCell>{a.date}</TableCell>
                                     <TableCell>{a.site}</TableCell>
                                     <TableCell className="font-medium">{a.activity}</TableCell>
                                     <TableCell>{a.chainage || '-'}</TableCell>
@@ -717,6 +733,7 @@ export default function AdminReports() {
                             <Table>
                               <TableHeader>
                                 <TableRow>
+                                  <TableHead>Date</TableHead>
                                   <TableHead>Site</TableHead>
                                   <TableHead>Material</TableHead>
                                   <TableHead>Supplier</TableHead>
@@ -728,6 +745,7 @@ export default function AdminReports() {
                               <TableBody>
                                 {group.materials.map((m, i) => (
                                   <TableRow key={i} data-testid={`row-material-${group.date}-${i}`}>
+                                    <TableCell>{m.date}</TableCell>
                                     <TableCell>{m.site}</TableCell>
                                     <TableCell className="font-medium">{m.material}</TableCell>
                                     <TableCell>{m.supplier}</TableCell>
@@ -737,7 +755,7 @@ export default function AdminReports() {
                                   </TableRow>
                                 ))}
                                 <TableRow className="bg-muted/50 font-semibold">
-                                  <TableCell colSpan={4}>Day Total</TableCell>
+                                  <TableCell colSpan={5}>Day Total</TableCell>
                                   <TableCell className="text-right">
                                     {group.materials.reduce((sum, m) => sum + m.quantity, 0).toFixed(1)}
                                   </TableCell>
@@ -756,6 +774,7 @@ export default function AdminReports() {
                             <Table>
                               <TableHeader>
                                 <TableRow>
+                                  <TableHead>Date</TableHead>
                                   <TableHead>Site</TableHead>
                                   <TableHead>Machine</TableHead>
                                   <TableHead>Operator</TableHead>
@@ -768,6 +787,7 @@ export default function AdminReports() {
                               <TableBody>
                                 {group.equipment.map((e, i) => (
                                   <TableRow key={i} data-testid={`row-equipment-${group.date}-${i}`}>
+                                    <TableCell>{e.date}</TableCell>
                                     <TableCell>{e.site}</TableCell>
                                     <TableCell className="font-medium">{e.machine}</TableCell>
                                     <TableCell>{e.operator}</TableCell>
@@ -778,7 +798,7 @@ export default function AdminReports() {
                                   </TableRow>
                                 ))}
                                 <TableRow className="bg-muted/50 font-semibold">
-                                  <TableCell colSpan={5}>Day Total</TableCell>
+                                  <TableCell colSpan={6}>Day Total</TableCell>
                                   <TableCell className="text-right">{group.totalHours.toFixed(1)}</TableCell>
                                   <TableCell className="text-right">{group.totalDiesel.toFixed(1)}</TableCell>
                                 </TableRow>
