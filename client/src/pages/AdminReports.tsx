@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,18 +7,54 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar, Download, Printer, ChevronDown, ChevronRight, FileSpreadsheet, Truck } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { format } from "date-fns";
+import { format, parseISO, eachDayOfInterval, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { PinAuth } from "@/components/PinAuth";
 import { useToast } from "@/hooks/use-toast";
+import * as XLSX from "xlsx";
 import type { DprWithDetails } from "@shared/schema";
+
+interface DateGroupedData {
+  date: string;
+  formattedDate: string;
+  dprs: DprWithDetails[];
+  activities: Array<{
+    activity: string;
+    uom: string;
+    quantity: number;
+    site: string;
+    chainage: string;
+  }>;
+  materials: Array<{
+    material: string;
+    supplier: string;
+    receiptNo: string;
+    quantity: number;
+    uom: string;
+    trips: number;
+    site: string;
+  }>;
+  equipment: Array<{
+    machine: string;
+    operator: string;
+    startTime: string;
+    endTime: string;
+    hours: number;
+    diesel: number;
+    site: string;
+  }>;
+  totalDiesel: number;
+  totalHours: number;
+}
 
 export default function AdminReports() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [showPinAuth, setShowPinAuth] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
   
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -27,6 +63,7 @@ export default function AdminReports() {
   const [selectedMaterial, setSelectedMaterial] = useState<string>("all");
   const [selectedEquipment, setSelectedEquipment] = useState<string>("all");
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
   const { data: dprs = [], isLoading } = useQuery<DprWithDetails[]>({
     queryKey: ["/api/dprs"],
@@ -89,17 +126,61 @@ export default function AdminReports() {
     });
   }, [dprs, dateFrom, dateTo, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
 
-  const summaryStats = useMemo(() => {
-    let totalDiesel = 0;
-    let totalHours = 0;
-    const materialTotals: Record<string, { quantity: number; trips: number; uom: string }> = {};
-    const equipmentStats: Record<string, { hours: number; diesel: number; count: number }> = {};
-    const activityStats: Record<string, { quantity: number; uom: string; count: number }> = {};
-
+  const dateGroupedData = useMemo(() => {
+    const groupedByDate: Record<string, DateGroupedData> = {};
+    
     filteredDprs.forEach(dpr => {
+      const dateKey = dpr.date;
+      
+      if (!groupedByDate[dateKey]) {
+        groupedByDate[dateKey] = {
+          date: dateKey,
+          formattedDate: format(parseISO(dateKey), "EEEE, dd MMMM yyyy"),
+          dprs: [],
+          activities: [],
+          materials: [],
+          equipment: [],
+          totalDiesel: 0,
+          totalHours: 0,
+        };
+      }
+      
+      const group = groupedByDate[dateKey];
+      group.dprs.push(dpr);
+      
+      dpr.progress?.forEach(p => {
+        if (selectedActivity !== "all" && p.activity !== selectedActivity) return;
+        if (p.activity) {
+          group.activities.push({
+            activity: p.activity,
+            uom: p.uom || '',
+            quantity: p.quantity || 0,
+            site: dpr.site,
+            chainage: p.chainageFrom && p.chainageTo ? `${p.chainageFrom} - ${p.chainageTo}` : (p.chainageFrom || p.chainageTo || ''),
+          });
+        }
+      });
+      
+      dpr.materials?.forEach(m => {
+        if (selectedMaterial !== "all" && m.material !== selectedMaterial) return;
+        if (selectedSupplier !== "all" && m.supplier !== selectedSupplier) return;
+        if (m.material) {
+          group.materials.push({
+            material: m.material,
+            supplier: m.supplier || '-',
+            receiptNo: m.receiptNumber || '-',
+            quantity: m.quantity || 0,
+            uom: m.uom || '',
+            trips: 1,
+            site: dpr.site,
+          });
+        }
+      });
+      
       dpr.equipment?.forEach(e => {
+        if (selectedEquipment !== "all" && e.machine !== selectedEquipment) return;
         const diesel = e.diesel || 0;
-        totalDiesel += diesel;
+        group.totalDiesel += diesel;
         
         let hours = 0;
         if (e.startTime && e.endTime) {
@@ -110,58 +191,58 @@ export default function AdminReports() {
             if (hours < 0) hours = 0;
           } catch { hours = 0; }
         }
-        totalHours += hours;
-
+        group.totalHours += hours;
+        
         if (e.machine) {
-          if (!equipmentStats[e.machine]) {
-            equipmentStats[e.machine] = { hours: 0, diesel: 0, count: 0 };
-          }
-          equipmentStats[e.machine].hours += hours;
-          equipmentStats[e.machine].diesel += diesel;
-          equipmentStats[e.machine].count += 1;
-        }
-      });
-
-      dpr.materials?.forEach(m => {
-        if (m.material) {
-          const key = `${m.material}|${m.uom}`;
-          if (!materialTotals[key]) {
-            materialTotals[key] = { quantity: 0, trips: 0, uom: m.uom || '' };
-          }
-          materialTotals[key].quantity += m.quantity || 0;
-          materialTotals[key].trips += 1;
-        }
-      });
-
-      dpr.progress?.forEach(p => {
-        if (p.activity) {
-          const key = `${p.activity}|${p.uom}`;
-          if (!activityStats[key]) {
-            activityStats[key] = { quantity: 0, uom: p.uom || '', count: 0 };
-          }
-          activityStats[key].quantity += p.quantity || 0;
-          activityStats[key].count += 1;
+          group.equipment.push({
+            machine: e.machine,
+            operator: e.operator || '-',
+            startTime: e.startTime || '-',
+            endTime: e.endTime || '-',
+            hours,
+            diesel,
+            site: dpr.site,
+          });
         }
       });
     });
+    
+    return Object.values(groupedByDate).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredDprs, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
 
-    return {
-      totalDiesel,
-      totalHours,
-      materialTotals: Object.entries(materialTotals).map(([key, v]) => ({
-        material: key.split('|')[0],
-        ...v,
-      })),
-      equipmentStats: Object.entries(equipmentStats).map(([machine, v]) => ({
-        machine,
-        ...v,
-      })),
-      activityStats: Object.entries(activityStats).map(([key, v]) => ({
-        activity: key.split('|')[0],
-        ...v,
-      })),
-    };
-  }, [filteredDprs]);
+  const overallTotals = useMemo(() => {
+    let totalDiesel = 0;
+    let totalHours = 0;
+    let totalActivities = 0;
+    let totalMaterialTrips = 0;
+    
+    dateGroupedData.forEach(group => {
+      totalDiesel += group.totalDiesel;
+      totalHours += group.totalHours;
+      totalActivities += group.activities.length;
+      totalMaterialTrips += group.materials.length;
+    });
+    
+    return { totalDiesel, totalHours, totalActivities, totalMaterialTrips };
+  }, [dateGroupedData]);
+
+  const toggleDateExpand = (date: string) => {
+    const newExpanded = new Set(expandedDates);
+    if (newExpanded.has(date)) {
+      newExpanded.delete(date);
+    } else {
+      newExpanded.add(date);
+    }
+    setExpandedDates(newExpanded);
+  };
+
+  const expandAll = () => {
+    setExpandedDates(new Set(dateGroupedData.map(g => g.date)));
+  };
+
+  const collapseAll = () => {
+    setExpandedDates(new Set());
+  };
 
   const clearFilters = () => {
     setDateFrom("");
@@ -171,6 +252,114 @@ export default function AdminReports() {
     setSelectedMaterial("all");
     setSelectedEquipment("all");
     setSelectedSupplier("all");
+  };
+
+  const exportToExcel = () => {
+    const wb = XLSX.utils.book_new();
+    
+    const summaryData = dateGroupedData.map(group => ({
+      Date: group.formattedDate,
+      'Reports': group.dprs.length,
+      'Activities': group.activities.length,
+      'Material Trips': group.materials.length,
+      'Equipment Uses': group.equipment.length,
+      'Total Diesel (L)': group.totalDiesel.toFixed(1),
+      'Total Hours': group.totalHours.toFixed(1),
+    }));
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    
+    const activitiesData: any[] = [];
+    dateGroupedData.forEach(group => {
+      group.activities.forEach(a => {
+        activitiesData.push({
+          Date: format(parseISO(group.date), "dd/MM/yyyy"),
+          Site: a.site,
+          Activity: a.activity,
+          Chainage: a.chainage,
+          Quantity: a.quantity,
+          UOM: a.uom,
+        });
+      });
+    });
+    if (activitiesData.length > 0) {
+      const activitiesSheet = XLSX.utils.json_to_sheet(activitiesData);
+      XLSX.utils.book_append_sheet(wb, activitiesSheet, "Activities");
+    }
+    
+    const materialsData: any[] = [];
+    const materialsSummary: Record<string, { material: string; supplier: string; totalQty: number; trips: number; uom: string }> = {};
+    dateGroupedData.forEach(group => {
+      group.materials.forEach(m => {
+        materialsData.push({
+          Date: format(parseISO(group.date), "dd/MM/yyyy"),
+          Site: m.site,
+          Material: m.material,
+          Supplier: m.supplier,
+          'Receipt No': m.receiptNo,
+          Quantity: m.quantity,
+          UOM: m.uom,
+          Trip: 1,
+        });
+        
+        const key = `${m.material}|${m.supplier}|${m.uom}`;
+        if (!materialsSummary[key]) {
+          materialsSummary[key] = { material: m.material, supplier: m.supplier, totalQty: 0, trips: 0, uom: m.uom };
+        }
+        materialsSummary[key].totalQty += m.quantity;
+        materialsSummary[key].trips += 1;
+      });
+    });
+    if (materialsData.length > 0) {
+      const materialsSheet = XLSX.utils.json_to_sheet(materialsData);
+      XLSX.utils.book_append_sheet(wb, materialsSheet, "Materials");
+      
+      const materialsSummaryData = Object.values(materialsSummary).map(s => ({
+        Material: s.material,
+        Supplier: s.supplier,
+        'Total Quantity': s.totalQty,
+        UOM: s.uom,
+        'Total Trips': s.trips,
+      }));
+      if (materialsSummaryData.length > 0) {
+        const summarySheet = XLSX.utils.json_to_sheet(materialsSummaryData);
+        XLSX.utils.book_append_sheet(wb, summarySheet, "Materials Summary");
+      }
+    }
+    
+    const equipmentData: any[] = [];
+    dateGroupedData.forEach(group => {
+      group.equipment.forEach(e => {
+        equipmentData.push({
+          Date: format(parseISO(group.date), "dd/MM/yyyy"),
+          Site: e.site,
+          Machine: e.machine,
+          Operator: e.operator,
+          'Start Time': e.startTime,
+          'End Time': e.endTime,
+          Hours: e.hours.toFixed(1),
+          'Diesel (L)': e.diesel,
+        });
+      });
+    });
+    if (equipmentData.length > 0) {
+      const equipmentSheet = XLSX.utils.json_to_sheet(equipmentData);
+      XLSX.utils.book_append_sheet(wb, equipmentSheet, "Equipment");
+    }
+    
+    const dateStr = dateFrom && dateTo 
+      ? `${format(parseISO(dateFrom), "ddMMMyyyy")}_to_${format(parseISO(dateTo), "ddMMMyyyy")}`
+      : format(new Date(), "ddMMMyyyy");
+    XLSX.writeFile(wb, `AdminReport_${dateStr}.xlsx`);
+    
+    toast({
+      title: "Export Complete",
+      description: "Report exported to Excel successfully.",
+    });
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   if (showPinAuth && !authenticated) {
@@ -185,19 +374,32 @@ export default function AdminReports() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
-      <div className="flex items-center gap-4">
-        <Link href="/">
-          <Button variant="ghost" size="icon" data-testid="button-back">
-            <ChevronLeft className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-4 print:hidden">
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="icon" data-testid="button-back">
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold font-display">Admin Reports</h1>
+            <p className="text-muted-foreground text-sm">Generate filtered date-wise reports</p>
+          </div>
+        </div>
+        
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="button-export-excel">
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
           </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold font-display">Admin Reports</h1>
-          <p className="text-muted-foreground text-sm">Generate filtered summary reports</p>
+          <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
+            <Printer className="w-4 h-4" />
+            Print
+          </Button>
         </div>
       </div>
 
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="w-5 h-5" />
@@ -308,22 +510,33 @@ export default function AdminReports() {
           <Loader2 className="w-8 h-8 animate-spin" />
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div ref={printRef}>
+          <div className="print:block hidden mb-6">
+            <h1 className="text-2xl font-bold text-center">Highlane Constructions - Admin Report</h1>
+            <p className="text-center text-muted-foreground">
+              {dateFrom && dateTo 
+                ? `Period: ${format(parseISO(dateFrom), "dd MMM yyyy")} to ${format(parseISO(dateTo), "dd MMM yyyy")}`
+                : `Generated: ${format(new Date(), "dd MMM yyyy")}`
+              }
+            </p>
+            {selectedSite !== "all" && <p className="text-center">Site: {selectedSite}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:grid-cols-4">
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <Calendar className="w-5 h-5 text-blue-500" />
-                  <p className="text-2xl font-bold text-blue-500" data-testid="text-total-reports">{filteredDprs.length}</p>
+                  <p className="text-2xl font-bold text-blue-500" data-testid="text-total-days">{dateGroupedData.length}</p>
                 </div>
-                <p className="text-sm text-muted-foreground">Total Reports</p>
+                <p className="text-sm text-muted-foreground">Days with Reports</p>
               </CardContent>
             </Card>
             <Card className="border-primary/30 bg-primary/5">
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <Fuel className="w-5 h-5 text-primary" />
-                  <p className="text-2xl font-bold text-primary" data-testid="text-total-diesel">{summaryStats.totalDiesel.toFixed(1)} L</p>
+                  <p className="text-2xl font-bold text-primary" data-testid="text-total-diesel">{overallTotals.totalDiesel.toFixed(1)} L</p>
                 </div>
                 <p className="text-sm text-muted-foreground">Total Diesel</p>
               </CardContent>
@@ -332,7 +545,7 @@ export default function AdminReports() {
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <Clock className="w-5 h-5 text-green-500" />
-                  <p className="text-2xl font-bold text-green-500" data-testid="text-total-hours">{summaryStats.totalHours.toFixed(1)} hrs</p>
+                  <p className="text-2xl font-bold text-green-500" data-testid="text-total-hours">{overallTotals.totalHours.toFixed(1)} hrs</p>
                 </div>
                 <p className="text-sm text-muted-foreground">Equipment Hours</p>
               </CardContent>
@@ -340,160 +553,194 @@ export default function AdminReports() {
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2">
-                  <Package className="w-5 h-5 text-orange-500" />
-                  <p className="text-2xl font-bold text-orange-500" data-testid="text-total-materials">{summaryStats.materialTotals.length}</p>
+                  <Truck className="w-5 h-5 text-orange-500" />
+                  <p className="text-2xl font-bold text-orange-500" data-testid="text-total-trips">{overallTotals.totalMaterialTrips}</p>
                 </div>
-                <p className="text-sm text-muted-foreground">Material Types</p>
+                <p className="text-sm text-muted-foreground">Material Trips</p>
               </CardContent>
             </Card>
           </div>
 
-          {summaryStats.materialTotals.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="w-5 h-5" />
-                  Materials Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {summaryStats.materialTotals.map((m, i) => (
-                    <div key={i} className="p-3 bg-muted/50 border rounded-lg" data-testid={`card-material-summary-${i}`}>
-                      <p className="font-semibold">{m.material}</p>
-                      <p className="text-lg font-bold text-primary">{m.quantity.toFixed(1)} {m.uom}</p>
-                      <p className="text-xs text-muted-foreground">{m.trips} trip{m.trips > 1 ? 's' : ''}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+          {dateGroupedData.length > 0 && (
+            <div className="flex gap-2 justify-end print:hidden">
+              <Button variant="ghost" size="sm" onClick={expandAll}>Expand All</Button>
+              <Button variant="ghost" size="sm" onClick={collapseAll}>Collapse All</Button>
+            </div>
           )}
 
-          {summaryStats.equipmentStats.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5" />
-                  Equipment Usage Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Machine</TableHead>
-                      <TableHead className="text-right">Usage Count</TableHead>
-                      <TableHead className="text-right">Total Hours</TableHead>
-                      <TableHead className="text-right">Total Diesel (L)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summaryStats.equipmentStats.map((e, i) => (
-                      <TableRow key={i} data-testid={`row-equipment-summary-${i}`}>
-                        <TableCell className="font-medium">{e.machine}</TableCell>
-                        <TableCell className="text-right">{e.count}</TableCell>
-                        <TableCell className="text-right">{e.hours.toFixed(1)}</TableCell>
-                        <TableCell className="text-right font-semibold">{e.diesel.toFixed(1)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-
-          {summaryStats.activityStats.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5" />
-                  Activities Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Activity</TableHead>
-                      <TableHead className="text-right">Occurrences</TableHead>
-                      <TableHead className="text-right">Total Quantity</TableHead>
-                      <TableHead>UOM</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summaryStats.activityStats.map((a, i) => (
-                      <TableRow key={i} data-testid={`row-activity-summary-${i}`}>
-                        <TableCell className="font-medium">{a.activity}</TableCell>
-                        <TableCell className="text-right">{a.count}</TableCell>
-                        <TableCell className="text-right font-semibold">{a.quantity.toFixed(2)}</TableCell>
-                        <TableCell className="text-muted-foreground">{a.uom}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="w-5 h-5" />
-                Filtered Reports ({filteredDprs.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {filteredDprs.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No reports match the selected filters.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Site</TableHead>
-                      <TableHead>Engineer</TableHead>
-                      <TableHead className="text-right">Activities</TableHead>
-                      <TableHead className="text-right">Equipment</TableHead>
-                      <TableHead className="text-right">Diesel (L)</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredDprs.slice(0, 50).map((dpr) => (
-                      <TableRow key={dpr.id} data-testid={`row-report-${dpr.id}`}>
-                        <TableCell>{format(new Date(dpr.date), "dd MMM yyyy")}</TableCell>
-                        <TableCell className="font-medium">{dpr.site}</TableCell>
-                        <TableCell>{dpr.engineer}</TableCell>
-                        <TableCell className="text-right">{dpr.progress?.length || 0}</TableCell>
-                        <TableCell className="text-right">{dpr.equipment?.length || 0}</TableCell>
-                        <TableCell className="text-right">
-                          {(dpr.equipment?.reduce((sum, e) => sum + (e.diesel || 0), 0) || 0).toFixed(1)}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setLocation(`/site/report/${dpr.id}`)}
-                            data-testid={`button-view-${dpr.id}`}
-                          >
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              {filteredDprs.length > 50 && (
-                <p className="text-sm text-muted-foreground text-center mt-4">
-                  Showing first 50 of {filteredDprs.length} reports
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </>
+          <div className="space-y-4">
+            {dateGroupedData.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">No reports match the selected filters.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              dateGroupedData.map((group) => (
+                <Card key={group.date} className="print:break-inside-avoid">
+                  <Collapsible 
+                    open={expandedDates.has(group.date)} 
+                    onOpenChange={() => toggleDateExpand(group.date)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <CardHeader className="cursor-pointer hover-elevate" data-testid={`header-date-${group.date}`}>
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            {expandedDates.has(group.date) ? (
+                              <ChevronDown className="w-5 h-5 print:hidden" />
+                            ) : (
+                              <ChevronRight className="w-5 h-5 print:hidden" />
+                            )}
+                            <div>
+                              <CardTitle className="text-lg">{group.formattedDate}</CardTitle>
+                              <p className="text-sm text-muted-foreground">
+                                {group.dprs.length} report{group.dprs.length !== 1 ? 's' : ''} from {Array.from(new Set(group.dprs.map(d => d.site))).join(', ')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 flex-wrap justify-end">
+                            <Badge variant="secondary" className="gap-1">
+                              <Activity className="w-3 h-3" /> {group.activities.length}
+                            </Badge>
+                            <Badge variant="secondary" className="gap-1">
+                              <Package className="w-3 h-3" /> {group.materials.length}
+                            </Badge>
+                            <Badge variant="outline" className="gap-1">
+                              <Fuel className="w-3 h-3" /> {group.totalDiesel.toFixed(1)}L
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardHeader>
+                    </CollapsibleTrigger>
+                    
+                    <CollapsibleContent className="print:block">
+                      <CardContent className="space-y-6 pt-0">
+                        {group.activities.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold flex items-center gap-2 mb-3">
+                              <Activity className="w-4 h-4" /> Activities
+                            </h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Site</TableHead>
+                                  <TableHead>Activity</TableHead>
+                                  <TableHead>Chainage</TableHead>
+                                  <TableHead className="text-right">Quantity</TableHead>
+                                  <TableHead>UOM</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.activities.map((a, i) => (
+                                  <TableRow key={i} data-testid={`row-activity-${group.date}-${i}`}>
+                                    <TableCell>{a.site}</TableCell>
+                                    <TableCell className="font-medium">{a.activity}</TableCell>
+                                    <TableCell>{a.chainage || '-'}</TableCell>
+                                    <TableCell className="text-right">{a.quantity}</TableCell>
+                                    <TableCell>{a.uom}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                        
+                        {group.materials.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold flex items-center gap-2 mb-3">
+                              <Package className="w-4 h-4" /> Materials ({group.materials.length} trip{group.materials.length !== 1 ? 's' : ''})
+                            </h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Site</TableHead>
+                                  <TableHead>Material</TableHead>
+                                  <TableHead>Supplier</TableHead>
+                                  <TableHead>Receipt No</TableHead>
+                                  <TableHead className="text-right">Quantity</TableHead>
+                                  <TableHead>UOM</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.materials.map((m, i) => (
+                                  <TableRow key={i} data-testid={`row-material-${group.date}-${i}`}>
+                                    <TableCell>{m.site}</TableCell>
+                                    <TableCell className="font-medium">{m.material}</TableCell>
+                                    <TableCell>{m.supplier}</TableCell>
+                                    <TableCell>{m.receiptNo}</TableCell>
+                                    <TableCell className="text-right">{m.quantity}</TableCell>
+                                    <TableCell>{m.uom}</TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow className="bg-muted/50 font-semibold">
+                                  <TableCell colSpan={4}>Day Total</TableCell>
+                                  <TableCell className="text-right">
+                                    {group.materials.reduce((sum, m) => sum + m.quantity, 0).toFixed(1)}
+                                  </TableCell>
+                                  <TableCell>{group.materials.length} trip{group.materials.length !== 1 ? 's' : ''}</TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                        
+                        {group.equipment.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold flex items-center gap-2 mb-3">
+                              <Fuel className="w-4 h-4" /> Equipment
+                            </h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Site</TableHead>
+                                  <TableHead>Machine</TableHead>
+                                  <TableHead>Operator</TableHead>
+                                  <TableHead>Start</TableHead>
+                                  <TableHead>End</TableHead>
+                                  <TableHead className="text-right">Hours</TableHead>
+                                  <TableHead className="text-right">Diesel (L)</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.equipment.map((e, i) => (
+                                  <TableRow key={i} data-testid={`row-equipment-${group.date}-${i}`}>
+                                    <TableCell>{e.site}</TableCell>
+                                    <TableCell className="font-medium">{e.machine}</TableCell>
+                                    <TableCell>{e.operator}</TableCell>
+                                    <TableCell>{e.startTime}</TableCell>
+                                    <TableCell>{e.endTime}</TableCell>
+                                    <TableCell className="text-right">{e.hours.toFixed(1)}</TableCell>
+                                    <TableCell className="text-right font-semibold">{e.diesel}</TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow className="bg-muted/50 font-semibold">
+                                  <TableCell colSpan={5}>Day Total</TableCell>
+                                  <TableCell className="text-right">{group.totalHours.toFixed(1)}</TableCell>
+                                  <TableCell className="text-right">{group.totalDiesel.toFixed(1)}</TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
       )}
+
+      <style>{`
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .print\\:hidden { display: none !important; }
+          .print\\:block { display: block !important; }
+          .print\\:break-inside-avoid { break-inside: avoid; }
+          .print\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+      `}</style>
     </div>
   );
 }
