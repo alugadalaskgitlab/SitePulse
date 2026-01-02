@@ -161,6 +161,8 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   <TableHead>Machine</TableHead>
                   <TableHead>Operator</TableHead>
                   <TableHead>Task</TableHead>
+                  <TableHead>Start</TableHead>
+                  <TableHead>End</TableHead>
                   <TableHead className="text-right">Hours</TableHead>
                   <TableHead className="text-right">Diesel (L)</TableHead>
                 </TableRow>
@@ -171,6 +173,8 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                     <TableCell className="font-medium">{item.machine}</TableCell>
                     <TableCell>{item.operator || '-'}</TableCell>
                     <TableCell className="text-sm">{item.task || '-'}</TableCell>
+                    <TableCell>{item.startTime || '-'}</TableCell>
+                    <TableCell>{item.endTime || '-'}</TableCell>
                     <TableCell className="text-right">{calculateHours(item.startTime, item.endTime)}</TableCell>
                     <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                   </TableRow>
