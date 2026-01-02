@@ -53,6 +53,9 @@ interface MaterialEntry {
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
+
+// Helper to convert text input to uppercase
+const toUpperCase = (value: string): string => value.toUpperCase();
 const GENDER_OPTIONS = ["Male", "Female"];
 const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "Water", "Diesel", "Bitumen", "Emulsion", "DBM Mix", "BC Mix", "Cement"];
 const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
@@ -310,7 +313,8 @@ export default function SiteEntry() {
             <Input
               placeholder="Enter site name"
               value={header.site}
-              onChange={(e) => setHeader({ ...header, site: e.target.value })}
+              onChange={(e) => setHeader({ ...header, site: toUpperCase(e.target.value) })}
+              className="uppercase"
               data-testid="input-site"
             />
           </div>
@@ -319,7 +323,8 @@ export default function SiteEntry() {
             <Input
               placeholder="Enter engineer name"
               value={header.engineer}
-              onChange={(e) => setHeader({ ...header, engineer: e.target.value })}
+              onChange={(e) => setHeader({ ...header, engineer: toUpperCase(e.target.value) })}
+              className="uppercase"
               data-testid="input-engineer"
             />
           </div>
@@ -344,9 +349,10 @@ export default function SiteEntry() {
                   value={entry.activity}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].activity = e.target.value;
+                    updated[idx].activity = toUpperCase(e.target.value);
                     setProgress(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-progress-activity-${idx}`}
                 />
               </div>
@@ -506,9 +512,10 @@ export default function SiteEntry() {
                   value={entry.machine}
                   onChange={(e) => {
                     const updated = [...equipment];
-                    updated[idx].machine = e.target.value;
+                    updated[idx].machine = toUpperCase(e.target.value);
                     setEquipment(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-equipment-machine-${idx}`}
                 />
               </div>
@@ -519,9 +526,10 @@ export default function SiteEntry() {
                   value={entry.operator}
                   onChange={(e) => {
                     const updated = [...equipment];
-                    updated[idx].operator = e.target.value;
+                    updated[idx].operator = toUpperCase(e.target.value);
                     setEquipment(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-equipment-operator-${idx}`}
                 />
               </div>
@@ -532,9 +540,10 @@ export default function SiteEntry() {
                   value={entry.task}
                   onChange={(e) => {
                     const updated = [...equipment];
-                    updated[idx].task = e.target.value;
+                    updated[idx].task = toUpperCase(e.target.value);
                     setEquipment(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-equipment-task-${idx}`}
                 />
               </div>
@@ -765,9 +774,10 @@ export default function SiteEntry() {
                   value={entry.vehicleNumber}
                   onChange={(e) => {
                     const updated = [...materials];
-                    updated[idx].vehicleNumber = e.target.value;
+                    updated[idx].vehicleNumber = toUpperCase(e.target.value);
                     setMaterials(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-material-vehicle-${idx}`}
                 />
               </div>
@@ -778,9 +788,10 @@ export default function SiteEntry() {
                   value={entry.supplier}
                   onChange={(e) => {
                     const updated = [...materials];
-                    updated[idx].supplier = e.target.value;
+                    updated[idx].supplier = toUpperCase(e.target.value);
                     setMaterials(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-material-supplier-${idx}`}
                 />
               </div>
@@ -791,9 +802,10 @@ export default function SiteEntry() {
                   value={entry.location}
                   onChange={(e) => {
                     const updated = [...materials];
-                    updated[idx].location = e.target.value;
+                    updated[idx].location = toUpperCase(e.target.value);
                     setMaterials(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-material-location-${idx}`}
                 />
               </div>

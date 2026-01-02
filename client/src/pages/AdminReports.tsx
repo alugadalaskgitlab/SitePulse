@@ -304,7 +304,7 @@ export default function AdminReports() {
     setSelectedSupplier("all");
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const wb = XLSX.utils.book_new();
     
     const summaryData = dateGroupedData.map(group => ({
@@ -400,12 +400,52 @@ export default function AdminReports() {
     const dateStr = dateFrom && dateTo 
       ? `${format(parseISO(dateFrom), "ddMMMyyyy")}_to_${format(parseISO(dateTo), "ddMMMyyyy")}`
       : format(new Date(), "ddMMMyyyy");
-    const fileName = `AdminReport_${dateStr}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    const defaultFileName = `AdminReport_${dateStr}.xlsx`;
+    
+    // Generate Excel file as array buffer
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    // Try File System Access API for save-as dialog (desktop Chrome/Edge)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFileName,
+          types: [{
+            description: 'Excel Spreadsheet',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        toast({
+          title: "File Saved",
+          description: `Report has been saved successfully.`,
+        });
+        return;
+      } catch (err: any) {
+        // User cancelled or API failed - fall through to standard download
+        if (err.name === 'AbortError') {
+          return; // User cancelled
+        }
+      }
+    }
+    
+    // Fallback: standard download for mobile and unsupported browsers
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = defaultFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     
     toast({
       title: "File Downloaded",
-      description: `"${fileName}" has been saved to your Downloads folder.`,
+      description: `"${defaultFileName}" has been exported to your Downloads folder.`,
     });
   };
 

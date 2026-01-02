@@ -18,7 +18,7 @@ import {
   type PlantReportWithDetails,
   type AppSetting
 } from "@shared/schema";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { format } from "date-fns";
 
 export interface IStorage {
@@ -64,7 +64,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDprsWithDetails(): Promise<DprWithDetails[]> {
+    // Get IDs of original DPRs that have been superseded by edited versions
+    const supersededDprIds = await db
+      .select({ id: dprVersions.originalDprId })
+      .from(dprVersions);
+    const supersededIds = supersededDprIds.map(v => v.id);
+    
     const allDprs = await db.query.dprs.findMany({
+      where: supersededIds.length > 0 ? notInArray(dprs.id, supersededIds) : undefined,
       with: {
         progress: true,
         equipment: true,

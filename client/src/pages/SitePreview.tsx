@@ -210,31 +210,70 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
         </Card>
       )}
 
-      {/* Materials Abstract */}
-      {data.materialsAbstract.length > 0 && (
+      {/* Materials Log */}
+      {data.materials.some(m => m.material) && (
         <Card>
           <CardHeader>
-            <CardTitle>Materials Abstract</CardTitle>
+            <CardTitle>Materials Log</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {data.materialsAbstract.map((item, i) => (
-                <div 
-                  key={i} 
-                  className="p-4 bg-muted/50 border rounded-lg"
-                  data-testid={`card-material-abstract-${i}`}
-                >
-                  <p className="text-lg font-semibold">{item.material}</p>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <p className="text-2xl font-bold text-primary">{item.total.toFixed(1)}</p>
-                    <p className="text-sm text-muted-foreground">{item.uom}</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {item.trips} trip{item.trips > 1 ? 's' : ''}
-                  </p>
+          <CardContent className="space-y-6">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Material</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>UOM</TableHead>
+                  <TableHead>Vehicle No.</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Location/Task</TableHead>
+                  <TableHead>Receipt No.</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.materials.filter(m => m.material).map((item, i) => (
+                  <TableRow key={i} data-testid={`row-material-preview-${i}`}>
+                    <TableCell>
+                      <Badge variant={item.type === 'Received' ? 'default' : item.type === 'Issued' ? 'secondary' : 'outline'}>
+                        {item.type || 'Received'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{item.material}</TableCell>
+                    <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{item.uom}</TableCell>
+                    <TableCell>{item.vehicleNumber || '-'}</TableCell>
+                    <TableCell>{item.supplier || '-'}</TableCell>
+                    <TableCell>{item.location || '-'}</TableCell>
+                    <TableCell>{item.receiptNumber || '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Materials Summary */}
+            {data.materialsAbstract.length > 0 && (
+              <div className="pt-4 border-t">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Materials Summary</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {data.materialsAbstract.map((item, i) => (
+                    <div 
+                      key={i} 
+                      className="p-3 bg-muted/50 border rounded-lg"
+                      data-testid={`card-material-abstract-${i}`}
+                    >
+                      <p className="text-sm font-medium">{item.material}</p>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <p className="text-lg font-bold text-primary">{item.total.toFixed(1)}</p>
+                        <p className="text-xs text-muted-foreground">{item.uom}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {item.trips} trip{item.trips > 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
