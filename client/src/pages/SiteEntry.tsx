@@ -61,7 +61,7 @@ const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "
 const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
 const MATERIAL_TYPE_OPTIONS = ["Received", "Issued", "Consumed"];
 
-// Helper to parse chainage like "0+500" or "1+250" into meters
+// Helper to parse chainage like "0+500" or "1+250" or decimal km like "5.2" into meters
 function parseChainageToMeters(chainage: string): number | null {
   if (!chainage) return null;
   const match = chainage.match(/^(\d+)\+(\d+)$/);
@@ -70,9 +70,9 @@ function parseChainageToMeters(chainage: string): number | null {
     const m = parseInt(match[2], 10);
     return km * 1000 + m;
   }
-  // Try parsing as plain number
+  // Try parsing as decimal kilometers (e.g., "5.2" = 5.2 km = 5200 meters)
   const num = parseFloat(chainage);
-  return isNaN(num) ? null : num;
+  return isNaN(num) ? null : num * 1000;
 }
 
 // Calculate length from chainage difference
