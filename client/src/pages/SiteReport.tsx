@@ -342,20 +342,38 @@ export default function SiteReport() {
                     <TableHead>Task</TableHead>
                     <TableHead>Start</TableHead>
                     <TableHead>End</TableHead>
+                    <TableHead className="text-right">Hours</TableHead>
                     <TableHead className="text-right">Diesel (L)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dpr.equipment.map((item: any, i: number) => (
-                    <TableRow key={i} data-testid={`row-equipment-${i}`}>
-                      <TableCell className="font-medium">{item.machine}</TableCell>
-                      <TableCell>{item.operator || '-'}</TableCell>
-                      <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                      <TableCell>{item.startTime || '-'}</TableCell>
-                      <TableCell>{item.endTime || '-'}</TableCell>
-                      <TableCell className="text-right">{item.diesel || '-'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {dpr.equipment.map((item: any, i: number) => {
+                    const calculateHours = (startTime?: string, endTime?: string) => {
+                      if (!startTime || !endTime) return '-';
+                      try {
+                        const [startHour, startMin] = startTime.split(':').map(Number);
+                        const [endHour, endMin] = endTime.split(':').map(Number);
+                        const startMins = startHour * 60 + startMin;
+                        const endMins = endHour * 60 + endMin;
+                        const diff = endMins - startMins;
+                        if (diff < 0) return '-';
+                        return (diff / 60).toFixed(2);
+                      } catch {
+                        return '-';
+                      }
+                    };
+                    return (
+                      <TableRow key={i} data-testid={`row-equipment-${i}`}>
+                        <TableCell className="font-medium">{item.machine}</TableCell>
+                        <TableCell>{item.operator || '-'}</TableCell>
+                        <TableCell className="text-sm">{item.task || '-'}</TableCell>
+                        <TableCell>{item.startTime || '-'}</TableCell>
+                        <TableCell>{item.endTime || '-'}</TableCell>
+                        <TableCell className="text-right">{calculateHours(item.startTime, item.endTime)}</TableCell>
+                        <TableCell className="text-right">{item.diesel || '-'}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
