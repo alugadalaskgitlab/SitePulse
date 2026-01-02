@@ -290,7 +290,9 @@ export default function SiteReport() {
                   <TableHead>Side</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
-                  <TableHead className="text-right">Dimensions</TableHead>
+                  <TableHead className="text-right">Length (m)</TableHead>
+                  <TableHead className="text-right">Width (m)</TableHead>
+                  <TableHead className="text-right">Thickness (m)</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>UOM</TableHead>
                 </TableRow>
@@ -308,9 +310,9 @@ export default function SiteReport() {
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
-                        {displayLength || item.width || item.thickness ? `${displayLength || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` : '-'}
-                      </TableCell>
+                      <TableCell className="text-right">{displayLength || '-'}</TableCell>
+                      <TableCell className="text-right">{item.width || '-'}</TableCell>
+                      <TableCell className="text-right">{item.thickness || '-'}</TableCell>
                       <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>
@@ -323,7 +325,7 @@ export default function SiteReport() {
       </Card>
 
       {/* Two Column Layout for Resources */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8">
         <Card>
           <CardHeader>
             <CardTitle>Equipment Log</CardTitle>

@@ -238,7 +238,9 @@ export default function DprDetails() {
                   <TableHead>Side</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
-                  <TableHead className="text-right">Dimensions</TableHead>
+                  <TableHead className="text-right">Length (m)</TableHead>
+                  <TableHead className="text-right">Width (m)</TableHead>
+                  <TableHead className="text-right">Thickness (m)</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>UOM</TableHead>
                 </TableRow>
@@ -264,17 +266,16 @@ export default function DprDetails() {
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
+                      <TableCell className="text-right">
                         {(() => {
                           const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
                             ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
                             : null;
-                          const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
-                          return displayLength || item.width || item.thickness 
-                            ? `${displayLength || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` 
-                            : '-';
+                          return item.length || (derivedLength ? derivedLength.toFixed(0) : null) || '-';
                         })()}
                       </TableCell>
+                      <TableCell className="text-right">{item.width || '-'}</TableCell>
+                      <TableCell className="text-right">{item.thickness || '-'}</TableCell>
                       <TableCell className="text-right font-semibold">{displayQty}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>
@@ -287,7 +288,7 @@ export default function DprDetails() {
       </Card>
 
       {/* Two Column Layout for Resources */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8">
         <Card>
           <CardHeader>
             <CardTitle>Equipment Log</CardTitle>
