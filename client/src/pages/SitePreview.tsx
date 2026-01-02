@@ -127,21 +127,28 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.progress.filter(p => p.activity).map((item, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{item.activity}</TableCell>
-                    <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
-                    <TableCell>{item.chainageFrom || '-'}</TableCell>
-                    <TableCell>{item.chainageTo || '-'}</TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {item.length || item.width || item.thickness 
-                        ? `${item.length || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` 
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.uom}</TableCell>
-                  </TableRow>
-                ))}
+                {data.progress.filter(p => p.activity).map((item, i) => {
+                  const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
+                    ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
+                    : null;
+                  const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
+                  
+                  return (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{item.activity}</TableCell>
+                      <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
+                      <TableCell>{item.chainageFrom || '-'}</TableCell>
+                      <TableCell>{item.chainageTo || '-'}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {displayLength || item.width || item.thickness 
+                          ? `${displayLength || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` 
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.uom}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>

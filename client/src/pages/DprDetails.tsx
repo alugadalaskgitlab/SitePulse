@@ -265,7 +265,15 @@ export default function DprDetails() {
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
-                        {item.length || item.width || item.thickness ? `${item.length || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` : '-'}
+                        {(() => {
+                          const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
+                            ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
+                            : null;
+                          const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
+                          return displayLength || item.width || item.thickness 
+                            ? `${displayLength || '-'}m x ${item.width || '-'}m ${item.thickness ? `x ${item.thickness}m` : ''}` 
+                            : '-';
+                        })()}
                       </TableCell>
                       <TableCell className="text-right font-semibold">{displayQty}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
@@ -295,6 +303,8 @@ export default function DprDetails() {
                       <TableHead>Machine</TableHead>
                       <TableHead>Operator</TableHead>
                       <TableHead>Task</TableHead>
+                      <TableHead>Start</TableHead>
+                      <TableHead>End</TableHead>
                       <TableHead className="text-right">Hours</TableHead>
                       <TableHead className="text-right">Diesel (L)</TableHead>
                     </TableRow>
@@ -322,6 +332,8 @@ export default function DprDetails() {
                           <TableCell className="font-medium">{item.machine}</TableCell>
                           <TableCell>{item.operator || '-'}</TableCell>
                           <TableCell className="text-sm">{item.task || '-'}</TableCell>
+                          <TableCell>{item.startTime || '-'}</TableCell>
+                          <TableCell>{item.endTime || '-'}</TableCell>
                           <TableCell className="text-right">{hours}</TableCell>
                           <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         </TableRow>
