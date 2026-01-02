@@ -504,7 +504,7 @@ export default function SiteEntry() {
         </CardHeader>
         <CardContent className="space-y-4">
           {equipment.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-7 gap-3 p-4 border rounded-lg bg-muted/30">
               <div>
                 <Label className="text-xs">Machine</Label>
                 <Input
@@ -571,6 +571,16 @@ export default function SiteEntry() {
                     setEquipment(updated);
                   }}
                   data-testid={`input-equipment-end-${idx}`}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Hours</Label>
+                <Input
+                  type="text"
+                  readOnly
+                  value={calculateHours(entry.startTime, entry.endTime) > 0 ? calculateHours(entry.startTime, entry.endTime).toFixed(2) : "-"}
+                  className="bg-muted"
+                  data-testid={`input-equipment-hours-${idx}`}
                 />
               </div>
               <div className="flex gap-2">
