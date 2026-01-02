@@ -406,7 +406,7 @@ export default function SiteEntry() {
                   type="number"
                   step="0.01"
                   placeholder="0"
-                  value={entry.length ?? ""}
+                  value={entry.length ?? (calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(0) ?? "")}
                   onChange={(e) => {
                     const updated = [...progress];
                     updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
