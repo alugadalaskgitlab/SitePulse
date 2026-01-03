@@ -86,15 +86,13 @@ export class DatabaseStorage implements IStorage {
 
   // Helper to extract base site name (strips " – Edited by..." or " – Copy by..." suffix)
   private getBaseSiteName(site: string): string {
-    // Check for both edit and copy suffixes
-    const editedIndex = site.indexOf(' – Edited by');
-    const copyIndex = site.indexOf(' – Copy by');
+    // Use regex that handles multiple dash variants (–, -, —) 
+    // and extracts just the base site name before any suffix
+    const suffixPattern = /\s+[-–—]\s+(Edited by|Copy by)\s+/i;
+    const match = site.match(suffixPattern);
     
-    if (editedIndex > 0) {
-      return site.substring(0, editedIndex);
-    }
-    if (copyIndex > 0) {
-      return site.substring(0, copyIndex);
+    if (match && match.index !== undefined && match.index > 0) {
+      return site.substring(0, match.index).trim();
     }
     return site;
   }
