@@ -747,6 +747,9 @@ function DashboardTab() {
   const { data: dispatches } = useQuery<any[]>({ queryKey: ["/api/plant-module/dispatches"] });
   const { data: generatorLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/generator-logs"] });
   const { data: ldoLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/ldo-logs"] });
+  const { data: stockBalances } = useQuery<any[]>({ queryKey: ["/api/plant-module/stock-balances"] });
+  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
+  const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
 
   const totalTons = dispatches?.reduce((sum, d) => sum + (d.loadWeight || 0), 0) || 0;
   const avgGeneratorEfficiency = generatorLogs?.length 
@@ -756,9 +759,46 @@ function DashboardTab() {
     ? (ldoLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / ldoLogs.length).toFixed(2)
     : "N/A";
 
+  // Group dispatches by party
+  const partyProduction: Record<number, { name: string; tons: number; dispatches: number }> = {};
+  dispatches?.forEach((d) => {
+    if (d.partyId) {
+      if (!partyProduction[d.partyId]) {
+        const party = parties?.find((p) => p.id === d.partyId);
+        partyProduction[d.partyId] = { name: party?.name || `Party ${d.partyId}`, tons: 0, dispatches: 0 };
+      }
+      partyProduction[d.partyId].tons += d.loadWeight || 0;
+      partyProduction[d.partyId].dispatches += 1;
+    }
+  });
+
+  // Calculate theoretical vs actual consumption
+  const theoreticalVsActual = {
+    bitumen: { theoretical: 0, actual: 0 },
+    ldo: { theoretical: 0, actual: 0 },
+  };
+  dispatches?.forEach((d) => {
+    theoreticalVsActual.bitumen.theoretical += d.theoreticalBitumen || 0;
+    theoreticalVsActual.bitumen.actual += d.actualBitumen || 0;
+    theoreticalVsActual.ldo.theoretical += d.theoreticalLdo || 0;
+    theoreticalVsActual.ldo.actual += d.actualLdo || 0;
+  });
+
+  // Bitumen savings/wastage
+  const bitumenDiff = theoreticalVsActual.bitumen.theoretical - theoreticalVsActual.bitumen.actual;
+  const ldoDiff = theoreticalVsActual.ldo.theoretical - theoreticalVsActual.ldo.actual;
+
+  // Get material name by ID
+  const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
+  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Plant Common";
+
+  // Critical stock check (low balance warning)
+  const criticalStock = stockBalances?.filter((s) => s.balance < 10) || [];
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Production</CardTitle>
@@ -788,8 +828,126 @@ function DashboardTab() {
             <p className="text-xs text-muted-foreground mt-1">Target: 6 L/ton</p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Bitumen Efficiency</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${bitumenDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {bitumenDiff >= 0 ? '+' : ''}{bitumenDiff.toFixed(1)} kg
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {bitumenDiff >= 0 ? 'Savings vs theoretical' : 'Excess vs theoretical'}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Critical Stock Alerts */}
+      {criticalStock.length > 0 && (
+        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              Low Stock Warning
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {criticalStock.map((s, i) => (
+                <div key={i} className="px-3 py-1 rounded-md bg-red-100 dark:bg-red-900/40 text-sm">
+                  {getMaterialName(s.materialId)} ({getPartyName(s.partyId)}): <span className="font-bold">{s.balance.toFixed(1)} {s.uom}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Party-wise Production */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Party-wise Production
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {Object.keys(partyProduction).length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">No production data yet</p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(partyProduction).map(([id, data]) => (
+                  <div key={id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                    <div>
+                      <p className="font-medium">{data.name}</p>
+                      <p className="text-xs text-muted-foreground">{data.dispatches} dispatches</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg">{data.tons.toFixed(1)} MT</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Consumption Analysis */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Droplets className="w-5 h-5" />
+              Consumption Analysis
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="p-3 rounded-md bg-muted/50">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium">Bitumen</span>
+                  <span className={`text-sm font-bold ${bitumenDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {bitumenDiff >= 0 ? 'SAVING' : 'EXCESS'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Theoretical</p>
+                    <p className="font-bold">{theoreticalVsActual.bitumen.theoretical.toFixed(1)} kg</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Actual</p>
+                    <p className="font-bold">{theoreticalVsActual.bitumen.actual.toFixed(1)} kg</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-md bg-muted/50">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium">LDO</span>
+                  <span className={`text-sm font-bold ${ldoDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {ldoDiff >= 0 ? 'SAVING' : 'EXCESS'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Theoretical</p>
+                    <p className="font-bold">{theoreticalVsActual.ldo.theoretical.toFixed(1)} L</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Actual</p>
+                    <p className="font-bold">{theoreticalVsActual.ldo.actual.toFixed(1)} L</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Activity */}
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
@@ -803,6 +961,11 @@ function DashboardTab() {
                 <div key={i} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
                   <Truck className="w-4 h-4 text-green-500" />
                   <span className="text-sm">Dispatch: {d.truckNumber} - {d.loadWeight} MT</span>
+                  {d.shortages && d.shortages.length > 0 && (
+                    <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
+                      Stock shortage
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground ml-auto">{d.date}</span>
                 </div>
               ))}
