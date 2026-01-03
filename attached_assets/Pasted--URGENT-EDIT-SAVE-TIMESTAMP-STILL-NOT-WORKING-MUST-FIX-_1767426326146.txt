@@ -1,0 +1,95 @@
+🔴 URGENT: EDIT SAVE + TIMESTAMP STILL NOT WORKING (MUST FIX WITH VERIFICATION)
+
+The issue still persists: when Manager/Admin edits a report and clicks Save, the edited data and editedAt timestamp are not being persisted (lost on refresh / not reflected in the list). This is now a critical blocker. Please fix it properly with end-to-end verification.
+
+1) Confirm the failure point (do not change UI without fixing persistence)
+
+Instrument and verify the full save flow:
+
+On Save click:
+
+Log the exact payload being sent (report id, parentReportId, editedBy, editedAt, full updated content).
+
+Confirm the API request actually fires and returns 200/201.
+
+Confirm the API response includes the saved record with a real id and correct editedAt.
+
+On DB:
+
+Confirm the edited record is actually created/updated in the database.
+
+Confirm editedAt is stored (not null, not overwritten, not ignored).
+
+On UI after save:
+
+Immediately refetch from server and re-render using server data (not stale local state).
+
+2) Required backend behavior (must be implemented exactly)
+
+When Manager/Admin saves an edit, the backend must do one of these correctly:
+
+Preferred (versioning):
+
+Create a NEW report record (new id)
+
+Set parentReportId = originalReportId
+
+Set editedBy and editedAt = server time
+
+Return the new saved record
+
+OR (overwrite mode if you insist, but must work):
+
+Update the existing record
+
+Set updatedAt/editedAt = server time
+
+Return the updated record
+
+⚠️ Whichever approach you choose, it must persist and survive refresh.
+
+3) Common bugs to check and fix (likely root causes)
+
+Please explicitly check for these (we suspect one of them is happening):
+
+Save handler is not wired (button triggers UI only, no API call)
+
+API route/method mismatch (PUT/POST wrong endpoint)
+
+Backend discards editedAt or never sets it (must set server-side)
+
+Firestore/DB security rules blocking write
+
+State is updated locally but not saved remotely
+
+List view is filtering in a way that hides the edited record (e.g., selecting original instead of latest)
+
+editedAt stored as string vs Date causing sorting/filter failure
+
+4) Must provide proof of fix
+
+After implementing, please test and confirm this exact scenario:
+
+Open an existing report.
+
+Edit a field (e.g., change a material quantity).
+
+Click Save as Manager.
+
+Confirm:
+
+A new edited version exists (or record updated).
+
+editedAt shows correct current timestamp.
+
+Hard refresh browser / reopen the app link.
+
+Open the same report again.
+
+Confirm the edits + timestamp are still present.
+
+If any of the above fails, the fix is incomplete.
+
+5) Do not proceed with new features until this is fixed
+
+Please pause all other enhancements (filtering, chainage auto length, etc.) until edit save + timestamp persistence is fully stable.
