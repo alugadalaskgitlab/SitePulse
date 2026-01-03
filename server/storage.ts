@@ -64,14 +64,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDprsWithDetails(): Promise<DprWithDetails[]> {
-    // Get IDs of original DPRs that have been superseded by edited versions
-    const supersededDprIds = await db
-      .select({ id: dprVersions.originalDprId })
-      .from(dprVersions);
-    const supersededIds = supersededDprIds.map(v => v.id);
-    
+    // Get all DPRs with their details
     const allDprs = await db.query.dprs.findMany({
-      where: supersededIds.length > 0 ? notInArray(dprs.id, supersededIds) : undefined,
       with: {
         progress: true,
         equipment: true,
@@ -80,7 +74,28 @@ export class DatabaseStorage implements IStorage {
       },
       orderBy: desc(dprs.date),
     });
-    return allDprs;
+    
+    // Deduplicate by site+date, keeping only the latest version (newest submittedAt)
+    const latestByKey = new Map<string, DprWithDetails>();
+    for (const dpr of allDprs) {
+      const key = `${dpr.site}|${dpr.date}`;
+      const existing = latestByKey.get(key);
+      if (!existing) {
+        latestByKey.set(key, dpr);
+      } else {
+        // Compare submittedAt timestamps, keep the latest
+        const existingTime = existing.submittedAt ? new Date(existing.submittedAt).getTime() : 0;
+        const currentTime = dpr.submittedAt ? new Date(dpr.submittedAt).getTime() : 0;
+        if (currentTime > existingTime) {
+          latestByKey.set(key, dpr);
+        }
+      }
+    }
+    
+    // Return deduplicated results sorted by date descending
+    return Array.from(latestByKey.values()).sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
   }
 
   async getDpr(id: number): Promise<DprWithDetails | undefined> {
