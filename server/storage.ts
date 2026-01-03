@@ -57,10 +57,44 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
 
-    return await db.select()
+    const allDprs = await db.select()
       .from(dprs)
       .where(and(...conditions))
       .orderBy(desc(dprs.date));
+    
+    // Deduplicate by base site name + date, keeping only the latest version
+    const latestByKey = new Map<string, Dpr>();
+    for (const dpr of allDprs) {
+      const baseSite = this.getBaseSiteName(dpr.site);
+      const key = `${baseSite}|${dpr.date}`;
+      const existing = latestByKey.get(key);
+      if (!existing) {
+        latestByKey.set(key, dpr);
+      } else {
+        const existingTime = this.getEffectiveTimestamp(existing);
+        const currentTime = this.getEffectiveTimestamp(dpr);
+        if (currentTime > existingTime) {
+          latestByKey.set(key, dpr);
+        }
+      }
+    }
+    
+    return Array.from(latestByKey.values()).sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }
+
+  // Helper to extract base site name (strips " – Edited by..." suffix)
+  private getBaseSiteName(site: string): string {
+    const editedIndex = site.indexOf(' – Edited by');
+    return editedIndex > 0 ? site.substring(0, editedIndex) : site;
+  }
+
+  // Helper to get the effective timestamp for comparison (submittedAt or createdAt)
+  private getEffectiveTimestamp(dpr: { submittedAt: string | null; createdAt: Date | null }): number {
+    if (dpr.submittedAt) return new Date(dpr.submittedAt).getTime();
+    if (dpr.createdAt) return new Date(dpr.createdAt).getTime();
+    return 0;
   }
 
   async getDprsWithDetails(): Promise<DprWithDetails[]> {
@@ -75,17 +109,18 @@ export class DatabaseStorage implements IStorage {
       orderBy: desc(dprs.date),
     });
     
-    // Deduplicate by site+date, keeping only the latest version (newest submittedAt)
+    // Deduplicate by base site name + date, keeping only the latest version
     const latestByKey = new Map<string, DprWithDetails>();
     for (const dpr of allDprs) {
-      const key = `${dpr.site}|${dpr.date}`;
+      const baseSite = this.getBaseSiteName(dpr.site);
+      const key = `${baseSite}|${dpr.date}`;
       const existing = latestByKey.get(key);
       if (!existing) {
         latestByKey.set(key, dpr);
       } else {
-        // Compare submittedAt timestamps, keep the latest
-        const existingTime = existing.submittedAt ? new Date(existing.submittedAt).getTime() : 0;
-        const currentTime = dpr.submittedAt ? new Date(dpr.submittedAt).getTime() : 0;
+        // Compare timestamps, keep the latest
+        const existingTime = this.getEffectiveTimestamp(existing);
+        const currentTime = this.getEffectiveTimestamp(dpr);
         if (currentTime > existingTime) {
           latestByKey.set(key, dpr);
         }
