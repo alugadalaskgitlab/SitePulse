@@ -943,9 +943,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog> {
-    // Calculate diesel consumed and efficiency
-    const dieselConsumed = (log.openingDiesel || 0) + (log.dieselIssued || 0) - (log.closingDiesel || 0);
     const hoursRun = log.hoursRun || 0;
+    const openingDiesel = log.openingDiesel || 0;
+    const dieselIssued = log.dieselIssued || 0;
+    const closingDiesel = log.closingDiesel;
+    
+    // Calculate diesel consumed:
+    // Preferred: (Opening + Issued) - Closing
+    // Fallback (if closing not entered): Hours × norm (assume 5 L/hr default)
+    const DIESEL_NORM_PER_HOUR = 5; // Liters per hour default
+    let dieselConsumed: number;
+    
+    if (closingDiesel !== null && closingDiesel !== undefined) {
+      // Primary method: tank measurement
+      dieselConsumed = openingDiesel + dieselIssued - closingDiesel;
+    } else {
+      // Fallback: hours × norm
+      dieselConsumed = hoursRun * DIESEL_NORM_PER_HOUR;
+    }
+    
+    // Validation: diesel consumed cannot be negative
+    if (dieselConsumed < 0) {
+      dieselConsumed = 0;
+    }
+    
+    // Validation: diesel consumed cannot exceed (opening + issued)
+    const maxPossible = openingDiesel + dieselIssued;
+    if (dieselConsumed > maxPossible && maxPossible > 0) {
+      dieselConsumed = maxPossible;
+    }
+    
     const efficiency = hoursRun > 0 ? dieselConsumed / hoursRun : 0;
     
     const [result] = await db.insert(generatorLogs).values({
@@ -1084,8 +1111,8 @@ export class DatabaseStorage implements IStorage {
         return bal?.balance || 0;
       };
       
-      // Helper to deduct stock
-      const deductStock = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
+      // Helper to deduct stock from a specific source
+      const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
         const condition = pId === null 
           ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
           : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
@@ -1116,6 +1143,34 @@ export class DatabaseStorage implements IStorage {
         return newBalance;
       };
       
+      // Helper to deduct stock with party-first, plant-common fallback
+      const deductStock = async (matId: number, requiredQty: number, uom: string, notes: string) => {
+        const partyStock = await getBalance(partyId, matId);
+        const plantCommonStock = await getBalance(null, matId);
+        const totalAvailable = partyStock + plantCommonStock;
+        
+        let shortage = false;
+        if (totalAvailable < requiredQty) {
+          shortage = true;
+        }
+        
+        let remaining = requiredQty;
+        
+        // First deduct from party stock
+        if (partyStock > 0 && remaining > 0) {
+          const deductFromParty = Math.min(partyStock, remaining);
+          await deductFromSource(partyId, matId, deductFromParty, uom, `${notes} (Party)`);
+          remaining -= deductFromParty;
+        }
+        
+        // Then deduct from plant common if needed
+        if (remaining > 0) {
+          await deductFromSource(null, matId, remaining, uom, `${notes} (Plant Common)`);
+        }
+        
+        return { shortage, available: totalAvailable };
+      };
+      
       // Get bitumen material ID (look for material named BITUMEN)
       const [bitumenMaterial] = await tx.select().from(plantMaterials)
         .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
@@ -1126,34 +1181,30 @@ export class DatabaseStorage implements IStorage {
         .where(sql`UPPER(${plantMaterials.name}) = 'LDO'`)
         .limit(1);
       
-      // Check and deduct bitumen
+      // Check and deduct bitumen (party-first, then plant-common)
       if (bitumenMaterial && theoreticalBitumenQty > 0) {
-        const partyStock = await getBalance(partyId, bitumenMaterial.id);
-        if (partyStock < theoreticalBitumenQty) {
-          shortages.push({ materialId: bitumenMaterial.id, required: theoreticalBitumenQty, available: partyStock });
+        const result = await deductStock(bitumenMaterial.id, theoreticalBitumenQty, "Ton", "Bitumen dispatch");
+        if (result.shortage) {
+          shortages.push({ materialId: bitumenMaterial.id, required: theoreticalBitumenQty, available: result.available });
         }
-        // Deduct from party stock (even if negative for now - will show as shortage)
-        await deductStock(partyId, bitumenMaterial.id, theoreticalBitumenQty, "Ton", `Dispatch #auto`);
       }
       
-      // Check and deduct LDO
+      // Check and deduct LDO (party-first, then plant-common)
       if (ldoMaterial && theoreticalLdoQty > 0) {
-        const partyStock = await getBalance(partyId, ldoMaterial.id);
-        if (partyStock < theoreticalLdoQty) {
-          shortages.push({ materialId: ldoMaterial.id, required: theoreticalLdoQty, available: partyStock });
+        const result = await deductStock(ldoMaterial.id, theoreticalLdoQty, "Liters", "LDO dispatch");
+        if (result.shortage) {
+          shortages.push({ materialId: ldoMaterial.id, required: theoreticalLdoQty, available: result.available });
         }
-        await deductStock(partyId, ldoMaterial.id, theoreticalLdoQty, "Liters", `Dispatch #auto`);
       }
       
-      // Check and deduct aggregates
+      // Check and deduct aggregates (party-first, then plant-common)
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
         if (qty > 0) {
-          const partyStock = await getBalance(partyId, matId);
-          if (partyStock < qty) {
-            shortages.push({ materialId: matId, required: qty, available: partyStock });
+          const result = await deductStock(matId, qty, "Ton", "Aggregate dispatch");
+          if (result.shortage) {
+            shortages.push({ materialId: matId, required: qty, available: result.available });
           }
-          await deductStock(partyId, matId, qty, "Ton", `Dispatch #auto`);
         }
       }
       

@@ -1,0 +1,91 @@
+Yes, this data flow largely matches our expectations and you may proceed with fixing the logic accordingly.
+
+However, please note and incorporate the following clarifications and corrections before implementation:
+
+⸻
+
+1️⃣ Material Receipts & Ledger
+
+✅ Confirmed.
+Ledger-based stock only. No manual balance entry anywhere. Stock must always be derived.
+
+⸻
+
+2️⃣ Mix Templates
+
+✅ Confirmed.
+We agree with:
+	•	Aggregate components defined as kg per ton
+	•	Bitumen as % of load weight
+	•	LDO as liters per ton
+
+Multiple templates per party/job must be supported.
+
+⸻
+
+3️⃣ Truck Dispatch (Single Source of Truth)
+
+✅ Confirmed.
+Dispatch must be the only trigger for:
+	•	Aggregate consumption
+	•	Bitumen consumption
+	•	LDO consumption
+
+Stock deduction priority:
+	1.	Party stock
+	2.	Plant common stock
+	3.	Flag shortage clearly (no silent deductions)
+
+Ledger entries must be created for every deduction with running balance.
+
+⸻
+
+4️⃣ Actual Consumption (Manager/Admin Override)
+
+✅ Confirmed with one key rule:
+	•	Stock deduction must always use theoretical consumption
+	•	Actual consumption is for management analysis only
+	•	Variance (savings/wastage) must be shown in reports
+	•	Operator must NOT be able to edit actual consumption
+
+⸻
+
+5️⃣ Diesel / Generator Consumption (⚠️ IMPORTANT CORRECTION)
+
+❌ The current description here needs correction.
+
+Please implement Diesel logic as follows:
+
+Preferred (most accurate):
+	•	Diesel consumed =
+(Opening diesel in tank + Diesel issued) − Closing diesel in tank
+
+Alternative (only if closing dip is not entered):
+	•	Diesel consumed = Hours run × diesel norm (L/hr)
+
+⚠️ Meter readings (hour meter / odometer) indicate usage duration, NOT diesel quantity.
+Diesel consumed must never be calculated as closingMeter − openingMeter.
+
+Validation rules required:
+	•	Diesel consumed cannot be negative
+	•	Diesel consumed cannot exceed (opening + issued)
+	•	Flag abnormal values (e.g., 1000 L for 5 hours)
+
+⸻
+
+6️⃣ Dashboard & Reports
+
+✅ Confirmed.
+All dashboard values must be derived, not manually entered:
+	•	Stock balances from ledger
+	•	Efficiency = theoretical vs actual
+	•	Savings/wastage clearly shown
+	•	Shortages shown where dispatch exceeded stock
+
+⸻
+
+✅ Final Confirmation
+
+With the above clarification (especially Diesel logic), you may proceed with implementing the Plant Module logic exactly as per this data flow.
+
+Please confirm back once logic wiring is complete, before adding any new UI or features.
