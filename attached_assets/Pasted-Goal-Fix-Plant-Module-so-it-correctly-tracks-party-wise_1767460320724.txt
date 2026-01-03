@@ -1,0 +1,111 @@
+Goal: Fix Plant Module so it correctly tracks party-wise materials, mix dispatch, automatic consumption, and correct stock balances. Utilities (Diesel/LDO) must be computed from meter readings / production, not manually guessed.
+
+A) Core Data Model (must implement)
+	1.	Add Party Master (unlimited parties). Example parties: Giridhar Reddy, Contractor A, HLC (Own).
+	2.	Add Material Master (admin/manager can add anytime):
+	•	Material Name (e.g., 20mm, 12mm, 6mm down, Dust, Bitumen, LDO, Diesel, Emulsion)
+	•	Default UOM + allowed UOMs: Ton/MT, Cum, Liters, Kgs, CFT, Barrels, Nos
+	•	Category: Aggregate / Binder / Fuel / Other
+	3.	Maintain Party-wise Stock Ledger + Plant Common Stock
+	•	Stock scope:
+	•	Party Stock (materials supplied by that party)
+	•	Plant Common Stock (materials procured by us, usable for any job if assigned)
+	•	Every receipt and consumption must update a ledger so stock is always visible.
+
+B) Material Receipts (already present – refine)
+	4.	In Material Receipts form, ensure fields:
+	•	Date + Time
+	•	Party/Job (who the material belongs to)
+	•	Supplier name (from where it came)
+	•	Material, Qty, UOM
+	•	Vehicle No + Challan/Receipt No (optional)
+	•	Stock scope toggle: Party Stock / Plant Common
+	5.	On save, receipt must immediately increase stock in the correct ledger.
+
+C) Mix Template Master (must add)
+	6.	Add Mix Template Master (Manager/Admin only):
+	•	Mix name/type: BC / DBM / BM etc
+	•	Bitumen % (editable per template)
+	•	Aggregate proportions (can be % by weight OR kg per ton; choose one consistent basis)
+	•	LDO rule: default 6 L per ton (editable per template)
+	7.	Allow creating multiple templates per party if needed.
+
+D) Truck Dispatch / Production Entry (must be the driver)
+	8.	In Truck Dispatches, create per-load entry (not per batch):
+	•	Date + Time
+	•	Party/Job
+	•	Truck No
+	•	Mix Type (choose from Mix Templates)
+	•	Load Weight (tons/MT) – this is enough for Phase 1
+	•	Optional: No. of batches, site destination, challan no
+	9.	When a dispatch is saved, the system must automatically compute theoretical consumption from the chosen mix template:
+	•	Aggregates consumption per size (20mm, 12mm, 6mm down, dust etc)
+	•	Bitumen consumption
+	•	LDO consumption (from template’s LDO rule × tons)
+	10.	Consumption deduction rules:
+
+	•	Deduct first from that Party Stock (if dispatch party has stock)
+	•	If material is short, show a clear shortage warning and optionally allow manager/admin to allocate from Plant Common stock (but do NOT silently deduct without user choice).
+
+	11.	Store both:
+
+	•	Theoretical consumption (template-based)
+	•	Actual consumption override (Manager/Admin only) to capture “real usage vs theoretical” for internal savings analysis.
+
+E) Utilities – Diesel & LDO must compute correctly
+	12.	Generator Diesel Tracking must support meter-based tracking (preferred):
+
+	•	Generator selection (600 KVA, 40/30 KVA etc)
+	•	Opening hour-meter reading, Closing hour-meter reading → Hours computed automatically
+	•	Opening diesel in tank (L), Diesel issued (L)
+	•	Consumption must be computed as either:
+	•	Option 1: (opening + issued - closing) if closing dip is captured
+	•	Option 2: hours × standard L/hr if closing dip not captured
+	•	Current bug: the app shows wrong consumed value (example 5 hrs producing 1050 L consumed). Fix formula and validation (consumption cannot be absurd/negative).
+
+	13.	LDO Consumption:
+
+	•	LDO must be deducted automatically from party stock based on dispatch tons and the template LDO rule.
+	•	Also allow manual LDO receipts party-wise.
+
+	14.	Diesel stock/consumption:
+
+	•	Track Diesel receipts into Plant Common stock (usually)
+	•	Track diesel issued to plant equipment/generators as “diesel issued” entries
+	•	Provide an efficiency view: L/hr for generators and optional L/hr or L/km for vehicles.
+
+F) Equipment Usage (plant equipment log)
+	15.	Plant Equipment log must support meter readings (not only time):
+
+	•	Equipment name (Loader/JCB/Tipper/Water tanker/Generator)
+	•	Reading type: Hour Meter / Odometer
+	•	Opening reading, Closing reading → auto compute hours/km
+	•	Diesel issued (L)
+	•	Optional: Task/Activity
+
+	16.	This log should help compute diesel efficiency and update diesel issued totals.
+
+G) Dashboard & Reports (must work)
+	17.	Plant Dashboard must show:
+
+	•	Party-wise stock balances for each material
+	•	Daily dispatch summary (tons by mix type)
+	•	Daily theoretical consumption summary (material-wise)
+	•	LDO consumed vs produced (efficiency)
+
+	18.	Ensure “New Report / New Receipt / New Dispatch” buttons always navigate correctly and save data, and saved entries must appear in Dashboard immediately.
+
+H) Role Access (same pattern as Site Module)
+	19.	No PIN gate on app open.
+	20.	Only when clicking Edit/Delete/Override Actuals/Manage Masters, ask for PIN.
+
+	•	Manager PIN: can edit but must save as a new copy with timestamp (“Edited by Manager – timestamp”)
+	•	Admin PIN: can edit and delete; delete only with confirm
+
+	21.	Plant operator/site user should be able to add receipts/dispatches/equipment usage without needing PIN.
+
+Acceptance test:
+	•	Add receipts party-wise → stock increases
+	•	Add dispatch (tons + template) → theoretical consumption auto computed → stock decreases correctly → shortages warned
+	•	Diesel/LDO calculations are consistent and non-absurd
+	•	All saved entries appear in dashboard and exports/print work.
