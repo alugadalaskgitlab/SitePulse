@@ -111,6 +111,162 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// ============================================
+// PLANT MODULE PHASE-1 - MASTERS
+// ============================================
+
+// Party/Job Master
+export const parties = pgTable("parties", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  notes: text("notes"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Material Master (dynamic materials with UOM)
+export const plantMaterials = pgTable("plant_materials", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category"), // Aggregate, Bitumen, Utility, etc.
+  allowedUoms: text("allowed_uoms"), // JSON array: ["Ton", "Cum", "Liters", etc.]
+  defaultUom: text("default_uom"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Mix Template Master
+export const mixTemplates = pgTable("mix_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  mixType: text("mix_type").notNull(), // BC, DBM, etc.
+  bitumenPercent: real("bitumen_percent"), // Approved/theoretical bitumen %
+  isStandard: integer("is_standard").default(1), // 1 = Standard, 0 = Job-specific
+  partyId: integer("party_id"), // Only for job-specific templates
+  baseTemplateId: integer("base_template_id"), // For variants, reference to standard template
+  notes: text("notes"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Mix Template Components (aggregate proportions)
+export const mixTemplateComponents = pgTable("mix_template_components", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").notNull(),
+  materialId: integer("material_id").notNull(),
+  proportion: real("proportion"), // Percentage of this material in the mix
+  uom: text("uom"),
+});
+
+// Equipment Master
+export const equipmentMaster = pgTable("equipment_master", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  equipmentType: text("equipment_type").notNull(), // Generator, JCB, Loader, Tipper, Truck, Tractor
+  meterType: text("meter_type").notNull(), // hour_meter, odometer
+  consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ============================================
+// PLANT MODULE PHASE-1 - TRANSACTIONS
+// ============================================
+
+// Material Receipts (party/job-wise OR plant-common)
+export const materialReceipts = pgTable("material_receipts", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  partyId: integer("party_id"), // NULL for PLANT COMMON
+  isPlantCommon: integer("is_plant_common").default(0),
+  materialId: integer("material_id").notNull(),
+  quantity: real("quantity").notNull(),
+  uom: text("uom").notNull(),
+  supplier: text("supplier"),
+  vehicleNumber: text("vehicle_number"),
+  challanNumber: text("challan_number"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Truck/Load Dispatch Entry
+export const truckDispatches = pgTable("truck_dispatches", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  partyId: integer("party_id").notNull(),
+  mixTemplateId: integer("mix_template_id").notNull(),
+  truckNumber: text("truck_number").notNull(),
+  loadWeight: real("load_weight").notNull(), // Tons/MT
+  deliveryLocation: text("delivery_location"),
+  // Theoretical consumption (auto-calculated from template)
+  theoreticalBitumenQty: real("theoretical_bitumen_qty"),
+  theoreticalBitumenPercent: real("theoretical_bitumen_percent"),
+  // Actual consumption (operator input)
+  actualBitumenQty: real("actual_bitumen_qty"),
+  actualBitumenPercent: real("actual_bitumen_percent"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Equipment Usage Entry (with meter readings)
+export const equipmentUsage = pgTable("equipment_usage", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  equipmentId: integer("equipment_id").notNull(),
+  openingReading: real("opening_reading").notNull(), // Hours or KM
+  closingReading: real("closing_reading").notNull(),
+  hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: closing - opening
+  dieselIssued: real("diesel_issued"), // Liters
+  expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursOrKmRun * norm
+  variance: real("variance"), // expectedDiesel - dieselIssued
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Generator Diesel Tracking
+export const generatorLogs = pgTable("generator_logs", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  generatorName: text("generator_name").notNull(), // "600 KVA", "40-30 KVA"
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  hoursRun: real("hours_run"), // Auto-calculated from start/end
+  openingDiesel: real("opening_diesel"), // Liters in tank
+  dieselIssued: real("diesel_issued"), // Liters added
+  closingDiesel: real("closing_diesel"), // Liters in tank
+  dieselConsumed: real("diesel_consumed"), // opening + issued - closing
+  efficiency: real("efficiency"), // Liters/hour
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// LDO Consumption Tracking
+export const ldoLogs = pgTable("ldo_logs", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  partyId: integer("party_id"), // For party-wise tracking, NULL for plant
+  openingStock: real("opening_stock"), // Liters
+  ldoReceived: real("ldo_received"), // Liters
+  ldoConsumed: real("ldo_consumed"), // Liters
+  closingStock: real("closing_stock"), // Liters
+  tonsProduced: real("tons_produced"), // Sum of dispatches that day
+  efficiency: real("efficiency"), // Liters/ton
+  expectedLdo: real("expected_ldo"), // tonsProduced * norm (default 6 L/ton)
+  variance: real("variance"), // expectedLdo - ldoConsumed
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Stock Balances (for real-time stock tracking)
+export const stockBalances = pgTable("stock_balances", {
+  id: serial("id").primaryKey(),
+  partyId: integer("party_id"), // NULL for plant-common stock
+  materialId: integer("material_id").notNull(),
+  balance: real("balance").notNull().default(0),
+  uom: text("uom"),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const dprsRelations = relations(dprs, ({ many }) => ({
@@ -208,3 +364,55 @@ export type PlantReportWithDetails = PlantReport & {
 // App Settings Types
 export type AppSetting = typeof appSettings.$inferSelect;
 export const insertAppSettingSchema = createInsertSchema(appSettings).omit({ id: true, updatedAt: true });
+
+// ============================================
+// PLANT MODULE PHASE-1 - SCHEMAS & TYPES
+// ============================================
+
+// Insert Schemas
+export const insertPartySchema = createInsertSchema(parties).omit({ id: true, createdAt: true });
+export const insertPlantMaterialSchema = createInsertSchema(plantMaterials).omit({ id: true, createdAt: true });
+export const insertMixTemplateSchema = createInsertSchema(mixTemplates).omit({ id: true, createdAt: true });
+export const insertMixTemplateComponentSchema = createInsertSchema(mixTemplateComponents).omit({ id: true });
+export const insertEquipmentMasterSchema = createInsertSchema(equipmentMaster).omit({ id: true, createdAt: true });
+export const insertMaterialReceiptSchema = createInsertSchema(materialReceipts).omit({ id: true, createdAt: true });
+export const insertTruckDispatchSchema = createInsertSchema(truckDispatches).omit({ id: true, createdAt: true });
+export const insertEquipmentUsageSchema = createInsertSchema(equipmentUsage).omit({ id: true, createdAt: true });
+export const insertGeneratorLogSchema = createInsertSchema(generatorLogs).omit({ id: true, createdAt: true });
+export const insertLdoLogSchema = createInsertSchema(ldoLogs).omit({ id: true, createdAt: true });
+export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({ id: true, lastUpdated: true });
+
+// Types
+export type Party = typeof parties.$inferSelect;
+export type PlantMaterial = typeof plantMaterials.$inferSelect;
+export type MixTemplate = typeof mixTemplates.$inferSelect;
+export type MixTemplateComponent = typeof mixTemplateComponents.$inferSelect;
+export type EquipmentMasterType = typeof equipmentMaster.$inferSelect;
+export type MaterialReceipt = typeof materialReceipts.$inferSelect;
+export type TruckDispatch = typeof truckDispatches.$inferSelect;
+export type EquipmentUsage = typeof equipmentUsage.$inferSelect;
+export type GeneratorLog = typeof generatorLogs.$inferSelect;
+export type LdoLog = typeof ldoLogs.$inferSelect;
+export type StockBalance = typeof stockBalances.$inferSelect;
+
+// Insert Types
+export type InsertParty = z.infer<typeof insertPartySchema>;
+export type InsertPlantMaterial = z.infer<typeof insertPlantMaterialSchema>;
+export type InsertMixTemplate = z.infer<typeof insertMixTemplateSchema>;
+export type InsertMixTemplateComponent = z.infer<typeof insertMixTemplateComponentSchema>;
+export type InsertEquipmentMaster = z.infer<typeof insertEquipmentMasterSchema>;
+export type InsertMaterialReceipt = z.infer<typeof insertMaterialReceiptSchema>;
+export type InsertTruckDispatch = z.infer<typeof insertTruckDispatchSchema>;
+export type InsertEquipmentUsage = z.infer<typeof insertEquipmentUsageSchema>;
+export type InsertGeneratorLog = z.infer<typeof insertGeneratorLogSchema>;
+export type InsertLdoLog = z.infer<typeof insertLdoLogSchema>;
+export type InsertStockBalance = z.infer<typeof insertStockBalanceSchema>;
+
+// Constants for UOM options
+export const UOM_OPTIONS = ["Ton", "MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;
+export const EQUIPMENT_TYPES = ["Generator", "JCB", "Loader", "Tipper", "Truck", "Tractor"] as const;
+export const METER_TYPES = ["hour_meter", "odometer"] as const;
+export const MIX_TYPES = ["BC", "DBM"] as const;
+
+// Default LDO norm (liters per ton)
+export const DEFAULT_LDO_NORM = 6;

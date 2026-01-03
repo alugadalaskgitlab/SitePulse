@@ -1,0 +1,249 @@
+PLANT MODULE PHASE-1 (Build this now, Site module to remain as-is)
+
+We need a Plant Module designed for hot-mix plant operations with per truck/load dispatch entry, party/job-wise material tracking, and plant utility (diesel/LDO) efficiency tracking.
+
+1) App Entry
+
+On app home screen show two buttons:
+
+Site Report
+
+Plant Report
+Plant module work should be under Plant Report.
+
+A) Masters (setup screens)
+A1) Party/Job Master
+
+Allow creating any number of Parties/Jobs:
+
+Job Name (e.g., “Giridhar – BC”, “Venture X – BC”)
+
+Optional notes
+
+A2) Material Master (Dynamic)
+
+Allow admin/manager to add new materials anytime.
+Default materials include:
+
+20mm, 10/12mm, 6mm down, Dust, (optional 40mm)
+
+Bitumen
+
+Emulsion
+
+Diesel
+
+LDO
+Support multiple UOM values:
+
+Ton/MT, Cum, Liters, Kgs, CFT, Barrels (for Emulsion), Nos
+Each material should have allowed UOM(s), but also allow manual override if needed.
+
+A3) Mix Template Master (Flexible + Job-specific variants)
+
+We need mix designs stored as templates, but ventures may ask different designs or only bitumen% differs.
+Implement:
+
+Standard Mix Templates (BC/DBM etc.)
+
+Ability to create a Job-Specific Mix Variant:
+
+Choose base template
+
+Override bitumen% and/or proportions
+Store:
+
+Template Name
+
+Mix Type (BC/DBM)
+
+Proportions (aggregate split)
+
+Bitumen % (approved/theoretical)
+
+Mark whether template is “Standard” or “Job-Specific”
+In dispatch entry, operator selects Job → system shows relevant templates for that Job.
+
+B) Transactions / Daily operations
+B1) Materials Received at Plant (party/job-wise OR plant-utility)
+
+Entry fields:
+
+Date/time
+
+Job/Party (dropdown)
+
+Also include option “PLANT COMMON (Utilities)” for Diesel/LDO/Emulsion receipts if they are plant stock.
+
+Material (dropdown)
+
+Quantity
+
+UOM
+
+Supplier name
+
+Vehicle No
+
+Challan / Receipt / Invoice No
+
+Notes
+
+This should update stock bucket:
+
+If Job selected → add to that job stock
+
+If PLANT COMMON selected → add to plant utility stock
+
+B2) Truck/Load Dispatch Entry (core)
+
+Per dispatched truck load, operator enters (simple):
+
+Date/time (auto)
+
+Job/Party (mandatory)
+
+Mix Type (BC/DBM)
+
+Mix Template (job-specific or standard)
+
+Truck No
+
+Load weight in Tons/MT (mandatory)
+
+(Optional) Delivery location/site name
+
+System then calculates:
+
+Theoretical Consumption (from template)
+
+Theoretical aggregate quantities and theoretical bitumen quantity for this load.
+Store these values.
+
+Actual Consumption (operator input)
+
+Operator must be able to enter actual changes:
+
+Actual Bitumen % (or actual bitumen qty for this load)
+
+Optional: allow small manual adjustments for aggregates (if needed)
+System calculates actual consumption.
+
+Savings tracking
+
+Store both theoretical and actual and compute:
+
+Savings/excess = theoretical – actual (management only)
+
+Stock deduction rule for Phase-1
+
+For now:
+
+Deduct THEORETICAL consumption from the Job’s stock bucket (for clean party reconciliation)
+
+Store ACTUAL only for internal savings/efficiency dashboard
+(Do NOT mix them; keep both stored separately.)
+
+B3) Plant Utilities Log – Diesel & LDO (stock + usage + efficiency)
+
+We must track Diesel and LDO as plant utilities for procurement planning and efficiency.
+
+B3.1 Diesel/LDO Stock Register (Plant Common)
+
+Receipts: from Materials Received (PLANT COMMON)
+
+Issues: daily issues and closing balance
+
+B3.2 Generator Diesel Tracking (Liters/hour)
+
+We have 2 generators: 600 KVA and 40/30 KVA.
+Daily entry per generator:
+
+Date
+
+Generator (dropdown: 600KVA / 40-30KVA)
+
+Start time, End time → auto hours
+
+Opening diesel in tank (liters)
+
+Diesel issued today (liters)
+
+Closing diesel in tank (liters)
+System calculates:
+
+Diesel consumed = opening + issued – closing
+
+Efficiency = liters/hour
+Show daily and date-range summaries.
+
+B3.3 LDO consumption tracking (Liters/ton)
+
+Daily entry:
+
+Date
+
+Opening LDO stock (liters)
+
+LDO received (liters)
+
+LDO issued/consumed (liters) OR closing stock (either way)
+System calculates:
+
+LDO consumed
+
+Total tons produced that day (sum of dispatch loads)
+
+Efficiency = liters/ton (target ~6 L/ton)
+Show daily and date-range summaries.
+
+C) Reports / Dashboard
+C1) Plant Dashboard
+
+Show:
+
+Daily production summary (total tons by mix type, by job)
+
+Stock summary:
+
+Job-wise stock for aggregates/bitumen (opening/received/theoretical consumed/closing)
+
+Plant utilities stock (diesel/LDO)
+
+Generator efficiency report (liters/hour)
+
+LDO efficiency report (liters/ton)
+
+C2) Export / Print
+
+For any selected date range and job:
+
+Export to Excel
+
+Print / Save as PDF (A4)
+Export must clearly show:
+
+Truck/load dispatch list
+
+Theoretical consumption totals
+
+Stock ledger summary (job-wise)
+
+Diesel/LDO summaries & efficiencies
+
+D) Access control (simple for Phase-1)
+
+Plant operator / store can enter data.
+
+Manager/Admin can view dashboards and exports.
+(We can add edit/delete with PIN later once Phase-1 is stable.)
+
+Deliver Phase-1 stable first. Do not add extra features until:
+
+dispatch entry works reliably
+
+stocks update correctly
+
+diesel/LDO efficiency reports work
+
+exports/print show correct outputs

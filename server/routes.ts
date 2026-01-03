@@ -350,10 +350,371 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // PLANT MODULE PHASE-1 - API ROUTES
+  // ============================================
+
+  // Party/Job Master
+  app.get("/api/plant-module/parties", async (req, res) => {
+    try {
+      const partiesList = await storage.getParties();
+      res.json(partiesList);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch parties" });
+    }
+  });
+
+  app.post("/api/plant-module/parties", async (req, res) => {
+    try {
+      const party = await storage.createParty(req.body);
+      res.status(201).json(party);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create party" });
+    }
+  });
+
+  app.patch("/api/plant-module/parties/:id", async (req, res) => {
+    try {
+      const party = await storage.updateParty(Number(req.params.id), req.body);
+      if (!party) return res.status(404).json({ message: "Party not found" });
+      res.json(party);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update party" });
+    }
+  });
+
+  app.delete("/api/plant-module/parties/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteParty(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Party not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete party" });
+    }
+  });
+
+  // Plant Materials Master
+  app.get("/api/plant-module/materials", async (req, res) => {
+    try {
+      const materials = await storage.getPlantMaterials();
+      res.json(materials);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch materials" });
+    }
+  });
+
+  app.post("/api/plant-module/materials", async (req, res) => {
+    try {
+      const material = await storage.createPlantMaterial(req.body);
+      res.status(201).json(material);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create material" });
+    }
+  });
+
+  app.patch("/api/plant-module/materials/:id", async (req, res) => {
+    try {
+      const material = await storage.updatePlantMaterial(Number(req.params.id), req.body);
+      if (!material) return res.status(404).json({ message: "Material not found" });
+      res.json(material);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update material" });
+    }
+  });
+
+  app.delete("/api/plant-module/materials/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deletePlantMaterial(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Material not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete material" });
+    }
+  });
+
+  // Mix Templates
+  app.get("/api/plant-module/mix-templates", async (req, res) => {
+    try {
+      const templates = await storage.getMixTemplates();
+      res.json(templates);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch mix templates" });
+    }
+  });
+
+  app.get("/api/plant-module/mix-templates/:id", async (req, res) => {
+    try {
+      const result = await storage.getMixTemplateWithComponents(Number(req.params.id));
+      if (!result) return res.status(404).json({ message: "Mix template not found" });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch mix template" });
+    }
+  });
+
+  app.post("/api/plant-module/mix-templates", async (req, res) => {
+    try {
+      const { components, ...template } = req.body;
+      const result = await storage.createMixTemplate(template, components);
+      res.status(201).json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create mix template" });
+    }
+  });
+
+  app.patch("/api/plant-module/mix-templates/:id", async (req, res) => {
+    try {
+      const { components, ...template } = req.body;
+      const result = await storage.updateMixTemplate(Number(req.params.id), template, components);
+      if (!result) return res.status(404).json({ message: "Mix template not found" });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update mix template" });
+    }
+  });
+
+  app.delete("/api/plant-module/mix-templates/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMixTemplate(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Mix template not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete mix template" });
+    }
+  });
+
+  // Equipment Master
+  app.get("/api/plant-module/equipment", async (req, res) => {
+    try {
+      const equipmentList = await storage.getEquipmentMaster();
+      res.json(equipmentList);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch equipment" });
+    }
+  });
+
+  app.post("/api/plant-module/equipment", async (req, res) => {
+    try {
+      const equipment = await storage.createEquipment(req.body);
+      res.status(201).json(equipment);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create equipment" });
+    }
+  });
+
+  app.patch("/api/plant-module/equipment/:id", async (req, res) => {
+    try {
+      const equipment = await storage.updateEquipment(Number(req.params.id), req.body);
+      if (!equipment) return res.status(404).json({ message: "Equipment not found" });
+      res.json(equipment);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update equipment" });
+    }
+  });
+
+  app.delete("/api/plant-module/equipment/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteEquipment(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Equipment not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete equipment" });
+    }
+  });
+
+  // Material Receipts
+  app.get("/api/plant-module/material-receipts", async (req, res) => {
+    try {
+      const filters = {
+        partyId: req.query.partyId ? Number(req.query.partyId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const receipts = await storage.getMaterialReceipts(filters);
+      res.json(receipts);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch material receipts" });
+    }
+  });
+
+  app.post("/api/plant-module/material-receipts", async (req, res) => {
+    try {
+      const receipt = await storage.createMaterialReceipt(req.body);
+      res.status(201).json(receipt);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create material receipt" });
+    }
+  });
+
+  // Truck Dispatches
+  app.get("/api/plant-module/dispatches", async (req, res) => {
+    try {
+      const filters = {
+        partyId: req.query.partyId ? Number(req.query.partyId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const dispatches = await storage.getTruckDispatches(filters);
+      res.json(dispatches);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch truck dispatches" });
+    }
+  });
+
+  app.post("/api/plant-module/dispatches", async (req, res) => {
+    try {
+      const dispatch = await storage.createTruckDispatch(req.body);
+      res.status(201).json(dispatch);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create truck dispatch" });
+    }
+  });
+
+  // Equipment Usage
+  app.get("/api/plant-module/equipment-usage", async (req, res) => {
+    try {
+      const filters = {
+        equipmentId: req.query.equipmentId ? Number(req.query.equipmentId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const usage = await storage.getEquipmentUsage(filters);
+      res.json(usage);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch equipment usage" });
+    }
+  });
+
+  app.post("/api/plant-module/equipment-usage", async (req, res) => {
+    try {
+      const usage = await storage.createEquipmentUsage(req.body);
+      res.status(201).json(usage);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create equipment usage" });
+    }
+  });
+
+  // Generator Logs
+  app.get("/api/plant-module/generator-logs", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const logs = await storage.getGeneratorLogs(filters);
+      res.json(logs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch generator logs" });
+    }
+  });
+
+  app.post("/api/plant-module/generator-logs", async (req, res) => {
+    try {
+      const log = await storage.createGeneratorLog(req.body);
+      res.status(201).json(log);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create generator log" });
+    }
+  });
+
+  // LDO Logs
+  app.get("/api/plant-module/ldo-logs", async (req, res) => {
+    try {
+      const filters = {
+        partyId: req.query.partyId ? Number(req.query.partyId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const logs = await storage.getLdoLogs(filters);
+      res.json(logs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch LDO logs" });
+    }
+  });
+
+  app.post("/api/plant-module/ldo-logs", async (req, res) => {
+    try {
+      const log = await storage.createLdoLog(req.body);
+      res.status(201).json(log);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create LDO log" });
+    }
+  });
+
+  // Stock Balances
+  app.get("/api/plant-module/stock-balances", async (req, res) => {
+    try {
+      const partyId = req.query.partyId !== undefined ? Number(req.query.partyId) : undefined;
+      const balances = await storage.getStockBalances(partyId);
+      res.json(balances);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch stock balances" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
+  seedPlantMasterData();
 
   return httpServer;
+}
+
+async function seedPlantMasterData() {
+  const existingMaterials = await storage.getPlantMaterials();
+  if (existingMaterials.length === 0) {
+    console.log("Seeding plant master data...");
+    
+    // Default materials
+    const defaultMaterials = [
+      { name: "20MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
+      { name: "10/12MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
+      { name: "6MM DOWN", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
+      { name: "DUST", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
+      { name: "40MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
+      { name: "BITUMEN", category: "Bitumen", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "Kgs", "Barrels"]) },
+      { name: "EMULSION", category: "Bitumen", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels"]) },
+      { name: "DIESEL", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters"]) },
+      { name: "LDO", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters"]) },
+    ];
+    
+    for (const material of defaultMaterials) {
+      await storage.createPlantMaterial(material);
+    }
+    
+    // Default mix templates
+    await storage.createMixTemplate({
+      name: "BC STANDARD",
+      mixType: "BC",
+      bitumenPercent: 5.2,
+      isStandard: 1,
+      notes: "Standard BC mix design"
+    });
+    
+    await storage.createMixTemplate({
+      name: "DBM STANDARD",
+      mixType: "DBM",
+      bitumenPercent: 4.5,
+      isStandard: 1,
+      notes: "Standard DBM mix design"
+    });
+    
+    // Default generators
+    await storage.createEquipment({
+      name: "600 KVA GENERATOR",
+      equipmentType: "Generator",
+      meterType: "hour_meter",
+      consumptionNorm: 50,
+    });
+    
+    await storage.createEquipment({
+      name: "40-30 KVA GENERATOR",
+      equipmentType: "Generator",
+      meterType: "hour_meter",
+      consumptionNorm: 8,
+    });
+    
+    console.log("Plant master data seeded successfully");
+  }
 }
 
 async function seedDatabase() {

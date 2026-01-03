@@ -10,15 +10,49 @@ import {
   dprVersions,
   plantVersions,
   appSettings,
+  parties,
+  plantMaterials,
+  mixTemplates,
+  mixTemplateComponents,
+  equipmentMaster,
+  materialReceipts,
+  truckDispatches,
+  equipmentUsage,
+  generatorLogs,
+  ldoLogs,
+  stockBalances,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
   type PlantReport,
   type CreatePlantReportRequest,
   type PlantReportWithDetails,
-  type AppSetting
+  type AppSetting,
+  type Party,
+  type InsertParty,
+  type PlantMaterial,
+  type InsertPlantMaterial,
+  type MixTemplate,
+  type InsertMixTemplate,
+  type MixTemplateComponent,
+  type InsertMixTemplateComponent,
+  type EquipmentMasterType,
+  type InsertEquipmentMaster,
+  type MaterialReceipt,
+  type InsertMaterialReceipt,
+  type TruckDispatch,
+  type InsertTruckDispatch,
+  type EquipmentUsage,
+  type InsertEquipmentUsage,
+  type GeneratorLog,
+  type InsertGeneratorLog,
+  type LdoLog,
+  type InsertLdoLog,
+  type StockBalance,
+  type InsertStockBalance,
+  DEFAULT_LDO_NORM
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, notInArray, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, notInArray, sql, asc } from "drizzle-orm";
 import { format } from "date-fns";
 
 export interface IStorage {
@@ -44,6 +78,47 @@ export interface IStorage {
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string): Promise<void>;
   verifyPin(role: "manager" | "admin", pin: string): Promise<boolean>;
+  
+  // Plant Module Phase-1 - Masters
+  getParties(): Promise<Party[]>;
+  createParty(party: InsertParty): Promise<Party>;
+  updateParty(id: number, party: Partial<InsertParty>): Promise<Party | undefined>;
+  deleteParty(id: number): Promise<boolean>;
+  
+  getPlantMaterials(): Promise<PlantMaterial[]>;
+  createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial>;
+  updatePlantMaterial(id: number, material: Partial<InsertPlantMaterial>): Promise<PlantMaterial | undefined>;
+  deletePlantMaterial(id: number): Promise<boolean>;
+  
+  getMixTemplates(): Promise<MixTemplate[]>;
+  getMixTemplateWithComponents(id: number): Promise<{ template: MixTemplate; components: MixTemplateComponent[] } | undefined>;
+  createMixTemplate(template: InsertMixTemplate, components?: InsertMixTemplateComponent[]): Promise<MixTemplate>;
+  updateMixTemplate(id: number, template: Partial<InsertMixTemplate>, components?: InsertMixTemplateComponent[]): Promise<MixTemplate | undefined>;
+  deleteMixTemplate(id: number): Promise<boolean>;
+  
+  getEquipmentMaster(): Promise<EquipmentMasterType[]>;
+  createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType>;
+  updateEquipment(id: number, equipment: Partial<InsertEquipmentMaster>): Promise<EquipmentMasterType | undefined>;
+  deleteEquipment(id: number): Promise<boolean>;
+  
+  // Plant Module Phase-1 - Transactions
+  getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]>;
+  createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt>;
+  
+  getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
+  createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch>;
+  
+  getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
+  createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
+  
+  getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
+  createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog>;
+  
+  getLdoLogs(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]>;
+  createLdoLog(log: InsertLdoLog): Promise<LdoLog>;
+  
+  getStockBalances(partyId?: number): Promise<StockBalance[]>;
+  updateStockBalance(partyId: number | null, materialId: number, quantity: number, uom: string): Promise<StockBalance>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -595,6 +670,319 @@ export class DatabaseStorage implements IStorage {
     } else {
       const adminPin = await this.getSetting("admin_pin");
       return pin === (adminPin || this.DEFAULT_ADMIN_PIN);
+    }
+  }
+
+  // ============================================
+  // PLANT MODULE PHASE-1 - MASTERS IMPLEMENTATION
+  // ============================================
+
+  // Party/Job Master
+  async getParties(): Promise<Party[]> {
+    return db.select().from(parties).where(eq(parties.isActive, 1)).orderBy(asc(parties.name));
+  }
+
+  async createParty(party: InsertParty): Promise<Party> {
+    const uppercased = { ...party, name: party.name.toUpperCase() };
+    const [result] = await db.insert(parties).values(uppercased).returning();
+    return result;
+  }
+
+  async updateParty(id: number, party: Partial<InsertParty>): Promise<Party | undefined> {
+    const updates = { ...party };
+    if (updates.name) updates.name = updates.name.toUpperCase();
+    const [result] = await db.update(parties).set(updates).where(eq(parties.id, id)).returning();
+    return result;
+  }
+
+  async deleteParty(id: number): Promise<boolean> {
+    const [result] = await db.update(parties).set({ isActive: 0 }).where(eq(parties.id, id)).returning();
+    return !!result;
+  }
+
+  // Plant Materials Master
+  async getPlantMaterials(): Promise<PlantMaterial[]> {
+    return db.select().from(plantMaterials).where(eq(plantMaterials.isActive, 1)).orderBy(asc(plantMaterials.name));
+  }
+
+  async createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial> {
+    const uppercased = { ...material, name: material.name.toUpperCase() };
+    const [result] = await db.insert(plantMaterials).values(uppercased).returning();
+    return result;
+  }
+
+  async updatePlantMaterial(id: number, material: Partial<InsertPlantMaterial>): Promise<PlantMaterial | undefined> {
+    const updates = { ...material };
+    if (updates.name) updates.name = updates.name.toUpperCase();
+    const [result] = await db.update(plantMaterials).set(updates).where(eq(plantMaterials.id, id)).returning();
+    return result;
+  }
+
+  async deletePlantMaterial(id: number): Promise<boolean> {
+    const [result] = await db.update(plantMaterials).set({ isActive: 0 }).where(eq(plantMaterials.id, id)).returning();
+    return !!result;
+  }
+
+  // Mix Templates
+  async getMixTemplates(): Promise<MixTemplate[]> {
+    return db.select().from(mixTemplates).where(eq(mixTemplates.isActive, 1)).orderBy(asc(mixTemplates.name));
+  }
+
+  async getMixTemplateWithComponents(id: number): Promise<{ template: MixTemplate; components: MixTemplateComponent[] } | undefined> {
+    const [template] = await db.select().from(mixTemplates).where(eq(mixTemplates.id, id)).limit(1);
+    if (!template) return undefined;
+    const components = await db.select().from(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, id));
+    return { template, components };
+  }
+
+  async createMixTemplate(template: InsertMixTemplate, components?: InsertMixTemplateComponent[]): Promise<MixTemplate> {
+    return db.transaction(async (tx) => {
+      const uppercased = { ...template, name: template.name.toUpperCase() };
+      const [result] = await tx.insert(mixTemplates).values(uppercased).returning();
+      if (components?.length) {
+        await tx.insert(mixTemplateComponents).values(
+          components.map(c => ({ ...c, templateId: result.id }))
+        );
+      }
+      return result;
+    });
+  }
+
+  async updateMixTemplate(id: number, template: Partial<InsertMixTemplate>, components?: InsertMixTemplateComponent[]): Promise<MixTemplate | undefined> {
+    return db.transaction(async (tx) => {
+      const updates = { ...template };
+      if (updates.name) updates.name = updates.name.toUpperCase();
+      const [result] = await tx.update(mixTemplates).set(updates).where(eq(mixTemplates.id, id)).returning();
+      if (components) {
+        await tx.delete(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, id));
+        if (components.length) {
+          await tx.insert(mixTemplateComponents).values(
+            components.map(c => ({ ...c, templateId: id }))
+          );
+        }
+      }
+      return result;
+    });
+  }
+
+  async deleteMixTemplate(id: number): Promise<boolean> {
+    const [result] = await db.update(mixTemplates).set({ isActive: 0 }).where(eq(mixTemplates.id, id)).returning();
+    return !!result;
+  }
+
+  // Equipment Master
+  async getEquipmentMaster(): Promise<EquipmentMasterType[]> {
+    return db.select().from(equipmentMaster).where(eq(equipmentMaster.isActive, 1)).orderBy(asc(equipmentMaster.name));
+  }
+
+  async createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType> {
+    const uppercased = { ...equipment, name: equipment.name.toUpperCase() };
+    const [result] = await db.insert(equipmentMaster).values(uppercased).returning();
+    return result;
+  }
+
+  async updateEquipment(id: number, equipment: Partial<InsertEquipmentMaster>): Promise<EquipmentMasterType | undefined> {
+    const updates = { ...equipment };
+    if (updates.name) updates.name = updates.name.toUpperCase();
+    const [result] = await db.update(equipmentMaster).set(updates).where(eq(equipmentMaster.id, id)).returning();
+    return result;
+  }
+
+  async deleteEquipment(id: number): Promise<boolean> {
+    const [result] = await db.update(equipmentMaster).set({ isActive: 0 }).where(eq(equipmentMaster.id, id)).returning();
+    return !!result;
+  }
+
+  // ============================================
+  // PLANT MODULE PHASE-1 - TRANSACTIONS IMPLEMENTATION
+  // ============================================
+
+  // Material Receipts
+  async getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]> {
+    let conditions = [];
+    if (filters?.partyId) conditions.push(eq(materialReceipts.partyId, filters.partyId));
+    if (filters?.dateFrom) conditions.push(gte(materialReceipts.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(materialReceipts.date, filters.dateTo));
+    
+    return db.select().from(materialReceipts)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(materialReceipts.date));
+  }
+
+  async createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt> {
+    const uppercased = {
+      ...receipt,
+      supplier: receipt.supplier?.toUpperCase(),
+      vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
+    };
+    const [result] = await db.insert(materialReceipts).values(uppercased).returning();
+    
+    // Update stock balance
+    await this.updateStockBalance(
+      receipt.isPlantCommon ? null : (receipt.partyId ?? null),
+      receipt.materialId,
+      receipt.quantity,
+      receipt.uom
+    );
+    
+    return result;
+  }
+
+  // Truck Dispatches
+  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]> {
+    let conditions = [];
+    if (filters?.partyId) conditions.push(eq(truckDispatches.partyId, filters.partyId));
+    if (filters?.dateFrom) conditions.push(gte(truckDispatches.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(truckDispatches.date, filters.dateTo));
+    
+    return db.select().from(truckDispatches)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(truckDispatches.date));
+  }
+
+  async createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch> {
+    // Get mix template to calculate theoretical consumption
+    const [template] = await db.select().from(mixTemplates).where(eq(mixTemplates.id, dispatch.mixTemplateId)).limit(1);
+    
+    const theoreticalBitumenPercent = template?.bitumenPercent || 0;
+    const theoreticalBitumenQty = (dispatch.loadWeight * theoreticalBitumenPercent) / 100;
+    
+    const uppercased = {
+      ...dispatch,
+      truckNumber: dispatch.truckNumber.toUpperCase(),
+      deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
+      theoreticalBitumenPercent,
+      theoreticalBitumenQty,
+    };
+    
+    const [result] = await db.insert(truckDispatches).values(uppercased).returning();
+    return result;
+  }
+
+  // Equipment Usage
+  async getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]> {
+    let conditions = [];
+    if (filters?.equipmentId) conditions.push(eq(equipmentUsage.equipmentId, filters.equipmentId));
+    if (filters?.dateFrom) conditions.push(gte(equipmentUsage.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(equipmentUsage.date, filters.dateTo));
+    
+    return db.select().from(equipmentUsage)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(equipmentUsage.date));
+  }
+
+  async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
+    // Get equipment to calculate expected diesel
+    const [equipment] = await db.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
+    
+    const hoursOrKmRun = usage.closingReading - usage.openingReading;
+    const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+    const variance = expectedDiesel - (usage.dieselIssued || 0);
+    
+    const [result] = await db.insert(equipmentUsage).values({
+      ...usage,
+      hoursOrKmRun,
+      expectedDiesel,
+      variance,
+    }).returning();
+    
+    return result;
+  }
+
+  // Generator Logs
+  async getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]> {
+    let conditions = [];
+    if (filters?.dateFrom) conditions.push(gte(generatorLogs.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(generatorLogs.date, filters.dateTo));
+    
+    return db.select().from(generatorLogs)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(generatorLogs.date));
+  }
+
+  async createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog> {
+    // Calculate diesel consumed and efficiency
+    const dieselConsumed = (log.openingDiesel || 0) + (log.dieselIssued || 0) - (log.closingDiesel || 0);
+    const hoursRun = log.hoursRun || 0;
+    const efficiency = hoursRun > 0 ? dieselConsumed / hoursRun : 0;
+    
+    const [result] = await db.insert(generatorLogs).values({
+      ...log,
+      generatorName: log.generatorName.toUpperCase(),
+      dieselConsumed,
+      efficiency,
+    }).returning();
+    
+    return result;
+  }
+
+  // LDO Logs
+  async getLdoLogs(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]> {
+    let conditions = [];
+    if (filters?.partyId) conditions.push(eq(ldoLogs.partyId, filters.partyId));
+    if (filters?.dateFrom) conditions.push(gte(ldoLogs.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(ldoLogs.date, filters.dateTo));
+    
+    return db.select().from(ldoLogs)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(ldoLogs.date));
+  }
+
+  async createLdoLog(log: InsertLdoLog): Promise<LdoLog> {
+    // Calculate expected LDO based on tons produced
+    const tonsProduced = log.tonsProduced || 0;
+    const expectedLdo = tonsProduced * DEFAULT_LDO_NORM;
+    const ldoConsumed = log.ldoConsumed || 0;
+    const variance = expectedLdo - ldoConsumed;
+    const efficiency = tonsProduced > 0 ? ldoConsumed / tonsProduced : 0;
+    
+    const [result] = await db.insert(ldoLogs).values({
+      ...log,
+      expectedLdo,
+      variance,
+      efficiency,
+    }).returning();
+    
+    return result;
+  }
+
+  // Stock Balances
+  async getStockBalances(partyId?: number): Promise<StockBalance[]> {
+    if (partyId !== undefined) {
+      return db.select().from(stockBalances).where(
+        partyId === null 
+          ? sql`${stockBalances.partyId} IS NULL`
+          : eq(stockBalances.partyId, partyId)
+      );
+    }
+    return db.select().from(stockBalances);
+  }
+
+  async updateStockBalance(partyId: number | null, materialId: number, quantity: number, uom: string): Promise<StockBalance> {
+    // Find existing balance
+    const condition = partyId === null 
+      ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, materialId))
+      : and(eq(stockBalances.partyId, partyId), eq(stockBalances.materialId, materialId));
+    
+    const [existing] = await db.select().from(stockBalances).where(condition).limit(1);
+    
+    if (existing) {
+      const [result] = await db.update(stockBalances)
+        .set({ 
+          balance: existing.balance + quantity,
+          lastUpdated: new Date()
+        })
+        .where(eq(stockBalances.id, existing.id))
+        .returning();
+      return result;
+    } else {
+      const [result] = await db.insert(stockBalances).values({
+        partyId,
+        materialId,
+        balance: quantity,
+        uom,
+      }).returning();
+      return result;
     }
   }
 }
