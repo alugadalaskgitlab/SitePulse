@@ -74,3 +74,30 @@ Preferred communication style: Simple, everyday language.
 
 ### Date Utilities
 - `date-fns` for date formatting and manipulation
+
+## Plant Module - Stock & Production Accounting
+
+### Data Flow
+1. **Material Receipts** (Stock IN) → Creates +quantity ledger entry → Updates party/plant-common stock balance
+2. **Mix Templates** define consumption rules: aggregate kgPerTon, bitumen %, LDO norm (L/ton)
+3. **Truck Dispatch** (Single Source of Truth) → Computes theoretical consumption → Deducts stock (party-first, plant-common fallback) → Creates ledger entries
+4. **Dashboard** derives all values from ledger: stock balances, efficiency, savings, shortages
+
+### Stock Deduction Priority
+1. Party-specific stock first
+2. Plant common stock as fallback
+3. Shortage flagged only if combined stock insufficient
+
+### Diesel Consumption Formula
+- **Primary**: (Opening diesel + Diesel issued) - Closing diesel
+- **Fallback** (if closing not entered): Hours run × diesel norm (5 L/hr default)
+- **Validation**: Cannot be negative, cannot exceed (opening + issued)
+
+### Access Control
+- **Engineer**: View only, cannot edit actual consumption
+- **Manager/Admin**: Can record actual consumption (for analysis only - doesn't affect stock deductions)
+
+### Key Business Rules
+- Stock balances are always derived from ledger - no manual entry
+- Theoretical consumption is used for stock deduction
+- Actual consumption is for management analysis (savings/wastage)
