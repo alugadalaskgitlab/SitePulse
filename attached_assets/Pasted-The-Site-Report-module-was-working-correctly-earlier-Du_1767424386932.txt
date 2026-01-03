@@ -1,0 +1,130 @@
+The Site Report module was working correctly earlier. During recent changes to show only “latest edited reports” in the admin list, the core edit/save/versioning logic has broken. Please correct the following precisely.
+
+1️⃣ Restore Manager/Admin Edit Save Functionality (Critical Bug)
+
+Currently, when a Manager or Admin edits a report, the changes are NOT being saved.
+
+The timestamp is not updating, and the edited content is lost.
+
+This is a regression caused by recent filtering logic.
+
+Required fix:
+
+When a Manager/Admin edits a report and clicks Save, the edited report must be persisted in the database.
+
+A proper timestamp must be saved (editedAt).
+
+The edited report must be visible after refresh.
+
+2️⃣ Correct Versioning Logic (Do NOT break history)
+
+Please follow this exact logic:
+
+When Site Engineer submits a report
+
+Save as base/original report
+
+Fields: createdAt, createdBy
+
+When Manager edits
+
+Create a NEW RECORD (do not overwrite original)
+
+Link to original via parentReportId
+
+Save:
+
+editedBy = Manager
+
+editedAt = timestamp
+
+Display label:
+
+“Edited by Manager – YYYY-MM-DD HH:MM”
+
+When Admin edits
+
+Admin may:
+
+either overwrite latest version OR
+
+create another version (preferred)
+
+In both cases:
+
+editedBy = Admin
+
+editedAt = timestamp
+
+Delete option remains Admin only
+
+⚠️ Do NOT delete or hide older versions from database
+Only control what is shown by default in the list.
+
+3️⃣ Admin List View: Show ONLY Latest Version (but keep all saved)
+
+Your recent change attempted this but broke saving.
+
+Correct behavior should be:
+
+In Site Reports list:
+
+Show only the latest version per site + date
+
+If multiple versions exist (original + edits), show only the most recent
+
+BUT:
+
+All previous versions must still exist in DB
+
+Opening the latest report should still allow viewing history later (future feature)
+
+👉 This is a UI filtering problem, not a data deletion problem.
+
+4️⃣ Editing Screen Must Load Latest Data
+
+When clicking Edit, load the latest saved version, not the original.
+
+After save:
+
+Redirect back to report view
+
+Show updated timestamp immediately
+
+5️⃣ Chainage-Based Length Auto-Calculation (Improvement – Safe to Add)
+
+Now add this enhancement without breaking existing logic:
+
+When user enters:
+
+From Chainage (e.g., 4+300)
+
+To Chainage (e.g., 4+450)
+
+Automatically calculate:
+
+Length = 150 m
+
+Display calculated length in the Length field
+
+Allow manual override if needed
+
+⚠️ This must not affect saved reports or edit logic.
+
+6️⃣ Regression Rule (Very Important)
+
+Please verify after fixes that:
+
+Manager/Admin edits are saved
+
+Timestamp updates correctly
+
+Latest version shows in list
+
+Older versions are not deleted
+
+Page refresh does NOT lose edits
+
+📌 SUMMARY FOR REPLIT
+
+Please fix the regression caused by “latest report filtering”, restore proper edit/save/versioning behavior, and then add chainage-based auto length calculation carefully without touching save logic
