@@ -161,27 +161,37 @@ export class DatabaseStorage implements IStorage {
     const submittedAt = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     
     return await db.transaction(async (tx) => {
-      // 1. Insert DPR Header with submission timestamp
+      // 1. Insert DPR Header with submission timestamp (uppercase text fields)
       const [newDpr] = await tx.insert(dprs).values({
         date: dprData.date,
-        site: dprData.site,
-        engineer: dprData.engineer,
+        site: dprData.site.toUpperCase(),
+        engineer: dprData.engineer.toUpperCase(),
         submittedAt: submittedAt,
       }).returning();
 
       const dprId = newDpr.id;
 
-      // 2. Insert Progress Entries
+      // 2. Insert Progress Entries with uppercase text fields
       if (dprData.progress?.length) {
         await tx.insert(progressEntries).values(
-          dprData.progress.map(p => ({ ...p, dprId }))
+          dprData.progress.map(p => ({ 
+            ...p, 
+            dprId,
+            activity: p.activity?.toUpperCase() || p.activity,
+          }))
         );
       }
 
-      // 3. Insert Equipment Logs
+      // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
         await tx.insert(equipmentLogs).values(
-          dprData.equipment.map(e => ({ ...e, dprId }))
+          dprData.equipment.map(e => ({ 
+            ...e, 
+            dprId,
+            machine: e.machine?.toUpperCase() || e.machine,
+            operator: e.operator?.toUpperCase() || e.operator,
+            task: e.task?.toUpperCase() || e.task,
+          }))
         );
       }
 
@@ -192,10 +202,16 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // 5. Insert Material Logs
+      // 5. Insert Material Logs with uppercase text fields
       if (dprData.materials?.length) {
         await tx.insert(materialLogs).values(
-          dprData.materials.map(m => ({ ...m, dprId }))
+          dprData.materials.map(m => ({ 
+            ...m, 
+            dprId,
+            vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
+            supplier: m.supplier?.toUpperCase() || m.supplier,
+            location: m.location?.toUpperCase() || m.location,
+          }))
         );
       }
 
@@ -259,24 +275,28 @@ export class DatabaseStorage implements IStorage {
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : "Admin";
+    
+    // Strip any existing suffix and get base site name, then add new suffix
+    const baseSite = this.getBaseSiteName(original.site);
+    const newSiteName = `${baseSite.toUpperCase()} – Copy by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
       // Create a copy of the DPR with timestamp and role tag
       const [newDpr] = await tx.insert(dprs).values({
         date: original.date,
-        site: `${original.site} – Copy by ${roleName} – ${dateTime}`,
-        engineer: original.engineer,
+        site: newSiteName,
+        engineer: original.engineer.toUpperCase(),
         role: editedBy,
       }).returning();
 
       const dprId = newDpr.id;
 
-      // Copy progress entries
+      // Copy progress entries with uppercase
       if (original.progress?.length) {
         await tx.insert(progressEntries).values(
           original.progress.map(p => ({
             dprId,
-            activity: p.activity,
+            activity: p.activity?.toUpperCase() || p.activity,
             chainageFrom: p.chainageFrom,
             chainageTo: p.chainageTo,
             side: p.side,
@@ -289,17 +309,17 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // Copy equipment logs
+      // Copy equipment logs with uppercase
       if (original.equipment?.length) {
         await tx.insert(equipmentLogs).values(
           original.equipment.map(e => ({
             dprId,
-            machine: e.machine,
-            operator: e.operator,
+            machine: e.machine?.toUpperCase() || e.machine,
+            operator: e.operator?.toUpperCase() || e.operator,
             startTime: e.startTime,
             endTime: e.endTime,
             diesel: e.diesel,
-            task: e.task,
+            task: e.task?.toUpperCase() || e.task,
           }))
         );
       }
@@ -316,18 +336,18 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // Copy material logs
+      // Copy material logs with uppercase
       if (original.materials?.length) {
         await tx.insert(materialLogs).values(
           original.materials.map(m => ({
             dprId,
             type: m.type,
             material: m.material,
-            supplier: m.supplier,
+            supplier: m.supplier?.toUpperCase() || m.supplier,
             quantity: m.quantity,
             uom: m.uom,
-            vehicleNumber: m.vehicleNumber,
-            location: m.location,
+            vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
+            location: m.location?.toUpperCase() || m.location,
             receiptNumber: m.receiptNumber,
           }))
         );
@@ -348,29 +368,43 @@ export class DatabaseStorage implements IStorage {
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : "Admin";
+    
+    // Strip any existing suffix and get base site name, then add new suffix
+    const baseSite = this.getBaseSiteName(dprData.site);
+    const newSiteName = `${baseSite.toUpperCase()} – Edited by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
       // Create new DPR with edited data and timestamp
       const [newDpr] = await tx.insert(dprs).values({
         date: dprData.date,
-        site: `${dprData.site} – Edited by ${roleName} – ${dateTime}`,
-        engineer: dprData.engineer,
+        site: newSiteName,
+        engineer: dprData.engineer.toUpperCase(),
         role: editedBy,
       }).returning();
 
       const dprId = newDpr.id;
 
-      // Insert edited progress entries
+      // Insert edited progress entries with uppercase text fields
       if (dprData.progress?.length) {
         await tx.insert(progressEntries).values(
-          dprData.progress.map(p => ({ ...p, dprId }))
+          dprData.progress.map(p => ({ 
+            ...p, 
+            dprId,
+            activity: p.activity?.toUpperCase() || p.activity,
+          }))
         );
       }
 
-      // Insert edited equipment logs
+      // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
         await tx.insert(equipmentLogs).values(
-          dprData.equipment.map(e => ({ ...e, dprId }))
+          dprData.equipment.map(e => ({ 
+            ...e, 
+            dprId,
+            machine: e.machine?.toUpperCase() || e.machine,
+            operator: e.operator?.toUpperCase() || e.operator,
+            task: e.task?.toUpperCase() || e.task,
+          }))
         );
       }
 
@@ -381,10 +415,16 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // Insert edited material logs
+      // Insert edited material logs with uppercase text fields
       if (dprData.materials?.length) {
         await tx.insert(materialLogs).values(
-          dprData.materials.map(m => ({ ...m, dprId }))
+          dprData.materials.map(m => ({ 
+            ...m, 
+            dprId,
+            vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
+            supplier: m.supplier?.toUpperCase() || m.supplier,
+            location: m.location?.toUpperCase() || m.location,
+          }))
         );
       }
 
