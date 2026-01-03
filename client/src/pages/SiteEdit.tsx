@@ -362,6 +362,7 @@ export default function SiteEdit() {
               placeholder="Site name"
               value={header.site}
               onChange={(e) => setHeader({ ...header, site: e.target.value })}
+              className="uppercase"
               data-testid="input-site"
             />
           </div>
@@ -371,6 +372,7 @@ export default function SiteEdit() {
               placeholder="Engineer name"
               value={header.engineer}
               onChange={(e) => setHeader({ ...header, engineer: e.target.value })}
+              className="uppercase"
               data-testid="input-engineer"
             />
           </div>
@@ -397,6 +399,7 @@ export default function SiteEdit() {
                     updated[idx].activity = e.target.value;
                     setProgress(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-activity-${idx}`}
                 />
               </div>
@@ -547,6 +550,7 @@ export default function SiteEdit() {
                     updated[idx].machine = e.target.value;
                     setEquipment(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-machine-${idx}`}
                 />
               </div>
@@ -560,6 +564,7 @@ export default function SiteEdit() {
                     updated[idx].operator = e.target.value;
                     setEquipment(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-operator-${idx}`}
                 />
               </div>
@@ -573,6 +578,7 @@ export default function SiteEdit() {
                     updated[idx].task = e.target.value;
                     setEquipment(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-equipment-task-${idx}`}
                 />
               </div>
@@ -804,6 +810,7 @@ export default function SiteEdit() {
                     updated[idx].vehicleNumber = e.target.value;
                     setMaterials(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-material-vehicle-${idx}`}
                 />
               </div>
@@ -817,6 +824,7 @@ export default function SiteEdit() {
                     updated[idx].supplier = e.target.value;
                     setMaterials(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-material-supplier-${idx}`}
                 />
               </div>
@@ -831,6 +839,7 @@ export default function SiteEdit() {
                       updated[idx].location = e.target.value;
                       setMaterials(updated);
                     }}
+                    className="uppercase"
                     data-testid={`input-material-location-${idx}`}
                   />
                 </div>
