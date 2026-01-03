@@ -84,10 +84,19 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  // Helper to extract base site name (strips " – Edited by..." suffix)
+  // Helper to extract base site name (strips " – Edited by..." or " – Copy by..." suffix)
   private getBaseSiteName(site: string): string {
+    // Check for both edit and copy suffixes
     const editedIndex = site.indexOf(' – Edited by');
-    return editedIndex > 0 ? site.substring(0, editedIndex) : site;
+    const copyIndex = site.indexOf(' – Copy by');
+    
+    if (editedIndex > 0) {
+      return site.substring(0, editedIndex);
+    }
+    if (copyIndex > 0) {
+      return site.substring(0, copyIndex);
+    }
+    return site;
   }
 
   // Helper to get the effective timestamp for comparison (submittedAt or createdAt)
