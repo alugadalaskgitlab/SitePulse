@@ -98,8 +98,9 @@ export default function SiteReport() {
 
   const handleAdminEdit = () => {
     if (authenticatedRole && authenticatedPin) {
-      // Store PIN in sessionStorage (not exposed in URL)
+      // Store PIN and role in sessionStorage (not exposed in URL)
       sessionStorage.setItem(`edit_pin_${id}`, authenticatedPin);
+      sessionStorage.setItem(`auth_role_${id}`, authenticatedRole);
       setLocation(`/site/edit/${id}`);
     }
   };

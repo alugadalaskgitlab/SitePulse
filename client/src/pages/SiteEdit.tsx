@@ -88,19 +88,22 @@ export default function SiteEdit() {
   const { toast } = useToast();
   const id = parseInt(params?.id || "0");
 
-  // Get PIN and role from sessionStorage once and store in state (set by SiteReport before navigating)
+  // Get PIN and role from sessionStorage (set by SiteReport before navigating)
+  // Keep credentials in sessionStorage until successful save to handle page refresh
   const [pin] = useState(() => {
-    const storedPin = sessionStorage.getItem(`edit_pin_${id}`) || "";
-    // Clear from sessionStorage immediately after reading for security
-    sessionStorage.removeItem(`edit_pin_${id}`);
-    return storedPin;
+    return sessionStorage.getItem(`edit_pin_${id}`) || "";
   });
   
   const [role] = useState<"manager" | "admin">(() => {
     const storedRole = sessionStorage.getItem(`auth_role_${id}`) || "manager";
-    sessionStorage.removeItem(`auth_role_${id}`);
     return storedRole as "manager" | "admin";
   });
+  
+  // Clear credentials after successful save
+  const clearCredentials = () => {
+    sessionStorage.removeItem(`edit_pin_${id}`);
+    sessionStorage.removeItem(`auth_role_${id}`);
+  };
 
   const { data: dpr, isLoading } = useDpr(id);
 
@@ -197,6 +200,8 @@ export default function SiteEdit() {
       return response.json();
     },
     onSuccess: (newVersion) => {
+      // Clear credentials after successful save
+      clearCredentials();
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dprs", id] });
       toast({
