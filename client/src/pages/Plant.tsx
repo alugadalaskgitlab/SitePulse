@@ -1,25 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Factory, ChevronRight, Calendar, Loader2 } from "lucide-react";
-import { format } from "date-fns";
-
-interface PlantReport {
-  id: number;
-  date: string;
-  siteName: string;
-  createdAt: string;
-}
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2 } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType } from "@shared/schema";
+import { EQUIPMENT_TYPES, METER_TYPES, MIX_TYPES } from "@shared/schema";
 
 export default function Plant() {
-  const { data: reports, isLoading } = useQuery<PlantReport[]>({
-    queryKey: ['/api/plant'],
-  });
-
+  const [activeTab, setActiveTab] = useState("operations");
+  
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Header */}
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href="/">
@@ -29,80 +29,784 @@ export default function Plant() {
           </Link>
           <div>
             <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Plant Module</h1>
-            <p className="text-muted-foreground mt-1">Manage plant production and material logs</p>
+            <p className="text-muted-foreground mt-1">Hot-mix plant operations and material tracking</p>
           </div>
         </div>
-        <Link href="/plant/new">
-          <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25" data-testid="button-new-plant-report">
-            <Plus className="w-4 h-4" /> New Plant Report
-          </Button>
-        </Link>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="border-l-4 border-l-purple-500">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Plant Reports</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{reports?.length || 0}</div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Plants</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {reports ? new Set(reports.map(r => r.siteName)).size : 0}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="operations" className="gap-2">
+            <Truck className="w-4 h-4" />
+            <span className="hidden sm:inline">Operations</span>
+          </TabsTrigger>
+          <TabsTrigger value="utilities" className="gap-2">
+            <Gauge className="w-4 h-4" />
+            <span className="hidden sm:inline">Utilities</span>
+          </TabsTrigger>
+          <TabsTrigger value="masters" className="gap-2">
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline">Masters</span>
+          </TabsTrigger>
+          <TabsTrigger value="dashboard" className="gap-2">
+            <Layers className="w-4 h-4" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="operations" className="mt-6">
+          <OperationsTab />
+        </TabsContent>
+
+        <TabsContent value="utilities" className="mt-6">
+          <UtilitiesTab />
+        </TabsContent>
+
+        <TabsContent value="masters" className="mt-6">
+          <MastersTab />
+        </TabsContent>
+
+        <TabsContent value="dashboard" className="mt-6">
+          <DashboardTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function OperationsTab() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Link href="/plant/material-receipts">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Package className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Material Receipts</h3>
+              <p className="text-sm text-muted-foreground">Record incoming materials by party/job</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href="/plant/dispatches">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <Truck className="w-7 h-7 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Truck Dispatches</h3>
+              <p className="text-sm text-muted-foreground">Log outgoing truck loads with mix data</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href="/plant/equipment-usage">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <Gauge className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Equipment Usage</h3>
+              <p className="text-sm text-muted-foreground">Track meter readings and fuel consumption</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href="/plant/stock">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <Layers className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Stock Balances</h3>
+              <p className="text-sm text-muted-foreground">View party-wise and plant stock</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
+  );
+}
+
+function UtilitiesTab() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Link href="/plant/generator-logs">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+              <Gauge className="w-7 h-7 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Generator Diesel Tracking</h3>
+              <p className="text-sm text-muted-foreground">Track diesel consumption per generator (L/hr)</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href="/plant/ldo-logs">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <Droplets className="w-7 h-7 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">LDO Consumption Tracking</h3>
+              <p className="text-sm text-muted-foreground">Track LDO usage vs production (L/ton)</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
+  );
+}
+
+function MastersTab() {
+  return (
+    <div className="space-y-6">
+      <PartyMaster />
+      <MaterialMaster />
+      <MixTemplateMaster />
+      <EquipmentMasterSection />
+    </div>
+  );
+}
+
+function PartyMaster() {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingParty, setEditingParty] = useState<Party | null>(null);
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const { data: parties, isLoading } = useQuery<Party[]>({
+    queryKey: ["/api/plant-module/parties"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; notes?: string }) =>
+      apiRequest("POST", "/api/plant-module/parties", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "Party created successfully" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { name: string; notes?: string } }) =>
+      apiRequest("PATCH", `/api/plant-module/parties/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "Party updated successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/parties/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
+      toast({ title: "Party deleted successfully" });
+    },
+  });
+
+  const resetForm = () => {
+    setName("");
+    setNotes("");
+    setEditingParty(null);
+  };
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    if (editingParty) {
+      updateMutation.mutate({ id: editingParty.id, data: { name, notes } });
+    } else {
+      createMutation.mutate({ name, notes });
+    }
+  };
+
+  const openEdit = (party: Party) => {
+    setEditingParty(party);
+    setName(party.name);
+    setNotes(party.notes || "");
+    setDialogOpen(true);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <CardTitle className="flex items-center gap-2">
+          <Users className="w-5 h-5" />
+          Party/Job Master
+        </CardTitle>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-1" data-testid="button-add-party">
+              <Plus className="w-4 h-4" /> Add Party
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingParty ? "Edit Party" : "Add New Party"}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label htmlFor="party-name">Party/Job Name</Label>
+                <Input
+                  id="party-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Giridhar - BC"
+                  data-testid="input-party-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="party-notes">Notes (optional)</Label>
+                <Textarea
+                  id="party-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Additional notes..."
+                  data-testid="input-party-notes"
+                />
+              </div>
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-party">
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingParty ? "Update" : "Create"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : !parties?.length ? (
+          <p className="text-muted-foreground text-center py-6">No parties added yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {parties.map((party) => (
+              <div key={party.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                <div>
+                  <p className="font-medium">{party.name}</p>
+                  {party.notes && <p className="text-sm text-muted-foreground">{party.notes}</p>}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(party)} data-testid={`button-edit-party-${party.id}`}>
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(party.id)} data-testid={`button-delete-party-${party.id}`}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MaterialMaster() {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
+  const [defaultUom, setDefaultUom] = useState("Ton");
+
+  const { data: materials, isLoading } = useQuery<PlantMaterial[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; category?: string; defaultUom: string }) =>
+      apiRequest("POST", "/api/plant-module/materials", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
+      setDialogOpen(false);
+      setName("");
+      setCategory("");
+      toast({ title: "Material created successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/materials/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
+      toast({ title: "Material deleted successfully" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <CardTitle className="flex items-center gap-2">
+          <Package className="w-5 h-5" />
+          Material Master
+        </CardTitle>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-1" data-testid="button-add-material">
+              <Plus className="w-4 h-4" /> Add Material
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Material</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label htmlFor="material-name">Material Name</Label>
+                <Input
+                  id="material-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., 20mm Aggregate"
+                  data-testid="input-material-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="material-category">Category</Label>
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger data-testid="select-material-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Aggregate">Aggregate</SelectItem>
+                    <SelectItem value="Bitumen">Bitumen</SelectItem>
+                    <SelectItem value="Utility">Utility</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="material-uom">Default UOM</Label>
+                <Select value={defaultUom} onValueChange={setDefaultUom}>
+                  <SelectTrigger data-testid="select-material-uom">
+                    <SelectValue placeholder="Select UOM" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Ton">Ton</SelectItem>
+                    <SelectItem value="MT">MT</SelectItem>
+                    <SelectItem value="Cum">Cum</SelectItem>
+                    <SelectItem value="Liters">Liters</SelectItem>
+                    <SelectItem value="Kgs">Kgs</SelectItem>
+                    <SelectItem value="CFT">CFT</SelectItem>
+                    <SelectItem value="Barrels">Barrels</SelectItem>
+                    <SelectItem value="Nos">Nos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={() => createMutation.mutate({ name, category, defaultUom })} className="w-full" disabled={createMutation.isPending || !name.trim()} data-testid="button-save-material">
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : !materials?.length ? (
+          <p className="text-muted-foreground text-center py-6">No materials added yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+            {materials.map((material) => (
+              <div key={material.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                <div>
+                  <p className="font-medium">{material.name}</p>
+                  <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MixTemplateMaster() {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [mixType, setMixType] = useState("BC");
+  const [bitumenPercent, setBitumenPercent] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const { data: templates, isLoading } = useQuery<MixTemplate[]>({
+    queryKey: ["/api/plant-module/mix-templates"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; mixType: string; bitumenPercent?: number; notes?: string }) =>
+      apiRequest("POST", "/api/plant-module/mix-templates", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
+      setDialogOpen(false);
+      setName("");
+      setBitumenPercent("");
+      setNotes("");
+      toast({ title: "Mix template created successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/mix-templates/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
+      toast({ title: "Mix template deleted successfully" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <CardTitle className="flex items-center gap-2">
+          <Layers className="w-5 h-5" />
+          Mix Template Master
+        </CardTitle>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-1" data-testid="button-add-mix-template">
+              <Plus className="w-4 h-4" /> Add Template
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Mix Template</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label htmlFor="template-name">Template Name</Label>
+                <Input
+                  id="template-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., BC Standard"
+                  data-testid="input-template-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="mix-type">Mix Type</Label>
+                <Select value={mixType} onValueChange={setMixType}>
+                  <SelectTrigger data-testid="select-mix-type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MIX_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="bitumen-percent">Bitumen % (Theoretical)</Label>
+                <Input
+                  id="bitumen-percent"
+                  type="number"
+                  step="0.1"
+                  value={bitumenPercent}
+                  onChange={(e) => setBitumenPercent(e.target.value)}
+                  placeholder="e.g., 5.2"
+                  data-testid="input-bitumen-percent"
+                />
+              </div>
+              <div>
+                <Label htmlFor="template-notes">Notes</Label>
+                <Textarea
+                  id="template-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Additional notes..."
+                  data-testid="input-template-notes"
+                />
+              </div>
+              <Button 
+                onClick={() => createMutation.mutate({ 
+                  name, 
+                  mixType, 
+                  bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
+                  notes 
+                })} 
+                className="w-full" 
+                disabled={createMutation.isPending || !name.trim()}
+                data-testid="button-save-template"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : !templates?.length ? (
+          <p className="text-muted-foreground text-center py-6">No mix templates added yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {templates.map((template) => (
+              <div key={template.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                <div>
+                  <p className="font-medium">{template.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {template.mixType} - Bitumen: {template.bitumenPercent}%
+                    {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(template.id)} data-testid={`button-delete-template-${template.id}`}>
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EquipmentMasterSection() {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [equipmentType, setEquipmentType] = useState("Generator");
+  const [meterType, setMeterType] = useState("hour_meter");
+  const [consumptionNorm, setConsumptionNorm] = useState("");
+
+  const { data: equipment, isLoading } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; equipmentType: string; meterType: string; consumptionNorm?: number }) =>
+      apiRequest("POST", "/api/plant-module/equipment", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+      setDialogOpen(false);
+      setName("");
+      setConsumptionNorm("");
+      toast({ title: "Equipment created successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/equipment/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+      toast({ title: "Equipment deleted successfully" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <CardTitle className="flex items-center gap-2">
+          <Gauge className="w-5 h-5" />
+          Equipment Master
+        </CardTitle>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-1" data-testid="button-add-equipment">
+              <Plus className="w-4 h-4" /> Add Equipment
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Equipment</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label htmlFor="equipment-name">Equipment Name</Label>
+                <Input
+                  id="equipment-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., 600 KVA Generator"
+                  data-testid="input-equipment-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="equipment-type">Equipment Type</Label>
+                <Select value={equipmentType} onValueChange={setEquipmentType}>
+                  <SelectTrigger data-testid="select-equipment-type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EQUIPMENT_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="meter-type">Meter Type</Label>
+                <Select value={meterType} onValueChange={setMeterType}>
+                  <SelectTrigger data-testid="select-meter-type">
+                    <SelectValue placeholder="Select meter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hour_meter">Hour Meter (hrs)</SelectItem>
+                    <SelectItem value="odometer">Odometer (km)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="consumption-norm">Consumption Norm ({meterType === "hour_meter" ? "L/hr" : "L/km"})</Label>
+                <Input
+                  id="consumption-norm"
+                  type="number"
+                  step="0.1"
+                  value={consumptionNorm}
+                  onChange={(e) => setConsumptionNorm(e.target.value)}
+                  placeholder="e.g., 50"
+                  data-testid="input-consumption-norm"
+                />
+              </div>
+              <Button 
+                onClick={() => createMutation.mutate({ 
+                  name, 
+                  equipmentType, 
+                  meterType,
+                  consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
+                })} 
+                className="w-full" 
+                disabled={createMutation.isPending || !name.trim()}
+                data-testid="button-save-equipment"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : !equipment?.length ? (
+          <p className="text-muted-foreground text-center py-6">No equipment added yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {equipment.map((equip) => (
+              <div key={equip.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                <div>
+                  <p className="font-medium">{equip.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {equip.equipmentType} - {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} - 
+                    Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(equip.id)} data-testid={`button-delete-equipment-${equip.id}`}>
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardTab() {
+  const { data: dispatches } = useQuery<any[]>({ queryKey: ["/api/plant-module/dispatches"] });
+  const { data: generatorLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/generator-logs"] });
+  const { data: ldoLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/ldo-logs"] });
+
+  const totalTons = dispatches?.reduce((sum, d) => sum + (d.loadWeight || 0), 0) || 0;
+  const avgGeneratorEfficiency = generatorLogs?.length 
+    ? (generatorLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / generatorLogs.length).toFixed(2)
+    : "N/A";
+  const avgLdoEfficiency = ldoLogs?.length
+    ? (ldoLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / ldoLogs.length).toFixed(2)
+    : "N/A";
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Production</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{totalTons.toFixed(1)} MT</div>
+            <p className="text-xs text-muted-foreground mt-1">{dispatches?.length || 0} dispatches</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Generator Efficiency</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{avgGeneratorEfficiency} L/hr</div>
+            <p className="text-xs text-muted-foreground mt-1">Average diesel consumption</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">LDO Efficiency</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{avgLdoEfficiency} L/ton</div>
+            <p className="text-xs text-muted-foreground mt-1">Target: 6 L/ton</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Reports List */}
-      <Card className="shadow-sm">
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-muted-foreground" />
-            Plant Reports
-          </CardTitle>
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex justify-center p-12">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : !reports?.length ? (
-            <div className="p-12 text-center">
-              <Factory className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
-              <p className="text-muted-foreground">No plant reports yet.</p>
-              <p className="text-sm text-muted-foreground/70">Create your first plant report to get started.</p>
-            </div>
+        <CardContent>
+          {!dispatches?.length && !generatorLogs?.length ? (
+            <p className="text-muted-foreground text-center py-6">No activity recorded yet. Start by entering material receipts or dispatches.</p>
           ) : (
-            <ul className="divide-y">
-              {reports.map((report) => (
-                <li key={report.id}>
-                  <Link href={`/plant/${report.id}`}>
-                    <div className="flex items-center justify-between p-4 hover-elevate cursor-pointer group">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-semibold">
-                          <Factory className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="font-medium">{report.siteName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {format(new Date(report.date), "MMM d, yyyy")}
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </Link>
-                </li>
+            <div className="space-y-3">
+              {dispatches?.slice(0, 5).map((d, i) => (
+                <div key={i} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
+                  <Truck className="w-4 h-4 text-green-500" />
+                  <span className="text-sm">Dispatch: {d.truckNumber} - {d.loadWeight} MT</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{d.date}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -12,6 +12,11 @@ import SiteReport from "@/pages/SiteReport";
 import Plant from "@/pages/Plant";
 import PlantNew from "@/pages/PlantNew";
 import PlantDetails from "@/pages/PlantDetails";
+import PlantMaterialReceipts from "@/pages/PlantMaterialReceipts";
+import PlantDispatches from "@/pages/PlantDispatches";
+import PlantEquipmentUsage from "@/pages/PlantEquipmentUsage";
+import PlantGeneratorLogs from "@/pages/PlantGeneratorLogs";
+import PlantLdoLogs from "@/pages/PlantLdoLogs";
 import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
 import NotFound from "@/pages/not-found";
@@ -47,6 +52,11 @@ function Router() {
             <Route path="/site/report/:id" component={SiteReport} />
             <Route path="/plant" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />
+            <Route path="/plant/material-receipts" component={PlantMaterialReceipts} />
+            <Route path="/plant/dispatches" component={PlantDispatches} />
+            <Route path="/plant/equipment-usage" component={PlantEquipmentUsage} />
+            <Route path="/plant/generator-logs" component={PlantGeneratorLogs} />
+            <Route path="/plant/ldo-logs" component={PlantLdoLogs} />
             <Route path="/plant/:id" component={PlantDetails} />
             <Route path="/admin/settings" component={AdminSettings} />
             <Route path="/admin/reports" component={AdminReports} />

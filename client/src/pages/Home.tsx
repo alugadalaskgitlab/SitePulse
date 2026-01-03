@@ -30,17 +30,19 @@ export default function Home() {
           </Card>
         </Link>
 
-        <Card className="cursor-not-allowed opacity-60 border-2">
-          <CardContent className="p-8 flex flex-col items-center text-center">
-            <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-4">
-              <Factory className="w-10 h-10 text-muted-foreground" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Plant Report</h2>
-            <p className="text-muted-foreground text-sm">
-              Coming soon - Plant production reporting
-            </p>
-          </CardContent>
-        </Card>
+        <Link href="/plant">
+          <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-purple-500/50">
+            <CardContent className="p-8 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mb-4">
+                <Factory className="w-10 h-10 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Plant Report</h2>
+              <p className="text-muted-foreground text-sm">
+                Hot-mix plant operations and material tracking
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <div className="mt-8 flex gap-4">
