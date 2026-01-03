@@ -86,15 +86,17 @@ export class DatabaseStorage implements IStorage {
 
   // Helper to extract base site name (strips " – Edited by..." or " – Copy by..." suffix)
   private getBaseSiteName(site: string): string {
-    // Use regex that handles multiple dash variants (–, -, —) 
-    // and extracts just the base site name before any suffix
-    const suffixPattern = /\s+[-–—]\s+(Edited by|Copy by)\s+/i;
-    const match = site.match(suffixPattern);
+    // More robust pattern: look for "Edited by" or "Copy by" anywhere in the string
+    // and strip everything from there onwards (including any preceding dash/whitespace)
+    // This handles all dash variants and spacing issues
+    const editPattern = /\s*[-–—:]\s*(Edited by|Copy by)\s+.*/i;
+    let result = site.replace(editPattern, '').trim();
     
-    if (match && match.index !== undefined && match.index > 0) {
-      return site.substring(0, match.index).trim();
-    }
-    return site;
+    // Fallback: also check for just "Edited by" or "Copy by" without dash
+    const directPattern = /\s+(Edited by|Copy by)\s+.*/i;
+    result = result.replace(directPattern, '').trim();
+    
+    return result || site;
   }
 
   // Helper to get the effective timestamp for comparison (submittedAt or createdAt)

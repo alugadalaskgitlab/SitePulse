@@ -141,25 +141,17 @@ export async function registerRoutes(
   app.post("/api/dprs/:id/version", async (req, res) => {
     try {
       const originalId = Number(req.params.id);
-      console.log(`[API] POST /api/dprs/${originalId}/version - Request received`);
-      console.log(`[API] Request body keys:`, Object.keys(req.body));
-      
       const input = versionSchema.parse(req.body);
-      console.log(`[API] Parsed input - editedBy: ${input.editedBy}, hasData: ${!!input.data}`);
       
       // Server-side PIN validation using database
       const isValid = await storage.verifyPin(input.editedBy, input.pin);
       if (!isValid) {
-        console.log(`[API] PIN validation failed for role: ${input.editedBy}`);
         return res.status(403).json({ message: "Invalid PIN for editing" });
       }
-      console.log(`[API] PIN validated successfully`);
       
       const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy, input.clientTimestamp);
-      console.log(`[API] New version created with ID: ${newVersion.id}`);
       res.status(201).json(newVersion);
     } catch (err) {
-      console.error(`[API] Error in /api/dprs/:id/version:`, err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,

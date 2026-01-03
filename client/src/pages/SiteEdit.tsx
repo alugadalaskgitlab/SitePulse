@@ -191,23 +191,15 @@ export default function SiteEdit() {
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       
-      console.log("[SiteEdit] Saving version - ID:", id, "Role:", role, "PIN length:", pin?.length);
-      console.log("[SiteEdit] Payload:", JSON.stringify(data, null, 2));
-      
       const response = await apiRequest("POST", `/api/dprs/${id}/version`, { 
         pin, 
         editedBy: role,
         data,
         clientTimestamp,
       });
-      
-      console.log("[SiteEdit] API response status:", response.status);
-      const result = await response.json();
-      console.log("[SiteEdit] API response data:", result);
-      return result;
+      return response.json();
     },
     onSuccess: (newVersion) => {
-      console.log("[SiteEdit] Save successful! New version ID:", newVersion.id);
       // Clear credentials after successful save
       clearCredentials();
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
@@ -220,7 +212,6 @@ export default function SiteEdit() {
       setLocation(`/site/report/${newVersion.id}`);
     },
     onError: (error: any) => {
-      console.error("[SiteEdit] Save error:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to save changes",
@@ -279,11 +270,7 @@ export default function SiteEdit() {
   };
 
   const handleSave = () => {
-    console.log("[SiteEdit] handleSave triggered");
-    console.log("[SiteEdit] PIN present:", !!pin, "Role:", role);
-    
     if (!header.date || !header.site || !header.engineer) {
-      console.log("[SiteEdit] Validation failed - missing fields");
       toast({
         title: "Missing Fields",
         description: "Please fill in date, site name, and engineer name.",
@@ -316,7 +303,6 @@ export default function SiteEdit() {
       })),
     };
 
-    console.log("[SiteEdit] Calling updateMutation.mutate");
     updateMutation.mutate(payload);
   };
 
