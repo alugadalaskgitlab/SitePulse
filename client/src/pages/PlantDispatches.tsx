@@ -7,14 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Truck, Loader2 } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
 import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
 
 export default function PlantDispatches() {
   const { toast } = useToast();
+  const { canEdit } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
@@ -161,10 +163,17 @@ export default function PlantDispatches() {
                 <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value)} placeholder="Site/chainage" data-testid="input-delivery-location" />
               </div>
 
-              <div>
-                <Label>Actual Bitumen % (optional)</Label>
-                <Input type="number" step="0.1" value={actualBitumenPercent} onChange={(e) => setActualBitumenPercent(e.target.value)} placeholder="Leave blank for theoretical" data-testid="input-actual-bitumen" />
-              </div>
+              {canEdit && (
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Manager/Admin Only</span>
+                  </div>
+                  <Label>Actual Bitumen % (for analysis)</Label>
+                  <Input type="number" step="0.1" value={actualBitumenPercent} onChange={(e) => setActualBitumenPercent(e.target.value)} placeholder="Leave blank to use theoretical" data-testid="input-actual-bitumen" />
+                  <p className="text-xs text-muted-foreground mt-1">Stock deduction always uses theoretical values. This is for savings analysis only.</p>
+                </div>
+              )}
 
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight} data-testid="button-save-dispatch">
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Dispatch"}
