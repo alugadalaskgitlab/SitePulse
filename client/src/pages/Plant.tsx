@@ -778,10 +778,10 @@ function DashboardTab() {
     ldo: { theoretical: 0, actual: 0 },
   };
   dispatches?.forEach((d) => {
-    theoreticalVsActual.bitumen.theoretical += d.theoreticalBitumen || 0;
-    theoreticalVsActual.bitumen.actual += d.actualBitumen || 0;
-    theoreticalVsActual.ldo.theoretical += d.theoreticalLdo || 0;
-    theoreticalVsActual.ldo.actual += d.actualLdo || 0;
+    theoreticalVsActual.bitumen.theoretical += d.theoreticalBitumenQty || 0;
+    theoreticalVsActual.bitumen.actual += d.actualBitumenQty || 0;
+    theoreticalVsActual.ldo.theoretical += d.theoreticalLdoQty || 0;
+    theoreticalVsActual.ldo.actual += d.actualLdoQty || 0;
   });
 
   // Bitumen savings/wastage
