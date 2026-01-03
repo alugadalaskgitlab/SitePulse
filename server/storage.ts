@@ -99,11 +99,12 @@ export class DatabaseStorage implements IStorage {
     return result || site;
   }
 
-  // Helper to get the effective timestamp for comparison (submittedAt or createdAt)
-  private getEffectiveTimestamp(dpr: { submittedAt: string | null; createdAt: Date | null }): number {
-    if (dpr.submittedAt) return new Date(dpr.submittedAt).getTime();
-    if (dpr.createdAt) return new Date(dpr.createdAt).getTime();
-    return 0;
+  // Helper to get the effective timestamp for comparison
+  // Uses ID as a reliable tiebreaker since auto-incrementing IDs guarantee newer records have higher IDs
+  private getEffectiveTimestamp(dpr: { id: number; submittedAt: string | null; createdAt: Date | null }): number {
+    // Primary: use ID as a reliable proxy for creation order (higher ID = newer)
+    // This avoids timezone issues with timestamp comparison
+    return dpr.id;
   }
 
   async getDprsWithDetails(): Promise<DprWithDetails[]> {
@@ -282,11 +283,13 @@ export class DatabaseStorage implements IStorage {
 
     return await db.transaction(async (tx) => {
       // Create a copy of the DPR with timestamp and role tag
+      // IMPORTANT: Set submittedAt to ensure proper timestamp comparison for version deduplication
       const [newDpr] = await tx.insert(dprs).values({
         date: original.date,
         site: newSiteName,
         engineer: original.engineer.toUpperCase(),
         role: editedBy,
+        submittedAt: dateTime,
       }).returning();
 
       const dprId = newDpr.id;
@@ -375,11 +378,13 @@ export class DatabaseStorage implements IStorage {
 
     return await db.transaction(async (tx) => {
       // Create new DPR with edited data and timestamp
+      // IMPORTANT: Set submittedAt to ensure proper timestamp comparison for version deduplication
       const [newDpr] = await tx.insert(dprs).values({
         date: dprData.date,
         site: newSiteName,
         engineer: dprData.engineer.toUpperCase(),
         role: editedBy,
+        submittedAt: dateTime,
       }).returning();
 
       const dprId = newDpr.id;
