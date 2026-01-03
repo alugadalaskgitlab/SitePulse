@@ -141,6 +141,7 @@ export const mixTemplates = pgTable("mix_templates", {
   name: text("name").notNull(),
   mixType: text("mix_type").notNull(), // BC, DBM, etc.
   bitumenPercent: real("bitumen_percent"), // Approved/theoretical bitumen %
+  ldoNorm: real("ldo_norm").default(6), // Liters per ton (default 6 L/ton)
   isStandard: integer("is_standard").default(1), // 1 = Standard, 0 = Job-specific
   partyId: integer("party_id"), // Only for job-specific templates
   baseTemplateId: integer("base_template_id"), // For variants, reference to standard template
@@ -149,12 +150,12 @@ export const mixTemplates = pgTable("mix_templates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Mix Template Components (aggregate proportions)
+// Mix Template Components (aggregate proportions - kg per ton of mix)
 export const mixTemplateComponents = pgTable("mix_template_components", {
   id: serial("id").primaryKey(),
   templateId: integer("template_id").notNull(),
   materialId: integer("material_id").notNull(),
-  proportion: real("proportion"), // Percentage of this material in the mix
+  kgPerTon: real("kg_per_ton"), // kg of this material per ton of mix output
   uom: text("uom"),
 });
 
@@ -203,9 +204,16 @@ export const truckDispatches = pgTable("truck_dispatches", {
   // Theoretical consumption (auto-calculated from template)
   theoreticalBitumenQty: real("theoretical_bitumen_qty"),
   theoreticalBitumenPercent: real("theoretical_bitumen_percent"),
-  // Actual consumption (operator input)
+  theoreticalLdoQty: real("theoretical_ldo_qty"), // Liters (loadWeight * ldoNorm)
+  theoreticalAggregates: text("theoretical_aggregates"), // JSON: {materialId: qty, ...}
+  // Actual consumption (operator/manager override)
   actualBitumenQty: real("actual_bitumen_qty"),
   actualBitumenPercent: real("actual_bitumen_percent"),
+  actualLdoQty: real("actual_ldo_qty"),
+  // Stock deduction tracking
+  stockDeducted: integer("stock_deducted").default(0), // 1=deducted, 0=pending
+  deductionSource: text("deduction_source"), // "party" or "plant_common" or "mixed"
+  shortageWarning: text("shortage_warning"), // JSON array of materials with shortage
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -265,6 +273,22 @@ export const stockBalances = pgTable("stock_balances", {
   balance: real("balance").notNull().default(0),
   uom: text("uom"),
   lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+// Stock Ledger (detailed log of all stock movements)
+export const stockLedger = pgTable("stock_ledger", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  partyId: integer("party_id"), // NULL for plant-common
+  materialId: integer("material_id").notNull(),
+  transactionType: text("transaction_type").notNull(), // "receipt" or "dispatch" or "adjustment"
+  referenceId: integer("reference_id"), // ID of receipt or dispatch
+  quantityIn: real("quantity_in").default(0),
+  quantityOut: real("quantity_out").default(0),
+  balanceAfter: real("balance_after"),
+  uom: text("uom"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // === RELATIONS ===
@@ -381,6 +405,7 @@ export const insertEquipmentUsageSchema = createInsertSchema(equipmentUsage).omi
 export const insertGeneratorLogSchema = createInsertSchema(generatorLogs).omit({ id: true, createdAt: true });
 export const insertLdoLogSchema = createInsertSchema(ldoLogs).omit({ id: true, createdAt: true });
 export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({ id: true, lastUpdated: true });
+export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
 
 // Types
 export type Party = typeof parties.$inferSelect;
@@ -394,6 +419,7 @@ export type EquipmentUsage = typeof equipmentUsage.$inferSelect;
 export type GeneratorLog = typeof generatorLogs.$inferSelect;
 export type LdoLog = typeof ldoLogs.$inferSelect;
 export type StockBalance = typeof stockBalances.$inferSelect;
+export type StockLedgerEntry = typeof stockLedger.$inferSelect;
 
 // Insert Types
 export type InsertParty = z.infer<typeof insertPartySchema>;
@@ -407,6 +433,7 @@ export type InsertEquipmentUsage = z.infer<typeof insertEquipmentUsageSchema>;
 export type InsertGeneratorLog = z.infer<typeof insertGeneratorLogSchema>;
 export type InsertLdoLog = z.infer<typeof insertLdoLogSchema>;
 export type InsertStockBalance = z.infer<typeof insertStockBalanceSchema>;
+export type InsertStockLedger = z.infer<typeof insertStockLedgerSchema>;
 
 // Constants for UOM options
 export const UOM_OPTIONS = ["Ton", "MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;

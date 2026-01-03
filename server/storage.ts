@@ -21,6 +21,7 @@ import {
   generatorLogs,
   ldoLogs,
   stockBalances,
+  stockLedger,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -50,6 +51,8 @@ import {
   type InsertLdoLog,
   type StockBalance,
   type InsertStockBalance,
+  type StockLedgerEntry,
+  type InsertStockLedger,
   DEFAULT_LDO_NORM
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, notInArray, sql, asc } from "drizzle-orm";
@@ -119,6 +122,13 @@ export interface IStorage {
   
   getStockBalances(partyId?: number): Promise<StockBalance[]>;
   updateStockBalance(partyId: number | null, materialId: number, quantity: number, uom: string): Promise<StockBalance>;
+  
+  // Stock Ledger
+  getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<StockLedgerEntry[]>;
+  addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry>;
+  
+  // Enhanced dispatch with stock deduction
+  createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -810,22 +820,54 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt> {
-    const uppercased = {
-      ...receipt,
-      supplier: receipt.supplier?.toUpperCase(),
-      vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
-    };
-    const [result] = await db.insert(materialReceipts).values(uppercased).returning();
-    
-    // Update stock balance
-    await this.updateStockBalance(
-      receipt.isPlantCommon ? null : (receipt.partyId ?? null),
-      receipt.materialId,
-      receipt.quantity,
-      receipt.uom
-    );
-    
-    return result;
+    return db.transaction(async (tx) => {
+      const uppercased = {
+        ...receipt,
+        supplier: receipt.supplier?.toUpperCase(),
+        vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
+      };
+      const [result] = await tx.insert(materialReceipts).values(uppercased).returning();
+      
+      // Determine the target partyId for stock
+      const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
+      
+      // Get current balance
+      const condition = targetPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, receipt.materialId))
+        : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, receipt.materialId));
+      
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      const newBalance = (existing?.balance || 0) + receipt.quantity;
+      
+      // Update stock balance
+      if (existing) {
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: targetPartyId,
+          materialId: receipt.materialId,
+          balance: receipt.quantity,
+          uom: receipt.uom,
+        });
+      }
+      
+      // Add ledger entry
+      await tx.insert(stockLedger).values({
+        date: receipt.date,
+        partyId: targetPartyId,
+        materialId: receipt.materialId,
+        transactionType: "receipt",
+        referenceId: result.id,
+        quantityIn: receipt.quantity,
+        balanceAfter: newBalance,
+        uom: receipt.uom,
+        notes: receipt.supplier ? `From ${receipt.supplier}` : undefined,
+      });
+      
+      return result;
+    });
   }
 
   // Truck Dispatches
@@ -984,6 +1026,152 @@ export class DatabaseStorage implements IStorage {
       }).returning();
       return result;
     }
+  }
+
+  // Stock Ledger
+  async getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<StockLedgerEntry[]> {
+    let conditions = [];
+    if (filters?.partyId !== undefined) {
+      conditions.push(filters.partyId === null 
+        ? sql`${stockLedger.partyId} IS NULL`
+        : eq(stockLedger.partyId, filters.partyId));
+    }
+    if (filters?.materialId) conditions.push(eq(stockLedger.materialId, filters.materialId));
+    if (filters?.dateFrom) conditions.push(gte(stockLedger.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(stockLedger.date, filters.dateTo));
+    
+    return db.select().from(stockLedger)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(stockLedger.date));
+  }
+
+  async addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry> {
+    const [result] = await db.insert(stockLedger).values(entry).returning();
+    return result;
+  }
+
+  // Enhanced truck dispatch with automatic stock deduction
+  async createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }> {
+    return db.transaction(async (tx) => {
+      // Get mix template with components
+      const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatch.mixTemplateId)).limit(1);
+      const components = await tx.select().from(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, dispatch.mixTemplateId));
+      
+      // Calculate theoretical consumption
+      const loadWeight = dispatch.loadWeight;
+      const theoreticalBitumenPercent = template?.bitumenPercent || 0;
+      const theoreticalBitumenQty = (loadWeight * theoreticalBitumenPercent) / 100;
+      const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
+      const theoreticalLdoQty = loadWeight * ldoNorm;
+      
+      // Calculate aggregate consumption from components
+      const theoreticalAggregates: Record<number, number> = {};
+      for (const comp of components) {
+        const kgPerTon = (comp as any).kgPerTon || 0;
+        theoreticalAggregates[comp.materialId] = loadWeight * kgPerTon / 1000; // Convert kg to tons
+      }
+      
+      // Check stock availability and track shortages
+      const shortages: { materialId: number; required: number; available: number }[] = [];
+      const partyId = dispatch.partyId;
+      
+      // Helper to get stock balance
+      const getBalance = async (pId: number | null, matId: number) => {
+        const condition = pId === null 
+          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
+          : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
+        const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
+        return bal?.balance || 0;
+      };
+      
+      // Helper to deduct stock
+      const deductStock = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
+        const condition = pId === null 
+          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
+          : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
+        const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+        
+        const newBalance = (existing?.balance || 0) - qty;
+        
+        if (existing) {
+          await tx.update(stockBalances)
+            .set({ balance: newBalance, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, existing.id));
+        } else {
+          await tx.insert(stockBalances).values({ partyId: pId, materialId: matId, balance: newBalance, uom });
+        }
+        
+        // Add ledger entry
+        await tx.insert(stockLedger).values({
+          date: dispatch.date,
+          partyId: pId,
+          materialId: matId,
+          transactionType: "dispatch",
+          quantityOut: qty,
+          balanceAfter: newBalance,
+          uom,
+          notes,
+        });
+        
+        return newBalance;
+      };
+      
+      // Get bitumen material ID (look for material named BITUMEN)
+      const [bitumenMaterial] = await tx.select().from(plantMaterials)
+        .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+        .limit(1);
+      
+      // Get LDO material ID
+      const [ldoMaterial] = await tx.select().from(plantMaterials)
+        .where(sql`UPPER(${plantMaterials.name}) = 'LDO'`)
+        .limit(1);
+      
+      // Check and deduct bitumen
+      if (bitumenMaterial && theoreticalBitumenQty > 0) {
+        const partyStock = await getBalance(partyId, bitumenMaterial.id);
+        if (partyStock < theoreticalBitumenQty) {
+          shortages.push({ materialId: bitumenMaterial.id, required: theoreticalBitumenQty, available: partyStock });
+        }
+        // Deduct from party stock (even if negative for now - will show as shortage)
+        await deductStock(partyId, bitumenMaterial.id, theoreticalBitumenQty, "Ton", `Dispatch #auto`);
+      }
+      
+      // Check and deduct LDO
+      if (ldoMaterial && theoreticalLdoQty > 0) {
+        const partyStock = await getBalance(partyId, ldoMaterial.id);
+        if (partyStock < theoreticalLdoQty) {
+          shortages.push({ materialId: ldoMaterial.id, required: theoreticalLdoQty, available: partyStock });
+        }
+        await deductStock(partyId, ldoMaterial.id, theoreticalLdoQty, "Liters", `Dispatch #auto`);
+      }
+      
+      // Check and deduct aggregates
+      for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
+        const matId = parseInt(matIdStr);
+        if (qty > 0) {
+          const partyStock = await getBalance(partyId, matId);
+          if (partyStock < qty) {
+            shortages.push({ materialId: matId, required: qty, available: partyStock });
+          }
+          await deductStock(partyId, matId, qty, "Ton", `Dispatch #auto`);
+        }
+      }
+      
+      // Create the dispatch record
+      const [result] = await tx.insert(truckDispatches).values({
+        ...dispatch,
+        truckNumber: dispatch.truckNumber.toUpperCase(),
+        deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
+        theoreticalBitumenPercent,
+        theoreticalBitumenQty,
+        theoreticalLdoQty,
+        theoreticalAggregates: JSON.stringify(theoreticalAggregates),
+        stockDeducted: 1,
+        shortageWarning: shortages.length ? JSON.stringify(shortages) : null,
+      }).returning();
+      
+      return { dispatch: result, shortages };
+    });
   }
 }
 

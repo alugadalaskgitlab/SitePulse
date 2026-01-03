@@ -563,9 +563,10 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/dispatches", async (req, res) => {
     try {
-      const dispatch = await storage.createTruckDispatch(req.body);
-      res.status(201).json(dispatch);
+      const result = await storage.createTruckDispatchWithStockDeduction(req.body);
+      res.status(201).json(result);
     } catch (err) {
+      console.error("Dispatch error:", err);
       res.status(500).json({ message: "Failed to create truck dispatch" });
     }
   });
@@ -649,6 +650,22 @@ export async function registerRoutes(
       res.json(balances);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch stock balances" });
+    }
+  });
+
+  // Stock Ledger
+  app.get("/api/plant-module/stock-ledger", async (req, res) => {
+    try {
+      const filters = {
+        partyId: req.query.partyId !== undefined ? Number(req.query.partyId) : undefined,
+        materialId: req.query.materialId ? Number(req.query.materialId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const ledger = await storage.getStockLedger(filters);
+      res.json(ledger);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch stock ledger" });
     }
   });
 
