@@ -323,12 +323,14 @@ export default function PlantEquipmentUsage() {
                     <div className="space-y-2">
                       {dayUsage.map((entry) => {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
-                        const openingDiesel = (entry as any).openingDiesel || 0;
-                        const closingDiesel = (entry as any).closingDiesel || 0;
-                        const variance = entry.variance || 0;
+                        const openingDiesel = (entry as any).openingDiesel ?? 0;
+                        const dieselIssued = entry.dieselIssued ?? 0;
+                        const consumed = entry.expectedDiesel ?? 0;
+                        const closingDiesel = (entry as any).closingDiesel ?? (openingDiesel + dieselIssued - consumed);
+                        const variance = entry.variance ?? (dieselIssued - consumed);
                         return (
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 text-sm">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-xs block">Equipment</span>
                                 <span className="font-medium">{equip?.name || "Unknown"}</span>
@@ -337,16 +339,20 @@ export default function PlantEquipmentUsage() {
                                 )}
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Meter</span>
-                                <span className="font-medium">{entry.openingReading} - {entry.closingReading}</span>
-                                <span className="text-xs text-muted-foreground block">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                                <span className="text-muted-foreground text-xs block">Runtime</span>
+                                <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                                <span className="text-xs text-muted-foreground block">{entry.openingReading} - {entry.closingReading}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Diesel Tank</span>
-                                <span className="font-medium">{openingDiesel.toFixed(1)} + {entry.dieselIssued?.toFixed(1) || "0"} - {entry.expectedDiesel?.toFixed(1)} = {closingDiesel.toFixed(1)} L</span>
+                                <span className="text-muted-foreground text-xs block">Diesel Issued</span>
+                                <span className="font-medium">{dieselIssued.toFixed(1)} L</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Closing Balance</span>
+                                <span className="text-muted-foreground text-xs block">Consumed</span>
+                                <span className="font-medium">{consumed.toFixed(1)} L</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Tank Balance</span>
                                 <span className="font-medium">{closingDiesel.toFixed(1)} L</span>
                               </div>
                               <div>
