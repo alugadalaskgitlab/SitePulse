@@ -30,7 +30,6 @@ export default function Home() {
           </Card>
         </Link>
 
-{/* Plant module hidden - uncomment when ready to publish
         <Link href="/plant">
           <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-purple-500/50">
             <CardContent className="p-8 flex flex-col items-center text-center">
@@ -44,7 +43,6 @@ export default function Home() {
             </CardContent>
           </Card>
         </Link>
-        */}
       </div>
 
       <div className="mt-8 flex gap-4">
