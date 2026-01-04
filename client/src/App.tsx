@@ -45,7 +45,7 @@ function Router() {
       <main className="min-h-screen relative z-10">
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
-            <Route path="/" component={Home} />
+            <Route path="/" component={SiteDashboard} />
             <Route path="/site" component={SiteDashboard} />
             <Route path="/site/new" component={SiteEntry} />
             <Route path="/site/edit/:id" component={SiteEdit} />
