@@ -54,7 +54,7 @@ const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
-const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "Water", "Diesel", "Bitumen", "Emulsion", "DBM Mix", "BC Mix", "Cement"];
+const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "Water", "Diesel", "Bitumen", "Emulsion", "DBM Mix", "BC Mix", "Cement", "Soil"];
 const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
 const MATERIAL_TYPE_OPTIONS = ["Received", "Issued", "Consumed"];
 
