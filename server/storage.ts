@@ -723,7 +723,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial> {
-    const uppercased = { ...material, name: material.name.toUpperCase() };
+    const uppercased = { ...material, name: material.name.toUpperCase().trim() };
+    
+    // Check for existing material with same name and category to prevent duplicates
+    const [existing] = await db.select().from(plantMaterials)
+      .where(sql`UPPER(TRIM(${plantMaterials.name})) = ${uppercased.name} AND ${plantMaterials.category} = ${uppercased.category}`)
+      .limit(1);
+    
+    if (existing) {
+      return existing; // Return existing material instead of creating duplicate
+    }
+    
     const [result] = await db.insert(plantMaterials).values(uppercased).returning();
     return result;
   }
