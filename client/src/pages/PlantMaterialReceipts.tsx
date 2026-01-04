@@ -2,21 +2,28 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Package, Loader2 } from "lucide-react";
+import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
+import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  
+  // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
   const [partyId, setPartyId] = useState<string>("");
@@ -46,9 +53,36 @@ export default function PlantMaterialReceipts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setDialogOpen(false);
       resetForm();
       toast({ title: "Material receipt recorded successfully" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/plant-module/material-receipts/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      setDialogOpen(false);
+      setEditingReceipt(null);
+      resetForm();
+      toast({ title: "Receipt updated successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/material-receipts/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      setDeleteConfirmId(null);
+      toast({ title: "Receipt deleted successfully" });
     },
   });
 
@@ -59,28 +93,72 @@ export default function PlantMaterialReceipts() {
     setIsPlantCommon(false);
     setMaterialId("");
     setQuantity("");
+    setUom("Ton");
     setSupplier("");
     setVehicleNumber("");
     setChallanNumber("");
   };
 
-  const handleSubmit = () => {
-    if (!materialId || !quantity) return;
-    createMutation.mutate({
-      date,
-      time,
-      partyId: isPlantCommon ? null : parseInt(partyId),
-      isPlantCommon: isPlantCommon ? 1 : 0,
-      materialId: parseInt(materialId),
-      quantity: parseFloat(quantity),
-      uom,
-      supplier,
-      vehicleNumber,
-      challanNumber,
-    });
+  const openEditDialog = (receipt: MaterialReceipt) => {
+    setEditingReceipt(receipt);
+    setDate(receipt.date);
+    setTime(receipt.time || "");
+    setPartyId(receipt.partyId ? String(receipt.partyId) : "");
+    setIsPlantCommon(!!receipt.isPlantCommon);
+    setMaterialId(String(receipt.materialId));
+    setQuantity(String(receipt.quantity));
+    setUom(receipt.uom);
+    setSupplier(receipt.supplier || "");
+    setVehicleNumber(receipt.vehicleNumber || "");
+    setChallanNumber(receipt.challanNumber || "");
+    setDialogOpen(true);
   };
 
-  const selectedMaterial = materials?.find(m => m.id === parseInt(materialId));
+  const handleSubmit = () => {
+    if (!materialId || !quantity) return;
+    
+    if (editingReceipt) {
+      // Only update editable fields (not quantity, material, or UOM - those affect stock)
+      const updateData = {
+        date,
+        time,
+        partyId: isPlantCommon ? null : parseInt(partyId),
+        isPlantCommon: isPlantCommon ? 1 : 0,
+        supplier,
+        vehicleNumber,
+        challanNumber,
+      };
+      updateMutation.mutate({ id: editingReceipt.id, data: updateData });
+    } else {
+      const data = {
+        date,
+        time,
+        partyId: isPlantCommon ? null : parseInt(partyId),
+        isPlantCommon: isPlantCommon ? 1 : 0,
+        materialId: parseInt(materialId),
+        quantity: parseFloat(quantity),
+        uom,
+        supplier,
+        vehicleNumber,
+        challanNumber,
+      };
+      createMutation.mutate(data);
+    }
+  };
+
+  // Group receipts by date
+  const groupedReceipts = receipts?.reduce((acc, receipt) => {
+    const dateKey = receipt.date;
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(receipt);
+    return acc;
+  }, {} as Record<string, MaterialReceipt[]>) || {};
+
+  // Sort dates descending, and entries within each date by time descending
+  const sortedDates = Object.keys(groupedReceipts).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+  const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
+  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Plant Common";
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -96,7 +174,7 @@ export default function PlantMaterialReceipts() {
             <p className="text-muted-foreground">Record incoming materials at plant</p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingReceipt(null); resetForm(); } }}>
           <DialogTrigger asChild>
             <Button className="gap-2" data-testid="button-add-receipt">
               <Plus className="w-4 h-4" /> New Receipt
@@ -104,7 +182,7 @@ export default function PlantMaterialReceipts() {
           </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Record Material Receipt</DialogTitle>
+              <DialogTitle>{editingReceipt ? "Edit Receipt" : "Record Material Receipt"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
@@ -140,8 +218,8 @@ export default function PlantMaterialReceipts() {
               )}
 
               <div>
-                <Label>Material</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
+                <Label>Material {editingReceipt && <span className="text-muted-foreground text-xs">(locked)</span>}</Label>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }} disabled={!!editingReceipt}>
                   <SelectTrigger data-testid="select-material">
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>
@@ -155,21 +233,19 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Quantity</Label>
-                  <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" />
+                  <Label>Quantity {editingReceipt && <span className="text-muted-foreground text-xs">(locked)</span>}</Label>
+                  <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" disabled={!!editingReceipt} />
                 </div>
                 <div>
-                  <Label>UOM</Label>
-                  <Select value={uom} onValueChange={setUom}>
+                  <Label>UOM {editingReceipt && <span className="text-muted-foreground text-xs">(locked)</span>}</Label>
+                  <Select value={uom} onValueChange={setUom} disabled={!!editingReceipt}>
                     <SelectTrigger data-testid="select-uom">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Ton">Ton</SelectItem>
-                      <SelectItem value="MT">MT</SelectItem>
-                      <SelectItem value="Cum">Cum</SelectItem>
-                      <SelectItem value="Liters">Liters</SelectItem>
-                      <SelectItem value="Kgs">Kgs</SelectItem>
+                      {UOM_OPTIONS.map(u => (
+                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -191,13 +267,29 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || !materialId || !quantity} data-testid="button-save-receipt">
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Receipt"}
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity} data-testid="button-save-receipt">
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+          </DialogHeader>
+          <p>Are you sure you want to delete this receipt? This will also reverse the stock balance.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -214,20 +306,59 @@ export default function PlantMaterialReceipts() {
           ) : !receipts?.length ? (
             <p className="text-muted-foreground text-center py-8">No receipts recorded yet.</p>
           ) : (
-            <div className="space-y-3">
-              {receipts.map((receipt) => {
-                const material = materials?.find(m => m.id === receipt.materialId);
-                const party = parties?.find(p => p.id === receipt.partyId);
+            <div className="space-y-6">
+              {sortedDates.map((dateKey) => {
+                const dayReceipts = groupedReceipts[dateKey].sort((a, b) => (b.time || "").localeCompare(a.time || ""));
                 return (
-                  <div key={receipt.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="font-medium">{material?.name || "Unknown"} - {receipt.quantity} {receipt.uom}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {receipt.isPlantCommon ? "Plant Common" : party?.name || "Unknown Party"} | 
-                        {receipt.supplier && ` Supplier: ${receipt.supplier} |`}
-                        {receipt.vehicleNumber && ` Vehicle: ${receipt.vehicleNumber}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{receipt.date} {receipt.time}</p>
+                  <div key={dateKey}>
+                    <h3 className="font-semibold text-lg mb-3 border-b pb-2">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
+                    <div className="space-y-2">
+                      {dayReceipts.map((receipt) => (
+                        <div key={receipt.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
+                          <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Time</span>
+                              <span className="font-medium">{receipt.time || "-"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Material</span>
+                              <span className="font-medium">{getMaterialName(receipt.materialId)}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Quantity</span>
+                              <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Vehicle</span>
+                              <span className="font-medium">{receipt.vehicleNumber || "-"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Challan</span>
+                              <span className="font-medium">{receipt.challanNumber || "-"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Supplier</span>
+                              <span className="font-medium">{receipt.supplier || "-"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground text-xs block">Party/Job</span>
+                              <span className="font-medium">{getPartyName(receipt.partyId)}</span>
+                            </div>
+                          </div>
+                          {canEdit && (
+                            <div className="flex gap-2 ml-4">
+                              <Button size="icon" variant="ghost" onClick={() => openEditDialog(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              {canDelete && (
+                                <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );

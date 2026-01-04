@@ -1,0 +1,274 @@
+Context: This is the existing “Site Reporter” app.
+Do NOT create a new app/project. Do NOT redesign UI unnecessarily.
+We are now focusing on the Plant Module. Site module can remain as-is for now.
+
+1) Material Receipts – display + admin edit/delete + UOM + conversion
+1A. Receipts list display format (grouped by date)
+
+Material receipts listing is OK, but must be displayed grouped by date with entries sorted by time.
+Each receipt row must show:
+
+Date+Time | Material | Quantity | UOM | Vehicle/Truck No | Challan/Invoice No | Supplier/Party | Job/Site tag
+
+1B. Admin-only edit/delete on receipts
+
+Like site module:
+
+When clicking a receipt row/detail, show Edit/Delete buttons ONLY after Admin PIN.
+
+During development stage, Admin must be able to edit/delete any receipt.
+
+1C. UOM must include CFT everywhere
+
+UOM dropdown must include at minimum:
+MT/Ton, CFT, Cum, Kg, Liters, Nos, Barrels (Emulsion)
+Aggregates are mostly received in CFT, so CFT must be present in receipts.
+
+1D. Reconciliation-grade stock model (Option A)
+
+All stock ledger and balances must be maintained in MT (tons) for reconciliation.
+
+If receipt is entered in CFT, app must convert to MT using a per-material bulk density factor:
+
+Create Material Master where Admin sets:
+
+Default UOM
+
+Bulk density / conversion factor: CFT → MT (admin-configurable per material type)
+
+Receipt must store both:
+
+Original entered qty + UOM (e.g., 1200 CFT)
+
+Converted MT qty for ledger (e.g., 32.4 MT)
+
+Stock balances must use MT only (converted values).
+
+2) Stock Ledger – one single source of truth (fix inconsistencies across tabs)
+
+Currently numbers (bitumen, LDO, stock totals) are inconsistent across tabs. Fix by implementing one stock ledger system:
+
+Every transaction writes to one ledger:
+
+Receipts = +MT quantity (converted MT)
+
+Dispatch consumption = -MT quantity
+
+Adjustments (admin only) = +/- MT
+
+All screens (stock tab, dashboard tab, material stock views) must read from this same ledger.
+
+No manual balance fields.
+
+Acceptance test: totals must match in every tab because they come from the same ledger.
+
+3) Mix Template Master – % distribution of total 1000 kg INCLUDING bitumen
+
+We finalized this:
+
+Templates are entered as percentage distribution of total finished mix (1000 kg includes bitumen).
+
+Therefore all component percentages must sum to 100%.
+
+Template must include:
+
+Mix name/type (BC/DBM/BM)
+
+Components as % of total mix:
+
+Bitumen %
+
+20mm %, 10/12mm %, 6mm/down %, Dust/Filler %, etc.
+
+LDO norm (liters per MT of mix) as a separate numeric field (not part of 100%)
+
+Auto-compute and show for validation (in template view):
+
+For 1 MT mix: kg per component = % × 1000/100
+
+Validation: total % must be 100%; warn if not.
+
+Template versions
+
+Allow saving multiple templates per party/job, and versioning (v1/v2/date-based).
+
+During development stage, Admin can edit/delete templates.
+
+4) Dispatch – single source of truth for consumption & stock deductions
+
+When a truck dispatch is created:
+Inputs:
+
+Date/time
+
+Party/Job/Site tag (Road-1 / Road-2 etc.)
+
+Selected Mix Template
+
+Truck No
+
+Dispatch weight in MT
+
+4A. Consumption calculation (theoretical)
+
+For dispatch weight W (MT):
+For each component in template:
+Component consumption (MT) = W × componentPercent / 100
+
+This must include:
+
+Aggregates per size
+
+Bitumen
+
+(LDO separately: W × LDO_norm in liters)
+
+4B. Stock owner model = pooled party stock + consumption tagged job/site
+
+We confirmed:
+
+Party stock is pooled (e.g., Giridhar pooled stock at plant)
+
+Each dispatch consumption must still be tagged to Job/Site for reporting (Road-1 vs Road-2).
+
+So ledger entries must record:
+
+material
+
+stock owner (Giridhar / Contractor X / HLC common)
+
+job/site tag (Road-1 / Road-2)
+
++/− MT quantity
+
+timestamp + reference (dispatch id)
+
+4C. Deduction order
+
+For each material in a dispatch:
+
+Deduct from that Party’s pooled stock first (if the party supplied the material)
+
+If insufficient, deduct from HLC/Common stock (only if allowed)
+
+If still insufficient: flag shortage clearly (do not silently go negative)
+
+(Implement shortage warnings visibly in dispatch + dashboard.)
+
+5) LDO must come from Dispatch (not manual duplication)
+
+LDO theoretical consumption must be automatically computed from Dispatch:
+
+LDO consumed = DispatchWeightMT × LDO_norm (L/MT)
+Deduct from LDO stock ledger (party-supplied or HLC/common as per owner stock rules).
+Do not ask user to re-enter LDO in another tab.
+
+6) Equipment / Diesel logic + remove duplicate entry (Operations vs Utilities)
+6A. No duplicate generator entry
+
+Currently generator/equipment data is asked in Operations tab and again in Utilities tab.
+Fix this: Operations → Equipment Usage is the only input.
+Utilities must become summary-only (read-only computed totals).
+
+6B. Diesel “issued” ≠ “consumed”
+
+Fix diesel logic:
+
+Diesel stock is tracked like materials (ledger).
+
+Diesel issued to equipment = stock transfer out (ledger -).
+
+Diesel consumption is computed from:
+
+meter hours/km × norm (preferred)
+
+Diesel balance must be shown:
+Opening + Issued − Consumed = Closing/Balance
+Do not treat “issued diesel” as “consumed diesel”.
+
+7) Dashboard – PIN-gated + real filtering + stock summary (admin/manager)
+7A. PIN gating should NOT block operators
+
+App must open normally for operators to enter receipts/dispatch.
+Dashboard/report section should ask for PIN when opened.
+
+7B. Roles
+
+Manager PIN: view + filters + export/print (NO edit/delete)
+
+Admin PIN: view + filters + export/print + edit/delete any record during development
+
+7C. Filters must actually filter (currently not working correctly)
+
+Dashboard must allow filtering by:
+
+Date range
+
+Party
+
+Material
+
+Job/Site tag
+
+Mix template/type
+
+Truck No
+
+Supplier
+
+Must not show all reports after applying filter.
+
+7D. Stock summary output (derived)
+
+For selected date range + filter:
+Show per material (and per stock owner if filtered):
+
+Opening stock (as of start date)
+
+Received in period
+
+Consumed in period (dispatch + equipment consumption)
+
+Closing stock (as of end date)
+
+8) Admin edit/delete for development stage (requested)
+
+During development stage, Admin must have edit/delete buttons for:
+
+Material receipts
+
+Mix templates
+
+Dispatch entries
+
+Equipment usage logs
+
+Any test data entries
+
+(We will tighten audit rules later; for now we need cleanup capability.)
+
+9) Uppercase enforcement (including edits)
+
+All text inputs must be stored in UPPERCASE, including when records are edited:
+
+material names, supplier names, vehicle numbers, job/site tags, mix names, etc.
+Currently edits lose caps; fix so edits also apply uppercase normalization on save.
+
+10) Confirmation step before coding
+
+Please confirm in writing that you understand:
+
+Templates are % distribution of total mix including bitumen (sum=100%)
+
+Stock ledger is in MT, with CFT receipts converted using admin bulk density factors
+
+Party stock is pooled; consumption tagged job/site-wise
+
+Dispatch auto-calculates consumption for aggregates+bitumen; LDO from dispatch
+
+Operations tab is the only equipment input; utilities is summary-only
+
+Admin PIN allows edit/delete during development
+
+Uppercase for all entries including edits
+Then implement.

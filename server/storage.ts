@@ -107,6 +107,8 @@ export interface IStorage {
   // Plant Module Phase-1 - Transactions
   getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]>;
   createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt>;
+  updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined>;
+  deleteMaterialReceipt(id: number): Promise<boolean>;
   
   getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
   createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch>;
@@ -891,6 +893,67 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined> {
+    return db.transaction(async (tx) => {
+      // Get existing receipt first
+      const [existing] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
+      if (!existing) return undefined;
+      
+      // Uppercase text fields
+      const updates = { ...receipt };
+      if (updates.supplier) updates.supplier = updates.supplier.toUpperCase();
+      if (updates.vehicleNumber) updates.vehicleNumber = updates.vehicleNumber.toUpperCase();
+      if (updates.challanNumber) updates.challanNumber = updates.challanNumber.toUpperCase();
+      
+      // Note: For simplicity, we don't recalculate stock on update
+      // To change quantity/material, delete and recreate the receipt
+      const [result] = await tx.update(materialReceipts).set(updates).where(eq(materialReceipts.id, id)).returning();
+      return result;
+    });
+  }
+
+  async deleteMaterialReceipt(id: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      // Get the receipt to reverse the stock balance
+      const [receipt] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
+      if (!receipt) return false;
+      
+      // Get material for conversion factor
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      
+      // Calculate the converted quantity that was added
+      let stockQuantity = receipt.quantity;
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          stockQuantity = receipt.quantity * material.conversionFactor;
+        }
+      }
+      
+      // Reverse the stock balance
+      const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
+      const condition = targetPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, receipt.materialId))
+        : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, receipt.materialId));
+      
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      if (existing) {
+        await tx.update(stockBalances)
+          .set({ balance: existing.balance - stockQuantity, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+      }
+      
+      // Delete related ledger entry
+      await tx.delete(stockLedger).where(and(
+        eq(stockLedger.transactionType, "receipt"),
+        eq(stockLedger.referenceId, id)
+      ));
+      
+      // Delete the receipt
+      await tx.delete(materialReceipts).where(eq(materialReceipts.id, id));
+      return true;
+    });
+  }
+
   // Truck Dispatches
   async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]> {
     let conditions = [];
@@ -1112,11 +1175,12 @@ export class DatabaseStorage implements IStorage {
       const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
       const theoreticalLdoQty = loadWeight * ldoNorm;
       
-      // Calculate aggregate consumption from components
+      // Calculate aggregate consumption from components (percent of total mix)
       const theoreticalAggregates: Record<number, number> = {};
       for (const comp of components) {
-        const kgPerTon = (comp as any).kgPerTon || 0;
-        theoreticalAggregates[comp.materialId] = loadWeight * kgPerTon / 1000; // Convert kg to tons
+        const percent = (comp as any).percent || 0;
+        // percent of loadWeight gives consumption in MT
+        theoreticalAggregates[comp.materialId] = loadWeight * percent / 100;
       }
       
       // Check stock availability and track shortages

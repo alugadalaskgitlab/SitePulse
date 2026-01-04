@@ -153,12 +153,12 @@ export const mixTemplates = pgTable("mix_templates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Mix Template Components (aggregate proportions - kg per ton of mix)
+// Mix Template Components (aggregate proportions - % of total mix including bitumen)
 export const mixTemplateComponents = pgTable("mix_template_components", {
   id: serial("id").primaryKey(),
   templateId: integer("template_id").notNull(),
   materialId: integer("material_id").notNull(),
-  kgPerTon: real("kg_per_ton"), // kg of this material per ton of mix output
+  percent: real("percent"), // % of total mix (all components + bitumen = 100%)
   uom: text("uom"),
 });
 

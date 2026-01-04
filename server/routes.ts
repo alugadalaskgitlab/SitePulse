@@ -546,6 +546,26 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/plant-module/material-receipts/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateMaterialReceipt(Number(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "Receipt not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update material receipt" });
+    }
+  });
+
+  app.delete("/api/plant-module/material-receipts/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMaterialReceipt(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Receipt not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete material receipt" });
+    }
+  });
+
   // Truck Dispatches
   app.get("/api/plant-module/dispatches", async (req, res) => {
     try {
@@ -703,8 +723,8 @@ async function seedPlantMasterData() {
     const materials = await storage.getPlantMaterials();
     const materialMap = new Map(materials.map(m => [m.name, m.id]));
     
-    // Default mix templates with aggregate proportions (kgPerTon)
-    // BC Standard: 20mm=300, 10/12mm=350, 6mm=200, Dust=150 per ton of mix
+    // Default mix templates with aggregate proportions (% of total mix)
+    // BC Standard: 20mm=30%, 10/12mm=35%, 6mm=20%, Dust=10% (aggregates=95%, Bitumen=5%)
     await storage.createMixTemplate({
       name: "BC STANDARD",
       mixType: "BC",
@@ -713,13 +733,13 @@ async function seedPlantMasterData() {
       isStandard: 1,
       notes: "Standard BC mix design"
     }, [
-      { templateId: 0, materialId: materialMap.get("20MM") || 1, kgPerTon: 300, uom: "Kg" },
-      { templateId: 0, materialId: materialMap.get("10/12MM") || 2, kgPerTon: 350, uom: "Kg" },
-      { templateId: 0, materialId: materialMap.get("6MM DOWN") || 3, kgPerTon: 200, uom: "Kg" },
-      { templateId: 0, materialId: materialMap.get("DUST") || 4, kgPerTon: 150, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("20MM") || 1, percent: 30, uom: "%" },
+      { templateId: 0, materialId: materialMap.get("10/12MM") || 2, percent: 35, uom: "%" },
+      { templateId: 0, materialId: materialMap.get("6MM DOWN") || 3, percent: 20, uom: "%" },
+      { templateId: 0, materialId: materialMap.get("DUST") || 4, percent: 9.8, uom: "%" },
     ]);
     
-    // DBM Standard: 20mm=400, 10/12mm=300, 6mm=150, Dust=150 per ton of mix
+    // DBM Standard: 20mm=40%, 10/12mm=30%, 6mm=15%, Dust=10.5% (aggregates=95.5%, Bitumen=4.5%)
     await storage.createMixTemplate({
       name: "DBM STANDARD",
       mixType: "DBM",
@@ -728,10 +748,10 @@ async function seedPlantMasterData() {
       isStandard: 1,
       notes: "Standard DBM mix design"
     }, [
-      { templateId: 0, materialId: materialMap.get("20MM") || 1, kgPerTon: 400, uom: "Kg" },
-      { templateId: 0, materialId: materialMap.get("10/12MM") || 2, kgPerTon: 300, uom: "Kg" },
-      { templateId: 0, materialId: materialMap.get("6MM DOWN") || 3, kgPerTon: 150, uom: "Kg" },
-      { templateId: 0, materialId: materialMap.get("DUST") || 4, kgPerTon: 150, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("20MM") || 1, percent: 40, uom: "%" },
+      { templateId: 0, materialId: materialMap.get("10/12MM") || 2, percent: 30, uom: "%" },
+      { templateId: 0, materialId: materialMap.get("6MM DOWN") || 3, percent: 15, uom: "%" },
+      { templateId: 0, materialId: materialMap.get("DUST") || 4, percent: 10.5, uom: "%" },
     ]);
     
     // Default generators

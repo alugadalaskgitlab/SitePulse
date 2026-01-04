@@ -481,7 +481,7 @@ function MixTemplateMaster() {
       bitumenPercent?: number; 
       ldoNorm?: number;
       notes?: string;
-      components?: { materialId: number; kgPerTon: number; uom: string }[];
+      components?: { materialId: number; percent: number; uom: string }[];
     }) => apiRequest("POST", "/api/plant-module/mix-templates", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
@@ -508,13 +508,19 @@ function MixTemplateMaster() {
     setAggregateProportions({});
   };
 
+  // Calculate total percentage (aggregates + bitumen)
+  const aggregateTotal = Object.values(aggregateProportions)
+    .reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+  const bitumenVal = parseFloat(bitumenPercent) || 0;
+  const totalPercent = aggregateTotal + bitumenVal;
+
   const handleCreate = () => {
     const components = Object.entries(aggregateProportions)
       .filter(([_, value]) => value && parseFloat(value) > 0)
-      .map(([materialId, kgPerTon]) => ({
+      .map(([materialId, percent]) => ({
         materialId: parseInt(materialId),
-        kgPerTon: parseFloat(kgPerTon),
-        uom: "Kg"
+        percent: parseFloat(percent),
+        uom: "%"
       }));
 
     createMutation.mutate({
@@ -596,14 +602,14 @@ function MixTemplateMaster() {
               </div>
               
               <div className="space-y-2">
-                <Label>Aggregate Proportions (kg per ton of mix)</Label>
+                <Label>Aggregate Proportions (% of total mix)</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {aggregateMaterials.map((mat) => (
                     <div key={mat.id} className="flex items-center gap-2">
                       <Label className="w-20 text-xs">{mat.name}</Label>
                       <Input
                         type="number"
-                        step="1"
+                        step="0.1"
                         value={aggregateProportions[mat.id] || ""}
                         onChange={(e) => setAggregateProportions(prev => ({
                           ...prev,
@@ -616,7 +622,10 @@ function MixTemplateMaster() {
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">Total should be ~1000 kg/ton (excluding bitumen/LDO)</p>
+                <div className={`text-xs ${Math.abs(totalPercent - 100) < 0.5 ? "text-green-600" : "text-amber-600"}`}>
+                  Total: {totalPercent.toFixed(1)}% (Bitumen: {bitumenVal}% + Aggregates: {aggregateTotal.toFixed(1)}%)
+                  {Math.abs(totalPercent - 100) >= 0.5 && " - Should equal 100%"}
+                </div>
               </div>
 
               <div>
