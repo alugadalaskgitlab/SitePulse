@@ -94,8 +94,9 @@ Preferred communication style: Simple, everyday language.
 - **Validation**: Cannot be negative, cannot exceed (opening + issued)
 
 ### Access Control
-- **Engineer**: View only, cannot edit actual consumption
-- **Manager/Admin**: Can record actual consumption (for analysis only - doesn't affect stock deductions)
+- **Engineer**: Can add new entries (dispatches, receipts, logs), view data
+- **Manager**: View-only access to reports and dashboards (cannot edit or delete)
+- **Admin**: Full access including edit and delete capabilities
 
 ### Key Business Rules
 - Stock balances are always derived from ledger - no manual entry
