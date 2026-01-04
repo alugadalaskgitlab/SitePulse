@@ -1,0 +1,205 @@
+Important: This is an enhancement/fix to the existing Site Reporter app.
+DO NOT create a new app and DO NOT redesign UI unnecessarily.
+Focus only on Plant Module logic + dashboard + permissions, and keep Site Module as-is.
+
+⸻
+
+1) MATERIAL RECEIPTS MUST UPDATE STOCK (Not just add rows)
+
+Problem now
+
+Material receipts only add a row. The received quantity is not added to existing stock totals, and total quantity per material is not shown. Also CFT UOM is missing.
+
+Required fix
+	1.	Implement a true Stock Ledger:
+	•	Every receipt creates a +quantity ledger entry.
+	•	Every consumption creates a -quantity ledger entry.
+	•	Stock balance is always derived from ledger totals (no manual balances).
+	2.	Add UOM options (must include):
+	•	CFT, Ton/MT, Cum, Liters, Kgs, Barrels (Emulsion), Nos
+	3.	Since mix consumption is calculated by weight/tons, implement UOM conversion rules:
+	•	For each aggregate material, store a “conversion factor”:
+	•	Example: 1 CFT = X tons (or X kg), configurable per material.
+	•	Allow admin to set/modify conversion factor in Material Master.
+	4.	In Material Receipt entry, include:
+	•	Date/time
+	•	Supplier Name
+	•	Vehicle No
+	•	Challan/Receipt/Invoice No
+	•	Material, Qty, UOM
+	•	Stock Owner: Party/Job OR Common/HLC (who supplied it)
+	5.	Receipt must update:
+	•	Party stock bucket OR HLC/common stock bucket
+	•	Material-wise running balance must be visible.
+
+⸻
+
+2) MIX TEMPLATE MASTER MUST INCLUDE AGGREGATE PROPORTIONS + BITUMEN% + LDO NORM
+
+Problem now
+
+Dispatch only asks bitumen %. No aggregate proportions are captured → so consumption cannot be computed.
+
+Required fix
+
+Create a proper Mix Template Master where we can define:
+	•	Mix Type (BC / DBM etc.)
+	•	Aggregate proportions for each size (20mm, 10/12mm, 6mm/down, Dust, optional 40mm)
+	•	Define as kg per ton (preferred) OR percent-by-weight
+	•	Bitumen % (by weight)
+	•	LDO norm (liters per ton)
+	•	Allow multiple templates per party/job if required
+	•	Allow editing template only by Admin
+
+⸻
+
+3) TRUCK DISPATCH MUST AUTO-CALCULATE CONSUMPTION (AGG + BITUMEN + LDO) AND UPDATE STOCK
+
+Problems now
+	•	Aggregate consumption not calculated (no template).
+	•	Bitumen not calculated or deducted.
+	•	LDO not deducted.
+	•	No tracking of who supplied bitumen/LDO (party vs HLC/common).
+
+Required behavior
+
+When a Dispatch/Load entry is saved (per truck/load):
+Fields:
+	•	Date/time
+	•	Job/Party
+	•	Truck No
+	•	Mix Type + Select Mix Template
+	•	Load weight in Tons/MT (for Phase 1)
+
+System must auto-calculate theoretical consumption:
+	•	Aggregate consumption per size (tons) from template
+	•	Bitumen consumption (tons) from bitumen %
+	•	LDO consumption (liters) from LDO norm × tons
+
+Stock deduction logic (must be correct)
+
+For each material consumed (aggregates, bitumen, LDO):
+	1.	Deduct from that Party stock if the Party is the supplier of that material
+	2.	Else deduct from HLC/Common stock
+	3.	If insufficient stock → show shortage warning and do not silently allow negative balances.
+	4.	Each deduction must create a -ledger entry and update running balances immediately.
+
+Supplier ownership must be tracked
+
+For each receipt and each stock item we must know:
+	•	Which party supplied it OR HLC/common procured it.
+
+So the dispatch must correctly reduce:
+	•	Giridhar-supplied bitumen → Giridhar bitumen stock
+	•	HLC-procured bitumen → HLC bitumen stock
+Same for LDO.
+
+⸻
+
+4) EQUIPMENT USAGE / DIESEL LOG MUST TREAT “ISSUED” AS BALANCE, NOT CONSUMPTION
+
+Problem now
+
+The system treats “diesel issued” as “diesel consumed”, which is wrong.
+
+Required fix
+
+For equipment logs (plant/site equipment):
+	•	Capture meter type:
+	•	Hour meter for JCB/Loader/Generators etc.
+	•	Odometer for trucks/tippers/tractors
+	•	Capture opening and closing readings → compute hours/km
+
+Fuel logic must show separately:
+	•	Diesel Issued (added)
+	•	Diesel Consumed (computed)
+	•	Diesel Balance (remaining)
+
+Consumption calculation:
+	•	Default: Consumed = hours × norm (L/hr) OR km × norm
+	•	Balance = opening balance + issued − consumed
+(You can store “opening balance” per equipment/day OR infer from previous day close)
+
+At minimum, in the report/dashboards:
+	•	Do not label issued fuel as consumed.
+	•	Consumption must be computed, balance must be shown.
+
+⸻
+
+5) DASHBOARD MUST WORK LIKE SITE MODULE + FILTERING + STOCK SUMMARY
+
+Required dashboard behavior
+
+Plant dashboard must show:
+	1.	All plant records in date range (like site module)
+	2.	Filterable by:
+
+	•	Party/Job
+	•	Material
+	•	Mix Type / Template
+	•	Truck No
+	•	Supplier
+	•	Stock owner (Party vs HLC/common)
+
+Stock summary view (very important)
+
+When selecting a date range and optionally party/job:
+For each material show:
+	•	Opening stock (before start date)
+	•	Received during period
+	•	Consumed during period (from dispatch + fuel logs)
+	•	Closing stock
+
+This must be possible:
+	•	Party-wise
+	•	Job-wise
+	•	Material-wise
+	•	Common/HLC-wise
+
+Also show:
+	•	Mix dispatch totals (tons) by date and by party/job
+	•	Bitumen consumed totals
+	•	LDO consumed totals
+	•	Diesel issued/consumed/balance summaries
+
+⸻
+
+6) ROLE-BASED ACCESS WITH MANAGER PIN AND ADMIN PIN
+
+App entry rules
+	•	Do NOT block plant entry screens for operators.
+	•	Operators must be able to add receipts/dispatch/equipment usage normally.
+
+Dashboard access rules
+	•	When user clicks “Dashboard” tab:
+	•	Ask for PIN
+	•	If Manager PIN: show dashboard, filters, and view-only reports
+	•	If Admin PIN: show dashboard + full access
+
+Edit/Delete rules (must be strict)
+	•	Only Admin can Edit and Delete any report.
+	•	Manager must NOT be able to edit or delete; manager is view-only (as per your requirement now).
+	•	Admin edits must update correctly and reflect in reports.
+	•	Deleting must require confirmation.
+
+(If you want manager edits later, we can add version copy like site module; but for now keep it strict: admin only.)
+
+⸻
+
+7) ACCEPTANCE TESTS (must pass)
+
+After implementation, verify:
+	1.	Receiving material increases stock totals (not just rows)
+	2.	CFT exists in UOM and conversion works
+	3.	Dispatch creates consumption entries for:
+	•	aggregates
+	•	bitumen
+	•	LDO
+	4.	Party-wise vs HLC/common stock balances update correctly
+	5.	Diesel logs do not treat issued as consumed; consumption computed; balance shown
+	6.	Dashboard filters actually filter (not showing all data)
+	7.	Manager/Admin PIN gating works and edit/delete restricted to Admin only
+
+⸻
+
+Please confirm understanding in writing first, then implement these fixes. Do not touch Site module now

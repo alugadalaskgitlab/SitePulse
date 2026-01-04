@@ -131,6 +131,9 @@ export const plantMaterials = pgTable("plant_materials", {
   category: text("category"), // Aggregate, Bitumen, Utility, etc.
   allowedUoms: text("allowed_uoms"), // JSON array: ["Ton", "Cum", "Liters", etc.]
   defaultUom: text("default_uom"),
+  conversionFactor: real("conversion_factor"), // For UOM conversion, e.g., 1 CFT = X tons
+  conversionFromUom: text("conversion_from_uom"), // Source UOM for conversion (e.g., "CFT")
+  conversionToUom: text("conversion_to_uom"), // Target UOM for conversion (e.g., "Ton")
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });

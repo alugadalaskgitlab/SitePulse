@@ -189,10 +189,21 @@ export default function PlantGeneratorLogs() {
                     <p className="text-sm text-muted-foreground">
                       {log.startTime} - {log.endTime} ({log.hoursRun?.toFixed(1)} hrs)
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      Opening: {log.openingDiesel} L + Issued: {log.dieselIssued} L = Consumed: {log.dieselConsumed?.toFixed(1)} L
-                    </p>
-                    <p className="text-xs text-muted-foreground">{log.date}</p>
+                    <div className="flex flex-wrap gap-3 text-xs mt-1">
+                      <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                        Opening: {log.openingDiesel || 0} L
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
+                        Issued: {log.dieselIssued || 0} L
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
+                        Consumed: {log.dieselConsumed?.toFixed(1) || 0} L
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                        Closing: {log.closingDiesel || ((log.openingDiesel || 0) + (log.dieselIssued || 0) - (log.dieselConsumed || 0)).toFixed(1)} L
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{log.date}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(2)} L/hr</p>
