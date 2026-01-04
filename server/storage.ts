@@ -1333,11 +1333,21 @@ export class DatabaseStorage implements IStorage {
         return newBalance;
       };
       
-      // Helper to deduct stock with party-first, plant-common fallback
+      // Helper to deduct stock with party-first (pooled), plant-common fallback
+      // Party stock is pooled at plant level - check ALL parties with stock, not just dispatch's party
       const deductStock = async (matId: number, requiredQty: number, uom: string, notes: string) => {
-        const partyStock = await getBalance(partyId, matId);
+        // Get all party stocks for this material (pooled at plant level)
+        const allPartyBalances = await tx.select().from(stockBalances)
+          .where(and(
+            eq(stockBalances.materialId, matId),
+            sql`${stockBalances.partyId} IS NOT NULL`,
+            sql`${stockBalances.balance} > 0`
+          ))
+          .orderBy(desc(stockBalances.balance)); // Deduct from largest stock first
+        
         const plantCommonStock = await getBalance(null, matId);
-        const totalAvailable = partyStock + plantCommonStock;
+        const totalPartyStock = allPartyBalances.reduce((sum, b) => sum + (b.balance || 0), 0);
+        const totalAvailable = totalPartyStock + plantCommonStock;
         
         let shortage = false;
         if (totalAvailable < requiredQty) {
@@ -1346,10 +1356,11 @@ export class DatabaseStorage implements IStorage {
         
         let remaining = requiredQty;
         
-        // First deduct from party stock
-        if (partyStock > 0 && remaining > 0) {
-          const deductFromParty = Math.min(partyStock, remaining);
-          await deductFromSource(partyId, matId, deductFromParty, uom, `${notes} (Party)`);
+        // First deduct from party stocks (pooled - try all parties with stock)
+        for (const bal of allPartyBalances) {
+          if (remaining <= 0) break;
+          const deductFromParty = Math.min(bal.balance, remaining);
+          await deductFromSource(bal.partyId, matId, deductFromParty, uom, `${notes} (Party)`);
           remaining -= deductFromParty;
         }
         
