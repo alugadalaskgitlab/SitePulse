@@ -681,39 +681,58 @@ async function seedPlantMasterData() {
   if (existingMaterials.length === 0) {
     console.log("Seeding plant master data...");
     
-    // Default materials
+    // Default materials - CFT included for aggregates (commonly received in CFT)
+    // Conversion factor: 1 CFT = ~0.028 Ton for aggregates (varies by material density)
     const defaultMaterials = [
-      { name: "20MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
-      { name: "10/12MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
-      { name: "6MM DOWN", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
-      { name: "DUST", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
-      { name: "40MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "Cum"]) },
-      { name: "BITUMEN", category: "Bitumen", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "Kgs", "Barrels"]) },
-      { name: "EMULSION", category: "Bitumen", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels"]) },
-      { name: "DIESEL", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters"]) },
-      { name: "LDO", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters"]) },
+      { name: "20MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.04, conversionFromUom: "CFT", conversionToUom: "Ton" },
+      { name: "10/12MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.04, conversionFromUom: "CFT", conversionToUom: "Ton" },
+      { name: "6MM DOWN", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.045, conversionFromUom: "CFT", conversionToUom: "Ton" },
+      { name: "DUST", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.05, conversionFromUom: "CFT", conversionToUom: "Ton" },
+      { name: "40MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.045, conversionFromUom: "CFT", conversionToUom: "Ton" },
+      { name: "BITUMEN", category: "Bitumen", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "Ton", "Kg", "Barrels"]) },
+      { name: "EMULSION", category: "Bitumen", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
+      { name: "DIESEL", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
+      { name: "LDO", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
     ];
     
     for (const material of defaultMaterials) {
       await storage.createPlantMaterial(material);
     }
     
-    // Default mix templates
+    // Get materials for components
+    const materials = await storage.getPlantMaterials();
+    const materialMap = new Map(materials.map(m => [m.name, m.id]));
+    
+    // Default mix templates with aggregate proportions (kgPerTon)
+    // BC Standard: 20mm=300, 10/12mm=350, 6mm=200, Dust=150 per ton of mix
     await storage.createMixTemplate({
       name: "BC STANDARD",
       mixType: "BC",
       bitumenPercent: 5.2,
+      ldoNorm: 6, // 6 liters LDO per ton of mix
       isStandard: 1,
       notes: "Standard BC mix design"
-    });
+    }, [
+      { templateId: 0, materialId: materialMap.get("20MM") || 1, kgPerTon: 300, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("10/12MM") || 2, kgPerTon: 350, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("6MM DOWN") || 3, kgPerTon: 200, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("DUST") || 4, kgPerTon: 150, uom: "Kg" },
+    ]);
     
+    // DBM Standard: 20mm=400, 10/12mm=300, 6mm=150, Dust=150 per ton of mix
     await storage.createMixTemplate({
       name: "DBM STANDARD",
       mixType: "DBM",
       bitumenPercent: 4.5,
+      ldoNorm: 5, // 5 liters LDO per ton of mix
       isStandard: 1,
       notes: "Standard DBM mix design"
-    });
+    }, [
+      { templateId: 0, materialId: materialMap.get("20MM") || 1, kgPerTon: 400, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("10/12MM") || 2, kgPerTon: 300, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("6MM DOWN") || 3, kgPerTon: 150, uom: "Kg" },
+      { templateId: 0, materialId: materialMap.get("DUST") || 4, kgPerTon: 150, uom: "Kg" },
+    ]);
     
     // Default generators
     await storage.createEquipment({

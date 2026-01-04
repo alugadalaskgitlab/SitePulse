@@ -825,11 +825,28 @@ export class DatabaseStorage implements IStorage {
         ...receipt,
         supplier: receipt.supplier?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
+        challanNumber: receipt.challanNumber?.toUpperCase(),
       };
       const [result] = await tx.insert(materialReceipts).values(uppercased).returning();
       
       // Determine the target partyId for stock
       const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
+      
+      // Get material info for UOM conversion
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      
+      // Apply UOM conversion if receipt UOM differs from default/stock UOM
+      // Stock is always tracked in the default UOM (usually Ton for aggregates)
+      let stockQuantity = receipt.quantity;
+      let stockUom = receipt.uom;
+      
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        // If receipt is in the "from" UOM, convert to "to" UOM
+        if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          stockQuantity = receipt.quantity * material.conversionFactor;
+          stockUom = material.conversionToUom;
+        }
+      }
       
       // Get current balance
       const condition = targetPartyId === null 
@@ -837,9 +854,9 @@ export class DatabaseStorage implements IStorage {
         : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, receipt.materialId));
       
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance || 0) + receipt.quantity;
+      const newBalance = (existing?.balance || 0) + stockQuantity;
       
-      // Update stock balance
+      // Update stock balance (using converted quantity)
       if (existing) {
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
@@ -848,22 +865,26 @@ export class DatabaseStorage implements IStorage {
         await tx.insert(stockBalances).values({
           partyId: targetPartyId,
           materialId: receipt.materialId,
-          balance: receipt.quantity,
-          uom: receipt.uom,
+          balance: stockQuantity,
+          uom: stockUom,
         });
       }
       
-      // Add ledger entry
+      // Add ledger entry (store converted quantity for stock, note original in notes)
+      const conversionNote = stockQuantity !== receipt.quantity 
+        ? `From ${receipt.supplier || 'Supplier'} (${receipt.quantity} ${receipt.uom} converted to ${stockQuantity.toFixed(3)} ${stockUom})`
+        : receipt.supplier ? `From ${receipt.supplier}` : undefined;
+      
       await tx.insert(stockLedger).values({
         date: receipt.date,
         partyId: targetPartyId,
         materialId: receipt.materialId,
         transactionType: "receipt",
         referenceId: result.id,
-        quantityIn: receipt.quantity,
+        quantityIn: stockQuantity, // Use converted quantity for ledger
         balanceAfter: newBalance,
-        uom: receipt.uom,
-        notes: receipt.supplier ? `From ${receipt.supplier}` : undefined,
+        uom: stockUom,
+        notes: conversionNote,
       });
       
       return result;

@@ -1,0 +1,57 @@
+Replit Team — the proposed data flow is directionally correct, but it does NOT match our requirements yet. Please fix Plant Module logic as below. This is not a UI change — it is core stock/ledger calculation + UOM + mix template logic.
+
+A) Material Receipts must update stock totals (ledger-based)
+	1.	When a material receipt is saved, it must create a ledger entry (+) for that material + party/job (or common stock).
+	2.	Stock balance must be derived only from the ledger sum (no manual balance fields).
+	3.	Currently the app is only adding rows — the received quantity is not updating totals. Fix this.
+	4.	Aggregates are mostly received in CFT, so CFT must be present in the UOM dropdown always.
+	5.	Add UOM master: MT/Ton, CFT, Cum, Kg, Liters, Barrels, Nos.
+	6.	Each receipt must store: supplier name, vehicle no, challan/receipt no, date, UOM, quantity.
+
+B) Mix Templates must include aggregate proportions (NOT only bitumen %)
+	1.	Add a proper Mix Template Master that includes:
+	•	Aggregate component proportions for each size (20mm, 10/12mm, 6mm, dust/filler etc.)
+	•	Bitumen %
+	•	LDO norm (liters per MT of mix)
+	2.	Templates may vary per party/job and may differ mainly in bitumen %. Admin must be able to create/edit templates.
+
+C) Truck Dispatch must calculate theoretical consumption for ALL materials and deduct stock
+	1.	Dispatch form must include: party/job, mix template, load weight (MT), truck no, mix type, destination/site.
+	2.	When dispatch is saved:
+	•	Auto-calculate theoretical consumption for each aggregate size + bitumen + LDO using the selected template and load weight.
+	•	Create ledger entries (-) for each consumed material.
+	3.	Stock deduction priority:
+	1.	Deduct from party/job stock first
+	2.	If insufficient, deduct remaining from common/HLC stock
+	3.	If still insufficient, flag shortage clearly
+	4.	Bitumen and LDO must also be deducted using the same party/common logic and update balances.
+	5.	Right now dispatch is not calculating aggregates at all (only bitumen % appears). Fix this completely.
+
+D) UOM conversion rules are mandatory
+	1.	Since receipts may be in CFT but consumption is by weight (MT), add conversion capability:
+	•	Provide per-material conversion factor (e.g., CFT → MT) editable by Admin.
+	•	Use conversion factor when aggregating stock and deducting.
+	2.	Without conversion, consumption/balance cannot be correct.
+
+E) Utilities: Diesel/LDO issued ≠ consumed (fix equipment usage logic)
+	1.	In Equipment/Utilities log, diesel “issued” must NOT be treated as “consumed”.
+	2.	We track consumption using:
+	•	Meter readings (hour meter / km meter) preferred: consumed = closing - opening
+	•	If meter not available, use hours × norm
+	3.	App must show for each equipment:
+	•	Opening meter, closing meter, hours run (calculated)
+	•	Diesel issued
+	•	Diesel consumed (calculated)
+	•	Diesel balance/closing (issued - consumed) OR “balance diesel”
+	4.	We also track generator efficiency in liters/hour and tipper efficiency by km if available.
+
+F) Dashboard + Role access + Filters + Export/Print
+	1.	Dashboard must be accessible by Manager PIN and Admin PIN (not asked on app launch).
+	2.	Manager can view/filter/export/print only. Admin can view/filter/export/print + edit/delete.
+	3.	Filters must work correctly (currently it shows all reports even after applying filter):
+	•	Date range, party/job, material, supplier, mix type, truck
+	4.	Reports must show:
+	•	Opening, Received, Consumed, Closing balances per material per party and for common stock
+	•	Dispatch-wise theoretical consumption (and optional actual entry later)
+
+Please implement the above logic first, then update UI to reflect computed totals/balances.
