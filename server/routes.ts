@@ -591,6 +591,20 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/plant-module/dispatches/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteTruckDispatch(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      console.error("Delete dispatch error:", err);
+      res.status(500).json({ message: "Failed to delete dispatch" });
+    }
+  });
+
   // Equipment Usage
   app.get("/api/plant-module/equipment-usage", async (req, res) => {
     try {

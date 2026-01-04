@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Truck, Loader2, Lock } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
@@ -16,7 +16,7 @@ import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
 
 export default function PlantDispatches() {
   const { toast } = useToast();
-  const { canEdit } = useAccess();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
@@ -44,9 +44,22 @@ export default function PlantDispatches() {
       apiRequest("POST", "/api/plant-module/dispatches", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setDialogOpen(false);
       resetForm();
       toast({ title: "Dispatch recorded successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/dispatches/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      toast({ title: "Dispatch deleted successfully" });
     },
   });
 
@@ -87,8 +100,8 @@ export default function PlantDispatches() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Truck Dispatches</h1>
-            <p className="text-muted-foreground">Record outgoing truck loads</p>
+            <h1 className="text-2xl font-bold">Mix Dispatches</h1>
+            <p className="text-muted-foreground">Record outgoing mix loads by party/job</p>
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -99,7 +112,7 @@ export default function PlantDispatches() {
           </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Record Truck Dispatch</DialogTitle>
+              <DialogTitle>Record Mix Dispatch</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
@@ -204,7 +217,7 @@ export default function PlantDispatches() {
                 const template = templates?.find(t => t.id === dispatch.mixTemplateId);
                 return (
                   <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium">{dispatch.truckNumber} - {dispatch.loadWeight} MT</p>
                       <p className="text-sm text-muted-foreground">
                         {party?.name} | {template?.name} ({template?.mixType})
@@ -216,6 +229,11 @@ export default function PlantDispatches() {
                       </p>
                       <p className="text-xs text-muted-foreground">{dispatch.date} {dispatch.time}</p>
                     </div>
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 );
               })}

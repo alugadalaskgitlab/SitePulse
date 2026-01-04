@@ -1,0 +1,108 @@
+We want a UI/UX and logic revamp of the Plant Module. Please implement exactly as below.
+
+Remove/disable the Utilities tab completely.
+
+Generator diesel tracking must come from Equipment Usage tab.
+
+LDO consumption must come from Mix Dispatches (based on mix dispatch qty × LDO norm).
+
+No duplicate inputs in Utilities.
+
+Plant module tabs must be only:
+
+Operations
+
+Equipment Usage
+
+Masters
+
+Dashboard
+
+Operations tab
+A) Material Receipts (keep current entry, improve report view)
+
+Report must be grouped by Date, sorted by Time.
+
+Columns: Date/Time, Party, Job/Site, Material, Qty, UOM, Vehicle No, Challan/Invoice No (optional).
+
+Admin PIN only: allow edit/delete of any receipt (for development stage).
+
+B) Rename “Truck Dispatches” to Mix Dispatches
+
+Entry: Date/Time, Party, Job/Site, Mix Template, Mix Qty (MT), Truck No, Delivery Challan No (optional).
+
+Report view grouped by Date and sorted by time, showing all fields above.
+
+Admin PIN only: allow edit/delete any dispatch (development stage).
+
+C) Stock Balances must be the primary computed summary
+
+Must compute: Opening + Received − Consumed = Closing for selected date range.
+
+Must allow filters: Date range, Party, Job/Site, Material.
+
+UOM rules:
+
+Aggregates stored/displayed in MT (convert from CFT using per-material conversion factor).
+
+Bitumen in MT
+
+Diesel & LDO in Liters
+
+Emulsion in Barrels
+
+Remove/hide the “Ledger Details” screen from UI (it confuses users).
+You may keep internal transaction tables for correctness, but do not show raw ledger lines to users.
+
+Masters tab
+
+Keep current masters but add Admin PIN required for edit/delete during development.
+
+Mix Templates must be entered in percentages totaling 100% including bitumen.
+(Aggregates + bitumen = 100%).
+
+Support template versioning.
+
+Add admin-configurable conversion factor for aggregates: CFT → MT (per material).
+
+Equipment Usage tab
+
+This must be the only place for generator/equipment diesel tracking.
+
+Support hour meter / odometer:
+
+opening reading, closing reading → hours/km
+
+Diesel issued (L) must NOT be treated as consumed.
+
+Diesel consumed must be calculated from hours/km norms.
+
+Display diesel balance (issued − consumed).
+
+Admin PIN: edit/delete any usage record during development.
+
+Dashboard tab
+
+When Dashboard is opened, ask for PIN:
+
+Manager PIN → view/filter only (no edit/delete, no export)
+
+Admin PIN → full access: view/filter + edit/delete + export to Excel/PDF + print
+
+Dashboard must show three filterable report blocks:
+
+Material Receipts
+
+Mix Dispatches
+
+Equipment Usage
+
+Filters must work correctly: Date range + Party + Job/Site + Material (where relevant).
+
+Export/Print should export only filtered results.
+
+Uppercase enforcement
+
+All text entry fields must store/display in UPPERCASE always, including edits.
+
+Priority: correct computation consistency across Operations Stock Balances + Dashboard + Reports. No more mismatch between tabs.

@@ -112,6 +112,7 @@ export interface IStorage {
   
   getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
   createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch>;
+  deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
@@ -983,6 +984,24 @@ export class DatabaseStorage implements IStorage {
     
     const [result] = await db.insert(truckDispatches).values(uppercased).returning();
     return result;
+  }
+
+  async deleteTruckDispatch(id: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      // Get the dispatch to reverse the stock ledger entries
+      const [dispatch] = await tx.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
+      if (!dispatch) return false;
+      
+      // Delete related ledger entries (consumption entries for this dispatch)
+      await tx.delete(stockLedger).where(and(
+        eq(stockLedger.transactionType, "dispatch"),
+        eq(stockLedger.referenceId, id)
+      ));
+      
+      // Delete the dispatch
+      await tx.delete(truckDispatches).where(eq(truckDispatches.id, id));
+      return true;
+    });
   }
 
   // Equipment Usage

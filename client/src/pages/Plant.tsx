@@ -12,6 +12,7 @@ import { Link } from "wouter";
 import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAccess } from "@/lib/access-context";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES, MIX_TYPES } from "@shared/schema";
 
@@ -40,9 +41,9 @@ export default function Plant() {
             <Truck className="w-4 h-4" />
             <span className="hidden sm:inline">Operations</span>
           </TabsTrigger>
-          <TabsTrigger value="utilities" className="gap-2">
+          <TabsTrigger value="equipment" className="gap-2">
             <Gauge className="w-4 h-4" />
-            <span className="hidden sm:inline">Utilities</span>
+            <span className="hidden sm:inline">Equipment</span>
           </TabsTrigger>
           <TabsTrigger value="masters" className="gap-2">
             <Settings className="w-4 h-4" />
@@ -58,8 +59,8 @@ export default function Plant() {
           <OperationsTab />
         </TabsContent>
 
-        <TabsContent value="utilities" className="mt-6">
-          <UtilitiesTab />
+        <TabsContent value="equipment" className="mt-6">
+          <EquipmentTab />
         </TabsContent>
 
         <TabsContent value="masters" className="mt-6">
@@ -99,23 +100,8 @@ function OperationsTab() {
               <Truck className="w-7 h-7 text-green-600 dark:text-green-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Truck Dispatches</h3>
+              <h3 className="font-semibold text-lg">Mix Dispatches</h3>
               <p className="text-sm text-muted-foreground">Log outgoing truck loads with mix data</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      <Link href="/plant/equipment-usage">
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-              <Gauge className="w-7 h-7 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Equipment Usage</h3>
-              <p className="text-sm text-muted-foreground">Track meter readings and fuel consumption</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
@@ -140,33 +126,18 @@ function OperationsTab() {
   );
 }
 
-function UtilitiesTab() {
+function EquipmentTab() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <Link href="/plant/generator-logs">
+      <Link href="/plant/equipment-usage">
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
-              <Gauge className="w-7 h-7 text-yellow-600 dark:text-yellow-400" />
+            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <Gauge className="w-7 h-7 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Generator Diesel Tracking</h3>
-              <p className="text-sm text-muted-foreground">Track diesel consumption per generator (L/hr)</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      <Link href="/plant/ldo-logs">
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <Droplets className="w-7 h-7 text-red-600 dark:text-red-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">LDO Consumption Tracking</h3>
-              <p className="text-sm text-muted-foreground">Track LDO usage vs production (L/ton)</p>
+              <h3 className="font-semibold text-lg">Equipment Usage</h3>
+              <p className="text-sm text-muted-foreground">Track meter readings and diesel consumption</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
@@ -189,6 +160,7 @@ function MastersTab() {
 
 function PartyMaster() {
   const { toast } = useToast();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
@@ -311,14 +283,18 @@ function PartyMaster() {
                   <p className="font-medium">{party.name}</p>
                   {party.notes && <p className="text-sm text-muted-foreground">{party.notes}</p>}
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(party)} data-testid={`button-edit-party-${party.id}`}>
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(party.id)} data-testid={`button-delete-party-${party.id}`}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
+                {canEdit && (
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(party)} data-testid={`button-edit-party-${party.id}`}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(party.id)} data-testid={`button-delete-party-${party.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -330,6 +306,7 @@ function PartyMaster() {
 
 function MaterialMaster() {
   const { toast } = useToast();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -442,9 +419,11 @@ function MaterialMaster() {
                   <p className="font-medium">{material.name}</p>
                   <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
+                {canDelete && (
+                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>
@@ -456,6 +435,7 @@ function MaterialMaster() {
 
 function MixTemplateMaster() {
   const { toast } = useToast();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [mixType, setMixType] = useState("BC");
@@ -668,9 +648,11 @@ function MixTemplateMaster() {
                     {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(template.id)} data-testid={`button-delete-template-${template.id}`}>
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
+                {canDelete && (
+                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(template.id)} data-testid={`button-delete-template-${template.id}`}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>
@@ -682,6 +664,7 @@ function MixTemplateMaster() {
 
 function EquipmentMasterSection() {
   const { toast } = useToast();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [equipmentType, setEquipmentType] = useState("Generator");
@@ -813,9 +796,11 @@ function EquipmentMasterSection() {
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(equip.id)} data-testid={`button-delete-equipment-${equip.id}`}>
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
+                {canDelete && (
+                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(equip.id)} data-testid={`button-delete-equipment-${equip.id}`}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>
