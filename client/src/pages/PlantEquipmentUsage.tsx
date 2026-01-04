@@ -253,7 +253,6 @@ export default function PlantEquipmentUsage() {
                       {dayUsage.map((entry) => {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
                         const variance = entry.variance || 0;
-                        const isExcess = variance < 0;
                         return (
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
@@ -274,18 +273,18 @@ export default function PlantEquipmentUsage() {
                                 <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Expected</span>
+                                <span className="text-muted-foreground text-xs block">Consumed</span>
                                 <span className="font-medium">{entry.expectedDiesel?.toFixed(1)} L</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Actual</span>
+                                <span className="text-muted-foreground text-xs block">Diesel Issued</span>
                                 <span className="font-medium">{entry.dieselIssued?.toFixed(1) || "-"} L</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Variance</span>
-                                <Badge variant={isExcess ? "destructive" : "secondary"} className="gap-1">
-                                  {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                  {Math.abs(variance).toFixed(1)} L
+                                <span className="text-muted-foreground text-xs block">Balance</span>
+                                <Badge variant="secondary" className="gap-1">
+                                  {variance > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                  {variance?.toFixed(1) || "0"} L
                                 </Badge>
                               </div>
                             </div>
