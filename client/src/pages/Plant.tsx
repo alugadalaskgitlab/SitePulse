@@ -460,21 +460,33 @@ function MixTemplateMaster() {
   const [name, setName] = useState("");
   const [mixType, setMixType] = useState("BC");
   const [bitumenPercent, setBitumenPercent] = useState("");
+  const [ldoNorm, setLdoNorm] = useState("6");
   const [notes, setNotes] = useState("");
+  const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
   });
 
+  const { data: materials } = useQuery<PlantMaterial[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
+
+  const aggregateMaterials = materials?.filter(m => m.category === "Aggregate") || [];
+
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; mixType: string; bitumenPercent?: number; notes?: string }) =>
-      apiRequest("POST", "/api/plant-module/mix-templates", data),
+    mutationFn: (data: { 
+      name: string; 
+      mixType: string; 
+      bitumenPercent?: number; 
+      ldoNorm?: number;
+      notes?: string;
+      components?: { materialId: number; kgPerTon: number; uom: string }[];
+    }) => apiRequest("POST", "/api/plant-module/mix-templates", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
       setDialogOpen(false);
-      setName("");
-      setBitumenPercent("");
-      setNotes("");
+      resetForm();
       toast({ title: "Mix template created successfully" });
     },
   });
@@ -488,6 +500,33 @@ function MixTemplateMaster() {
     },
   });
 
+  const resetForm = () => {
+    setName("");
+    setBitumenPercent("");
+    setLdoNorm("6");
+    setNotes("");
+    setAggregateProportions({});
+  };
+
+  const handleCreate = () => {
+    const components = Object.entries(aggregateProportions)
+      .filter(([_, value]) => value && parseFloat(value) > 0)
+      .map(([materialId, kgPerTon]) => ({
+        materialId: parseInt(materialId),
+        kgPerTon: parseFloat(kgPerTon),
+        uom: "Kg"
+      }));
+
+    createMutation.mutate({
+      name,
+      mixType,
+      bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
+      ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
+      notes,
+      components
+    });
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -495,13 +534,13 @@ function MixTemplateMaster() {
           <Layers className="w-5 h-5" />
           Mix Template Master
         </CardTitle>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1" data-testid="button-add-mix-template">
               <Plus className="w-4 h-4" /> Add Template
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Mix Template</DialogTitle>
             </DialogHeader>
@@ -529,18 +568,57 @@ function MixTemplateMaster() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="bitumen-percent">Bitumen % (Theoretical)</Label>
-                <Input
-                  id="bitumen-percent"
-                  type="number"
-                  step="0.1"
-                  value={bitumenPercent}
-                  onChange={(e) => setBitumenPercent(e.target.value)}
-                  placeholder="e.g., 5.2"
-                  data-testid="input-bitumen-percent"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="bitumen-percent">Bitumen %</Label>
+                  <Input
+                    id="bitumen-percent"
+                    type="number"
+                    step="0.1"
+                    value={bitumenPercent}
+                    onChange={(e) => setBitumenPercent(e.target.value)}
+                    placeholder="e.g., 5.2"
+                    data-testid="input-bitumen-percent"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ldo-norm">LDO Norm (L/ton)</Label>
+                  <Input
+                    id="ldo-norm"
+                    type="number"
+                    step="0.1"
+                    value={ldoNorm}
+                    onChange={(e) => setLdoNorm(e.target.value)}
+                    placeholder="e.g., 6"
+                    data-testid="input-ldo-norm"
+                  />
+                </div>
               </div>
+              
+              <div className="space-y-2">
+                <Label>Aggregate Proportions (kg per ton of mix)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {aggregateMaterials.map((mat) => (
+                    <div key={mat.id} className="flex items-center gap-2">
+                      <Label className="w-20 text-xs">{mat.name}</Label>
+                      <Input
+                        type="number"
+                        step="1"
+                        value={aggregateProportions[mat.id] || ""}
+                        onChange={(e) => setAggregateProportions(prev => ({
+                          ...prev,
+                          [mat.id]: e.target.value
+                        }))}
+                        placeholder="0"
+                        className="h-8"
+                        data-testid={`input-aggregate-${mat.id}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Total should be ~1000 kg/ton (excluding bitumen/LDO)</p>
+              </div>
+
               <div>
                 <Label htmlFor="template-notes">Notes</Label>
                 <Textarea
@@ -552,17 +630,12 @@ function MixTemplateMaster() {
                 />
               </div>
               <Button 
-                onClick={() => createMutation.mutate({ 
-                  name, 
-                  mixType, 
-                  bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
-                  notes 
-                })} 
+                onClick={handleCreate} 
                 className="w-full" 
                 disabled={createMutation.isPending || !name.trim()}
                 data-testid="button-save-template"
               >
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Template"}
               </Button>
             </div>
           </DialogContent>
@@ -582,7 +655,7 @@ function MixTemplateMaster() {
                 <div>
                   <p className="font-medium">{template.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {template.mixType} - Bitumen: {template.bitumenPercent}%
+                    {template.mixType} - Bitumen: {template.bitumenPercent}% - LDO: {template.ldoNorm || 6} L/ton
                     {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
                   </p>
                 </div>
