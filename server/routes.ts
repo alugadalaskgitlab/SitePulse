@@ -643,6 +643,26 @@ export async function registerRoutes(
     }
   });
 
+  // Get previous diesel balance for equipment (for new entry creation)
+  app.get("/api/plant-module/equipment-usage/previous-balance/:equipmentId", async (req, res) => {
+    try {
+      const equipmentId = parseInt(req.params.equipmentId);
+      const excludeId = req.query.excludeId ? parseInt(req.query.excludeId as string) : undefined;
+      
+      const usage = await storage.getEquipmentUsage({ equipmentId });
+      // Usage is already sorted by date DESC, id DESC - so the first entry is the most recent
+      
+      // Filter out only the excluded entry (when editing)
+      const filteredUsage = excludeId ? usage.filter(u => u.id !== excludeId) : usage;
+      
+      // Get the most recent entry for this equipment (includes same-day entries)
+      const previousBalance = filteredUsage.length > 0 ? filteredUsage[0].closingDiesel || 0 : 0;
+      res.json({ previousBalance });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch previous balance", previousBalance: 0 });
+    }
+  });
+
   app.post("/api/plant-module/equipment-usage", async (req, res) => {
     try {
       const usage = await storage.createEquipmentUsage(req.body);

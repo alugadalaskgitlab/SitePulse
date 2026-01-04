@@ -808,6 +808,7 @@ function EquipmentMasterSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
   const [equipmentType, setEquipmentType] = useState("Generator");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
@@ -817,7 +818,7 @@ function EquipmentMasterSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; equipmentType: string; meterType: string; consumptionNorm?: number }) =>
+    mutationFn: (data: { name: string; registrationNumber?: string; equipmentType: string; meterType: string; consumptionNorm?: number }) =>
       apiRequest("POST", "/api/plant-module/equipment", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -827,7 +828,7 @@ function EquipmentMasterSection() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; equipmentType: string; meterType: string; consumptionNorm?: number }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; equipmentType: string; meterType: string; consumptionNorm?: number }> }) =>
       apiRequest("PATCH", `/api/plant-module/equipment/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -849,6 +850,7 @@ function EquipmentMasterSection() {
     setDialogOpen(false);
     setEditingEquipment(null);
     setName("");
+    setRegistrationNumber("");
     setEquipmentType("Generator");
     setMeterType("hour_meter");
     setConsumptionNorm("");
@@ -857,6 +859,7 @@ function EquipmentMasterSection() {
   const openEdit = (equip: EquipmentMasterType) => {
     setEditingEquipment(equip);
     setName(equip.name);
+    setRegistrationNumber((equip as any).registrationNumber || "");
     setEquipmentType(equip.equipmentType);
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
@@ -866,6 +869,7 @@ function EquipmentMasterSection() {
   const handleSubmit = () => {
     const data = {
       name,
+      registrationNumber: registrationNumber || undefined,
       equipmentType,
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
@@ -903,6 +907,16 @@ function EquipmentMasterSection() {
                   onChange={(e) => setName(e.target.value.toUpperCase())}
                   placeholder="e.g., 600 KVA GENERATOR"
                   data-testid="input-equipment-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="registration-number">Registration / ID Number</Label>
+                <Input
+                  id="registration-number"
+                  value={registrationNumber}
+                  onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g., MH12AB1234"
+                  data-testid="input-registration-number"
                 />
               </div>
               <div>
@@ -968,7 +982,8 @@ function EquipmentMasterSection() {
                 <div>
                   <p className="font-medium">{equip.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {equip.equipmentType} - {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} - 
+                    {(equip as any).registrationNumber && <span className="font-medium">{(equip as any).registrationNumber} | </span>}
+                    {equip.equipmentType} | {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} | 
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 </div>

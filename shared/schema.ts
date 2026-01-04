@@ -166,6 +166,7 @@ export const mixTemplateComponents = pgTable("mix_template_components", {
 export const equipmentMaster = pgTable("equipment_master", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  registrationNumber: text("registration_number"), // Unique ID like KA05AB1234 for tippers/JCBs
   equipmentType: text("equipment_type").notNull(), // Generator, JCB, Loader, Tipper, Truck, Tractor
   meterType: text("meter_type").notNull(), // hour_meter, odometer
   consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
@@ -221,17 +222,19 @@ export const truckDispatches = pgTable("truck_dispatches", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Equipment Usage Entry (with meter readings)
+// Equipment Usage Entry (with meter readings and diesel tank tracking)
 export const equipmentUsage = pgTable("equipment_usage", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   equipmentId: integer("equipment_id").notNull(),
-  openingReading: real("opening_reading").notNull(), // Hours or KM
+  openingReading: real("opening_reading").notNull(), // Hours or KM (meter)
   closingReading: real("closing_reading").notNull(),
   hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: closing - opening
-  dieselIssued: real("diesel_issued"), // Liters
-  expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursOrKmRun * norm
-  variance: real("variance"), // expectedDiesel - dieselIssued
+  dieselIssued: real("diesel_issued"), // Liters added to tank
+  expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursOrKmRun * norm (consumed)
+  openingDiesel: real("opening_diesel"), // Tank level at start (from previous closing)
+  closingDiesel: real("closing_diesel"), // Tank level at end = opening + issued - consumed
+  variance: real("variance"), // For backwards compatibility
   remarks: text("remarks"),
   createdAt: timestamp("created_at").defaultNow(),
 });

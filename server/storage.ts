@@ -1074,12 +1074,23 @@ export class DatabaseStorage implements IStorage {
     
     const hoursOrKmRun = usage.closingReading - usage.openingReading;
     const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
-    const variance = expectedDiesel - (usage.dieselIssued || 0);
+    
+    // Use user-provided opening diesel, or default to 0
+    const openingDiesel = usage.openingDiesel ?? 0;
+    const dieselIssued = usage.dieselIssued || 0;
+    
+    // Calculate closing diesel balance = opening + issued - consumed
+    const closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
+    
+    // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
+    const variance = dieselIssued - expectedDiesel;
     
     const [result] = await db.insert(equipmentUsage).values({
       ...usage,
       hoursOrKmRun,
       expectedDiesel,
+      openingDiesel,
+      closingDiesel,
       variance,
     }).returning();
     
@@ -1096,17 +1107,25 @@ export class DatabaseStorage implements IStorage {
     
     const openingReading = usage.openingReading ?? existing.openingReading;
     const closingReading = usage.closingReading ?? existing.closingReading;
-    const dieselIssued = usage.dieselIssued ?? existing.dieselIssued;
+    const dieselIssued = usage.dieselIssued ?? existing.dieselIssued ?? 0;
+    const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
     
     const hoursOrKmRun = closingReading - openingReading;
     const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
-    const variance = expectedDiesel - (dieselIssued || 0);
+    
+    // Calculate closing diesel balance = opening + issued - consumed
+    const closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
+    
+    // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
+    const variance = dieselIssued - expectedDiesel;
     
     const [result] = await db.update(equipmentUsage)
       .set({
         ...usage,
         hoursOrKmRun,
         expectedDiesel,
+        openingDiesel,
+        closingDiesel,
         variance,
         remarks: usage.remarks?.toUpperCase(),
       })

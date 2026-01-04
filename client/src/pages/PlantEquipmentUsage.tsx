@@ -26,8 +26,12 @@ export default function PlantEquipmentUsage() {
   const [equipmentId, setEquipmentId] = useState<string>("");
   const [openingReading, setOpeningReading] = useState("");
   const [closingReading, setClosingReading] = useState("");
+  const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [userModifiedOpening, setUserModifiedOpening] = useState(false);
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
@@ -75,9 +79,13 @@ export default function PlantEquipmentUsage() {
     setEquipmentId("");
     setOpeningReading("");
     setClosingReading("");
+    setOpeningDiesel("");
     setDieselIssued("");
     setRemarks("");
     setEditingUsage(null);
+    setPreviousDieselBalance(null);
+    setIsLoadingBalance(false);
+    setUserModifiedOpening(false);
   };
 
   const openEditDialog = (entry: EquipmentUsage) => {
@@ -86,9 +94,43 @@ export default function PlantEquipmentUsage() {
     setEquipmentId(String(entry.equipmentId));
     setOpeningReading(String(entry.openingReading));
     setClosingReading(String(entry.closingReading));
+    setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setRemarks(entry.remarks || "");
+    setPreviousDieselBalance((entry as any).openingDiesel || 0);
+    setUserModifiedOpening(true); // When editing, don't auto-fetch
     setDialogOpen(true);
+  };
+
+  const handleEquipmentChange = async (value: string) => {
+    setEquipmentId(value);
+    // Reset user-modified flag when equipment changes - always fetch fresh balance for new equipment
+    setUserModifiedOpening(false);
+    
+    // Only fetch previous balance for new entries, not when editing
+    if (value && !editingUsage) {
+      setIsLoadingBalance(true);
+      try {
+        const res = await fetch(`/api/plant-module/equipment-usage/previous-balance/${value}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPreviousDieselBalance(data.previousBalance);
+          setOpeningDiesel(String(data.previousBalance));
+        } else {
+          setPreviousDieselBalance(0);
+          setOpeningDiesel("0");
+        }
+      } catch {
+        setPreviousDieselBalance(0);
+        setOpeningDiesel("0");
+      }
+      setIsLoadingBalance(false);
+    }
+  };
+  
+  const handleOpeningDieselChange = (value: string) => {
+    setOpeningDiesel(value);
+    setUserModifiedOpening(true);
   };
 
   const handleSubmit = () => {
@@ -99,7 +141,8 @@ export default function PlantEquipmentUsage() {
       equipmentId: parseInt(equipmentId),
       openingReading: parseFloat(openingReading),
       closingReading: parseFloat(closingReading),
-      dieselIssued: dieselIssued ? parseFloat(dieselIssued) : null,
+      openingDiesel: openingDiesel ? parseFloat(openingDiesel) : 0,
+      dieselIssued: dieselIssued ? parseFloat(dieselIssued) : 0,
       remarks: remarks.toUpperCase(),
     };
 
@@ -157,14 +200,14 @@ export default function PlantEquipmentUsage() {
 
               <div>
                 <Label>Equipment</Label>
-                <Select value={equipmentId} onValueChange={setEquipmentId}>
+                <Select value={equipmentId} onValueChange={handleEquipmentChange}>
                   <SelectTrigger data-testid="select-equipment">
                     <SelectValue placeholder="Select equipment" />
                   </SelectTrigger>
                   <SelectContent>
                     {equipment?.map((equip) => (
                       <SelectItem key={equip.id} value={String(equip.id)}>
-                        {equip.name} ({equip.meterType === "hour_meter" ? "hrs" : "km"})
+                        {equip.name} {(equip as any).registrationNumber ? `(${(equip as any).registrationNumber})` : ""} - {equip.meterType === "hour_meter" ? "hrs" : "km"}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -190,14 +233,42 @@ export default function PlantEquipmentUsage() {
               {runtime > 0 && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
                   <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "km"}</strong></p>
-                  <p>Expected Diesel: <strong>{expectedDiesel.toFixed(1)} L</strong></p>
+                  <p>Diesel Consumed: <strong>{expectedDiesel.toFixed(1)} L</strong></p>
                 </div>
               )}
 
-              <div>
-                <Label>Diesel Issued (L)</Label>
-                <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="Actual diesel issued" data-testid="input-diesel-issued" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Opening Diesel Tank (L)</Label>
+                  <div className="relative">
+                    <Input 
+                      type="number" 
+                      step="0.1" 
+                      value={openingDiesel} 
+                      onChange={(e) => handleOpeningDieselChange(e.target.value)} 
+                      placeholder="Previous balance" 
+                      data-testid="input-opening-diesel"
+                      disabled={isLoadingBalance}
+                    />
+                    {isLoadingBalance && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+                  {previousDieselBalance !== null && !editingUsage && (
+                    <p className="text-xs text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(1)} L</p>
+                  )}
+                </div>
+                <div>
+                  <Label>Diesel Issued (L)</Label>
+                  <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued" />
+                </div>
               </div>
+
+              {openingDiesel && dieselIssued !== undefined && expectedDiesel > 0 && (
+                <div className="p-3 bg-primary/10 rounded-md text-sm">
+                  <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(1)} L</strong></p>
+                </div>
+              )}
 
               <div>
                 <Label>Remarks</Label>
@@ -252,39 +323,37 @@ export default function PlantEquipmentUsage() {
                     <div className="space-y-2">
                       {dayUsage.map((entry) => {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
+                        const openingDiesel = (entry as any).openingDiesel || 0;
+                        const closingDiesel = (entry as any).closingDiesel || 0;
                         const variance = entry.variance || 0;
                         return (
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-xs block">Equipment</span>
                                 <span className="font-medium">{equip?.name || "Unknown"}</span>
+                                {(equip as any)?.registrationNumber && (
+                                  <span className="text-xs text-muted-foreground block">{(equip as any).registrationNumber}</span>
+                                )}
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Opening</span>
-                                <span className="font-medium">{entry.openingReading}</span>
+                                <span className="text-muted-foreground text-xs block">Meter</span>
+                                <span className="font-medium">{entry.openingReading} - {entry.closingReading}</span>
+                                <span className="text-xs text-muted-foreground block">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Closing</span>
-                                <span className="font-medium">{entry.closingReading}</span>
+                                <span className="text-muted-foreground text-xs block">Diesel Tank</span>
+                                <span className="font-medium">{openingDiesel.toFixed(1)} + {entry.dieselIssued?.toFixed(1) || "0"} - {entry.expectedDiesel?.toFixed(1)} = {closingDiesel.toFixed(1)} L</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Runtime</span>
-                                <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                                <span className="text-muted-foreground text-xs block">Closing Balance</span>
+                                <span className="font-medium">{closingDiesel.toFixed(1)} L</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Consumed</span>
-                                <span className="font-medium">{entry.expectedDiesel?.toFixed(1)} L</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Diesel Issued</span>
-                                <span className="font-medium">{entry.dieselIssued?.toFixed(1) || "-"} L</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Balance</span>
-                                <Badge variant="secondary" className="gap-1">
-                                  {variance > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                  {variance?.toFixed(1) || "0"} L
+                                <span className="text-muted-foreground text-xs block">Variance</span>
+                                <Badge variant={variance >= 0 ? "secondary" : "destructive"} className="gap-1">
+                                  {variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                  {variance >= 0 ? "+" : ""}{variance.toFixed(1)} L
                                 </Badge>
                               </div>
                             </div>
