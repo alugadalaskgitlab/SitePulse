@@ -308,6 +308,7 @@ function MaterialMaster() {
   const { toast } = useToast();
   const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
@@ -321,10 +322,18 @@ function MaterialMaster() {
       apiRequest("POST", "/api/plant-module/materials", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
-      setDialogOpen(false);
-      setName("");
-      setCategory("");
+      resetForm();
       toast({ title: "Material created successfully" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string }> }) =>
+      apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
+      resetForm();
+      toast({ title: "Material updated successfully" });
     },
   });
 
@@ -337,6 +346,30 @@ function MaterialMaster() {
     },
   });
 
+  const resetForm = () => {
+    setDialogOpen(false);
+    setEditingMaterial(null);
+    setName("");
+    setCategory("");
+    setDefaultUom("Ton");
+  };
+
+  const openEdit = (material: PlantMaterial) => {
+    setEditingMaterial(material);
+    setName(material.name);
+    setCategory(material.category || "");
+    setDefaultUom(material.defaultUom || "Ton");
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = () => {
+    if (editingMaterial) {
+      updateMutation.mutate({ id: editingMaterial.id, data: { name, category, defaultUom } });
+    } else {
+      createMutation.mutate({ name, category, defaultUom });
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -344,7 +377,7 @@ function MaterialMaster() {
           <Package className="w-5 h-5" />
           Material Master
         </CardTitle>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1" data-testid="button-add-material">
               <Plus className="w-4 h-4" /> Add Material
@@ -352,7 +385,7 @@ function MaterialMaster() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add New Material</DialogTitle>
+              <DialogTitle>{editingMaterial ? "Edit Material" : "Add New Material"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -397,8 +430,8 @@ function MaterialMaster() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={() => createMutation.mutate({ name, category, defaultUom })} className="w-full" disabled={createMutation.isPending || !name.trim()} data-testid="button-save-material">
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}
               </Button>
             </div>
           </DialogContent>
@@ -419,10 +452,17 @@ function MaterialMaster() {
                   <p className="font-medium">{material.name}</p>
                   <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
                 </div>
-                {canDelete && (
-                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
+                {canEdit && (
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(material)} data-testid={`button-edit-material-${material.id}`}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -666,6 +706,7 @@ function EquipmentMasterSection() {
   const { toast } = useToast();
   const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
   const [equipmentType, setEquipmentType] = useState("Generator");
   const [meterType, setMeterType] = useState("hour_meter");
@@ -680,10 +721,18 @@ function EquipmentMasterSection() {
       apiRequest("POST", "/api/plant-module/equipment", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
-      setDialogOpen(false);
-      setName("");
-      setConsumptionNorm("");
+      resetForm();
       toast({ title: "Equipment created successfully" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; equipmentType: string; meterType: string; consumptionNorm?: number }> }) =>
+      apiRequest("PATCH", `/api/plant-module/equipment/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+      resetForm();
+      toast({ title: "Equipment updated successfully" });
     },
   });
 
@@ -696,6 +745,38 @@ function EquipmentMasterSection() {
     },
   });
 
+  const resetForm = () => {
+    setDialogOpen(false);
+    setEditingEquipment(null);
+    setName("");
+    setEquipmentType("Generator");
+    setMeterType("hour_meter");
+    setConsumptionNorm("");
+  };
+
+  const openEdit = (equip: EquipmentMasterType) => {
+    setEditingEquipment(equip);
+    setName(equip.name);
+    setEquipmentType(equip.equipmentType);
+    setMeterType(equip.meterType);
+    setConsumptionNorm(equip.consumptionNorm?.toString() || "");
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = () => {
+    const data = {
+      name,
+      equipmentType,
+      meterType,
+      consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
+    };
+    if (editingEquipment) {
+      updateMutation.mutate({ id: editingEquipment.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -703,7 +784,7 @@ function EquipmentMasterSection() {
           <Gauge className="w-5 h-5" />
           Equipment Master
         </CardTitle>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1" data-testid="button-add-equipment">
               <Plus className="w-4 h-4" /> Add Equipment
@@ -711,7 +792,7 @@ function EquipmentMasterSection() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Equipment</DialogTitle>
+              <DialogTitle>{editingEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -762,17 +843,12 @@ function EquipmentMasterSection() {
                 />
               </div>
               <Button 
-                onClick={() => createMutation.mutate({ 
-                  name, 
-                  equipmentType, 
-                  meterType,
-                  consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
-                })} 
+                onClick={handleSubmit}
                 className="w-full" 
-                disabled={createMutation.isPending || !name.trim()}
+                disabled={createMutation.isPending || updateMutation.isPending || !name.trim()}
                 data-testid="button-save-equipment"
               >
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingEquipment ? "Update" : "Create"}
               </Button>
             </div>
           </DialogContent>
@@ -796,10 +872,17 @@ function EquipmentMasterSection() {
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 </div>
-                {canDelete && (
-                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(equip.id)} data-testid={`button-delete-equipment-${equip.id}`}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
+                {canEdit && (
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(equip)} data-testid={`button-edit-equipment-${equip.id}`}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(equip.id)} data-testid={`button-delete-equipment-${equip.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
