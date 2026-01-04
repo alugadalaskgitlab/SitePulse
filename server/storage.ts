@@ -995,12 +995,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>): Promise<TruckDispatch | undefined> {
-    // For updates, we only allow metadata changes (not load weight or mix template which affect stock)
-    const uppercased = {
+    // Get current dispatch to always recompute theoretical values from latest template data
+    const [currentDispatch] = await db.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
+    if (!currentDispatch) return undefined;
+
+    const uppercased: any = {
       ...dispatch,
       truckNumber: dispatch.truckNumber?.toUpperCase(),
       deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
     };
+
+    // Always recompute theoretical values from the mix template (use new values if provided, otherwise current)
+    const mixTemplateId = dispatch.mixTemplateId ?? currentDispatch.mixTemplateId;
+    const loadWeight = dispatch.loadWeight ?? currentDispatch.loadWeight;
+
+    if (mixTemplateId && loadWeight) {
+      const [template] = await db.select().from(mixTemplates).where(eq(mixTemplates.id, mixTemplateId)).limit(1);
+      if (template) {
+        const bitumenPercent = template.bitumenPercent || 0;
+        const ldoNorm = template.ldoNorm || 6;
+        // Always set these computed values on every update
+        uppercased.theoreticalBitumenPercent = bitumenPercent;
+        uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
+        uppercased.theoreticalLdoQty = loadWeight * ldoNorm;
+      }
+    }
     
     const [result] = await db.update(truckDispatches)
       .set(uppercased)
