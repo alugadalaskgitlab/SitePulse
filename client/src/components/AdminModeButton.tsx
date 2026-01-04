@@ -4,11 +4,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Shield, ShieldCheck, LogOut } from "lucide-react";
+import { Shield, ShieldCheck, LogOut, Loader2 } from "lucide-react";
 import { useAccess } from "@/lib/access-context";
 import { useToast } from "@/hooks/use-toast";
-
-const ADMIN_PIN = "1234";
+import { apiRequest } from "@/lib/queryClient";
 
 export function AdminModeButton() {
   const { access, setAccess } = useAccess();
@@ -16,19 +15,36 @@ export function AdminModeButton() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const isAdmin = access === "admin";
 
-  const handleVerifyPin = () => {
-    if (pin === ADMIN_PIN) {
-      setAccess("admin");
-      setDialogOpen(false);
+  const handleVerifyPin = async () => {
+    setIsVerifying(true);
+    setError("");
+    try {
+      const response = await apiRequest("POST", "/api/auth/verify-pin", { pin });
+      const data = await response.json();
+      
+      if (data.valid && data.role === "admin") {
+        setAccess("admin");
+        setDialogOpen(false);
+        setPin("");
+        toast({ title: "Admin Mode activated", description: "You now have full edit/delete access" });
+      } else if (data.valid && data.role === "manager") {
+        setAccess("manager");
+        setDialogOpen(false);
+        setPin("");
+        toast({ title: "Manager Mode activated", description: "You now have edit access" });
+      } else {
+        setError("Incorrect PIN. Try again.");
+        setPin("");
+      }
+    } catch (err) {
+      setError("Failed to verify PIN. Try again.");
       setPin("");
-      setError("");
-      toast({ title: "Admin Mode activated", description: "You now have full edit/delete access" });
-    } else {
-      setError("Incorrect PIN. Try again.");
-      setPin("");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -43,12 +59,12 @@ export function AdminModeButton() {
     }
   };
 
-  if (isAdmin) {
+  if (access === "admin" || access === "manager") {
     return (
       <div className="flex items-center gap-2">
-        <Badge variant="default" className="gap-1 bg-green-600">
+        <Badge variant="default" className={`gap-1 ${access === "admin" ? "bg-green-600" : "bg-blue-600"}`}>
           <ShieldCheck className="w-3 h-3" />
-          Admin
+          {access === "admin" ? "Admin" : "Manager"}
         </Badge>
         <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout-admin">
           <LogOut className="w-4 h-4" />
@@ -87,8 +103,8 @@ export function AdminModeButton() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleVerifyPin} disabled={pin.length < 4} data-testid="button-verify-pin">
-              Verify
+            <Button onClick={handleVerifyPin} disabled={pin.length < 4 || isVerifying} data-testid="button-verify-pin">
+              {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify"}
             </Button>
           </DialogFooter>
         </DialogContent>
