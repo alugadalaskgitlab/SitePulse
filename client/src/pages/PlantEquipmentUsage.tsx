@@ -114,6 +114,17 @@ export default function PlantEquipmentUsage() {
   const runtime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
   const expectedDiesel = runtime * (selectedEquipment?.consumptionNorm || 0);
 
+  // Group usage by date
+  const groupedUsage = usage?.reduce((acc, entry) => {
+    const dateKey = entry.date;
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(entry);
+    return acc;
+  }, {} as Record<string, EquipmentUsage[]>) || {};
+
+  // Sort dates descending
+  const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -232,41 +243,67 @@ export default function PlantEquipmentUsage() {
           ) : !usage?.length ? (
             <p className="text-muted-foreground text-center py-8">No usage recorded yet.</p>
           ) : (
-            <div className="space-y-3">
-              {usage.map((entry) => {
-                const equip = equipment?.find(e => e.id === entry.equipmentId);
-                const variance = entry.variance || 0;
-                const isExcess = variance < 0;
+            <div className="space-y-6">
+              {sortedDates.map((dateKey) => {
+                const dayUsage = groupedUsage[dateKey];
                 return (
-                  <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                    <div className="flex-1">
-                      <p className="font-medium">{equip?.name || "Unknown"}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {entry.openingReading} → {entry.closingReading} = {entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Expected: {entry.expectedDiesel?.toFixed(1)} L | Actual: {entry.dieselIssued?.toFixed(1)} L
-                      </p>
-                      <p className="text-xs text-muted-foreground">{entry.date}</p>
-                      {entry.remarks && <p className="text-xs text-muted-foreground mt-1">{entry.remarks}</p>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={isExcess ? "destructive" : "secondary"} className="gap-1">
-                        {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {Math.abs(variance).toFixed(1)} L {isExcess ? "excess" : "saved"}
-                      </Badge>
-                      {canEdit && (
-                        <div className="flex gap-1 ml-2">
-                          <Button size="icon" variant="ghost" onClick={() => openEditDialog(entry)} data-testid={`button-edit-usage-${entry.id}`}>
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          {canDelete && (
-                            <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      )}
+                  <div key={dateKey}>
+                    <h3 className="font-semibold text-lg mb-3 border-b pb-2">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
+                    <div className="space-y-2">
+                      {dayUsage.map((entry) => {
+                        const equip = equipment?.find(e => e.id === entry.equipmentId);
+                        const variance = entry.variance || 0;
+                        const isExcess = variance < 0;
+                        return (
+                          <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Equipment</span>
+                                <span className="font-medium">{equip?.name || "Unknown"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Opening</span>
+                                <span className="font-medium">{entry.openingReading}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Closing</span>
+                                <span className="font-medium">{entry.closingReading}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Runtime</span>
+                                <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Expected</span>
+                                <span className="font-medium">{entry.expectedDiesel?.toFixed(1)} L</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Actual</span>
+                                <span className="font-medium">{entry.dieselIssued?.toFixed(1) || "-"} L</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Variance</span>
+                                <Badge variant={isExcess ? "destructive" : "secondary"} className="gap-1">
+                                  {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                  {Math.abs(variance).toFixed(1)} L
+                                </Badge>
+                              </div>
+                            </div>
+                            {canEdit && (
+                              <div className="flex gap-2 ml-4">
+                                <Button size="icon" variant="ghost" onClick={() => openEditDialog(entry)} data-testid={`button-edit-usage-${entry.id}`}>
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                {canDelete && (
+                                  <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );

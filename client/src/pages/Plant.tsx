@@ -473,16 +473,26 @@ function MaterialMaster() {
   );
 }
 
+type MixTemplateComponent = {
+  id: number;
+  templateId: number;
+  materialId: number;
+  percent: number | null;
+  uom: string;
+};
+
 function MixTemplateMaster() {
   const { toast } = useToast();
   const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
   const [name, setName] = useState("");
   const [mixType, setMixType] = useState("BC");
   const [bitumenPercent, setBitumenPercent] = useState("");
   const [ldoNorm, setLdoNorm] = useState("6");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
@@ -490,6 +500,10 @@ function MixTemplateMaster() {
 
   const { data: materials } = useQuery<PlantMaterial[]>({
     queryKey: ["/api/plant-module/materials"],
+  });
+
+  const { data: allComponents } = useQuery<MixTemplateComponent[]>({
+    queryKey: ["/api/plant-module/mix-template-components"],
   });
 
   const aggregateMaterials = materials?.filter(m => m.category === "Aggregate") || [];
@@ -505,9 +519,28 @@ function MixTemplateMaster() {
     }) => apiRequest("POST", "/api/plant-module/mix-templates", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDialogOpen(false);
       resetForm();
       toast({ title: "Mix template created successfully" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { 
+      name?: string; 
+      mixType?: string; 
+      bitumenPercent?: number; 
+      ldoNorm?: number;
+      notes?: string;
+      components?: { materialId: number; percent: number; uom: string }[];
+    }}) => apiRequest("PATCH", `/api/plant-module/mix-templates/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "Mix template updated successfully" });
     },
   });
 
@@ -516,17 +549,40 @@ function MixTemplateMaster() {
       apiRequest("DELETE", `/api/plant-module/mix-templates/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
+      setDeleteConfirmId(null);
       toast({ title: "Mix template deleted successfully" });
     },
   });
 
   const resetForm = () => {
+    setEditingTemplate(null);
     setName("");
+    setMixType("BC");
     setBitumenPercent("");
     setLdoNorm("6");
     setNotes("");
     setAggregateProportions({});
   };
+
+  const openEdit = (template: MixTemplate) => {
+    setEditingTemplate(template);
+    setName(template.name);
+    setMixType(template.mixType);
+    setBitumenPercent(template.bitumenPercent?.toString() || "");
+    setLdoNorm(template.ldoNorm?.toString() || "6");
+    setNotes(template.notes || "");
+    // Load components for this template
+    const templateComponents = allComponents?.filter(c => c.templateId === template.id) || [];
+    const proportions: Record<number, string> = {};
+    templateComponents.forEach(c => {
+      proportions[c.materialId] = c.percent?.toString() || "";
+    });
+    setAggregateProportions(proportions);
+    setDialogOpen(true);
+  };
+
+  const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
 
   // Calculate total percentage (aggregates + bitumen)
   const aggregateTotal = Object.values(aggregateProportions)
@@ -534,7 +590,7 @@ function MixTemplateMaster() {
   const bitumenVal = parseFloat(bitumenPercent) || 0;
   const totalPercent = aggregateTotal + bitumenVal;
 
-  const handleCreate = () => {
+  const handleSubmit = () => {
     const components = Object.entries(aggregateProportions)
       .filter(([_, value]) => value && parseFloat(value) > 0)
       .map(([materialId, percent]) => ({
@@ -543,14 +599,20 @@ function MixTemplateMaster() {
         uom: "%"
       }));
 
-    createMutation.mutate({
+    const data = {
       name,
       mixType,
       bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
       ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
       notes,
       components
-    });
+    };
+
+    if (editingTemplate) {
+      updateMutation.mutate({ id: editingTemplate.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   return (
@@ -568,7 +630,7 @@ function MixTemplateMaster() {
           </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add Mix Template</DialogTitle>
+              <DialogTitle>{editingTemplate ? "Edit Mix Template" : "Add Mix Template"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -659,17 +721,33 @@ function MixTemplateMaster() {
                 />
               </div>
               <Button 
-                onClick={handleCreate} 
+                onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || !name.trim()}
+                disabled={createMutation.isPending || updateMutation.isPending || !name.trim()}
                 data-testid="button-save-template"
               >
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Template"}
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingTemplate ? "Update Template" : "Create Template"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </CardHeader>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+          </DialogHeader>
+          <p>Are you sure you want to delete this mix template?</p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <CardContent>
         {isLoading ? (
           <div className="flex justify-center p-8">
@@ -679,22 +757,44 @@ function MixTemplateMaster() {
           <p className="text-muted-foreground text-center py-6">No mix templates added yet.</p>
         ) : (
           <div className="space-y-2">
-            {templates.map((template) => (
-              <div key={template.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                <div>
-                  <p className="font-medium">{template.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {template.mixType} - Bitumen: {template.bitumenPercent}% - LDO: {template.ldoNorm || 6} L/ton
-                    {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
-                  </p>
+            {templates.map((template) => {
+              const templateComponents = allComponents?.filter(c => c.templateId === template.id) || [];
+              return (
+                <div key={template.id} className="p-3 rounded-md bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium">{template.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {template.mixType} - Bitumen: {template.bitumenPercent}% - LDO: {template.ldoNorm || 6} L/ton
+                        {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
+                      </p>
+                      {canEdit && templateComponents.length > 0 && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          <span className="font-medium">Components:</span>{" "}
+                          {templateComponents.map((c, idx) => (
+                            <span key={c.id}>
+                              {getMaterialName(c.materialId)}: {c.percent}%{idx < templateComponents.length - 1 ? ", " : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {canEdit && (
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(template)} data-testid={`button-edit-template-${template.id}`}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        {canDelete && (
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(template.id)} data-testid={`button-delete-template-${template.id}`}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {canDelete && (
-                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(template.id)} data-testid={`button-delete-template-${template.id}`}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

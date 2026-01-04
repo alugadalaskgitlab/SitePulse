@@ -138,6 +138,20 @@ export default function PlantDispatches() {
 
   const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
 
+  // Group dispatches by date
+  const groupedDispatches = dispatches?.reduce((acc, dispatch) => {
+    const dateKey = dispatch.date;
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(dispatch);
+    return acc;
+  }, {} as Record<string, TruckDispatch[]>) || {};
+
+  // Sort dates descending, and entries within each date by time descending
+  const sortedDates = Object.keys(groupedDispatches).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
+  const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -275,36 +289,67 @@ export default function PlantDispatches() {
           ) : !dispatches?.length ? (
             <p className="text-muted-foreground text-center py-8">No dispatches recorded yet.</p>
           ) : (
-            <div className="space-y-3">
-              {dispatches.map((dispatch) => {
-                const party = parties?.find(p => p.id === dispatch.partyId);
-                const template = templates?.find(t => t.id === dispatch.mixTemplateId);
+            <div className="space-y-6">
+              {sortedDates.map((dateKey) => {
+                const dayDispatches = groupedDispatches[dateKey].sort((a, b) => (b.time || "").localeCompare(a.time || ""));
                 return (
-                  <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                    <div className="flex-1">
-                      <p className="font-medium">{dispatch.truckNumber} - {dispatch.loadWeight} MT</p>
-                      <p className="text-sm text-muted-foreground">
-                        {party?.name} | {template?.name} ({template?.mixType})
-                        {dispatch.deliveryLocation && ` | To: ${dispatch.deliveryLocation}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Theoretical: {dispatch.theoreticalBitumenQty?.toFixed(2)} MT ({dispatch.theoreticalBitumenPercent}%)
-                        {dispatch.actualBitumenPercent && ` | Actual: ${dispatch.actualBitumenPercent}%`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{dispatch.date} {dispatch.time}</p>
+                  <div key={dateKey}>
+                    <h3 className="font-semibold text-lg mb-3 border-b pb-2">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
+                    <div className="space-y-2">
+                      {dayDispatches.map((dispatch) => {
+                        const template = templates?.find(t => t.id === dispatch.mixTemplateId);
+                        return (
+                          <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm">
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Time</span>
+                                <span className="font-medium">{dispatch.time || "-"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Truck</span>
+                                <span className="font-medium">{dispatch.truckNumber}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Load</span>
+                                <span className="font-medium">{dispatch.loadWeight} MT</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Mix</span>
+                                <span className="font-medium">{template?.name || "-"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Bitumen</span>
+                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"} MT ({dispatch.theoreticalBitumenPercent || 0}%)</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">LDO</span>
+                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"} L</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Location</span>
+                                <span className="font-medium">{dispatch.deliveryLocation || "-"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Party</span>
+                                <span className="font-medium">{getPartyName(dispatch.partyId)}</span>
+                              </div>
+                            </div>
+                            {canEdit && (
+                              <div className="flex gap-2 ml-4">
+                                <Button size="icon" variant="ghost" onClick={() => openEditDialog(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                {canDelete && (
+                                  <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    {canEdit && (
-                      <div className="flex gap-2 ml-4">
-                        <Button size="icon" variant="ghost" onClick={() => openEditDialog(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        {canDelete && (
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}

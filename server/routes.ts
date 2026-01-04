@@ -442,6 +442,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/plant-module/mix-template-components", async (req, res) => {
+    try {
+      const components = await storage.getAllMixTemplateComponents();
+      res.json(components);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch mix template components" });
+    }
+  });
+
   app.get("/api/plant-module/mix-templates/:id", async (req, res) => {
     try {
       const result = await storage.getMixTemplateWithComponents(Number(req.params.id));

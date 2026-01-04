@@ -94,6 +94,7 @@ export interface IStorage {
   deletePlantMaterial(id: number): Promise<boolean>;
   
   getMixTemplates(): Promise<MixTemplate[]>;
+  getAllMixTemplateComponents(): Promise<MixTemplateComponent[]>;
   getMixTemplateWithComponents(id: number): Promise<{ template: MixTemplate; components: MixTemplateComponent[] } | undefined>;
   createMixTemplate(template: InsertMixTemplate, components?: InsertMixTemplateComponent[]): Promise<MixTemplate>;
   updateMixTemplate(id: number, template: Partial<InsertMixTemplate>, components?: InsertMixTemplateComponent[]): Promise<MixTemplate | undefined>;
@@ -742,6 +743,10 @@ export class DatabaseStorage implements IStorage {
   // Mix Templates
   async getMixTemplates(): Promise<MixTemplate[]> {
     return db.select().from(mixTemplates).where(eq(mixTemplates.isActive, 1)).orderBy(asc(mixTemplates.name));
+  }
+
+  async getAllMixTemplateComponents(): Promise<MixTemplateComponent[]> {
+    return db.select().from(mixTemplateComponents);
   }
 
   async getMixTemplateWithComponents(id: number): Promise<{ template: MixTemplate; components: MixTemplateComponent[] } | undefined> {
