@@ -5,8 +5,9 @@ export type AccessLevel = "engineer" | "manager" | "admin";
 interface AccessContextType {
   access: AccessLevel;
   setAccess: (level: AccessLevel) => void;
-  canEdit: boolean;
-  canDelete: boolean;
+  canEdit: boolean;  // Admin only
+  canDelete: boolean; // Admin only
+  canViewReports: boolean; // Manager and Admin
 }
 
 const AccessContext = createContext<AccessContextType | undefined>(undefined);
@@ -38,11 +39,16 @@ export function AccessProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const canEdit = access === "manager" || access === "admin";
-  const canDelete = access === "admin";
+  // Access levels:
+  // - Engineer: Can add entries, view basic data
+  // - Manager: View-only access to reports and dashboard (no edit/delete)
+  // - Admin: Full access including edit and delete
+  const canEdit = access === "admin"; // Per requirements: only admin can edit
+  const canDelete = access === "admin"; // Only admin can delete
+  const canViewReports = access === "manager" || access === "admin"; // Manager and Admin can view reports
 
   return (
-    <AccessContext.Provider value={{ access, setAccess, canEdit, canDelete }}>
+    <AccessContext.Provider value={{ access, setAccess, canEdit, canDelete, canViewReports }}>
       {children}
     </AccessContext.Provider>
   );
