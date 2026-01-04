@@ -118,12 +118,15 @@ export default function PlantMaterialReceipts() {
     if (!materialId || !quantity) return;
     
     if (editingReceipt) {
-      // Only update editable fields (not quantity, material, or UOM - those affect stock)
+      // Update all fields including quantity, material, UOM - stock will be recalculated
       const updateData = {
         date,
         time,
         partyId: isPlantCommon ? null : parseInt(partyId),
         isPlantCommon: isPlantCommon ? 1 : 0,
+        materialId: parseInt(materialId),
+        quantity: parseFloat(quantity),
+        uom,
         supplier,
         vehicleNumber,
         challanNumber,
@@ -218,8 +221,8 @@ export default function PlantMaterialReceipts() {
               )}
 
               <div>
-                <Label>Material {editingReceipt && <span className="text-muted-foreground text-xs">(locked)</span>}</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }} disabled={!!editingReceipt}>
+                <Label>Material</Label>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
                   <SelectTrigger data-testid="select-material">
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>
@@ -233,12 +236,12 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Quantity {editingReceipt && <span className="text-muted-foreground text-xs">(locked)</span>}</Label>
-                  <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" disabled={!!editingReceipt} />
+                  <Label>Quantity</Label>
+                  <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" />
                 </div>
                 <div>
-                  <Label>UOM {editingReceipt && <span className="text-muted-foreground text-xs">(locked)</span>}</Label>
-                  <Select value={uom} onValueChange={setUom} disabled={!!editingReceipt}>
+                  <Label>UOM</Label>
+                  <Select value={uom} onValueChange={setUom}>
                     <SelectTrigger data-testid="select-uom">
                       <SelectValue />
                     </SelectTrigger>

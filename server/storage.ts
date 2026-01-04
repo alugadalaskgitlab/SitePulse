@@ -55,7 +55,7 @@ import {
   type InsertStockLedger,
   DEFAULT_LDO_NORM
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, notInArray, sql, asc } from "drizzle-orm";
+import { eq, desc, and, gte, lte, notInArray, sql, asc, isNull } from "drizzle-orm";
 import { format } from "date-fns";
 
 export interface IStorage {
@@ -924,8 +924,92 @@ export class DatabaseStorage implements IStorage {
       if (updates.vehicleNumber) updates.vehicleNumber = updates.vehicleNumber.toUpperCase();
       if (updates.challanNumber) updates.challanNumber = updates.challanNumber.toUpperCase();
       
-      // Note: For simplicity, we don't recalculate stock on update
-      // To change quantity/material, delete and recreate the receipt
+      // Calculate old stock quantity (what was originally added)
+      const [oldMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, existing.materialId)).limit(1);
+      let oldStockQuantity = existing.quantity;
+      let oldStockUom = existing.uom;
+      if (oldMaterial?.conversionFactor && oldMaterial?.conversionFromUom && oldMaterial?.conversionToUom) {
+        if (existing.uom.toUpperCase() === oldMaterial.conversionFromUom.toUpperCase()) {
+          oldStockQuantity = existing.quantity * oldMaterial.conversionFactor;
+          oldStockUom = oldMaterial.conversionToUom;
+        }
+      }
+      
+      // Calculate new stock quantity
+      const newMaterialId = receipt.materialId ?? existing.materialId;
+      const newQuantity = receipt.quantity ?? existing.quantity;
+      const newUom = receipt.uom ?? existing.uom;
+      const newIsPlantCommon = receipt.isPlantCommon ?? existing.isPlantCommon;
+      const newPartyId = receipt.partyId ?? existing.partyId;
+      
+      const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      let newStockQuantity = newQuantity;
+      let newStockUom = newUom;
+      if (newMaterial?.conversionFactor && newMaterial?.conversionFromUom && newMaterial?.conversionToUom) {
+        if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
+          newStockQuantity = newQuantity * newMaterial.conversionFactor;
+          newStockUom = newMaterial.conversionToUom;
+        }
+      }
+      
+      // Reverse old stock balance
+      const oldTargetPartyId = existing.isPlantCommon ? null : (existing.partyId ?? null);
+      const oldCondition = oldTargetPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, existing.materialId))
+        : and(eq(stockBalances.partyId, oldTargetPartyId), eq(stockBalances.materialId, existing.materialId));
+      
+      const [oldBalance] = await tx.select().from(stockBalances).where(oldCondition).limit(1);
+      if (oldBalance) {
+        await tx.update(stockBalances)
+          .set({ balance: oldBalance.balance - oldStockQuantity, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, oldBalance.id));
+      }
+      
+      // Apply new stock balance
+      const newTargetPartyId = newIsPlantCommon ? null : (newPartyId ?? null);
+      const newCondition = newTargetPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
+        : and(eq(stockBalances.partyId, newTargetPartyId), eq(stockBalances.materialId, newMaterialId));
+      
+      const [newBalance] = await tx.select().from(stockBalances).where(newCondition).limit(1);
+      const finalBalance = (newBalance?.balance || 0) + newStockQuantity;
+      
+      if (newBalance) {
+        await tx.update(stockBalances)
+          .set({ balance: finalBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, newBalance.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: newTargetPartyId,
+          materialId: newMaterialId,
+          balance: newStockQuantity,
+          uom: newStockUom,
+        });
+      }
+      
+      // Update or recreate ledger entry
+      await tx.delete(stockLedger).where(and(
+        eq(stockLedger.transactionType, "receipt"),
+        eq(stockLedger.referenceId, id)
+      ));
+      
+      const conversionNote = newStockQuantity !== newQuantity 
+        ? `From ${updates.supplier || existing.supplier || 'Supplier'} (${newQuantity} ${newUom} converted to ${newStockQuantity.toFixed(3)} ${newStockUom})`
+        : updates.supplier || existing.supplier ? `From ${updates.supplier || existing.supplier}` : undefined;
+      
+      await tx.insert(stockLedger).values({
+        date: receipt.date ?? existing.date,
+        partyId: newTargetPartyId,
+        materialId: newMaterialId,
+        transactionType: "receipt",
+        referenceId: id,
+        quantityIn: newStockQuantity,
+        balanceAfter: finalBalance,
+        uom: newStockUom,
+        notes: conversionNote,
+      });
+      
+      // Update the receipt record
       const [result] = await tx.update(materialReceipts).set(updates).where(eq(materialReceipts.id, id)).returning();
       return result;
     });
