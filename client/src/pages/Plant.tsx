@@ -744,6 +744,10 @@ function EquipmentMasterSection() {
 }
 
 function DashboardTab() {
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [filterPartyId, setFilterPartyId] = useState<string>("all");
+
   const { data: dispatches } = useQuery<any[]>({ queryKey: ["/api/plant-module/dispatches"] });
   const { data: generatorLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/generator-logs"] });
   const { data: ldoLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/ldo-logs"] });
@@ -751,17 +755,36 @@ function DashboardTab() {
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
 
-  const totalTons = dispatches?.reduce((sum, d) => sum + (d.loadWeight || 0), 0) || 0;
-  const avgGeneratorEfficiency = generatorLogs?.length 
-    ? (generatorLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / generatorLogs.length).toFixed(2)
+  const filteredDispatches = dispatches?.filter((d) => {
+    if (filterPartyId !== "all" && String(d.partyId) !== filterPartyId) return false;
+    if (dateFrom && d.date < dateFrom) return false;
+    if (dateTo && d.date > dateTo) return false;
+    return true;
+  }) || [];
+
+  const filteredGeneratorLogs = generatorLogs?.filter((l) => {
+    if (dateFrom && l.date < dateFrom) return false;
+    if (dateTo && l.date > dateTo) return false;
+    return true;
+  }) || [];
+
+  const filteredLdoLogs = ldoLogs?.filter((l) => {
+    if (dateFrom && l.date < dateFrom) return false;
+    if (dateTo && l.date > dateTo) return false;
+    return true;
+  }) || [];
+
+  const totalTons = filteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
+  const avgGeneratorEfficiency = filteredGeneratorLogs.length 
+    ? (filteredGeneratorLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / filteredGeneratorLogs.length).toFixed(2)
     : "N/A";
-  const avgLdoEfficiency = ldoLogs?.length
-    ? (ldoLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / ldoLogs.length).toFixed(2)
+  const avgLdoEfficiency = filteredLdoLogs.length
+    ? (filteredLdoLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / filteredLdoLogs.length).toFixed(2)
     : "N/A";
 
   // Group dispatches by party
   const partyProduction: Record<number, { name: string; tons: number; dispatches: number }> = {};
-  dispatches?.forEach((d) => {
+  filteredDispatches.forEach((d) => {
     if (d.partyId) {
       if (!partyProduction[d.partyId]) {
         const party = parties?.find((p) => p.id === d.partyId);
@@ -777,7 +800,7 @@ function DashboardTab() {
     bitumen: { theoretical: 0, actual: 0 },
     ldo: { theoretical: 0, actual: 0 },
   };
-  dispatches?.forEach((d) => {
+  filteredDispatches.forEach((d) => {
     theoreticalVsActual.bitumen.theoretical += d.theoreticalBitumenQty || 0;
     theoreticalVsActual.bitumen.actual += d.actualBitumenQty || 0;
     theoreticalVsActual.ldo.theoretical += d.theoreticalLdoQty || 0;
@@ -797,6 +820,41 @@ function DashboardTab() {
 
   return (
     <div className="space-y-6">
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <Label className="text-sm text-muted-foreground">Party / Job</Label>
+              <Select value={filterPartyId} onValueChange={setFilterPartyId}>
+                <SelectTrigger data-testid="select-dashboard-party">
+                  <SelectValue placeholder="All Parties" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Parties</SelectItem>
+                  {parties?.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm text-muted-foreground">From Date</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="input-dashboard-date-from" />
+            </div>
+            <div>
+              <Label className="text-sm text-muted-foreground">To Date</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="input-dashboard-date-to" />
+            </div>
+          </div>
+          {(dateFrom || dateTo || filterPartyId !== "all") && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Showing filtered data: {filteredDispatches.length} dispatches, {filteredGeneratorLogs.length} generator logs, {filteredLdoLogs.length} LDO logs
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -805,7 +863,7 @@ function DashboardTab() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{totalTons.toFixed(1)} MT</div>
-            <p className="text-xs text-muted-foreground mt-1">{dispatches?.length || 0} dispatches</p>
+            <p className="text-xs text-muted-foreground mt-1">{filteredDispatches.length} dispatches</p>
           </CardContent>
         </Card>
 
@@ -950,14 +1008,14 @@ function DashboardTab() {
       {/* Recent Activity */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+          <CardTitle>Recent Activity {(dateFrom || dateTo || filterPartyId !== "all") && "(Filtered)"}</CardTitle>
         </CardHeader>
         <CardContent>
-          {!dispatches?.length && !generatorLogs?.length ? (
+          {!filteredDispatches.length && !filteredGeneratorLogs.length ? (
             <p className="text-muted-foreground text-center py-6">No activity recorded yet. Start by entering material receipts or dispatches.</p>
           ) : (
             <div className="space-y-3">
-              {dispatches?.slice(0, 5).map((d, i) => (
+              {filteredDispatches.slice(0, 5).map((d, i) => (
                 <div key={i} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
                   <Truck className="w-4 h-4 text-green-500" />
                   <span className="text-sm">Dispatch: {d.truckNumber} - {d.loadWeight} MT</span>
