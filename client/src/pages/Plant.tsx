@@ -827,6 +827,7 @@ function DashboardTab() {
   const { data: stockBalances } = useQuery<any[]>({ queryKey: ["/api/plant-module/stock-balances"] });
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
+  const { data: stockLedger } = useQuery<any[]>({ queryKey: ["/api/plant-module/stock-ledger"] });
 
   const filteredDispatches = dispatches?.filter((d) => {
     if (filterPartyId !== "all" && String(d.partyId) !== filterPartyId) return false;
@@ -890,6 +891,56 @@ function DashboardTab() {
 
   // Critical stock check (low balance warning)
   const criticalStock = stockBalances?.filter((s) => s.balance < 10) || [];
+
+  // Stock Movement Report - compute Opening/Received/Consumed/Closing per material
+  const computeStockMovement = () => {
+    if (!stockLedger || !materials) return [];
+    
+    // Filter ledger by party
+    const partyFilteredLedger = stockLedger.filter(entry => {
+      if (filterPartyId === "all") return true;
+      return String(entry.partyId) === filterPartyId || entry.partyId === null;
+    });
+
+    // Entries in the selected period
+    const filteredLedger = partyFilteredLedger.filter(entry => {
+      if (dateFrom && entry.date < dateFrom) return false;
+      if (dateTo && entry.date > dateTo) return false;
+      return true;
+    });
+
+    // Entries before the selected period (for opening balance)
+    const priorLedger = dateFrom 
+      ? partyFilteredLedger.filter(entry => entry.date < dateFrom)
+      : [];
+
+    // Group by material
+    const movements: Record<number, { received: number; consumed: number; opening: number }> = {};
+    
+    // Calculate opening balance from prior period ledger
+    priorLedger.forEach(entry => {
+      if (!movements[entry.materialId]) movements[entry.materialId] = { received: 0, consumed: 0, opening: 0 };
+      movements[entry.materialId].opening += (entry.quantityIn || 0) - (entry.quantityOut || 0);
+    });
+
+    // Calculate received and consumed in period
+    filteredLedger.forEach(entry => {
+      if (!movements[entry.materialId]) movements[entry.materialId] = { received: 0, consumed: 0, opening: 0 };
+      movements[entry.materialId].received += entry.quantityIn || 0;
+      movements[entry.materialId].consumed += entry.quantityOut || 0;
+    });
+
+    return Object.entries(movements).map(([matId, data]) => ({
+      materialId: parseInt(matId),
+      materialName: getMaterialName(parseInt(matId)),
+      opening: data.opening,
+      received: data.received,
+      consumed: data.consumed,
+      closing: data.opening + data.received - data.consumed,
+    })).filter(m => m.received > 0 || m.consumed > 0 || m.opening > 0);
+  };
+
+  const stockMovement = computeStockMovement();
 
   return (
     <div className="space-y-6">
@@ -991,6 +1042,44 @@ function DashboardTab() {
                   {getMaterialName(s.materialId)} ({getPartyName(s.partyId)}): <span className="font-bold">{s.balance.toFixed(1)} {s.uom}</span>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stock Movement Report */}
+      {stockMovement.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Stock Movement Report {(dateFrom || dateTo) && "(Filtered)"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2">Material</th>
+                    <th className="text-right py-2 px-2">Opening</th>
+                    <th className="text-right py-2 px-2">Received</th>
+                    <th className="text-right py-2 px-2">Consumed</th>
+                    <th className="text-right py-2 px-2">Closing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockMovement.map((m) => (
+                    <tr key={m.materialId} className="border-b last:border-0">
+                      <td className="py-2 px-2 font-medium">{m.materialName}</td>
+                      <td className="text-right py-2 px-2">{m.opening.toFixed(2)}</td>
+                      <td className="text-right py-2 px-2 text-green-600 dark:text-green-400">+{m.received.toFixed(2)}</td>
+                      <td className="text-right py-2 px-2 text-red-600 dark:text-red-400">-{m.consumed.toFixed(2)}</td>
+                      <td className="text-right py-2 px-2 font-bold">{m.closing.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>
