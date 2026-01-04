@@ -591,6 +591,20 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/plant-module/dispatches/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateTruckDispatch(id, req.body);
+      if (!updated) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      console.error("Update dispatch error:", err);
+      res.status(500).json({ message: "Failed to update dispatch" });
+    }
+  });
+
   app.delete("/api/plant-module/dispatches/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -626,6 +640,32 @@ export async function registerRoutes(
       res.status(201).json(usage);
     } catch (err) {
       res.status(500).json({ message: "Failed to create equipment usage" });
+    }
+  });
+
+  app.put("/api/plant-module/equipment-usage/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateEquipmentUsage(id, req.body);
+      if (!updated) {
+        return res.status(404).json({ message: "Equipment usage not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update equipment usage" });
+    }
+  });
+
+  app.delete("/api/plant-module/equipment-usage/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteEquipmentUsage(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Equipment usage not found" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete equipment usage" });
     }
   });
 

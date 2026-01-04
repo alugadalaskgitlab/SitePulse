@@ -2,22 +2,26 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Gauge, Loader2, TrendingUp, TrendingDown } from "lucide-react";
+import { ChevronLeft, Plus, Gauge, Loader2, TrendingUp, TrendingDown, Edit, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
 import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
+  const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [equipmentId, setEquipmentId] = useState<string>("");
   const [openingReading, setOpeningReading] = useState("");
@@ -44,6 +48,28 @@ export default function PlantEquipmentUsage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/plant-module/equipment-usage/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
+      setDialogOpen(false);
+      setEditingUsage(null);
+      resetForm();
+      toast({ title: "Equipment usage updated successfully" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/equipment-usage/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
+      setDeleteConfirmId(null);
+      toast({ title: "Equipment usage deleted successfully" });
+    },
+  });
+
   const resetForm = () => {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setEquipmentId("");
@@ -51,18 +77,37 @@ export default function PlantEquipmentUsage() {
     setClosingReading("");
     setDieselIssued("");
     setRemarks("");
+    setEditingUsage(null);
+  };
+
+  const openEditDialog = (entry: EquipmentUsage) => {
+    setEditingUsage(entry);
+    setDate(entry.date);
+    setEquipmentId(String(entry.equipmentId));
+    setOpeningReading(String(entry.openingReading));
+    setClosingReading(String(entry.closingReading));
+    setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
+    setRemarks(entry.remarks || "");
+    setDialogOpen(true);
   };
 
   const handleSubmit = () => {
     if (!equipmentId || !openingReading || !closingReading) return;
-    createMutation.mutate({
+    
+    const data = {
       date,
       equipmentId: parseInt(equipmentId),
       openingReading: parseFloat(openingReading),
       closingReading: parseFloat(closingReading),
       dieselIssued: dieselIssued ? parseFloat(dieselIssued) : null,
-      remarks,
-    });
+      remarks: remarks.toUpperCase(),
+    };
+
+    if (editingUsage) {
+      updateMutation.mutate({ id: editingUsage.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
@@ -83,7 +128,7 @@ export default function PlantEquipmentUsage() {
             <p className="text-muted-foreground">Track meter readings and fuel consumption</p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button className="gap-2" data-testid="button-add-usage">
               <Plus className="w-4 h-4" /> New Entry
@@ -91,7 +136,7 @@ export default function PlantEquipmentUsage() {
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Record Equipment Usage</DialogTitle>
+              <DialogTitle>{editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -145,16 +190,32 @@ export default function PlantEquipmentUsage() {
 
               <div>
                 <Label>Remarks</Label>
-                <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional notes" data-testid="input-usage-remarks" />
+                <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value.toUpperCase())} placeholder="Optional notes" data-testid="input-usage-remarks" />
               </div>
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || !equipmentId || !openingReading || !closingReading} data-testid="button-save-usage">
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Entry"}
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || !openingReading || !closingReading} data-testid="button-save-usage">
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingUsage ? "Update Entry" : "Save Entry"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+          </DialogHeader>
+          <p>Are you sure you want to delete this equipment usage entry?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -177,7 +238,7 @@ export default function PlantEquipmentUsage() {
                 const variance = entry.variance || 0;
                 const isExcess = variance < 0;
                 return (
-                  <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                  <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
                     <div className="flex-1">
                       <p className="font-medium">{equip?.name || "Unknown"}</p>
                       <p className="text-sm text-muted-foreground">
@@ -187,12 +248,25 @@ export default function PlantEquipmentUsage() {
                         Expected: {entry.expectedDiesel?.toFixed(1)} L | Actual: {entry.dieselIssued?.toFixed(1)} L
                       </p>
                       <p className="text-xs text-muted-foreground">{entry.date}</p>
+                      {entry.remarks && <p className="text-xs text-muted-foreground mt-1">{entry.remarks}</p>}
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-2">
                       <Badge variant={isExcess ? "destructive" : "secondary"} className="gap-1">
                         {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {Math.abs(variance).toFixed(1)} L {isExcess ? "excess" : "saved"}
                       </Badge>
+                      {canEdit && (
+                        <div className="flex gap-1 ml-2">
+                          <Button size="icon" variant="ghost" onClick={() => openEditDialog(entry)} data-testid={`button-edit-usage-${entry.id}`}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          {canDelete && (
+                            <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

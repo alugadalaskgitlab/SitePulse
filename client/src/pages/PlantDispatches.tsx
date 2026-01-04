@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
@@ -18,6 +18,8 @@ export default function PlantDispatches() {
   const { toast } = useToast();
   const { canEdit, canDelete } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
   const [partyId, setPartyId] = useState<string>("");
@@ -52,6 +54,20 @@ export default function PlantDispatches() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/plant-module/dispatches/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      setDialogOpen(false);
+      setEditingDispatch(null);
+      resetForm();
+      toast({ title: "Dispatch updated successfully" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
       apiRequest("DELETE", `/api/plant-module/dispatches/${id}`),
@@ -59,6 +75,7 @@ export default function PlantDispatches() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      setDeleteConfirmId(null);
       toast({ title: "Dispatch deleted successfully" });
     },
   });
@@ -72,20 +89,51 @@ export default function PlantDispatches() {
     setLoadWeight("");
     setDeliveryLocation("");
     setActualBitumenPercent("");
+    setEditingDispatch(null);
+  };
+
+  const openEditDialog = (dispatch: TruckDispatch) => {
+    setEditingDispatch(dispatch);
+    setDate(dispatch.date);
+    setTime(dispatch.time || "");
+    setPartyId(String(dispatch.partyId));
+    setMixTemplateId(String(dispatch.mixTemplateId));
+    setTruckNumber(dispatch.truckNumber);
+    setLoadWeight(String(dispatch.loadWeight));
+    setDeliveryLocation(dispatch.deliveryLocation || "");
+    setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
+    setDialogOpen(true);
   };
 
   const handleSubmit = () => {
     if (!partyId || !mixTemplateId || !truckNumber || !loadWeight) return;
-    createMutation.mutate({
-      date,
-      time,
-      partyId: parseInt(partyId),
-      mixTemplateId: parseInt(mixTemplateId),
-      truckNumber,
-      loadWeight: parseFloat(loadWeight),
-      deliveryLocation,
-      actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
-    });
+    
+    if (editingDispatch) {
+      updateMutation.mutate({
+        id: editingDispatch.id,
+        data: {
+          date,
+          time,
+          partyId: parseInt(partyId),
+          mixTemplateId: parseInt(mixTemplateId),
+          truckNumber: truckNumber.toUpperCase(),
+          loadWeight: parseFloat(loadWeight),
+          deliveryLocation: deliveryLocation.toUpperCase(),
+          actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
+        }
+      });
+    } else {
+      createMutation.mutate({
+        date,
+        time,
+        partyId: parseInt(partyId),
+        mixTemplateId: parseInt(mixTemplateId),
+        truckNumber: truckNumber.toUpperCase(),
+        loadWeight: parseFloat(loadWeight),
+        deliveryLocation: deliveryLocation.toUpperCase(),
+        actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
+      });
+    }
   };
 
   const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
@@ -104,7 +152,7 @@ export default function PlantDispatches() {
             <p className="text-muted-foreground">Record outgoing mix loads by party/job</p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button className="gap-2" data-testid="button-add-dispatch">
               <Plus className="w-4 h-4" /> New Dispatch
@@ -112,7 +160,7 @@ export default function PlantDispatches() {
           </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Record Mix Dispatch</DialogTitle>
+              <DialogTitle>{editingDispatch ? "Edit Dispatch" : "Record Mix Dispatch"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
@@ -163,7 +211,7 @@ export default function PlantDispatches() {
 
               <div>
                 <Label>Truck Number</Label>
-                <Input value={truckNumber} onChange={(e) => setTruckNumber(e.target.value)} placeholder="e.g., KA-01-XX-1234" data-testid="input-truck-number" />
+                <Input value={truckNumber} onChange={(e) => setTruckNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-truck-number" />
               </div>
 
               <div>
@@ -173,7 +221,7 @@ export default function PlantDispatches() {
 
               <div>
                 <Label>Delivery Location (optional)</Label>
-                <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value)} placeholder="Site/chainage" data-testid="input-delivery-location" />
+                <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value.toUpperCase())} placeholder="Site/chainage" data-testid="input-delivery-location" />
               </div>
 
               {canEdit && (
@@ -188,13 +236,29 @@ export default function PlantDispatches() {
                 </div>
               )}
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight} data-testid="button-save-dispatch">
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Dispatch"}
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight} data-testid="button-save-dispatch">
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingDispatch ? "Update Dispatch" : "Save Dispatch"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+          </DialogHeader>
+          <p>Are you sure you want to delete this dispatch? This will reverse the stock ledger entries.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -216,7 +280,7 @@ export default function PlantDispatches() {
                 const party = parties?.find(p => p.id === dispatch.partyId);
                 const template = templates?.find(t => t.id === dispatch.mixTemplateId);
                 return (
-                  <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                  <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
                     <div className="flex-1">
                       <p className="font-medium">{dispatch.truckNumber} - {dispatch.loadWeight} MT</p>
                       <p className="text-sm text-muted-foreground">
@@ -229,10 +293,17 @@ export default function PlantDispatches() {
                       </p>
                       <p className="text-xs text-muted-foreground">{dispatch.date} {dispatch.time}</p>
                     </div>
-                    {canDelete && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                    {canEdit && (
+                      <div className="flex gap-2 ml-4">
+                        <Button size="icon" variant="ghost" onClick={() => openEditDialog(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        {canDelete && (
+                          <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 );

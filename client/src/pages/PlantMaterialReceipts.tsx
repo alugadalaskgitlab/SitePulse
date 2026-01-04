@@ -253,17 +253,17 @@ export default function PlantMaterialReceipts() {
 
               <div>
                 <Label>Supplier</Label>
-                <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Supplier name" data-testid="input-supplier" />
+                <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="Supplier name" data-testid="input-supplier" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Vehicle No</Label>
-                  <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
+                  <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
                 </div>
                 <div>
                   <Label>Challan No</Label>
-                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value)} placeholder="Receipt/Challan" data-testid="input-challan" />
+                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Receipt/Challan" data-testid="input-challan" />
                 </div>
               </div>
 

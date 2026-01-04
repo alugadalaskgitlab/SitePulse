@@ -112,10 +112,13 @@ export interface IStorage {
   
   getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
   createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch>;
+  updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>): Promise<TruckDispatch | undefined>;
   deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
+  updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
+  deleteEquipmentUsage(id: number): Promise<boolean>;
   
   getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
   createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog>;
@@ -986,6 +989,21 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>): Promise<TruckDispatch | undefined> {
+    // For updates, we only allow metadata changes (not load weight or mix template which affect stock)
+    const uppercased = {
+      ...dispatch,
+      truckNumber: dispatch.truckNumber?.toUpperCase(),
+      deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
+    };
+    
+    const [result] = await db.update(truckDispatches)
+      .set(uppercased)
+      .where(eq(truckDispatches.id, id))
+      .returning();
+    return result;
+  }
+
   async deleteTruckDispatch(id: number): Promise<boolean> {
     return db.transaction(async (tx) => {
       // Get the dispatch to reverse the stock ledger entries
@@ -1032,6 +1050,40 @@ export class DatabaseStorage implements IStorage {
     }).returning();
     
     return result;
+  }
+
+  async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
+    // Get equipment to recalculate expected diesel if readings changed
+    const [existing] = await db.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
+    if (!existing) return undefined;
+
+    const equipmentId = usage.equipmentId ?? existing.equipmentId;
+    const [equipment] = await db.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
+    
+    const openingReading = usage.openingReading ?? existing.openingReading;
+    const closingReading = usage.closingReading ?? existing.closingReading;
+    const dieselIssued = usage.dieselIssued ?? existing.dieselIssued;
+    
+    const hoursOrKmRun = closingReading - openingReading;
+    const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+    const variance = expectedDiesel - (dieselIssued || 0);
+    
+    const [result] = await db.update(equipmentUsage)
+      .set({
+        ...usage,
+        hoursOrKmRun,
+        expectedDiesel,
+        variance,
+        remarks: usage.remarks?.toUpperCase(),
+      })
+      .where(eq(equipmentUsage.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteEquipmentUsage(id: number): Promise<boolean> {
+    const result = await db.delete(equipmentUsage).where(eq(equipmentUsage.id, id)).returning();
+    return result.length > 0;
   }
 
   // Generator Logs

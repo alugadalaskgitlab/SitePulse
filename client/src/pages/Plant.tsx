@@ -246,8 +246,8 @@ function PartyMaster() {
                 <Input
                   id="party-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Giridhar - BC"
+                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  placeholder="e.g., GIRIDHAR - BC"
                   data-testid="input-party-name"
                 />
               </div>
@@ -256,7 +256,7 @@ function PartyMaster() {
                 <Textarea
                   id="party-notes"
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => setNotes(e.target.value.toUpperCase())}
                   placeholder="Additional notes..."
                   data-testid="input-party-notes"
                 />
@@ -360,8 +360,8 @@ function MaterialMaster() {
                 <Input
                   id="material-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., 20mm Aggregate"
+                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  placeholder="e.g., 20MM AGGREGATE"
                   data-testid="input-material-name"
                 />
               </div>
@@ -536,8 +536,8 @@ function MixTemplateMaster() {
                 <Input
                   id="template-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., BC Standard"
+                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  placeholder="e.g., BC STANDARD"
                   data-testid="input-template-name"
                 />
               </div>
@@ -719,8 +719,8 @@ function EquipmentMasterSection() {
                 <Input
                   id="equipment-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., 600 KVA Generator"
+                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  placeholder="e.g., 600 KVA GENERATOR"
                   data-testid="input-equipment-name"
                 />
               </div>
