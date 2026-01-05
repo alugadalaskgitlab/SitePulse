@@ -6,20 +6,38 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, Unlock } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
 import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
 
+const MIX_TYPES = ["BC", "DBM"];
+
 export default function PlantDispatches() {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit, canDelete, isAdmin, access, requestAdminAccess } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  
+  // Filter state
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterPartyId, setFilterPartyId] = useState("all");
+  const [filterMixType, setFilterMixType] = useState("all");
+  const [filterVehicle, setFilterVehicle] = useState("all");
+  
+  // Admin PIN state
+  const [adminPin, setAdminPin] = useState("");
+  
+  // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
   const [partyId, setPartyId] = useState<string>("");
@@ -136,21 +154,107 @@ export default function PlantDispatches() {
     }
   };
 
-  const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
+  const handleUnlockAdmin = () => {
+    const success = requestAdminAccess(adminPin);
+    if (success) {
+      toast({ title: "Admin access granted" });
+      setAdminPin("");
+    } else {
+      toast({ title: "Invalid PIN", variant: "destructive" });
+    }
+  };
 
-  // Group dispatches by date
-  const groupedDispatches = dispatches?.reduce((acc, dispatch) => {
+  const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
+  const uniqueVehicles = Array.from(new Set(dispatches?.map(d => d.truckNumber) || [])).sort();
+
+  // Filter dispatches
+  const filteredDispatches = dispatches?.filter(d => {
+    if (filterDateFrom && d.date < filterDateFrom) return false;
+    if (filterDateTo && d.date > filterDateTo) return false;
+    if (filterPartyId !== "all" && d.partyId !== parseInt(filterPartyId)) return false;
+    if (filterMixType !== "all") {
+      const template = templates?.find(t => t.id === d.mixTemplateId);
+      if (template?.mixType?.toUpperCase() !== filterMixType) return false;
+    }
+    if (filterVehicle !== "all" && d.truckNumber !== filterVehicle) return false;
+    return true;
+  }) || [];
+
+  // Group filtered dispatches by date
+  const groupedDispatches = filteredDispatches.reduce((acc, dispatch) => {
     const dateKey = dispatch.date;
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(dispatch);
     return acc;
-  }, {} as Record<string, TruckDispatch[]>) || {};
+  }, {} as Record<string, TruckDispatch[]>);
 
   // Sort dates descending, and entries within each date by time descending
   const sortedDates = Object.keys(groupedDispatches).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
   const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
   const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
+
+  // Export functions
+  const exportToExcel = () => {
+    const data = filteredDispatches.map(d => {
+      const template = templates?.find(t => t.id === d.mixTemplateId);
+      return {
+        Date: d.date,
+        Time: d.time || "",
+        Party: getPartyName(d.partyId),
+        Site: d.deliveryLocation || "",
+        "Mix Type": template?.mixType || "",
+        "Load (MT)": d.loadWeight,
+        Vehicle: d.truckNumber,
+        "Bitumen (MT)": d.theoreticalBitumenQty?.toFixed(2) || "0",
+        "LDO (L)": d.theoreticalLdoQty?.toFixed(1) || "0",
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dispatches");
+    XLSX.writeFile(wb, `dispatches_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    toast({ title: "Exported to Excel" });
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    doc.setFontSize(16);
+    doc.text("Mix Dispatches Report", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+    
+    const tableData = filteredDispatches.map(d => {
+      const template = templates?.find(t => t.id === d.mixTemplateId);
+      return [
+        d.date,
+        d.time || "-",
+        getPartyName(d.partyId),
+        d.deliveryLocation || "-",
+        template?.mixType || "-",
+        `${d.loadWeight}`,
+        d.truckNumber,
+        d.theoreticalBitumenQty?.toFixed(2) || "0",
+        d.theoreticalLdoQty?.toFixed(1) || "0",
+      ];
+    });
+    
+    (doc as any).autoTable({
+      startY: 28,
+      head: [["Date", "Time", "Party", "Site", "Mix Type", "Load (MT)", "Vehicle", "Bitumen (MT)", "LDO (L)"]],
+      body: tableData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246] },
+      styles: { fontSize: 8 },
+    });
+    
+    doc.save(`dispatches_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "Exported to PDF" });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -258,6 +362,112 @@ export default function PlantDispatches() {
         </Dialog>
       </div>
 
+      {/* Admin Access Section */}
+      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Access Level:</span>
+          <Badge variant={isAdmin ? "default" : "secondary"}>
+            {access.charAt(0).toUpperCase() + access.slice(1)}
+          </Badge>
+        </div>
+        {!isAdmin && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              placeholder="Enter PIN"
+              value={adminPin}
+              onChange={(e) => setAdminPin(e.target.value)}
+              className="w-32"
+              data-testid="input-admin-pin"
+            />
+            <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
+              <Unlock className="w-4 h-4" /> Unlock Admin
+            </Button>
+          </div>
+        )}
+        {isAdmin && (
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredDispatches.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!filteredDispatches.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Filter Bar */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                data-testid="input-filter-date-from"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                data-testid="input-filter-date-to"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">PARTY</Label>
+              <Select value={filterPartyId} onValueChange={setFilterPartyId}>
+                <SelectTrigger data-testid="select-filter-party">
+                  <SelectValue placeholder="All Parties" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Parties</SelectItem>
+                  {parties?.map((party) => (
+                    <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">MIX TYPE</Label>
+              <Select value={filterMixType} onValueChange={setFilterMixType}>
+                <SelectTrigger data-testid="select-filter-mix-type">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {MIX_TYPES.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">VEHICLE NO</Label>
+              <Select value={filterVehicle} onValueChange={setFilterVehicle}>
+                <SelectTrigger data-testid="select-filter-vehicle">
+                  <SelectValue placeholder="All Vehicles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Vehicles</SelectItem>
+                  {uniqueVehicles.map(vehicle => (
+                    <SelectItem key={vehicle} value={vehicle}>{vehicle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
@@ -279,6 +489,9 @@ export default function PlantDispatches() {
           <CardTitle className="flex items-center gap-2">
             <Truck className="w-5 h-5" />
             Dispatch Log
+            {filteredDispatches.length > 0 && (
+              <Badge variant="secondary">{filteredDispatches.length} records</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -286,8 +499,10 @@ export default function PlantDispatches() {
             <div className="flex justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
-          ) : !dispatches?.length ? (
-            <p className="text-muted-foreground text-center py-8">No dispatches recorded yet.</p>
+          ) : !filteredDispatches.length ? (
+            <p className="text-muted-foreground text-center py-8">
+              {dispatches?.length ? "No dispatches match the current filters." : "No dispatches recorded yet."}
+            </p>
           ) : (
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {

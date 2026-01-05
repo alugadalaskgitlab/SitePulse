@@ -7,8 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer, Lock, Unlock } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
@@ -18,10 +22,19 @@ import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit, canDelete, isAdmin, access, requestAdminAccess } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  
+  // Filter state
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterPartyId, setFilterPartyId] = useState("all");
+  const [filterMaterialId, setFilterMaterialId] = useState("all");
+  
+  // Admin PIN state
+  const [adminPin, setAdminPin] = useState("");
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -118,7 +131,6 @@ export default function PlantMaterialReceipts() {
     if (!materialId || !quantity) return;
     
     if (editingReceipt) {
-      // Update all fields including quantity, material, UOM - stock will be recalculated
       const updateData = {
         date,
         time,
@@ -149,19 +161,99 @@ export default function PlantMaterialReceipts() {
     }
   };
 
-  // Group receipts by date
-  const groupedReceipts = receipts?.reduce((acc, receipt) => {
+  const handleUnlockAdmin = () => {
+    const success = requestAdminAccess(adminPin);
+    if (success) {
+      toast({ title: "Admin access granted" });
+      setAdminPin("");
+    } else {
+      toast({ title: "Invalid PIN", variant: "destructive" });
+    }
+  };
+
+  const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
+  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Plant Common";
+
+  // Filter receipts
+  const filteredReceipts = receipts?.filter(r => {
+    if (filterDateFrom && r.date < filterDateFrom) return false;
+    if (filterDateTo && r.date > filterDateTo) return false;
+    if (filterPartyId !== "all") {
+      if (filterPartyId === "plant-common") {
+        if (!r.isPlantCommon) return false;
+      } else {
+        if (r.partyId !== parseInt(filterPartyId)) return false;
+      }
+    }
+    if (filterMaterialId !== "all" && r.materialId !== parseInt(filterMaterialId)) return false;
+    return true;
+  }) || [];
+
+  // Group filtered receipts by date
+  const groupedReceipts = filteredReceipts.reduce((acc, receipt) => {
     const dateKey = receipt.date;
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(receipt);
     return acc;
-  }, {} as Record<string, MaterialReceipt[]>) || {};
+  }, {} as Record<string, MaterialReceipt[]>);
 
-  // Sort dates descending, and entries within each date by time descending
+  // Sort dates descending
   const sortedDates = Object.keys(groupedReceipts).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
-  const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
-  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Plant Common";
+  // Export functions
+  const exportToExcel = () => {
+    const data = filteredReceipts.map(r => ({
+      Date: r.date,
+      Time: r.time || "",
+      Material: getMaterialName(r.materialId),
+      Quantity: r.quantity,
+      UOM: r.uom,
+      "Vehicle No": r.vehicleNumber || "",
+      "Challan No": r.challanNumber || "",
+      Supplier: r.supplier || "",
+      "Party/Job": getPartyName(r.partyId),
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Material Receipts");
+    XLSX.writeFile(wb, `material_receipts_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    toast({ title: "Exported to Excel" });
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    doc.setFontSize(16);
+    doc.text("Material Receipts Report", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+    
+    const tableData = filteredReceipts.map(r => [
+      r.date,
+      r.time || "-",
+      getMaterialName(r.materialId),
+      `${r.quantity} ${r.uom}`,
+      r.vehicleNumber || "-",
+      r.challanNumber || "-",
+      r.supplier || "-",
+      getPartyName(r.partyId),
+    ]);
+    
+    (doc as any).autoTable({
+      startY: 28,
+      head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Challan No", "Supplier", "Party/Job"]],
+      body: tableData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246] },
+      styles: { fontSize: 8 },
+    });
+    
+    doc.save(`material_receipts_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "Exported to PDF" });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -278,6 +370,99 @@ export default function PlantMaterialReceipts() {
         </Dialog>
       </div>
 
+      {/* Admin Access Section */}
+      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Access Level:</span>
+          <Badge variant={isAdmin ? "default" : "secondary"}>
+            {access.charAt(0).toUpperCase() + access.slice(1)}
+          </Badge>
+        </div>
+        {!isAdmin && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              placeholder="Enter PIN"
+              value={adminPin}
+              onChange={(e) => setAdminPin(e.target.value)}
+              className="w-32"
+              data-testid="input-admin-pin"
+            />
+            <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
+              <Unlock className="w-4 h-4" /> Unlock Admin
+            </Button>
+          </div>
+        )}
+        {isAdmin && (
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredReceipts.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!filteredReceipts.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Filter Bar */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                data-testid="input-filter-date-from"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                data-testid="input-filter-date-to"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">PARTY</Label>
+              <Select value={filterPartyId} onValueChange={setFilterPartyId}>
+                <SelectTrigger data-testid="select-filter-party">
+                  <SelectValue placeholder="All Parties" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Parties</SelectItem>
+                  <SelectItem value="plant-common">Plant Common</SelectItem>
+                  {parties?.map((party) => (
+                    <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">MATERIAL</Label>
+              <Select value={filterMaterialId} onValueChange={setFilterMaterialId}>
+                <SelectTrigger data-testid="select-filter-material">
+                  <SelectValue placeholder="All Materials" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Materials</SelectItem>
+                  {materials?.map((material) => (
+                    <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
@@ -299,6 +484,9 @@ export default function PlantMaterialReceipts() {
           <CardTitle className="flex items-center gap-2">
             <Package className="w-5 h-5" />
             Receipt Log
+            {filteredReceipts.length > 0 && (
+              <Badge variant="secondary">{filteredReceipts.length} records</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -306,8 +494,10 @@ export default function PlantMaterialReceipts() {
             <div className="flex justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
-          ) : !receipts?.length ? (
-            <p className="text-muted-foreground text-center py-8">No receipts recorded yet.</p>
+          ) : !filteredReceipts.length ? (
+            <p className="text-muted-foreground text-center py-8">
+              {receipts?.length ? "No receipts match the current filters." : "No receipts recorded yet."}
+            </p>
           ) : (
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {

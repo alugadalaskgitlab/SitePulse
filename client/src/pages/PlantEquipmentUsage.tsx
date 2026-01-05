@@ -9,16 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, Lock } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit, canDelete, isAdmin, access, requestAdminAccess } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -32,6 +35,12 @@ export default function PlantEquipmentUsage() {
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [userModifiedOpening, setUserModifiedOpening] = useState(false);
+
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterEquipmentId, setFilterEquipmentId] = useState("all");
+
+  const [adminPin, setAdminPin] = useState("");
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
@@ -98,16 +107,14 @@ export default function PlantEquipmentUsage() {
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
-    setUserModifiedOpening(true); // When editing, don't auto-fetch
+    setUserModifiedOpening(true);
     setDialogOpen(true);
   };
 
   const handleEquipmentChange = async (value: string) => {
     setEquipmentId(value);
-    // Reset user-modified flag when equipment changes - always fetch fresh balance for new equipment
     setUserModifiedOpening(false);
     
-    // Only fetch previous balance for new entries, not when editing
     if (value && !editingUsage) {
       setIsLoadingBalance(true);
       try {
@@ -153,20 +160,99 @@ export default function PlantEquipmentUsage() {
     }
   };
 
+  const handleUnlockAdmin = () => {
+    const success = requestAdminAccess(adminPin);
+    if (success) {
+      toast({ title: "Admin access granted" });
+      setAdminPin("");
+    } else {
+      toast({ title: "Invalid PIN", variant: "destructive" });
+    }
+  };
+
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
   const runtime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
   const expectedDiesel = runtime * (selectedEquipment?.consumptionNorm || 0);
 
-  // Group usage by date
-  const groupedUsage = usage?.reduce((acc, entry) => {
+  const filteredUsage = usage?.filter(u => {
+    if (filterDateFrom && u.date < filterDateFrom) return false;
+    if (filterDateTo && u.date > filterDateTo) return false;
+    if (filterEquipmentId !== "all" && u.equipmentId !== parseInt(filterEquipmentId)) return false;
+    return true;
+  }) || [];
+
+  const groupedUsage = filteredUsage.reduce((acc, entry) => {
     const dateKey = entry.date;
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(entry);
     return acc;
-  }, {} as Record<string, EquipmentUsage[]>) || {};
+  }, {} as Record<string, EquipmentUsage[]>);
 
-  // Sort dates descending
   const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+  const getExportData = () => {
+    return filteredUsage.map(entry => {
+      const equip = equipment?.find(e => e.id === entry.equipmentId);
+      const openingDieselVal = (entry as any).openingDiesel ?? 0;
+      const dieselIssuedVal = entry.dieselIssued ?? 0;
+      const consumed = entry.expectedDiesel ?? 0;
+      const closingDieselVal = (entry as any).closingDiesel ?? (openingDieselVal + dieselIssuedVal - consumed);
+      return {
+        Date: entry.date,
+        Equipment: equip?.name || "Unknown",
+        "Opening Reading": entry.openingReading,
+        "Closing Reading": entry.closingReading,
+        "Hours/KM Run": entry.hoursOrKmRun?.toFixed(1) || "0",
+        "Opening Diesel": openingDieselVal.toFixed(1),
+        "Diesel Issued": dieselIssuedVal.toFixed(1),
+        "Closing Diesel": closingDieselVal.toFixed(1),
+        "Expected Diesel": consumed.toFixed(1),
+      };
+    });
+  };
+
+  const exportToExcel = () => {
+    const data = getExportData();
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Equipment Usage");
+    XLSX.writeFile(wb, `equipment-usage-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    toast({ title: "Exported to Excel" });
+  };
+
+  const exportToPdf = () => {
+    const data = getExportData();
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text("Equipment Usage Report", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+    
+    autoTable(doc, {
+      startY: 28,
+      head: [["Date", "Equipment", "Opening Reading", "Closing Reading", "Hours/KM Run", "Opening Diesel", "Diesel Issued", "Closing Diesel", "Expected Diesel"]],
+      body: data.map(row => [
+        row.Date,
+        row.Equipment,
+        row["Opening Reading"],
+        row["Closing Reading"],
+        row["Hours/KM Run"],
+        row["Opening Diesel"],
+        row["Diesel Issued"],
+        row["Closing Diesel"],
+        row["Expected Diesel"],
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] },
+    });
+    
+    doc.save(`equipment-usage-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "Exported to PDF" });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -283,7 +369,102 @@ export default function PlantEquipmentUsage() {
         </Dialog>
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row items-start md:items-end gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
+                {access.toUpperCase()}
+              </Badge>
+            </div>
+            {!isAdmin && (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="password"
+                  placeholder="Admin PIN"
+                  value={adminPin}
+                  onChange={(e) => setAdminPin(e.target.value)}
+                  className="w-28"
+                  data-testid="input-admin-pin"
+                />
+                <Button size="sm" variant="outline" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
+                  <Lock className="w-3 h-3" /> Unlock Admin
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+          <CardTitle className="text-base">Filters</CardTitle>
+          {isAdmin && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredUsage.length} data-testid="button-export-excel">
+                <Download className="w-4 h-4" /> Excel
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1" onClick={exportToPdf} disabled={!filteredUsage.length} data-testid="button-export-pdf">
+                <Download className="w-4 h-4" /> PDF
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row items-start md:items-end gap-4 flex-wrap">
+            <div className="flex-1 min-w-[150px]">
+              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                data-testid="input-filter-date-from"
+              />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                data-testid="input-filter-date-to"
+              />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <Label className="text-xs text-muted-foreground">EQUIPMENT</Label>
+              <Select value={filterEquipmentId} onValueChange={setFilterEquipmentId}>
+                <SelectTrigger data-testid="select-filter-equipment">
+                  <SelectValue placeholder="All Equipment" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Equipment</SelectItem>
+                  {equipment?.map((equip) => (
+                    <SelectItem key={equip.id} value={String(equip.id)}>
+                      {equip.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFilterDateFrom("");
+                setFilterDateTo("");
+                setFilterEquipmentId("all");
+              }}
+              data-testid="button-clear-filters"
+            >
+              Clear
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
@@ -304,6 +485,9 @@ export default function PlantEquipmentUsage() {
           <CardTitle className="flex items-center gap-2">
             <Gauge className="w-5 h-5" />
             Usage Log
+            {filteredUsage.length > 0 && (
+              <Badge variant="secondary" className="ml-2">{filteredUsage.length} entries</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -311,7 +495,7 @@ export default function PlantEquipmentUsage() {
             <div className="flex justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
-          ) : !usage?.length ? (
+          ) : !filteredUsage.length ? (
             <p className="text-muted-foreground text-center py-8">No usage recorded yet.</p>
           ) : (
             <div className="space-y-6">
@@ -323,11 +507,10 @@ export default function PlantEquipmentUsage() {
                     <div className="space-y-2">
                       {dayUsage.map((entry) => {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
-                        const openingDiesel = (entry as any).openingDiesel ?? 0;
-                        const dieselIssued = entry.dieselIssued ?? 0;
+                        const openingDieselVal = (entry as any).openingDiesel ?? 0;
+                        const dieselIssuedVal = entry.dieselIssued ?? 0;
                         const consumed = entry.expectedDiesel ?? 0;
-                        const closingDiesel = (entry as any).closingDiesel ?? (openingDiesel + dieselIssued - consumed);
-                        const variance = entry.variance ?? (dieselIssued - consumed);
+                        const closingDieselVal = (entry as any).closingDiesel ?? (openingDieselVal + dieselIssuedVal - consumed);
                         return (
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
@@ -345,7 +528,7 @@ export default function PlantEquipmentUsage() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Diesel Issued</span>
-                                <span className="font-medium">{dieselIssued.toFixed(1)} L</span>
+                                <span className="font-medium">{dieselIssuedVal.toFixed(1)} L</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Consumed</span>
@@ -353,7 +536,7 @@ export default function PlantEquipmentUsage() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Tank Balance</span>
-                                <span className="font-medium">{closingDiesel.toFixed(1)} L</span>
+                                <span className="font-medium">{closingDieselVal.toFixed(1)} L</span>
                               </div>
                             </div>
                             {canEdit && (
