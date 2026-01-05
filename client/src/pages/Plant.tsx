@@ -149,67 +149,6 @@ function StockDetailsTab() {
 }
 
 function MastersTab() {
-  const { isAdmin, requestAdminAccess, canEdit, canDelete } = useAccess();
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [pin, setPin] = useState("");
-  const { toast } = useToast();
-
-  const handlePinSubmit = () => {
-    if (requestAdminAccess(pin)) {
-      setPinDialogOpen(false);
-      setPin("");
-      toast({ title: "Admin access granted" });
-    } else {
-      toast({ title: "Invalid PIN", variant: "destructive" });
-      setPin("");
-    }
-  };
-
-  if (!isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 space-y-6">
-        <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
-          <Settings className="w-10 h-10 text-muted-foreground" />
-        </div>
-        <div className="text-center">
-          <h3 className="text-xl font-semibold mb-2">Admin Access Required</h3>
-          <p className="text-muted-foreground max-w-md">
-            Masters data can only be viewed and edited by administrators. Enter your admin PIN to access.
-          </p>
-        </div>
-        <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" data-testid="button-enter-admin-pin">
-              Enter Admin PIN
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Enter Admin PIN</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div>
-                <Label>PIN</Label>
-                <Input
-                  type="password"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="Enter 4-digit PIN"
-                  maxLength={4}
-                  data-testid="input-admin-pin"
-                  onKeyDown={(e) => e.key === "Enter" && handlePinSubmit()}
-                />
-              </div>
-              <Button onClick={handlePinSubmit} className="w-full" data-testid="button-submit-pin">
-                Submit
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <PartyMaster />
