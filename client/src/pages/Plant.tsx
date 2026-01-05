@@ -21,6 +21,41 @@ import { EQUIPMENT_TYPES, METER_TYPES, MIX_TYPES } from "@shared/schema";
 
 export default function Plant() {
   const [activeTab, setActiveTab] = useState("operations");
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [unlockedTabs, setUnlockedTabs] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
+
+  const handleTabChange = (tab: string) => {
+    // Masters and Dashboard tabs require admin PIN
+    if ((tab === "masters" || tab === "dashboard") && !unlockedTabs.has(tab)) {
+      setPendingTab(tab);
+      setShowPinAuth(true);
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin") => {
+    if (role === "admin" && pendingTab) {
+      setUnlockedTabs(prev => {
+        const newSet = new Set(Array.from(prev));
+        newSet.add(pendingTab);
+        return newSet;
+      });
+      setActiveTab(pendingTab);
+      toast({ title: `${pendingTab === "masters" ? "Masters" : "Dashboard"} unlocked` });
+    } else {
+      toast({ title: "Admin access required", description: "Only admin PIN can access this section", variant: "destructive" });
+    }
+    setShowPinAuth(false);
+    setPendingTab(null);
+  };
+
+  const handlePinClose = () => {
+    setShowPinAuth(false);
+    setPendingTab(null);
+  };
   
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -38,21 +73,29 @@ export default function Plant() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      {showPinAuth && (
+        <PinAuth
+          targetRole="admin"
+          onSuccess={handlePinSuccess}
+          onClose={handlePinClose}
+        />
+      )}
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="operations" className="gap-2">
+          <TabsTrigger value="operations" className="gap-2" data-testid="tab-operations">
             <Truck className="w-4 h-4" />
             <span className="hidden sm:inline">Operations</span>
           </TabsTrigger>
-          <TabsTrigger value="stock" className="gap-2">
+          <TabsTrigger value="stock" className="gap-2" data-testid="tab-stock">
             <Layers className="w-4 h-4" />
             <span className="hidden sm:inline">Stock Details</span>
           </TabsTrigger>
-          <TabsTrigger value="masters" className="gap-2">
+          <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">Masters</span>
           </TabsTrigger>
-          <TabsTrigger value="dashboard" className="gap-2">
+          <TabsTrigger value="dashboard" className="gap-2" data-testid="tab-dashboard">
             <Factory className="w-4 h-4" />
             <span className="hidden sm:inline">Dashboard</span>
           </TabsTrigger>
