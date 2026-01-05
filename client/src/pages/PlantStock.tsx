@@ -6,12 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Layers, Package, Users, Loader2, Search, Calendar } from "lucide-react";
+import { ChevronLeft, Layers, Package, Users, Loader2, Search, Calendar, Download, Printer, Unlock } from "lucide-react";
 import { format, subDays } from "date-fns";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+import { useAccess } from "@/lib/access-context";
+import { useToast } from "@/hooks/use-toast";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 
 export default function PlantStock() {
+  const { toast } = useToast();
+  const { isAdmin, access, requestAdminAccess } = useAccess();
+  const [adminPin, setAdminPin] = useState("");
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedPartyId, setSelectedPartyId] = useState<string>("all");
@@ -98,6 +107,82 @@ export default function PlantStock() {
     return true;
   });
 
+  const handleUnlockAdmin = () => {
+    const success = requestAdminAccess(adminPin);
+    if (success) {
+      toast({ title: "Admin access granted" });
+      setAdminPin("");
+    } else {
+      toast({ title: "Invalid PIN", variant: "destructive" });
+    }
+  };
+
+  const exportToExcel = () => {
+    const summaryData = stockSummary.map(item => ({
+      Material: item.materialName,
+      "Stock Owner": item.partyName,
+      Opening: item.opening.toFixed(2),
+      Received: item.received.toFixed(2),
+      Consumed: item.consumed.toFixed(2),
+      Closing: item.closing.toFixed(2),
+      UOM: item.uom,
+    }));
+    
+    const ledgerData = (ledger || []).map(entry => ({
+      Date: entry.date,
+      Material: getMaterialName(entry.materialId),
+      "Stock Owner": getPartyName(entry.partyId),
+      Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : 'Equip Issue',
+      In: entry.quantityIn?.toFixed(2) || "-",
+      Out: entry.quantityOut?.toFixed(2) || "-",
+      Balance: entry.balanceAfter?.toFixed(2) || "-",
+      UOM: entry.uom,
+    }));
+    
+    const wb = XLSX.utils.book_new();
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    const wsLedger = XLSX.utils.json_to_sheet(ledgerData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Stock Summary");
+    XLSX.utils.book_append_sheet(wb, wsLedger, "Stock Ledger");
+    XLSX.writeFile(wb, `stock_report_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    toast({ title: "Exported to Excel" });
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    doc.setFontSize(16);
+    doc.text("Stock Balances & Ledger Report", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Period: ${dateFrom} to ${dateTo}`, 14, 22);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 28);
+    
+    const summaryTableData = stockSummary.map(item => [
+      item.materialName,
+      item.partyName,
+      item.opening.toFixed(2),
+      item.received.toFixed(2),
+      item.consumed.toFixed(2),
+      item.closing.toFixed(2),
+      item.uom,
+    ]);
+    
+    (doc as any).autoTable({
+      startY: 34,
+      head: [["Material", "Stock Owner", "Opening", "Received", "Consumed", "Closing", "UOM"]],
+      body: summaryTableData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246] },
+      styles: { fontSize: 8 },
+    });
+    
+    doc.save(`stock_report_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "Exported to PDF" });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -112,6 +197,43 @@ export default function PlantStock() {
             <p className="text-muted-foreground">View party-wise and plant-common stock</p>
           </div>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Access Level:</span>
+          <Badge variant={isAdmin ? "default" : "secondary"}>
+            {access.charAt(0).toUpperCase() + access.slice(1)}
+          </Badge>
+        </div>
+        {!isAdmin && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              placeholder="Enter PIN"
+              value={adminPin}
+              onChange={(e) => setAdminPin(e.target.value)}
+              className="w-32"
+              data-testid="input-admin-pin"
+            />
+            <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
+              <Unlock className="w-4 h-4" /> Unlock Admin
+            </Button>
+          </div>
+        )}
+        {isAdmin && (
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!stockSummary.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!stockSummary.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card>

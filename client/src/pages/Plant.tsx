@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer } from "lucide-react";
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1043,6 +1044,10 @@ function EquipmentMasterSection() {
 }
 
 function DashboardTab() {
+  const { isAdmin, requestAdminAccess } = useAccess();
+  const [adminPin, setAdminPin] = useState("");
+  const { toast } = useToast();
+
   // KPI date range (separate from table filters)
   const [kpiDateFrom, setKpiDateFrom] = useState("");
   const [kpiDateTo, setKpiDateTo] = useState("");
@@ -1308,21 +1313,69 @@ function DashboardTab() {
         </Card>
       </div>
 
+      {/* Admin Access Section */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-sm font-medium">EXPORT ACCESS</CardTitle>
+              <Badge variant={isAdmin ? "default" : "secondary"}>
+                {isAdmin ? "ADMIN" : "RESTRICTED"}
+              </Badge>
+            </div>
+            {!isAdmin && (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="password"
+                  placeholder="Enter PIN"
+                  value={adminPin}
+                  onChange={(e) => setAdminPin(e.target.value)}
+                  className="w-24 h-8 text-sm"
+                  data-testid="input-admin-pin"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const success = requestAdminAccess(adminPin);
+                    if (success) {
+                      toast({ title: "Admin access granted" });
+                      setAdminPin("");
+                    } else {
+                      toast({ title: "Invalid PIN", variant: "destructive" });
+                    }
+                  }}
+                  data-testid="button-unlock-admin"
+                >
+                  <Lock className="w-4 h-4 mr-1" />
+                  Unlock Admin
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+      </Card>
+
       {/* Dispatch Summary Section */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>DISPATCH SUMMARY</CardTitle>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={exportToExcel} data-testid="button-export-excel">
-                <Download className="w-4 h-4 mr-1" />
-                EXPORT EXCEL
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportToPdf} data-testid="button-export-pdf">
-                <Printer className="w-4 h-4 mr-1" />
-                EXPORT PDF
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={exportToExcel} data-testid="button-export-excel">
+                  <Download className="w-4 h-4 mr-1" />
+                  EXPORT EXCEL
+                </Button>
+                <Button variant="outline" size="sm" onClick={exportToPdf} data-testid="button-export-pdf">
+                  <Printer className="w-4 h-4 mr-1" />
+                  EXPORT PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="button-print">
+                  <Printer className="w-4 h-4 mr-1" />
+                  PRINT
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>

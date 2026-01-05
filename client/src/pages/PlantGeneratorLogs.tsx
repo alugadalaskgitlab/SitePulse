@@ -6,15 +6,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Zap, Loader2 } from "lucide-react";
+import { ChevronLeft, Plus, Zap, Loader2, Download, Printer, Unlock } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
 import type { GeneratorLog } from "@shared/schema";
 
 export default function PlantGeneratorLogs() {
   const { toast } = useToast();
+  const { isAdmin, access, requestAdminAccess } = useAccess();
+  const [adminPin, setAdminPin] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [generatorName, setGeneratorName] = useState("600 KVA");
@@ -79,6 +86,75 @@ export default function PlantGeneratorLogs() {
   };
 
   const calculatedHoursDisplay = calculateHours();
+
+  const handleUnlockAdmin = () => {
+    const success = requestAdminAccess(adminPin);
+    if (success) {
+      toast({ title: "Admin access granted" });
+      setAdminPin("");
+    } else {
+      toast({ title: "Invalid PIN", variant: "destructive" });
+    }
+  };
+
+  const exportToExcel = () => {
+    if (!logs?.length) return;
+    const data = logs.map(log => ({
+      Date: log.date,
+      Generator: log.generatorName,
+      "Start Time": log.startTime || "",
+      "End Time": log.endTime || "",
+      "Hours Run": log.hoursRun?.toFixed(1) || "",
+      "Opening Diesel (L)": log.openingDiesel || 0,
+      "Diesel Issued (L)": log.dieselIssued || 0,
+      "Diesel Consumed (L)": log.dieselConsumed?.toFixed(1) || 0,
+      "Closing Diesel (L)": log.closingDiesel || 0,
+      "Efficiency (L/hr)": log.efficiency?.toFixed(2) || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Generator Logs");
+    XLSX.writeFile(wb, `generator_logs_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    toast({ title: "Exported to Excel" });
+  };
+
+  const exportToPDF = () => {
+    if (!logs?.length) return;
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    doc.setFontSize(16);
+    doc.text("Generator Diesel Tracking Report", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+    
+    const tableData = logs.map(log => [
+      log.date,
+      log.generatorName,
+      log.startTime || "-",
+      log.endTime || "-",
+      log.hoursRun?.toFixed(1) || "-",
+      log.openingDiesel || 0,
+      log.dieselIssued || 0,
+      log.dieselConsumed?.toFixed(1) || 0,
+      log.closingDiesel || 0,
+      log.efficiency?.toFixed(2) || "-",
+    ]);
+    
+    (doc as any).autoTable({
+      startY: 28,
+      head: [["Date", "Generator", "Start", "End", "Hours", "Opening (L)", "Issued (L)", "Consumed (L)", "Closing (L)", "L/hr"]],
+      body: tableData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246] },
+      styles: { fontSize: 8 },
+    });
+    
+    doc.save(`generator_logs_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    toast({ title: "Exported to PDF" });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -164,6 +240,44 @@ export default function PlantGeneratorLogs() {
             </div>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* Admin Access Section */}
+      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Access Level:</span>
+          <Badge variant={isAdmin ? "default" : "secondary"}>
+            {access.charAt(0).toUpperCase() + access.slice(1)}
+          </Badge>
+        </div>
+        {!isAdmin && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              placeholder="Enter PIN"
+              value={adminPin}
+              onChange={(e) => setAdminPin(e.target.value)}
+              className="w-32"
+              data-testid="input-admin-pin"
+            />
+            <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
+              <Unlock className="w-4 h-4" /> Unlock Admin
+            </Button>
+          </div>
+        )}
+        {isAdmin && (
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!logs?.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!logs?.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card>
