@@ -8,6 +8,8 @@ interface AccessContextType {
   canEdit: boolean;  // Admin only
   canDelete: boolean; // Admin only
   canViewReports: boolean; // Manager and Admin
+  isAdmin: boolean; // Is currently admin
+  requestAdminAccess: (pin: string) => boolean; // Try to get admin access with PIN
 }
 
 const AccessContext = createContext<AccessContextType | undefined>(undefined);
@@ -46,9 +48,20 @@ export function AccessProvider({ children }: { children: ReactNode }) {
   const canEdit = access === "admin"; // Per requirements: only admin can edit
   const canDelete = access === "admin"; // Only admin can delete
   const canViewReports = access === "manager" || access === "admin"; // Manager and Admin can view reports
+  const isAdmin = access === "admin";
+  
+  // Admin PIN verification - in production this should be server-side
+  const ADMIN_PIN = "1234";
+  const requestAdminAccess = (pin: string): boolean => {
+    if (pin === ADMIN_PIN) {
+      setAccess("admin");
+      return true;
+    }
+    return false;
+  };
 
   return (
-    <AccessContext.Provider value={{ access, setAccess, canEdit, canDelete, canViewReports }}>
+    <AccessContext.Provider value={{ access, setAccess, canEdit, canDelete, canViewReports, isAdmin, requestAdminAccess }}>
       {children}
     </AccessContext.Provider>
   );

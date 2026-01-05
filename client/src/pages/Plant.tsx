@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer } from "lucide-react";
+import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
@@ -41,16 +42,16 @@ export default function Plant() {
             <Truck className="w-4 h-4" />
             <span className="hidden sm:inline">Operations</span>
           </TabsTrigger>
-          <TabsTrigger value="equipment" className="gap-2">
-            <Gauge className="w-4 h-4" />
-            <span className="hidden sm:inline">Equipment</span>
+          <TabsTrigger value="stock" className="gap-2">
+            <Layers className="w-4 h-4" />
+            <span className="hidden sm:inline">Stock Details</span>
           </TabsTrigger>
           <TabsTrigger value="masters" className="gap-2">
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">Masters</span>
           </TabsTrigger>
           <TabsTrigger value="dashboard" className="gap-2">
-            <Layers className="w-4 h-4" />
+            <Factory className="w-4 h-4" />
             <span className="hidden sm:inline">Dashboard</span>
           </TabsTrigger>
         </TabsList>
@@ -59,8 +60,8 @@ export default function Plant() {
           <OperationsTab />
         </TabsContent>
 
-        <TabsContent value="equipment" className="mt-6">
-          <EquipmentTab />
+        <TabsContent value="stock" className="mt-6">
+          <StockDetailsTab />
         </TabsContent>
 
         <TabsContent value="masters" className="mt-6">
@@ -77,7 +78,7 @@ export default function Plant() {
 
 function OperationsTab() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Link href="/plant/material-receipts">
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -108,27 +109,6 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href="/plant/stock">
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <Layers className="w-7 h-7 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Stock Balances</h3>
-              <p className="text-sm text-muted-foreground">View party-wise and plant stock</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-    </div>
-  );
-}
-
-function EquipmentTab() {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Link href="/plant/equipment-usage">
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -147,7 +127,89 @@ function EquipmentTab() {
   );
 }
 
+function StockDetailsTab() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Link href="/plant/stock">
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <Layers className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Stock Balances & Ledger</h3>
+              <p className="text-sm text-muted-foreground">View party-wise stock and transaction history</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
+  );
+}
+
 function MastersTab() {
+  const { isAdmin, requestAdminAccess, canEdit, canDelete } = useAccess();
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pin, setPin] = useState("");
+  const { toast } = useToast();
+
+  const handlePinSubmit = () => {
+    if (requestAdminAccess(pin)) {
+      setPinDialogOpen(false);
+      setPin("");
+      toast({ title: "Admin access granted" });
+    } else {
+      toast({ title: "Invalid PIN", variant: "destructive" });
+      setPin("");
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 space-y-6">
+        <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+          <Settings className="w-10 h-10 text-muted-foreground" />
+        </div>
+        <div className="text-center">
+          <h3 className="text-xl font-semibold mb-2">Admin Access Required</h3>
+          <p className="text-muted-foreground max-w-md">
+            Masters data can only be viewed and edited by administrators. Enter your admin PIN to access.
+          </p>
+        </div>
+        <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2" data-testid="button-enter-admin-pin">
+              Enter Admin PIN
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Enter Admin PIN</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label>PIN</Label>
+                <Input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="Enter 4-digit PIN"
+                  maxLength={4}
+                  data-testid="input-admin-pin"
+                  onKeyDown={(e) => e.key === "Enter" && handlePinSubmit()}
+                />
+              </div>
+              <Button onClick={handlePinSubmit} className="w-full" data-testid="button-submit-pin">
+                Submit
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PartyMaster />
@@ -165,6 +227,18 @@ function PartyMaster() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+
+  const exportToExcel = (data: Party[]) => {
+    const ws = XLSX.utils.json_to_sheet(data.map(p => ({ Name: p.name, Notes: p.notes || "" })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Parties");
+    XLSX.writeFile(wb, "parties.xlsx");
+    toast({ title: "Exported to Excel" });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   const { data: parties, isLoading } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
@@ -225,17 +299,24 @@ function PartyMaster() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <CardTitle className="flex items-center gap-2">
           <Users className="w-5 h-5" />
           Party/Job Master
         </CardTitle>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1" data-testid="button-add-party">
-              <Plus className="w-4 h-4" /> Add Party
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => parties && exportToExcel(parties)} disabled={!parties?.length} data-testid="button-export-parties">
+            <Download className="w-4 h-4" /> Excel
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print-parties">
+            <Printer className="w-4 h-4" /> Print
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1" data-testid="button-add-party">
+                <Plus className="w-4 h-4" /> Add Party
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingParty ? "Edit Party" : "Add New Party"}</DialogTitle>
@@ -267,6 +348,7 @@ function PartyMaster() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -312,6 +394,14 @@ function MaterialMaster() {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
+
+  const exportToExcel = (data: PlantMaterial[]) => {
+    const ws = XLSX.utils.json_to_sheet(data.map(m => ({ Name: m.name, Category: m.category || "", UOM: m.defaultUom })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Materials");
+    XLSX.writeFile(wb, "materials.xlsx");
+    toast({ title: "Exported to Excel" });
+  };
 
   const { data: materials, isLoading } = useQuery<PlantMaterial[]>({
     queryKey: ["/api/plant-module/materials"],
@@ -372,21 +462,25 @@ function MaterialMaster() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <CardTitle className="flex items-center gap-2">
           <Package className="w-5 h-5" />
           Material Master
         </CardTitle>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1" data-testid="button-add-material">
-              <Plus className="w-4 h-4" /> Add Material
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingMaterial ? "Edit Material" : "Add New Material"}</DialogTitle>
-            </DialogHeader>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => materials && exportToExcel(materials)} disabled={!materials?.length} data-testid="button-export-materials">
+            <Download className="w-4 h-4" /> Excel
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1" data-testid="button-add-material">
+                <Plus className="w-4 h-4" /> Add Material
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingMaterial ? "Edit Material" : "Add New Material"}</DialogTitle>
+              </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
                 <Label htmlFor="material-name">Material Name</Label>
@@ -436,6 +530,7 @@ function MaterialMaster() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
