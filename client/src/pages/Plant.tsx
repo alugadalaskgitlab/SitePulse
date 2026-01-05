@@ -1209,7 +1209,7 @@ function DashboardTab() {
 
   // Table subtotals
   const subtotalTons = tableFilteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
-  const subtotalBitumen = tableFilteredDispatches.reduce((sum, d) => sum + ((d.actualBitumenQty || 0) / 1000), 0); // Convert kg to MT
+  const subtotalBitumen = tableFilteredDispatches.reduce((sum, d) => sum + (d.actualBitumenQty || 0), 0); // Already in MT
   const subtotalLdo = tableFilteredDispatches.reduce((sum, d) => sum + (d.actualLdoQty || 0), 0);
   const subtotalTrips = tableFilteredDispatches.length;
 
@@ -1257,7 +1257,7 @@ function DashboardTab() {
         getMixType(d.mixTemplateId),
         d.loadWeight?.toFixed(2) || "0.00",
         (d.truckNumber || "").toUpperCase(),
-        ((d.actualBitumenQty || 0) / 1000).toFixed(3),
+        (d.actualBitumenQty || 0).toFixed(3),
         (d.actualLdoQty || 0).toFixed(1)
       ]);
 
@@ -1320,7 +1320,7 @@ function DashboardTab() {
         getMixType(d.mixTemplateId),
         d.loadWeight?.toFixed(2) || "0.00",
         (d.truckNumber || ""),
-        ((d.actualBitumenQty || 0) / 1000).toFixed(3),
+        (d.actualBitumenQty || 0).toFixed(3),
         (d.actualLdoQty || 0).toFixed(1)
       ]);
 
@@ -1455,7 +1455,7 @@ function DashboardTab() {
                   <td>${getMixType(d.mixTemplateId)}</td>
                   <td>${d.loadWeight?.toFixed(2) || '0.00'}</td>
                   <td>${d.truckNumber || '-'}</td>
-                  <td>${((d.actualBitumenQty || 0) / 1000).toFixed(3)}</td>
+                  <td>${(d.actualBitumenQty || 0).toFixed(3)}</td>
                   <td>${(d.actualLdoQty || 0).toFixed(1)}</td>
                 </tr>
               `).join('')}
@@ -1745,7 +1745,7 @@ function DashboardTab() {
                         <td className="py-2 px-3 whitespace-nowrap">{getMixType(d.mixTemplateId)}</td>
                         <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{d.loadWeight?.toFixed(2) || "0.00"}</td>
                         <td className="py-2 px-3 whitespace-nowrap">{(d.truckNumber || "").toUpperCase()}</td>
-                        <td className="py-2 px-3 text-right whitespace-nowrap">{((d.actualBitumenQty || 0) / 1000).toFixed(3)}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualBitumenQty || 0).toFixed(3)}</td>
                         <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualLdoQty || 0).toFixed(1)}</td>
                       </tr>
                     ))
