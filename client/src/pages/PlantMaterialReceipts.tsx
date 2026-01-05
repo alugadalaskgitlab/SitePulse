@@ -9,20 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer, Lock, Unlock } from "lucide-react";
+import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAccess } from "@/lib/access-context";
+import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
-  const { canEdit, canDelete, isAdmin, access, requestAdminAccess } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -33,8 +32,10 @@ export default function PlantMaterialReceipts() {
   const [filterPartyId, setFilterPartyId] = useState("all");
   const [filterMaterialId, setFilterMaterialId] = useState("all");
   
-  // Admin PIN state
-  const [adminPin, setAdminPin] = useState("");
+  // PIN auth state for per-action authentication
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
+  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; receiptId?: number } | null>(null);
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -161,14 +162,60 @@ export default function PlantMaterialReceipts() {
     }
   };
 
-  const handleUnlockAdmin = () => {
-    const success = requestAdminAccess(adminPin);
-    if (success) {
-      toast({ title: "Admin access granted" });
-      setAdminPin("");
-    } else {
-      toast({ title: "Invalid PIN", variant: "destructive" });
+  // Per-action PIN authentication handlers
+  const requestPinAuth = (action: typeof pendingAction) => {
+    setPendingAction(action);
+    setPinAuthTarget("admin"); // All plant module actions require admin PIN
+    setShowPinAuth(true);
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinAuth(false);
+    if (!pendingAction) return;
+
+    switch (pendingAction.type) {
+      case "edit":
+        if (pendingAction.receiptId) {
+          const receipt = receipts?.find(r => r.id === pendingAction.receiptId);
+          if (receipt) openEditDialog(receipt);
+        }
+        break;
+      case "delete":
+        if (pendingAction.receiptId) {
+          setDeleteConfirmId(pendingAction.receiptId);
+        }
+        break;
+      case "export-excel":
+        exportToExcel();
+        break;
+      case "export-pdf":
+        exportToPDF();
+        break;
+      case "print":
+        handlePrint();
+        break;
     }
+    setPendingAction(null);
+  };
+
+  const handleEditClick = (receipt: MaterialReceipt) => {
+    requestPinAuth({ type: "edit", receiptId: receipt.id });
+  };
+
+  const handleDeleteClick = (receiptId: number) => {
+    requestPinAuth({ type: "delete", receiptId });
+  };
+
+  const handleExportExcelClick = () => {
+    requestPinAuth({ type: "export-excel" });
+  };
+
+  const handleExportPdfClick = () => {
+    requestPinAuth({ type: "export-pdf" });
+  };
+
+  const handlePrintClick = () => {
+    requestPinAuth({ type: "print" });
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
@@ -370,44 +417,29 @@ export default function PlantMaterialReceipts() {
         </Dialog>
       </div>
 
-      {/* Admin Access Section */}
+      {/* PIN Auth Modal */}
+      {showPinAuth && (
+        <PinAuth
+          targetRole={pinAuthTarget}
+          onSuccess={handlePinSuccess}
+          onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
+        />
+      )}
+
+      {/* Export/Print Actions - Always visible, PIN required on click */}
       <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Access Level:</span>
-          <Badge variant={isAdmin ? "default" : "secondary"}>
-            {access.charAt(0).toUpperCase() + access.slice(1)}
-          </Badge>
+        <span className="text-sm text-muted-foreground">Admin PIN required for Edit, Delete, Export, and Print</span>
+        <div className="flex items-center gap-2 ml-auto flex-wrap">
+          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredReceipts.length} data-testid="button-export-excel">
+            <Download className="w-4 h-4" /> Export Excel
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredReceipts.length} data-testid="button-export-pdf">
+            <Download className="w-4 h-4" /> Export PDF
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+            <Printer className="w-4 h-4" /> Print
+          </Button>
         </div>
-        {!isAdmin && (
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              placeholder="Enter PIN (1234)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleUnlockAdmin()}
-              className="w-36"
-              maxLength={4}
-              data-testid="input-admin-pin"
-            />
-            <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
-              <Unlock className="w-4 h-4" /> Unlock
-            </Button>
-          </div>
-        )}
-        {isAdmin && (
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredReceipts.length} data-testid="button-export-excel">
-              <Download className="w-4 h-4" /> Export Excel
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!filteredReceipts.length} data-testid="button-export-pdf">
-              <Download className="w-4 h-4" /> Export PDF
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
-              <Printer className="w-4 h-4" /> Print
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Filter Bar */}
@@ -540,18 +572,14 @@ export default function PlantMaterialReceipts() {
                               <span className="font-medium">{getPartyName(receipt.partyId)}</span>
                             </div>
                           </div>
-                          {canEdit && (
-                            <div className="flex gap-2 ml-4">
-                              <Button size="icon" variant="ghost" onClick={() => openEditDialog(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              {canDelete && (
-                                <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
-                                  <Trash2 className="w-4 h-4 text-destructive" />
-                                </Button>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex gap-2 ml-4">
+                            <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

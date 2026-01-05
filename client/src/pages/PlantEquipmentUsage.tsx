@@ -9,10 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, Lock } from "lucide-react";
+import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAccess } from "@/lib/access-context";
+import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -21,7 +21,6 @@ import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
-  const { canEdit, canDelete, isAdmin, access, requestAdminAccess } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -40,7 +39,10 @@ export default function PlantEquipmentUsage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterEquipmentId, setFilterEquipmentId] = useState("all");
 
-  const [adminPin, setAdminPin] = useState("");
+  // PIN auth state for per-action authentication
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
+  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; usageId?: number } | null>(null);
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
@@ -160,14 +162,60 @@ export default function PlantEquipmentUsage() {
     }
   };
 
-  const handleUnlockAdmin = () => {
-    const success = requestAdminAccess(adminPin);
-    if (success) {
-      toast({ title: "Admin access granted" });
-      setAdminPin("");
-    } else {
-      toast({ title: "Invalid PIN", variant: "destructive" });
+  // Per-action PIN authentication handlers
+  const requestPinAuth = (action: typeof pendingAction) => {
+    setPendingAction(action);
+    setPinAuthTarget("admin"); // All plant module actions require admin PIN
+    setShowPinAuth(true);
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinAuth(false);
+    if (!pendingAction) return;
+
+    switch (pendingAction.type) {
+      case "edit":
+        if (pendingAction.usageId) {
+          const entry = usage?.find(u => u.id === pendingAction.usageId);
+          if (entry) openEditDialog(entry);
+        }
+        break;
+      case "delete":
+        if (pendingAction.usageId) {
+          setDeleteConfirmId(pendingAction.usageId);
+        }
+        break;
+      case "export-excel":
+        exportToExcel();
+        break;
+      case "export-pdf":
+        exportToPdf();
+        break;
+      case "print":
+        handlePrint();
+        break;
     }
+    setPendingAction(null);
+  };
+
+  const handleEditClick = (entry: EquipmentUsage) => {
+    requestPinAuth({ type: "edit", usageId: entry.id });
+  };
+
+  const handleDeleteClick = (usageId: number) => {
+    requestPinAuth({ type: "delete", usageId });
+  };
+
+  const handleExportExcelClick = () => {
+    requestPinAuth({ type: "export-excel" });
+  };
+
+  const handleExportPdfClick = () => {
+    requestPinAuth({ type: "export-pdf" });
+  };
+
+  const handlePrintClick = () => {
+    requestPinAuth({ type: "print" });
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
@@ -370,50 +418,19 @@ export default function PlantEquipmentUsage() {
       </div>
 
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row items-start md:items-end gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
-                {access.toUpperCase()}
-              </Badge>
-            </div>
-            {!isAdmin && (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="password"
-                  placeholder="PIN (1234)"
-                  value={adminPin}
-                  onChange={(e) => setAdminPin(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleUnlockAdmin()}
-                  className="w-28"
-                  maxLength={4}
-                  data-testid="input-admin-pin"
-                />
-                <Button size="sm" variant="outline" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
-                  <Lock className="w-3 h-3" /> Unlock
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
           <CardTitle className="text-base">Filters</CardTitle>
-          {isAdmin && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredUsage.length} data-testid="button-export-excel">
-                <Download className="w-4 h-4" /> Excel
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1" onClick={exportToPdf} disabled={!filteredUsage.length} data-testid="button-export-pdf">
-                <Download className="w-4 h-4" /> PDF
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
-                <Printer className="w-4 h-4" /> Print
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredUsage.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredUsage.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row items-start md:items-end gap-4 flex-wrap">
@@ -541,18 +558,14 @@ export default function PlantEquipmentUsage() {
                                 <span className="font-medium">{closingDieselVal.toFixed(1)} L</span>
                               </div>
                             </div>
-                            {canEdit && (
-                              <div className="flex gap-2 ml-4">
-                                <Button size="icon" variant="ghost" onClick={() => openEditDialog(entry)} data-testid={`button-edit-usage-${entry.id}`}>
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                {canDelete && (
-                                  <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
-                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                  </Button>
-                                )}
-                              </div>
-                            )}
+                            <div className="flex gap-2 ml-4">
+                              <Button size="icon" variant="ghost" onClick={() => handleEditClick(entry)} data-testid={`button-edit-usage-${entry.id}`}>
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
                           </div>
                         );
                       })}
@@ -564,6 +577,17 @@ export default function PlantEquipmentUsage() {
           )}
         </CardContent>
       </Card>
+
+      {showPinAuth && (
+        <PinAuth
+          targetRole={pinAuthTarget}
+          onSuccess={handlePinSuccess}
+          onClose={() => {
+            setShowPinAuth(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
     </div>
   );
 }

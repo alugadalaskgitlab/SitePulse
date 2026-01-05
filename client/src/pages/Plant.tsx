@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock } from "lucide-react";
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
+import { PinAuth } from "@/components/PinAuth";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES, MIX_TYPES } from "@shared/schema";
 
@@ -1044,9 +1045,12 @@ function EquipmentMasterSection() {
 }
 
 function DashboardTab() {
-  const { isAdmin, requestAdminAccess } = useAccess();
-  const [adminPin, setAdminPin] = useState("");
   const { toast } = useToast();
+  
+  // PIN auth state for per-action authentication
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
+  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" } | null>(null);
 
   // KPI date range (separate from table filters)
   const [kpiDateFrom, setKpiDateFrom] = useState("");
@@ -1239,6 +1243,43 @@ function DashboardTab() {
     doc.save(`dispatch_summary_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  // Per-action PIN authentication handlers
+  const requestPinAuth = (action: typeof pendingAction) => {
+    setPendingAction(action);
+    setPinAuthTarget("admin"); // All plant module export actions require admin PIN
+    setShowPinAuth(true);
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinAuth(false);
+    if (!pendingAction) return;
+
+    switch (pendingAction.type) {
+      case "export-excel":
+        exportToExcel();
+        break;
+      case "export-pdf":
+        exportToPdf();
+        break;
+      case "print":
+        window.print();
+        break;
+    }
+    setPendingAction(null);
+  };
+
+  const handleExportExcelClick = () => {
+    requestPinAuth({ type: "export-excel" });
+  };
+
+  const handleExportPdfClick = () => {
+    requestPinAuth({ type: "export-pdf" });
+  };
+
+  const handlePrintClick = () => {
+    requestPinAuth({ type: "print" });
+  };
+
   return (
     <div className="space-y-6">
       {/* KPI Date Range Selector */}
@@ -1313,81 +1354,37 @@ function DashboardTab() {
         </Card>
       </div>
 
-      {/* Admin Access Section */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-sm font-medium">EXPORT ACCESS</CardTitle>
-              <Badge variant={isAdmin ? "default" : "secondary"}>
-                {isAdmin ? "ADMIN" : "RESTRICTED"}
-              </Badge>
-            </div>
-            {!isAdmin && (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="password"
-                  placeholder="PIN (1234)"
-                  value={adminPin}
-                  onChange={(e) => setAdminPin(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const success = requestAdminAccess(adminPin);
-                      if (success) {
-                        toast({ title: "Admin access granted" });
-                        setAdminPin("");
-                      } else {
-                        toast({ title: "Invalid PIN", variant: "destructive" });
-                      }
-                    }
-                  }}
-                  className="w-28 h-8 text-sm"
-                  maxLength={4}
-                  data-testid="input-admin-pin"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const success = requestAdminAccess(adminPin);
-                    if (success) {
-                      toast({ title: "Admin access granted" });
-                      setAdminPin("");
-                    } else {
-                      toast({ title: "Invalid PIN", variant: "destructive" });
-                    }
-                  }}
-                  data-testid="button-unlock-admin"
-                >
-                  <Lock className="w-4 h-4 mr-1" />
-                  Unlock
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-      </Card>
+      {/* PinAuth Modal */}
+      {showPinAuth && (
+        <PinAuth
+          targetRole={pinAuthTarget}
+          onSuccess={handlePinSuccess}
+          onClose={() => {
+            setShowPinAuth(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
 
       {/* Dispatch Summary Section */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>DISPATCH SUMMARY</CardTitle>
-            {isAdmin && (
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={exportToExcel} data-testid="button-export-excel">
-                  <Download className="w-4 h-4 mr-1" />
-                  EXPORT EXCEL
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportToPdf} data-testid="button-export-pdf">
-                  <Printer className="w-4 h-4 mr-1" />
-                  EXPORT PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="button-print">
-                  <Printer className="w-4 h-4 mr-1" />
-                  PRINT
-                </Button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleExportExcelClick} data-testid="button-export-excel">
+                <Download className="w-4 h-4 mr-1" />
+                EXPORT EXCEL
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportPdfClick} data-testid="button-export-pdf">
+                <Printer className="w-4 h-4 mr-1" />
+                EXPORT PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={handlePrintClick} data-testid="button-print">
+                <Printer className="w-4 h-4 mr-1" />
+                PRINT
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

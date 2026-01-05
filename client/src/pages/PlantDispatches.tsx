@@ -8,13 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, Unlock } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAccess } from "@/lib/access-context";
+import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
 
@@ -22,7 +22,6 @@ const MIX_TYPES = ["BC", "DBM"];
 
 export default function PlantDispatches() {
   const { toast } = useToast();
-  const { canEdit, canDelete, isAdmin, access, requestAdminAccess } = useAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -34,8 +33,10 @@ export default function PlantDispatches() {
   const [filterMixType, setFilterMixType] = useState("all");
   const [filterVehicle, setFilterVehicle] = useState("all");
   
-  // Admin PIN state
-  const [adminPin, setAdminPin] = useState("");
+  // PIN auth state for per-action authentication
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
+  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; dispatchId?: number } | null>(null);
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -154,14 +155,60 @@ export default function PlantDispatches() {
     }
   };
 
-  const handleUnlockAdmin = () => {
-    const success = requestAdminAccess(adminPin);
-    if (success) {
-      toast({ title: "Admin access granted" });
-      setAdminPin("");
-    } else {
-      toast({ title: "Invalid PIN", variant: "destructive" });
+  // Per-action PIN authentication handlers
+  const requestPinAuth = (action: typeof pendingAction) => {
+    setPendingAction(action);
+    setPinAuthTarget("admin");
+    setShowPinAuth(true);
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
+    setShowPinAuth(false);
+    if (!pendingAction) return;
+
+    switch (pendingAction.type) {
+      case "edit":
+        if (pendingAction.dispatchId) {
+          const dispatch = dispatches?.find(d => d.id === pendingAction.dispatchId);
+          if (dispatch) openEditDialog(dispatch);
+        }
+        break;
+      case "delete":
+        if (pendingAction.dispatchId) {
+          setDeleteConfirmId(pendingAction.dispatchId);
+        }
+        break;
+      case "export-excel":
+        exportToExcel();
+        break;
+      case "export-pdf":
+        exportToPDF();
+        break;
+      case "print":
+        handlePrint();
+        break;
     }
+    setPendingAction(null);
+  };
+
+  const handleEditClick = (dispatch: TruckDispatch) => {
+    requestPinAuth({ type: "edit", dispatchId: dispatch.id });
+  };
+
+  const handleDeleteClick = (dispatchId: number) => {
+    requestPinAuth({ type: "delete", dispatchId });
+  };
+
+  const handleExportExcelClick = () => {
+    requestPinAuth({ type: "export-excel" });
+  };
+
+  const handleExportPdfClick = () => {
+    requestPinAuth({ type: "export-pdf" });
+  };
+
+  const handlePrintClick = () => {
+    requestPinAuth({ type: "print" });
   };
 
   const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
@@ -258,6 +305,17 @@ export default function PlantDispatches() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {showPinAuth && (
+        <PinAuth
+          targetRole={pinAuthTarget}
+          onSuccess={handlePinSuccess}
+          onClose={() => {
+            setShowPinAuth(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href="/plant">
@@ -342,7 +400,7 @@ export default function PlantDispatches() {
                 <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value.toUpperCase())} placeholder="Site/chainage" data-testid="input-delivery-location" />
               </div>
 
-              {canEdit && (
+              {editingDispatch && (
                 <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                   <div className="flex items-center gap-2 mb-2">
                     <Lock className="w-4 h-4 text-amber-600" />
@@ -362,44 +420,17 @@ export default function PlantDispatches() {
         </Dialog>
       </div>
 
-      {/* Admin Access Section */}
-      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Access Level:</span>
-          <Badge variant={isAdmin ? "default" : "secondary"}>
-            {access.charAt(0).toUpperCase() + access.slice(1)}
-          </Badge>
-        </div>
-        {!isAdmin && (
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              placeholder="Enter PIN (1234)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleUnlockAdmin()}
-              className="w-36"
-              maxLength={4}
-              data-testid="input-admin-pin"
-            />
-            <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
-              <Unlock className="w-4 h-4" /> Unlock
-            </Button>
-          </div>
-        )}
-        {isAdmin && (
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredDispatches.length} data-testid="button-export-excel">
-              <Download className="w-4 h-4" /> Export Excel
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!filteredDispatches.length} data-testid="button-export-pdf">
-              <Download className="w-4 h-4" /> Export PDF
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
-              <Printer className="w-4 h-4" /> Print
-            </Button>
-          </div>
-        )}
+      {/* Export/Print Actions */}
+      <div className="flex flex-wrap items-center gap-2 p-4 rounded-lg bg-muted/50">
+        <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredDispatches.length} data-testid="button-export-excel">
+          <Download className="w-4 h-4" /> Export Excel
+        </Button>
+        <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredDispatches.length} data-testid="button-export-pdf">
+          <Download className="w-4 h-4" /> Export PDF
+        </Button>
+        <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+          <Printer className="w-4 h-4" /> Print
+        </Button>
       </div>
 
       {/* Filter Bar */}
@@ -532,37 +563,43 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Mix</span>
-                                <span className="font-medium">{template?.name || "-"}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Bitumen</span>
-                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"} MT ({dispatch.theoreticalBitumenPercent || 0}%)</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">LDO</span>
-                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"} L</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Location</span>
-                                <span className="font-medium">{dispatch.deliveryLocation || "-"}</span>
+                                <Badge variant="outline" className="text-xs">{template?.mixType || "-"}</Badge>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Party</span>
                                 <span className="font-medium">{getPartyName(dispatch.partyId)}</span>
                               </div>
-                            </div>
-                            {canEdit && (
-                              <div className="flex gap-2 ml-4">
-                                <Button size="icon" variant="ghost" onClick={() => openEditDialog(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                {canDelete && (
-                                  <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
-                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                  </Button>
-                                )}
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Site</span>
+                                <span className="font-medium">{dispatch.deliveryLocation || "-"}</span>
                               </div>
-                            )}
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>
+                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">LDO (L)</span>
+                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 ml-4">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleEditClick(dispatch)}
+                                data-testid={`button-edit-dispatch-${dispatch.id}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleDeleteClick(dispatch.id)}
+                                data-testid={`button-delete-dispatch-${dispatch.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
                           </div>
                         );
                       })}
