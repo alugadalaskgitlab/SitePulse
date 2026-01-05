@@ -298,35 +298,55 @@ export default function PlantStock() {
               ) : !ledger?.length ? (
                 <p className="text-muted-foreground text-center py-8">No transactions found for this period.</p>
               ) : (
-                <div className="space-y-2">
-                  {ledger.slice(0, 50).map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 text-xs rounded ${
-                            entry.transactionType === 'receipt' 
-                              ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
-                              : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                          }`}>
-                            {entry.transactionType === 'receipt' ? 'IN' : 'OUT'}
-                          </span>
-                          <span className="font-medium">{getMaterialName(entry.materialId)}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {getPartyName(entry.partyId)} | {entry.date} | Ref: {entry.referenceId}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${entry.transactionType === 'receipt' ? 'text-green-600' : 'text-red-600'}`}>
-                          {entry.transactionType === 'receipt' ? '+' : '-'}{(entry.transactionType === 'receipt' ? entry.quantityIn : entry.quantityOut)?.toFixed(2)} {entry.uom}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Bal: {entry.balanceAfter?.toFixed(2)}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {ledger.length > 50 && (
-                    <p className="text-center text-muted-foreground text-sm py-2">
-                      Showing first 50 of {ledger.length} transactions
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left p-3 font-semibold">Date</th>
+                        <th className="text-left p-3 font-semibold">Material</th>
+                        <th className="text-left p-3 font-semibold">Stock Owner</th>
+                        <th className="text-left p-3 font-semibold">Type</th>
+                        <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In</th>
+                        <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out</th>
+                        <th className="text-right p-3 font-semibold">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ledger.slice(0, 100).map((entry) => (
+                        <tr key={entry.id} className="border-b hover:bg-muted/30">
+                          <td className="p-3">{entry.date}</td>
+                          <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 text-xs rounded ${
+                              entry.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
+                              'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                            }`}>
+                              {getPartyName(entry.partyId)}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 text-xs rounded ${
+                              entry.transactionType === 'receipt' 
+                                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
+                                : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
+                            }`}>
+                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : 'Equip Issue'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
+                            {(entry.quantityIn ?? 0) > 0 ? `${entry.quantityIn?.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
+                            {(entry.quantityOut ?? 0) > 0 ? `${entry.quantityOut?.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-3 text-right font-bold">{entry.balanceAfter?.toFixed(2)} {entry.uom}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {ledger.length > 100 && (
+                    <p className="text-center text-muted-foreground text-sm py-4">
+                      Showing first 100 of {ledger.length} transactions
                     </p>
                   )}
                 </div>
