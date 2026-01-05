@@ -1048,8 +1048,7 @@ function DashboardTab() {
   const [filterPartyId, setFilterPartyId] = useState<string>("all");
 
   const { data: dispatches } = useQuery<any[]>({ queryKey: ["/api/plant-module/dispatches"] });
-  const { data: generatorLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/generator-logs"] });
-  const { data: ldoLogs } = useQuery<any[]>({ queryKey: ["/api/plant-module/ldo-logs"] });
+  const { data: equipmentUsage } = useQuery<any[]>({ queryKey: ["/api/plant-module/equipment-usage"] });
   const { data: stockBalances } = useQuery<any[]>({ queryKey: ["/api/plant-module/stock-balances"] });
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
@@ -1062,25 +1061,20 @@ function DashboardTab() {
     return true;
   }) || [];
 
-  const filteredGeneratorLogs = generatorLogs?.filter((l) => {
-    if (dateFrom && l.date < dateFrom) return false;
-    if (dateTo && l.date > dateTo) return false;
-    return true;
-  }) || [];
-
-  const filteredLdoLogs = ldoLogs?.filter((l) => {
-    if (dateFrom && l.date < dateFrom) return false;
-    if (dateTo && l.date > dateTo) return false;
+  const filteredEquipmentUsage = equipmentUsage?.filter((e) => {
+    if (dateFrom && e.date < dateFrom) return false;
+    if (dateTo && e.date > dateTo) return false;
     return true;
   }) || [];
 
   const totalTons = filteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
-  const avgGeneratorEfficiency = filteredGeneratorLogs.length 
-    ? (filteredGeneratorLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / filteredGeneratorLogs.length).toFixed(2)
-    : "N/A";
-  const avgLdoEfficiency = filteredLdoLogs.length
-    ? (filteredLdoLogs.reduce((sum, l) => sum + (l.efficiency || 0), 0) / filteredLdoLogs.length).toFixed(2)
-    : "N/A";
+  
+  // Generator/Diesel Efficiency: Total Diesel Consumed ÷ Total Hours Run = L/hr
+  const totalDieselConsumed = filteredEquipmentUsage.reduce((sum, e) => sum + (e.dieselConsumed || 0), 0);
+  const totalHoursRun = filteredEquipmentUsage.reduce((sum, e) => sum + (e.hoursRun || 0), 0);
+  const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(2) : "N/A";
+  
+  // LDO Efficiency: Total LDO Used ÷ Total Production = L/ton (from dispatches)
 
   // Group dispatches by party
   const partyProduction: Record<number, { name: string; tons: number; dispatches: number }> = {};
@@ -1199,7 +1193,7 @@ function DashboardTab() {
           </div>
           {(dateFrom || dateTo || filterPartyId !== "all") && (
             <p className="text-xs text-muted-foreground mt-3">
-              Showing filtered data: {filteredDispatches.length} dispatches, {filteredGeneratorLogs.length} generator logs, {filteredLdoLogs.length} LDO logs
+              Showing filtered data: {filteredDispatches.length} dispatches, {filteredEquipmentUsage.length} equipment logs
             </p>
           )}
         </CardContent>
@@ -1219,11 +1213,13 @@ function DashboardTab() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Generator Efficiency</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Diesel Efficiency</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{avgGeneratorEfficiency} L/hr</div>
-            <p className="text-xs text-muted-foreground mt-1">Average diesel consumption</p>
+            <div className="text-3xl font-bold">{dieselEfficiency} L/hr</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totalDieselConsumed.toFixed(0)}L / {totalHoursRun.toFixed(1)} hrs
+            </p>
           </CardContent>
         </Card>
 
@@ -1232,21 +1228,34 @@ function DashboardTab() {
             <CardTitle className="text-sm font-medium text-muted-foreground">LDO Efficiency</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{avgLdoEfficiency} L/ton</div>
-            <p className="text-xs text-muted-foreground mt-1">Target: 6 L/ton</p>
+            {(() => {
+              const LDO_NORM = 6; // L/ton target from mix template
+              const actualLdoPerTon = totalTons > 0 ? theoreticalVsActual.ldo.actual / totalTons : 0;
+              const ldoVariance = LDO_NORM - actualLdoPerTon;
+              return (
+                <>
+                  <div className={`text-3xl font-bold ${actualLdoPerTon <= LDO_NORM ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {totalTons > 0 ? actualLdoPerTon.toFixed(2) : "N/A"} L/ton
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Target: {LDO_NORM} L/ton | {ldoVariance >= 0 ? `Saving ${ldoVariance.toFixed(2)}` : `Excess ${Math.abs(ldoVariance).toFixed(2)}`} L/ton
+                  </p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Bitumen Efficiency</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Bitumen Usage</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-3xl font-bold ${bitumenDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`text-3xl font-bold ${bitumenDiff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
               {bitumenDiff >= 0 ? '+' : ''}{bitumenDiff.toFixed(1)} kg
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {bitumenDiff >= 0 ? 'Savings vs theoretical' : 'Excess vs theoretical'}
+              Theoretical: {theoreticalVsActual.bitumen.theoretical.toFixed(0)} kg | Actual: {theoreticalVsActual.bitumen.actual.toFixed(0)} kg
             </p>
           </CardContent>
         </Card>
@@ -1399,7 +1408,7 @@ function DashboardTab() {
           <CardTitle>Recent Activity {(dateFrom || dateTo || filterPartyId !== "all") && "(Filtered)"}</CardTitle>
         </CardHeader>
         <CardContent>
-          {!filteredDispatches.length && !filteredGeneratorLogs.length ? (
+          {!filteredDispatches.length && !filteredEquipmentUsage.length ? (
             <p className="text-muted-foreground text-center py-6">No activity recorded yet. Start by entering material receipts or dispatches.</p>
           ) : (
             <div className="space-y-3">
