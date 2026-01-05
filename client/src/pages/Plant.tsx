@@ -1327,10 +1327,22 @@ function DashboardTab() {
               <div className="flex items-center gap-2">
                 <Input
                   type="password"
-                  placeholder="Enter PIN"
+                  placeholder="PIN (1234)"
                   value={adminPin}
                   onChange={(e) => setAdminPin(e.target.value)}
-                  className="w-24 h-8 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const success = requestAdminAccess(adminPin);
+                      if (success) {
+                        toast({ title: "Admin access granted" });
+                        setAdminPin("");
+                      } else {
+                        toast({ title: "Invalid PIN", variant: "destructive" });
+                      }
+                    }
+                  }}
+                  className="w-28 h-8 text-sm"
+                  maxLength={4}
                   data-testid="input-admin-pin"
                 />
                 <Button
@@ -1347,7 +1359,7 @@ function DashboardTab() {
                   data-testid="button-unlock-admin"
                 >
                   <Lock className="w-4 h-4 mr-1" />
-                  Unlock Admin
+                  Unlock
                 </Button>
               </div>
             )}

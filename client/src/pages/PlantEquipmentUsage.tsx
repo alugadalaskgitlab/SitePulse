@@ -381,14 +381,16 @@ export default function PlantEquipmentUsage() {
               <div className="flex items-center gap-2">
                 <Input
                   type="password"
-                  placeholder="Admin PIN"
+                  placeholder="PIN (1234)"
                   value={adminPin}
                   onChange={(e) => setAdminPin(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUnlockAdmin()}
                   className="w-28"
+                  maxLength={4}
                   data-testid="input-admin-pin"
                 />
                 <Button size="sm" variant="outline" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
-                  <Lock className="w-3 h-3" /> Unlock Admin
+                  <Lock className="w-3 h-3" /> Unlock
                 </Button>
               </div>
             )}

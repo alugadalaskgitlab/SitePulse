@@ -210,14 +210,16 @@ export default function PlantStock() {
           <div className="flex items-center gap-2">
             <Input
               type="password"
-              placeholder="Enter PIN"
+              placeholder="Enter PIN (1234)"
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value)}
-              className="w-32"
+              onKeyDown={(e) => e.key === "Enter" && handleUnlockAdmin()}
+              className="w-36"
+              maxLength={4}
               data-testid="input-admin-pin"
             />
             <Button size="sm" onClick={handleUnlockAdmin} className="gap-1" data-testid="button-unlock-admin">
-              <Unlock className="w-4 h-4" /> Unlock Admin
+              <Unlock className="w-4 h-4" /> Unlock
             </Button>
           </div>
         )}
