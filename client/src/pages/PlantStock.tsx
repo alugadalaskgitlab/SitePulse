@@ -110,7 +110,7 @@ export default function PlantStock() {
     return true;
   });
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const summaryData = stockSummary.map(item => ({
       Material: item.materialName,
       "Stock Owner": item.partyName,
@@ -137,11 +137,34 @@ export default function PlantStock() {
     const wsLedger = XLSX.utils.json_to_sheet(ledgerData);
     XLSX.utils.book_append_sheet(wb, wsSummary, "Stock Summary");
     XLSX.utils.book_append_sheet(wb, wsLedger, "Stock Ledger");
-    XLSX.writeFile(wb, `stock_report_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    
+    const defaultFilename = `stock_report_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        await writable.write(buffer);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    
+    XLSX.writeFile(wb, defaultFilename);
     toast({ title: "Exported to Excel" });
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     doc.setFontSize(16);
     doc.text("Stock Balances & Ledger Report", 14, 15);
@@ -168,12 +191,99 @@ export default function PlantStock() {
       styles: { fontSize: 8 },
     });
     
-    doc.save(`stock_report_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    const defaultFilename = `stock_report_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'PDF Files',
+            accept: { 'application/pdf': ['.pdf'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const pdfBlob = doc.output('blob');
+        await writable.write(pdfBlob);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    
+    doc.save(defaultFilename);
     toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
-    window.print();
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Stock Balances Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; margin-bottom: 5px; }
+            .date { color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            .text-right { text-align: right; }
+            .text-green { color: #16a34a; }
+            .text-red { color: #dc2626; }
+            @media print {
+              body { padding: 0; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Stock Balances Report</h1>
+          <p class="date">Period: ${dateFrom} to ${dateTo}</p>
+          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th>Stock Owner</th>
+                <th class="text-right">Opening</th>
+                <th class="text-right">Received</th>
+                <th class="text-right">Consumed</th>
+                <th class="text-right">Closing</th>
+                <th>UOM</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${stockSummary.map(item => `
+                <tr>
+                  <td>${item.materialName}</td>
+                  <td>${item.partyName}</td>
+                  <td class="text-right">${item.opening.toFixed(2)}</td>
+                  <td class="text-right text-green">+${item.received.toFixed(2)}</td>
+                  <td class="text-right text-red">-${item.consumed.toFixed(2)}</td>
+                  <td class="text-right"><strong>${item.closing.toFixed(2)}</strong></td>
+                  <td>${item.uom}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    } else {
+      toast({ title: "Please allow popups to print", variant: "destructive" });
+    }
   };
 
   // Per-action PIN authentication handlers

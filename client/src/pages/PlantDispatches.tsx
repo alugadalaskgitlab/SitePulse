@@ -242,7 +242,7 @@ export default function PlantDispatches() {
   const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
 
   // Export functions
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const data = filteredDispatches.map(d => {
       const template = templates?.find(t => t.id === d.mixTemplateId);
       return {
@@ -260,11 +260,34 @@ export default function PlantDispatches() {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Dispatches");
-    XLSX.writeFile(wb, `dispatches_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    
+    const defaultFilename = `dispatches_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        await writable.write(buffer);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    
+    XLSX.writeFile(wb, defaultFilename);
     toast({ title: "Exported to Excel" });
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     doc.setFontSize(16);
     doc.text("Mix Dispatches Report", 14, 15);
@@ -295,12 +318,101 @@ export default function PlantDispatches() {
       styles: { fontSize: 8 },
     });
     
-    doc.save(`dispatches_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    const defaultFilename = `dispatches_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'PDF Files',
+            accept: { 'application/pdf': ['.pdf'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const pdfBlob = doc.output('blob');
+        await writable.write(pdfBlob);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    
+    doc.save(defaultFilename);
     toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
-    window.print();
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Mix Dispatches Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; margin-bottom: 5px; }
+            .date { color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            @media print {
+              body { padding: 0; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Mix Dispatches Report</h1>
+          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Party</th>
+                <th>Site</th>
+                <th>Mix Type</th>
+                <th>Load (MT)</th>
+                <th>Vehicle</th>
+                <th>Bitumen (MT)</th>
+                <th>LDO (L)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredDispatches.map(d => {
+                const template = templates?.find(t => t.id === d.mixTemplateId);
+                return `
+                <tr>
+                  <td>${d.date}</td>
+                  <td>${d.time || '-'}</td>
+                  <td>${getPartyName(d.partyId)}</td>
+                  <td>${d.deliveryLocation || '-'}</td>
+                  <td>${template?.mixType || '-'}</td>
+                  <td>${d.loadWeight}</td>
+                  <td>${d.truckNumber}</td>
+                  <td>${d.theoreticalBitumenQty?.toFixed(2) || '0'}</td>
+                  <td>${d.theoreticalLdoQty?.toFixed(1) || '0'}</td>
+                </tr>
+              `}).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    } else {
+      toast({ title: "Please allow popups to print", variant: "destructive" });
+    }
   };
 
   return (

@@ -248,7 +248,7 @@ export default function PlantMaterialReceipts() {
   const sortedDates = Object.keys(groupedReceipts).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
   // Export functions
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const data = filteredReceipts.map(r => ({
       Date: r.date,
       Time: r.time || "",
@@ -263,11 +263,36 @@ export default function PlantMaterialReceipts() {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Material Receipts");
-    XLSX.writeFile(wb, `material_receipts_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    
+    const defaultFilename = `material_receipts_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    
+    // Try to use File System Access API for save dialog
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        await writable.write(buffer);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return; // User cancelled
+      }
+    }
+    
+    // Fallback for browsers without File System Access API
+    XLSX.writeFile(wb, defaultFilename);
     toast({ title: "Exported to Excel" });
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     doc.setFontSize(16);
     doc.text("Material Receipts Report", 14, 15);
@@ -294,12 +319,100 @@ export default function PlantMaterialReceipts() {
       styles: { fontSize: 8 },
     });
     
-    doc.save(`material_receipts_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    const defaultFilename = `material_receipts_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    
+    // Try to use File System Access API for save dialog
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'PDF Files',
+            accept: { 'application/pdf': ['.pdf'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const pdfBlob = doc.output('blob');
+        await writable.write(pdfBlob);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return; // User cancelled
+      }
+    }
+    
+    // Fallback for browsers without File System Access API
+    doc.save(defaultFilename);
     toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
-    window.print();
+    // Create a printable version of the table
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Material Receipts Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; margin-bottom: 5px; }
+            .date { color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            @media print {
+              body { padding: 0; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Material Receipts Report</h1>
+          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Material</th>
+                <th>Quantity</th>
+                <th>Vehicle No</th>
+                <th>Challan No</th>
+                <th>Supplier</th>
+                <th>Party/Job</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredReceipts.map(r => `
+                <tr>
+                  <td>${r.date}</td>
+                  <td>${r.time || '-'}</td>
+                  <td>${getMaterialName(r.materialId)}</td>
+                  <td>${r.quantity} ${r.uom}</td>
+                  <td>${r.vehicleNumber || '-'}</td>
+                  <td>${r.challanNumber || '-'}</td>
+                  <td>${r.supplier || '-'}</td>
+                  <td>${getPartyName(r.partyId)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    } else {
+      toast({ title: "Please allow popups to print", variant: "destructive" });
+    }
   };
 
   return (

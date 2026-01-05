@@ -107,7 +107,7 @@ export default function PlantLdoLogs() {
     requestPinAuth({ type: "print" });
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (!logs?.length) return;
     const data = logs.map(log => ({
       Date: log.date,
@@ -123,11 +123,34 @@ export default function PlantLdoLogs() {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "LDO Logs");
-    XLSX.writeFile(wb, `ldo_logs_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    
+    const defaultFilename = `ldo_logs_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        await writable.write(buffer);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    
+    XLSX.writeFile(wb, defaultFilename);
     toast({ title: "Exported to Excel" });
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     if (!logs?.length) return;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     doc.setFontSize(16);
@@ -156,12 +179,100 @@ export default function PlantLdoLogs() {
       styles: { fontSize: 8 },
     });
     
-    doc.save(`ldo_logs_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    const defaultFilename = `ldo_logs_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: defaultFilename,
+          types: [{
+            description: 'PDF Files',
+            accept: { 'application/pdf': ['.pdf'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        const pdfBlob = doc.output('blob');
+        await writable.write(pdfBlob);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    
+    doc.save(defaultFilename);
     toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
-    window.print();
+    if (!logs?.length) return;
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>LDO Consumption Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; margin-bottom: 5px; }
+            .date { color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            @media print {
+              body { padding: 0; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>LDO Consumption Report</h1>
+          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Opening (L)</th>
+                <th>Received (L)</th>
+                <th>Consumed (L)</th>
+                <th>Closing (L)</th>
+                <th>Production (MT)</th>
+                <th>Expected (L)</th>
+                <th>Efficiency (L/ton)</th>
+                <th>Variance (L)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logs.map(log => `
+                <tr>
+                  <td>${log.date}</td>
+                  <td>${log.openingStock || '-'}</td>
+                  <td>${log.ldoReceived || '-'}</td>
+                  <td>${log.ldoConsumed || '-'}</td>
+                  <td>${log.closingStock || '-'}</td>
+                  <td>${log.tonsProduced?.toFixed(1) || '-'}</td>
+                  <td>${log.expectedLdo?.toFixed(1) || '-'}</td>
+                  <td>${log.efficiency?.toFixed(2) || '-'}</td>
+                  <td>${log.variance?.toFixed(1) || '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    } else {
+      toast({ title: "Please allow popups to print", variant: "destructive" });
+    }
   };
 
   return (
