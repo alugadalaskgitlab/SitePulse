@@ -24,7 +24,7 @@ export function Sidebar() {
             <HardHat className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="font-display font-bold text-xl leading-none">SiteLog</h1>
+            <h1 className="font-display font-bold text-xl leading-none">HLC</h1>
             <p className="text-xs text-muted-foreground mt-1">Construction Manager</p>
           </div>
         </div>

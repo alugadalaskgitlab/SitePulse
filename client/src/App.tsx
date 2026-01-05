@@ -44,7 +44,7 @@ function AppHeader() {
       <div className="container mx-auto flex h-14 items-center justify-center px-4 md:px-8 max-w-7xl">
         <div className="flex items-center gap-2">
           <img src={companyLogo} alt="HLC" className="h-8 w-8 rounded object-cover" />
-          <span className="font-semibold text-lg hidden sm:inline">SiteLog</span>
+          <span className="font-semibold text-lg hidden sm:inline">High Lane Constructions Pvt Ltd</span>
         </div>
       </div>
     </header>

@@ -503,7 +503,7 @@ export default function AdminReports() {
       </div>
 
       <div className="hidden print:block mb-6 border-b pb-4">
-        <h1 className="text-2xl font-bold mb-2">Highlane Constructions - Admin Report</h1>
+        <h1 className="text-2xl font-bold mb-2">High Lane Constructions Pvt Ltd - Admin Report</h1>
         <p className="text-sm text-muted-foreground">Generated: {format(new Date(), "dd MMMM yyyy, hh:mm a")}</p>
         <p className="text-sm mt-2"><strong>Filters:</strong> {getActiveFiltersText()}</p>
         <p className="text-sm mt-1">
@@ -624,7 +624,7 @@ export default function AdminReports() {
       ) : (
         <div ref={printRef}>
           <div className="print:block hidden mb-6">
-            <h1 className="text-2xl font-bold text-center">Highlane Constructions - Admin Report</h1>
+            <h1 className="text-2xl font-bold text-center">High Lane Constructions Pvt Ltd - Admin Report</h1>
             <p className="text-center text-muted-foreground">
               {dateFrom && dateTo 
                 ? `Period: ${format(parseISO(dateFrom), "dd MMM yyyy")} to ${format(parseISO(dateTo), "dd MMM yyyy")}`

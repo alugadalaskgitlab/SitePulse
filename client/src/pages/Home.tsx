@@ -9,11 +9,11 @@ export default function Home() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center mb-12">
         <img src={companyLogo} alt="HLC" className="h-20 w-20 rounded-lg object-cover mx-auto mb-4" />
-        <h1 className="text-4xl md:text-5xl font-bold font-display tracking-tight text-foreground mb-3">
-          SiteLog
+        <h1 className="text-3xl md:text-4xl font-bold font-display tracking-tight text-foreground mb-3">
+          High Lane Constructions Pvt Ltd
         </h1>
         <p className="text-muted-foreground text-lg">
-          Highlane Constructions - Daily Progress Report System
+          Daily Progress Report System
         </p>
       </div>
       

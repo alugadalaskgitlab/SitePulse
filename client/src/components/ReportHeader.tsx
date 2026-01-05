@@ -17,13 +17,13 @@ export function ReportHeader({ date, site, engineer, submittedAt, showLogo = tru
         <div className="flex items-center justify-between mb-4 pb-4 border-b">
           <img 
             src={hlcLogo} 
-            alt="Highlane Constructions" 
+            alt="High Lane Constructions Pvt Ltd" 
             className="h-12 w-auto object-contain print:h-16"
             data-testid="img-hlc-logo"
           />
           <div className="text-right">
             <h2 className="text-lg font-bold text-foreground print:text-black">Daily Progress Report</h2>
-            <p className="text-sm text-muted-foreground print:text-gray-600">Highlane Constructions Pvt. Ltd.</p>
+            <p className="text-sm text-muted-foreground print:text-gray-600">High Lane Constructions Pvt Ltd</p>
           </div>
         </div>
       )}

@@ -171,7 +171,7 @@ export default function AdminSettings() {
             </div>
             <div>
               <CardTitle>Change Admin PIN</CardTitle>
-              <CardDescription>Update the administrator access PIN (Default: 5678)</CardDescription>
+              <CardDescription>Update the administrator access PIN</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -235,7 +235,7 @@ export default function AdminSettings() {
             </div>
             <div>
               <CardTitle>Change Manager PIN</CardTitle>
-              <CardDescription>Update the manager access PIN (Default: 1234)</CardDescription>
+              <CardDescription>Update the manager access PIN</CardDescription>
             </div>
           </div>
         </CardHeader>
