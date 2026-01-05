@@ -1043,389 +1043,414 @@ function EquipmentMasterSection() {
 }
 
 function DashboardTab() {
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [filterPartyId, setFilterPartyId] = useState<string>("all");
+  // KPI date range (separate from table filters)
+  const [kpiDateFrom, setKpiDateFrom] = useState("");
+  const [kpiDateTo, setKpiDateTo] = useState("");
+
+  // Table filters (separate from KPI)
+  const [tableDateFrom, setTableDateFrom] = useState("");
+  const [tableDateTo, setTableDateTo] = useState("");
+  const [tablePartyId, setTablePartyId] = useState<string>("all");
+  const [tableSite, setTableSite] = useState<string>("all");
+  const [tableMixType, setTableMixType] = useState<string>("all");
+  const [tableVehicle, setTableVehicle] = useState<string>("all");
 
   const { data: dispatches } = useQuery<any[]>({ queryKey: ["/api/plant-module/dispatches"] });
   const { data: equipmentUsage } = useQuery<any[]>({ queryKey: ["/api/plant-module/equipment-usage"] });
-  const { data: stockBalances } = useQuery<any[]>({ queryKey: ["/api/plant-module/stock-balances"] });
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
-  const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
-  const { data: stockLedger } = useQuery<any[]>({ queryKey: ["/api/plant-module/stock-ledger"] });
+  const { data: mixTemplates } = useQuery<MixTemplate[]>({ queryKey: ["/api/plant-module/mix-templates"] });
 
-  const filteredDispatches = dispatches?.filter((d) => {
-    if (filterPartyId !== "all" && String(d.partyId) !== filterPartyId) return false;
-    if (dateFrom && d.date < dateFrom) return false;
-    if (dateTo && d.date > dateTo) return false;
+  // KPI filtered data (only by KPI date range)
+  const kpiFilteredDispatches = dispatches?.filter((d) => {
+    if (kpiDateFrom && d.date < kpiDateFrom) return false;
+    if (kpiDateTo && d.date > kpiDateTo) return false;
     return true;
   }) || [];
 
-  const filteredEquipmentUsage = equipmentUsage?.filter((e) => {
-    if (dateFrom && e.date < dateFrom) return false;
-    if (dateTo && e.date > dateTo) return false;
+  const kpiFilteredEquipment = equipmentUsage?.filter((e) => {
+    if (kpiDateFrom && e.date < kpiDateFrom) return false;
+    if (kpiDateTo && e.date > kpiDateTo) return false;
     return true;
   }) || [];
 
-  const totalTons = filteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
-  
-  // Generator/Diesel Efficiency: Total Diesel Consumed ÷ Total Hours Run = L/hr
-  const totalDieselConsumed = filteredEquipmentUsage.reduce((sum, e) => sum + (e.dieselConsumed || 0), 0);
-  const totalHoursRun = filteredEquipmentUsage.reduce((sum, e) => sum + (e.hoursRun || 0), 0);
+  // Helper to get mix type from dispatch
+  const getDispatchMixType = (d: any) => {
+    const template = mixTemplates?.find(m => m.id === d.mixTemplateId);
+    return template?.mixType || "";
+  };
+
+  // Table filtered data (by all table filters)
+  const tableFilteredDispatches = dispatches?.filter((d) => {
+    if (tableDateFrom && d.date < tableDateFrom) return false;
+    if (tableDateTo && d.date > tableDateTo) return false;
+    if (tablePartyId !== "all" && String(d.partyId) !== tablePartyId) return false;
+    if (tableSite !== "all" && d.deliveryLocation !== tableSite) return false;
+    if (tableMixType !== "all" && getDispatchMixType(d) !== tableMixType) return false;
+    if (tableVehicle !== "all" && d.truckNumber !== tableVehicle) return false;
+    return true;
+  }) || [];
+
+  // Get unique values for filters
+  const uniqueSites = Array.from(new Set(dispatches?.map(d => d.deliveryLocation).filter(Boolean) || []));
+  const uniqueVehicles = Array.from(new Set(dispatches?.map(d => d.truckNumber).filter(Boolean) || []));
+
+  // KPI calculations
+  const totalTons = kpiFilteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
+  const totalTrips = kpiFilteredDispatches.length;
+  const totalDieselConsumed = kpiFilteredEquipment.reduce((sum, e) => sum + (e.dieselConsumed || 0), 0);
+  const totalHoursRun = kpiFilteredEquipment.reduce((sum, e) => sum + (e.hoursRun || 0), 0);
   const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(2) : "N/A";
-  
-  // LDO Efficiency: Total LDO Used ÷ Total Production = L/ton (from dispatches)
 
-  // Group dispatches by party
-  const partyProduction: Record<number, { name: string; tons: number; dispatches: number }> = {};
-  filteredDispatches.forEach((d) => {
-    if (d.partyId) {
-      if (!partyProduction[d.partyId]) {
-        const party = parties?.find((p) => p.id === d.partyId);
-        partyProduction[d.partyId] = { name: party?.name || `Party ${d.partyId}`, tons: 0, dispatches: 0 };
-      }
-      partyProduction[d.partyId].tons += d.loadWeight || 0;
-      partyProduction[d.partyId].dispatches += 1;
-    }
-  });
-
-  // Calculate theoretical vs actual consumption
   const theoreticalVsActual = {
     bitumen: { theoretical: 0, actual: 0 },
     ldo: { theoretical: 0, actual: 0 },
   };
-  filteredDispatches.forEach((d) => {
+  kpiFilteredDispatches.forEach((d) => {
     theoreticalVsActual.bitumen.theoretical += d.theoreticalBitumenQty || 0;
     theoreticalVsActual.bitumen.actual += d.actualBitumenQty || 0;
     theoreticalVsActual.ldo.theoretical += d.theoreticalLdoQty || 0;
     theoreticalVsActual.ldo.actual += d.actualLdoQty || 0;
   });
 
-  // Bitumen savings/wastage
-  const bitumenDiff = theoreticalVsActual.bitumen.theoretical - theoreticalVsActual.bitumen.actual;
-  const ldoDiff = theoreticalVsActual.ldo.theoretical - theoreticalVsActual.ldo.actual;
+  const LDO_NORM = 6;
+  const actualLdoPerTon = totalTons > 0 ? theoreticalVsActual.ldo.actual / totalTons : 0;
+  const ldoVariance = LDO_NORM - actualLdoPerTon;
+  const totalBitumenConsumed = theoreticalVsActual.bitumen.actual;
 
-  // Get material name by ID
-  const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
-  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Plant Common";
-
-  // Critical stock check (low balance warning)
-  const criticalStock = stockBalances?.filter((s) => s.balance < 10) || [];
-
-  // Stock Movement Report - compute Opening/Received/Consumed/Closing per material
-  const computeStockMovement = () => {
-    if (!stockLedger || !materials) return [];
-    
-    // Filter ledger by party
-    const partyFilteredLedger = stockLedger.filter(entry => {
-      if (filterPartyId === "all") return true;
-      return String(entry.partyId) === filterPartyId || entry.partyId === null;
-    });
-
-    // Entries in the selected period
-    const filteredLedger = partyFilteredLedger.filter(entry => {
-      if (dateFrom && entry.date < dateFrom) return false;
-      if (dateTo && entry.date > dateTo) return false;
-      return true;
-    });
-
-    // Entries before the selected period (for opening balance)
-    const priorLedger = dateFrom 
-      ? partyFilteredLedger.filter(entry => entry.date < dateFrom)
-      : [];
-
-    // Group by material
-    const movements: Record<number, { received: number; consumed: number; opening: number }> = {};
-    
-    // Calculate opening balance from prior period ledger
-    priorLedger.forEach(entry => {
-      if (!movements[entry.materialId]) movements[entry.materialId] = { received: 0, consumed: 0, opening: 0 };
-      movements[entry.materialId].opening += (entry.quantityIn || 0) - (entry.quantityOut || 0);
-    });
-
-    // Calculate received and consumed in period
-    filteredLedger.forEach(entry => {
-      if (!movements[entry.materialId]) movements[entry.materialId] = { received: 0, consumed: 0, opening: 0 };
-      movements[entry.materialId].received += entry.quantityIn || 0;
-      movements[entry.materialId].consumed += entry.quantityOut || 0;
-    });
-
-    return Object.entries(movements).map(([matId, data]) => ({
-      materialId: parseInt(matId),
-      materialName: getMaterialName(parseInt(matId)),
-      opening: data.opening,
-      received: data.received,
-      consumed: data.consumed,
-      closing: data.opening + data.received - data.consumed,
-    })).filter(m => m.received > 0 || m.consumed > 0 || m.opening > 0);
+  // Helper functions
+  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name?.toUpperCase() || `PARTY ${id}` : "";
+  const getMixType = (id: number | null) => {
+    if (!id) return "";
+    const template = mixTemplates?.find((m) => m.id === id);
+    return template?.mixType?.toUpperCase() || `MIX ${id}`;
   };
 
-  const stockMovement = computeStockMovement();
+  // Table subtotals
+  const subtotalTons = tableFilteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
+  const subtotalBitumen = tableFilteredDispatches.reduce((sum, d) => sum + ((d.actualBitumenQty || 0) / 1000), 0); // Convert kg to MT
+  const subtotalLdo = tableFilteredDispatches.reduce((sum, d) => sum + (d.actualLdoQty || 0), 0);
+  const subtotalTrips = tableFilteredDispatches.length;
+
+  // Export functions
+  const exportToExcel = () => {
+    const headerRows = [
+      ["PLANT DISPATCH SUMMARY REPORT"],
+      [`Generated: ${new Date().toLocaleString()}`],
+      [`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`],
+      [`Filters: Party: ${tablePartyId === "all" ? "All" : getPartyName(Number(tablePartyId))}, Site: ${tableSite === "all" ? "All" : tableSite}, Mix: ${tableMixType === "all" ? "All" : tableMixType}, Vehicle: ${tableVehicle === "all" ? "All" : tableVehicle}`],
+      [],
+      ["DISPATCH DATE & TIME", "PARTY", "SITE", "MIX TYPE", "LOAD / TONS (MT)", "VEHICLE NO", "BITUMEN CONSUMED (MT)", "LDO CONSUMED (L)"]
+    ];
+
+    const dataRows = tableFilteredDispatches.map(d => [
+      `${d.date} ${d.time || ""}`.trim().toUpperCase(),
+      getPartyName(d.partyId),
+      (d.deliveryLocation || "").toUpperCase(),
+      getMixType(d.mixTemplateId),
+      d.loadWeight?.toFixed(2) || "0.00",
+      (d.truckNumber || "").toUpperCase(),
+      ((d.actualBitumenQty || 0) / 1000).toFixed(3),
+      (d.actualLdoQty || 0).toFixed(1)
+    ]);
+
+    const totalRows = [
+      [],
+      ["TOTALS", "", "", "", subtotalTons.toFixed(2), `${subtotalTrips} TRIPS`, subtotalBitumen.toFixed(3), subtotalLdo.toFixed(1)]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows, ...totalRows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dispatch Summary");
+    XLSX.writeFile(wb, `dispatch_summary_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportToPdf = async () => {
+    const { default: jsPDF } = await import("jspdf");
+    await import("jspdf-autotable");
+    
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    const headers = [["DISPATCH DATE & TIME", "PARTY", "SITE", "MIX TYPE", "LOAD (MT)", "VEHICLE NO", "BITUMEN (MT)", "LDO (L)"]];
+    const data = tableFilteredDispatches.map(d => [
+      `${d.date} ${d.time || ""}`.trim().toUpperCase(),
+      getPartyName(d.partyId),
+      (d.deliveryLocation || "").toUpperCase(),
+      getMixType(d.mixTemplateId),
+      d.loadWeight?.toFixed(2) || "0.00",
+      (d.truckNumber || "").toUpperCase(),
+      ((d.actualBitumenQty || 0) / 1000).toFixed(3),
+      (d.actualLdoQty || 0).toFixed(1)
+    ]);
+
+    let currentPage = 1;
+    const addHeader = () => {
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("PLANT DISPATCH SUMMARY REPORT", pageWidth / 2, 15, { align: "center" });
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`, 14, 22);
+    };
+
+    const addFooter = (pageNum: number, totalPages: number, isLast: boolean) => {
+      doc.setFontSize(8);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, pageHeight - 10);
+      doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
+    };
+
+    (doc as any).autoTable({
+      head: headers,
+      body: data,
+      startY: 28,
+      theme: "grid",
+      headStyles: { fillColor: [50, 50, 50], textColor: 255, fontSize: 8, fontStyle: "bold" },
+      bodyStyles: { fontSize: 8 },
+      margin: { top: 28, bottom: 25 },
+      didDrawPage: (data: any) => {
+        addHeader();
+        currentPage = data.pageNumber;
+      },
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 100;
+    if (finalY + 20 > pageHeight - 25) {
+      doc.addPage();
+      addHeader();
+    }
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    const subtotalY = Math.min(finalY + 10, pageHeight - 30);
+    doc.text(`TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(2)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(1)} L`, 14, subtotalY);
+
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      addFooter(i, totalPages, i === totalPages);
+    }
+
+    doc.save(`dispatch_summary_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
+      {/* KPI Date Range Selector */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">KPI DATE RANGE</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm text-muted-foreground">Party / Job</Label>
-              <Select value={filterPartyId} onValueChange={setFilterPartyId}>
-                <SelectTrigger data-testid="select-dashboard-party">
-                  <SelectValue placeholder="All Parties" />
+              <Label className="text-xs text-muted-foreground">FROM DATE</Label>
+              <Input type="date" value={kpiDateFrom} onChange={(e) => setKpiDateFrom(e.target.value)} data-testid="input-kpi-date-from" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">TO DATE</Label>
+              <Input type="date" value={kpiDateTo} onChange={(e) => setKpiDateTo(e.target.value)} data-testid="input-kpi-date-to" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">TOTAL PRODUCTION</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalTons.toFixed(1)} MT</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">TOTAL TRIPS</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalTrips}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">GENERATOR EFFICIENCY</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dieselEfficiency} L/HR</div>
+            <p className="text-xs text-muted-foreground">{totalDieselConsumed.toFixed(0)}L / {totalHoursRun.toFixed(1)} HRS</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">LDO EFFICIENCY</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${actualLdoPerTon <= LDO_NORM ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {totalTons > 0 ? actualLdoPerTon.toFixed(2) : "N/A"} L/TON
+            </div>
+            <p className="text-xs text-muted-foreground">TARGET: {LDO_NORM} L/TON</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">BITUMEN CONSUMED</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{(totalBitumenConsumed / 1000).toFixed(2)} MT</div>
+            <p className="text-xs text-muted-foreground">{totalBitumenConsumed.toFixed(0)} KG</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Dispatch Summary Section */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>DISPATCH SUMMARY</CardTitle>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={exportToExcel} data-testid="button-export-excel">
+                <Download className="w-4 h-4 mr-1" />
+                EXPORT EXCEL
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportToPdf} data-testid="button-export-pdf">
+                <Printer className="w-4 h-4 mr-1" />
+                EXPORT PDF
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Table Filters */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4 p-3 bg-muted/30 rounded-md">
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Input type="date" value={tableDateFrom} onChange={(e) => setTableDateFrom(e.target.value)} data-testid="input-table-date-from" className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Input type="date" value={tableDateTo} onChange={(e) => setTableDateTo(e.target.value)} data-testid="input-table-date-to" className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">PARTY</Label>
+              <Select value={tablePartyId} onValueChange={setTablePartyId}>
+                <SelectTrigger data-testid="select-table-party" className="h-8 text-sm">
+                  <SelectValue placeholder="ALL" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Parties</SelectItem>
+                  <SelectItem value="all">ALL</SelectItem>
                   {parties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name?.toUpperCase()}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-sm text-muted-foreground">From Date</Label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="input-dashboard-date-from" />
+              <Label className="text-xs text-muted-foreground">SITE</Label>
+              <Select value={tableSite} onValueChange={setTableSite}>
+                <SelectTrigger data-testid="select-table-site" className="h-8 text-sm">
+                  <SelectValue placeholder="ALL" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ALL</SelectItem>
+                  {uniqueSites.map((site) => (
+                    <SelectItem key={site} value={site}>{site.toUpperCase()}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label className="text-sm text-muted-foreground">To Date</Label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="input-dashboard-date-to" />
+              <Label className="text-xs text-muted-foreground">MIX TYPE</Label>
+              <Select value={tableMixType} onValueChange={setTableMixType}>
+                <SelectTrigger data-testid="select-table-mix" className="h-8 text-sm">
+                  <SelectValue placeholder="ALL" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ALL</SelectItem>
+                  {MIX_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">VEHICLE NO</Label>
+              <Select value={tableVehicle} onValueChange={setTableVehicle}>
+                <SelectTrigger data-testid="select-table-vehicle" className="h-8 text-sm">
+                  <SelectValue placeholder="ALL" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ALL</SelectItem>
+                  {uniqueVehicles.map((v) => (
+                    <SelectItem key={v} value={v}>{v.toUpperCase()}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          {(dateFrom || dateTo || filterPartyId !== "all") && (
-            <p className="text-xs text-muted-foreground mt-3">
-              Showing filtered data: {filteredDispatches.length} dispatches, {filteredEquipmentUsage.length} equipment logs
-            </p>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Production</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalTons.toFixed(1)} MT</div>
-            <p className="text-xs text-muted-foreground mt-1">{filteredDispatches.length} dispatches</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Diesel Efficiency</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{dieselEfficiency} L/hr</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {totalDieselConsumed.toFixed(0)}L / {totalHoursRun.toFixed(1)} hrs
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">LDO Efficiency</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {(() => {
-              const LDO_NORM = 6; // L/ton target from mix template
-              const actualLdoPerTon = totalTons > 0 ? theoreticalVsActual.ldo.actual / totalTons : 0;
-              const ldoVariance = LDO_NORM - actualLdoPerTon;
-              return (
-                <>
-                  <div className={`text-3xl font-bold ${actualLdoPerTon <= LDO_NORM ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {totalTons > 0 ? actualLdoPerTon.toFixed(2) : "N/A"} L/ton
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Target: {LDO_NORM} L/ton | {ldoVariance >= 0 ? `Saving ${ldoVariance.toFixed(2)}` : `Excess ${Math.abs(ldoVariance).toFixed(2)}`} L/ton
-                  </p>
-                </>
-              );
-            })()}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Bitumen Usage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-3xl font-bold ${bitumenDiff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {bitumenDiff >= 0 ? '+' : ''}{bitumenDiff.toFixed(1)} kg
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Theoretical: {theoreticalVsActual.bitumen.theoretical.toFixed(0)} kg | Actual: {theoreticalVsActual.bitumen.actual.toFixed(0)} kg
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Critical Stock Alerts */}
-      {criticalStock.length > 0 && (
-        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              Low Stock Warning
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {criticalStock.map((s, i) => (
-                <div key={i} className="px-3 py-1 rounded-md bg-red-100 dark:bg-red-900/40 text-sm">
-                  {getMaterialName(s.materialId)} ({getPartyName(s.partyId)}): <span className="font-bold">{s.balance.toFixed(1)} {s.uom}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Stock Movement Report */}
-      {stockMovement.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5" />
-              Stock Movement Report {(dateFrom || dateTo) && "(Filtered)"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
+          {/* Scrollable Table */}
+          <div className="border rounded-md">
+            <div className="max-h-[400px] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="bg-muted/50 sticky top-0 z-10">
                   <tr className="border-b">
-                    <th className="text-left py-2 px-2">Material</th>
-                    <th className="text-right py-2 px-2">Opening</th>
-                    <th className="text-right py-2 px-2">Received</th>
-                    <th className="text-right py-2 px-2">Consumed</th>
-                    <th className="text-right py-2 px-2">Closing</th>
+                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">DISPATCH DATE & TIME</th>
+                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">PARTY</th>
+                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">SITE</th>
+                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">MIX TYPE</th>
+                    <th className="text-right py-3 px-3 font-bold whitespace-nowrap">LOAD / TONS (MT)</th>
+                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">VEHICLE NO</th>
+                    <th className="text-right py-3 px-3 font-bold whitespace-nowrap">BITUMEN CONSUMED (MT)</th>
+                    <th className="text-right py-3 px-3 font-bold whitespace-nowrap">LDO CONSUMED (L)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockMovement.map((m) => (
-                    <tr key={m.materialId} className="border-b last:border-0">
-                      <td className="py-2 px-2 font-medium">{m.materialName}</td>
-                      <td className="text-right py-2 px-2">{m.opening.toFixed(2)}</td>
-                      <td className="text-right py-2 px-2 text-green-600 dark:text-green-400">+{m.received.toFixed(2)}</td>
-                      <td className="text-right py-2 px-2 text-red-600 dark:text-red-400">-{m.consumed.toFixed(2)}</td>
-                      <td className="text-right py-2 px-2 font-bold">{m.closing.toFixed(2)}</td>
+                  {tableFilteredDispatches.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8 text-muted-foreground">NO DISPATCHES FOUND</td>
                     </tr>
-                  ))}
+                  ) : (
+                    tableFilteredDispatches.map((d, i) => (
+                      <tr key={d.id || i} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-dispatch-${d.id || i}`}>
+                        <td className="py-2 px-3 whitespace-nowrap">{`${d.date} ${d.time || ""}`.trim().toUpperCase()}</td>
+                        <td className="py-2 px-3 whitespace-nowrap">{getPartyName(d.partyId)}</td>
+                        <td className="py-2 px-3 whitespace-nowrap">{(d.deliveryLocation || "").toUpperCase()}</td>
+                        <td className="py-2 px-3 whitespace-nowrap">{getMixType(d.mixTemplateId)}</td>
+                        <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{d.loadWeight?.toFixed(2) || "0.00"}</td>
+                        <td className="py-2 px-3 whitespace-nowrap">{(d.truckNumber || "").toUpperCase()}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap">{((d.actualBitumenQty || 0) / 1000).toFixed(3)}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualLdoQty || 0).toFixed(1)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Party-wise Production */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Party-wise Production
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {Object.keys(partyProduction).length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">No production data yet</p>
-            ) : (
-              <div className="space-y-3">
-                {Object.entries(partyProduction).map(([id, data]) => (
-                  <div key={id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                    <div>
-                      <p className="font-medium">{data.name}</p>
-                      <p className="text-xs text-muted-foreground">{data.dispatches} dispatches</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-lg">{data.tons.toFixed(1)} MT</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Consumption Analysis */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Droplets className="w-5 h-5" />
-              Consumption Analysis
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="p-3 rounded-md bg-muted/50">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium">Bitumen</span>
-                  <span className={`text-sm font-bold ${bitumenDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {bitumenDiff >= 0 ? 'SAVING' : 'EXCESS'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Theoretical</p>
-                    <p className="font-bold">{theoreticalVsActual.bitumen.theoretical.toFixed(1)} kg</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Actual</p>
-                    <p className="font-bold">{theoreticalVsActual.bitumen.actual.toFixed(1)} kg</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-md bg-muted/50">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium">LDO</span>
-                  <span className={`text-sm font-bold ${ldoDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {ldoDiff >= 0 ? 'SAVING' : 'EXCESS'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Theoretical</p>
-                    <p className="font-bold">{theoreticalVsActual.ldo.theoretical.toFixed(1)} L</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Actual</p>
-                    <p className="font-bold">{theoreticalVsActual.ldo.actual.toFixed(1)} L</p>
-                  </div>
-                </div>
-              </div>
+            {/* Fixed Subtotals Row - Outside Scroll Area */}
+            <div className="bg-muted/70 border-t-2 border-foreground/20">
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr>
+                    <td className="py-3 px-3 font-bold whitespace-nowrap" style={{ width: "auto" }}>SUBTOTALS</td>
+                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}></td>
+                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}></td>
+                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}>{subtotalTrips} TRIPS</td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap" style={{ width: "auto" }}>{subtotalTons.toFixed(2)}</td>
+                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}></td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap" style={{ width: "auto" }}>{subtotalBitumen.toFixed(3)}</td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap" style={{ width: "auto" }}>{subtotalLdo.toFixed(1)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity {(dateFrom || dateTo || filterPartyId !== "all") && "(Filtered)"}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!filteredDispatches.length && !filteredEquipmentUsage.length ? (
-            <p className="text-muted-foreground text-center py-6">No activity recorded yet. Start by entering material receipts or dispatches.</p>
-          ) : (
-            <div className="space-y-3">
-              {filteredDispatches.slice(0, 5).map((d, i) => (
-                <div key={i} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
-                  <Truck className="w-4 h-4 text-green-500" />
-                  <span className="text-sm">Dispatch: {d.truckNumber} - {d.loadWeight} MT</span>
-                  {d.shortages && d.shortages.length > 0 && (
-                    <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
-                      Stock shortage
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground ml-auto">{d.date}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     </div>
