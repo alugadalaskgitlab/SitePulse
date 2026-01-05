@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Gauge, Loader2, TrendingUp, TrendingDown, Edit, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
@@ -330,7 +330,7 @@ export default function PlantEquipmentUsage() {
                         const variance = entry.variance ?? (dieselIssued - consumed);
                         return (
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-xs block">Equipment</span>
                                 <span className="font-medium">{equip?.name || "Unknown"}</span>
@@ -354,13 +354,6 @@ export default function PlantEquipmentUsage() {
                               <div>
                                 <span className="text-muted-foreground text-xs block">Tank Balance</span>
                                 <span className="font-medium">{closingDiesel.toFixed(1)} L</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Variance</span>
-                                <Badge variant={variance >= 0 ? "secondary" : "destructive"} className="gap-1">
-                                  {variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                  {variance >= 0 ? "+" : ""}{variance.toFixed(1)} L
-                                </Badge>
                               </div>
                             </div>
                             {canEdit && (

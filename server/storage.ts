@@ -1179,7 +1179,8 @@ export class DatabaseStorage implements IStorage {
         variance,
       }).returning();
       
-      // Deduct diesel issued from DIESEL stock (plant common)
+      // Deduct diesel issued from DIESEL stock (HLC party_id=4)
+      const HLC_PARTY_ID = 4;
       if (dieselIssued > 0) {
         // Find active DIESEL material
         const [dieselMaterial] = await tx.select().from(plantMaterials)
@@ -1187,10 +1188,10 @@ export class DatabaseStorage implements IStorage {
           .limit(1);
         
         if (dieselMaterial) {
-          // Get and update stock balance first
+          // Get and update stock balance for HLC
           const [existingBalance] = await tx.select().from(stockBalances)
             .where(and(
-              isNull(stockBalances.partyId),
+              eq(stockBalances.partyId, HLC_PARTY_ID),
               eq(stockBalances.materialId, dieselMaterial.id)
             ))
             .limit(1);
@@ -1209,7 +1210,7 @@ export class DatabaseStorage implements IStorage {
           // Add stock ledger entry with correct balance after
           await tx.insert(stockLedger).values({
             date: usage.date,
-            partyId: null, // Plant common
+            partyId: HLC_PARTY_ID,
             materialId: dieselMaterial.id,
             transactionType: "equipment_issue",
             referenceId: result.id,
@@ -1263,7 +1264,8 @@ export class DatabaseStorage implements IStorage {
         .where(eq(equipmentUsage.id, id))
         .returning();
       
-      // Adjust diesel stock if diesel issued changed
+      // Adjust diesel stock if diesel issued changed (HLC party_id=4)
+      const HLC_PARTY_ID = 4;
       const dieselDelta = newDieselIssued - oldDieselIssued;
       if (dieselDelta !== 0) {
         const [dieselMaterial] = await tx.select().from(plantMaterials)
@@ -1271,10 +1273,10 @@ export class DatabaseStorage implements IStorage {
           .limit(1);
         
         if (dieselMaterial) {
-          // Get and update stock balance first
+          // Get and update stock balance for HLC
           const [existingBalance] = await tx.select().from(stockBalances)
             .where(and(
-              isNull(stockBalances.partyId),
+              eq(stockBalances.partyId, HLC_PARTY_ID),
               eq(stockBalances.materialId, dieselMaterial.id)
             ))
             .limit(1);
@@ -1301,12 +1303,12 @@ export class DatabaseStorage implements IStorage {
           
           if (existingLedger) {
             await tx.update(stockLedger)
-              .set({ quantityOut: newDieselIssued, balanceAfter: newBalance })
+              .set({ quantityOut: newDieselIssued, balanceAfter: newBalance, partyId: HLC_PARTY_ID })
               .where(eq(stockLedger.id, existingLedger.id));
           } else if (newDieselIssued > 0) {
             await tx.insert(stockLedger).values({
               date: usage.date ?? existing.date,
-              partyId: null,
+              partyId: HLC_PARTY_ID,
               materialId: dieselMaterial.id,
               transactionType: "equipment_issue",
               referenceId: id,
@@ -1331,6 +1333,7 @@ export class DatabaseStorage implements IStorage {
       if (!existing) return false;
       
       const dieselIssued = existing.dieselIssued || 0;
+      const HLC_PARTY_ID = 4;
       
       // Delete related stock ledger entries
       await tx.delete(stockLedger).where(and(
@@ -1338,7 +1341,7 @@ export class DatabaseStorage implements IStorage {
         eq(stockLedger.referenceId, id)
       ));
       
-      // Restore diesel stock if any was issued
+      // Restore diesel stock to HLC if any was issued
       if (dieselIssued > 0) {
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(and(eq(plantMaterials.name, "DIESEL"), eq(plantMaterials.isActive, 1)))
@@ -1347,7 +1350,7 @@ export class DatabaseStorage implements IStorage {
         if (dieselMaterial) {
           const [existingBalance] = await tx.select().from(stockBalances)
             .where(and(
-              isNull(stockBalances.partyId),
+              eq(stockBalances.partyId, HLC_PARTY_ID),
               eq(stockBalances.materialId, dieselMaterial.id)
             ))
             .limit(1);
