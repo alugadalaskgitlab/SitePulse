@@ -1751,24 +1751,18 @@ function DashboardTab() {
                     ))
                   )}
                 </tbody>
-              </table>
-            </div>
-
-            {/* Fixed Subtotals Row - Outside Scroll Area */}
-            <div className="bg-muted/70 border-t-2 border-foreground/20">
-              <table className="w-full text-sm">
-                <tbody>
+                <tfoot className="bg-muted/70 border-t-2 border-foreground/20 sticky bottom-0">
                   <tr>
-                    <td className="py-3 px-3 font-bold whitespace-nowrap" style={{ width: "auto" }}>SUBTOTALS</td>
-                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}></td>
-                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}></td>
-                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}>{subtotalTrips} TRIPS</td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap" style={{ width: "auto" }}>{subtotalTons.toFixed(2)}</td>
-                    <td className="py-3 px-3 whitespace-nowrap" style={{ width: "auto" }}></td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap" style={{ width: "auto" }}>{subtotalBitumen.toFixed(3)}</td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap" style={{ width: "auto" }}>{subtotalLdo.toFixed(1)}</td>
+                    <td className="py-3 px-3 font-bold whitespace-nowrap">SUBTOTALS</td>
+                    <td className="py-3 px-3 whitespace-nowrap"></td>
+                    <td className="py-3 px-3 whitespace-nowrap"></td>
+                    <td className="py-3 px-3 whitespace-nowrap">{subtotalTrips} TRIPS</td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalTons.toFixed(2)}</td>
+                    <td className="py-3 px-3 whitespace-nowrap"></td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalBitumen.toFixed(3)}</td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalLdo.toFixed(1)}</td>
                   </tr>
-                </tbody>
+                </tfoot>
               </table>
             </div>
           </div>
