@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer } from "lucide-react";
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -110,11 +110,37 @@ export default function Plant() {
         </TabsContent>
 
         <TabsContent value="masters" className="mt-6">
-          <MastersTab />
+          {unlockedTabs.has("masters") ? (
+            <MastersTab />
+          ) : (
+            <Card className="py-12">
+              <CardContent className="text-center">
+                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Admin Access Required</h3>
+                <p className="text-muted-foreground mb-4">Enter admin PIN to access Masters settings</p>
+                <Button onClick={() => handleTabChange("masters")} data-testid="button-unlock-masters">
+                  <Lock className="w-4 h-4 mr-2" /> Unlock Masters
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="dashboard" className="mt-6">
-          <DashboardTab />
+          {unlockedTabs.has("dashboard") ? (
+            <DashboardTab />
+          ) : (
+            <Card className="py-12">
+              <CardContent className="text-center">
+                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Admin Access Required</h3>
+                <p className="text-muted-foreground mb-2">Enter admin PIN to access Dashboard</p>
+                <Button onClick={() => handleTabChange("dashboard")} data-testid="button-unlock-dashboard">
+                  <Lock className="w-4 h-4 mr-2" /> Unlock Dashboard
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
