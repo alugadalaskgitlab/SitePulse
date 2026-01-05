@@ -14,11 +14,17 @@ export default function AdminSettings() {
   const { toast } = useToast();
   const [showPinAuth, setShowPinAuth] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
-  const [currentPin, setCurrentPin] = useState("");
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
+  const [authenticatedPin, setAuthenticatedPin] = useState("");
+  
+  // Admin PIN change state
+  const [newAdminPin, setNewAdminPin] = useState("");
+  const [confirmAdminPin, setConfirmAdminPin] = useState("");
+  
+  // Manager PIN change state
+  const [newManagerPin, setNewManagerPin] = useState("");
+  const [confirmManagerPin, setConfirmManagerPin] = useState("");
 
-  const changePinMutation = useMutation({
+  const changeAdminPinMutation = useMutation({
     mutationFn: async (data: { currentPin: string; newPin: string }) => {
       const response = await apiRequest("POST", "/api/admin/change-pin", data);
       if (!response.ok) {
@@ -29,26 +35,52 @@ export default function AdminSettings() {
     },
     onSuccess: () => {
       toast({
-        title: "PIN Updated",
-        description: "Admin PIN has been changed successfully.",
+        title: "Admin PIN Updated",
+        description: "Admin PIN has been changed successfully. Use the new PIN next time.",
       });
-      setCurrentPin("");
-      setNewPin("");
-      setConfirmPin("");
+      setNewAdminPin("");
+      setConfirmAdminPin("");
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update PIN",
+        description: error.message || "Failed to update admin PIN",
         variant: "destructive",
       });
     },
   });
 
-  const handlePinAuthSuccess = (role: "manager" | "admin") => {
+  const changeManagerPinMutation = useMutation({
+    mutationFn: async (data: { currentPin: string; newPin: string }) => {
+      const response = await apiRequest("POST", "/api/admin/change-manager-pin", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update PIN");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Manager PIN Updated",
+        description: "Manager PIN has been changed successfully.",
+      });
+      setNewManagerPin("");
+      setConfirmManagerPin("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update manager PIN",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handlePinAuthSuccess = (role: "manager" | "admin", pin: string) => {
     if (role === "admin") {
       setAuthenticated(true);
       setShowPinAuth(false);
+      setAuthenticatedPin(pin);
     } else {
       toast({
         title: "Access Denied",
@@ -58,19 +90,10 @@ export default function AdminSettings() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleChangeAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (currentPin.length !== 4) {
-      toast({
-        title: "Invalid Current PIN",
-        description: "Current PIN must be exactly 4 digits.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (newPin.length !== 4) {
+    if (newAdminPin.length !== 4) {
       toast({
         title: "Invalid New PIN",
         description: "New PIN must be exactly 4 digits.",
@@ -79,7 +102,7 @@ export default function AdminSettings() {
       return;
     }
 
-    if (newPin !== confirmPin) {
+    if (newAdminPin !== confirmAdminPin) {
       toast({
         title: "PIN Mismatch",
         description: "New PIN and confirmation do not match.",
@@ -88,7 +111,31 @@ export default function AdminSettings() {
       return;
     }
 
-    changePinMutation.mutate({ currentPin, newPin });
+    changeAdminPinMutation.mutate({ currentPin: authenticatedPin, newPin: newAdminPin });
+  };
+
+  const handleChangeManagerPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (newManagerPin.length !== 4) {
+      toast({
+        title: "Invalid New PIN",
+        description: "New PIN must be exactly 4 digits.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newManagerPin !== confirmManagerPin) {
+      toast({
+        title: "PIN Mismatch",
+        description: "New PIN and confirmation do not match.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    changeManagerPinMutation.mutate({ currentPin: authenticatedPin, newPin: newManagerPin });
   };
 
   if (showPinAuth && !authenticated) {
@@ -123,61 +170,47 @@ export default function AdminSettings() {
             </div>
             <div>
               <CardTitle>Change Admin PIN</CardTitle>
-              <CardDescription>Update the administrator access PIN</CardDescription>
+              <CardDescription>Update the administrator access PIN (Default: 5678)</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleChangeAdminPin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="currentPin">Current Admin PIN</Label>
+              <Label htmlFor="newAdminPin">New Admin PIN</Label>
               <Input
-                id="currentPin"
+                id="newAdminPin"
                 type="password"
-                value={currentPin}
-                onChange={(e) => setCurrentPin(e.target.value)}
-                maxLength={4}
-                placeholder="Enter current PIN"
-                className="font-mono tracking-widest"
-                data-testid="input-current-pin"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="newPin">New PIN</Label>
-              <Input
-                id="newPin"
-                type="password"
-                value={newPin}
-                onChange={(e) => setNewPin(e.target.value)}
+                value={newAdminPin}
+                onChange={(e) => setNewAdminPin(e.target.value)}
                 maxLength={4}
                 placeholder="Enter new 4-digit PIN"
                 className="font-mono tracking-widest"
-                data-testid="input-new-pin"
+                data-testid="input-new-admin-pin"
               />
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="confirmPin">Confirm New PIN</Label>
+              <Label htmlFor="confirmAdminPin">Confirm New Admin PIN</Label>
               <Input
-                id="confirmPin"
+                id="confirmAdminPin"
                 type="password"
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value)}
+                value={confirmAdminPin}
+                onChange={(e) => setConfirmAdminPin(e.target.value)}
                 maxLength={4}
                 placeholder="Confirm new PIN"
                 className="font-mono tracking-widest"
-                data-testid="input-confirm-pin"
+                data-testid="input-confirm-admin-pin"
               />
             </div>
 
             <Button
               type="submit"
-              disabled={changePinMutation.isPending || !currentPin || !newPin || !confirmPin}
+              disabled={changeAdminPinMutation.isPending || !newAdminPin || !confirmAdminPin}
               className="w-full gap-2"
-              data-testid="button-save-pin"
+              data-testid="button-save-admin-pin"
             >
-              {changePinMutation.isPending ? (
+              {changeAdminPinMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Saving...
@@ -185,7 +218,7 @@ export default function AdminSettings() {
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  Save New PIN
+                  Update Admin PIN
                 </>
               )}
             </Button>
@@ -200,15 +233,60 @@ export default function AdminSettings() {
               <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <CardTitle>Manager PIN</CardTitle>
-              <CardDescription>Manager PIN is fixed at 1234</CardDescription>
+              <CardTitle>Change Manager PIN</CardTitle>
+              <CardDescription>Update the manager access PIN (Default: 1234)</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            The Manager PIN (1234) provides edit access to reports. Only the Admin PIN can be changed through this interface.
-          </p>
+          <form onSubmit={handleChangeManagerPin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="newManagerPin">New Manager PIN</Label>
+              <Input
+                id="newManagerPin"
+                type="password"
+                value={newManagerPin}
+                onChange={(e) => setNewManagerPin(e.target.value)}
+                maxLength={4}
+                placeholder="Enter new 4-digit PIN"
+                className="font-mono tracking-widest"
+                data-testid="input-new-manager-pin"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="confirmManagerPin">Confirm New Manager PIN</Label>
+              <Input
+                id="confirmManagerPin"
+                type="password"
+                value={confirmManagerPin}
+                onChange={(e) => setConfirmManagerPin(e.target.value)}
+                maxLength={4}
+                placeholder="Confirm new PIN"
+                className="font-mono tracking-widest"
+                data-testid="input-confirm-manager-pin"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              disabled={changeManagerPinMutation.isPending || !newManagerPin || !confirmManagerPin}
+              className="w-full gap-2"
+              data-testid="button-save-manager-pin"
+            >
+              {changeManagerPinMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Update Manager PIN
+                </>
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>
