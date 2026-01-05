@@ -136,6 +136,9 @@ export interface IStorage {
   
   // Enhanced dispatch with stock deduction
   createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
+  
+  // Recalculate all dispatch consumption from mix templates
+  recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -1075,6 +1078,8 @@ export class DatabaseStorage implements IStorage {
     
     const theoreticalBitumenPercent = template?.bitumenPercent || 0;
     const theoreticalBitumenQty = (dispatch.loadWeight * theoreticalBitumenPercent) / 100;
+    const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
+    const theoreticalLdoQty = dispatch.loadWeight * ldoNorm;
     
     const uppercased = {
       ...dispatch,
@@ -1082,6 +1087,11 @@ export class DatabaseStorage implements IStorage {
       deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
       theoreticalBitumenPercent,
       theoreticalBitumenQty,
+      theoreticalLdoQty,
+      // Set actual = theoretical by default
+      actualBitumenPercent: dispatch.actualBitumenPercent ?? theoreticalBitumenPercent,
+      actualBitumenQty: dispatch.actualBitumenQty ?? theoreticalBitumenQty,
+      actualLdoQty: dispatch.actualLdoQty ?? theoreticalLdoQty,
     };
     
     const [result] = await db.insert(truckDispatches).values(uppercased).returning();
@@ -1661,7 +1671,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Create the dispatch record
+      // Create the dispatch record with actual = theoretical by default
       const [result] = await tx.insert(truckDispatches).values({
         ...dispatch,
         truckNumber: dispatch.truckNumber.toUpperCase(),
@@ -1670,12 +1680,69 @@ export class DatabaseStorage implements IStorage {
         theoreticalBitumenQty,
         theoreticalLdoQty,
         theoreticalAggregates: JSON.stringify(theoreticalAggregates),
+        // Set actual = theoretical by default (user can override later)
+        actualBitumenPercent: dispatch.actualBitumenPercent ?? theoreticalBitumenPercent,
+        actualBitumenQty: dispatch.actualBitumenQty ?? theoreticalBitumenQty,
+        actualLdoQty: dispatch.actualLdoQty ?? theoreticalLdoQty,
         stockDeducted: 1,
         shortageWarning: shortages.length ? JSON.stringify(shortages) : null,
       }).returning();
       
       return { dispatch: result, shortages };
     });
+  }
+
+  async recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }> {
+    let updated = 0;
+    let errors = 0;
+    
+    // Get all dispatches
+    const allDispatches = await db.select().from(truckDispatches);
+    
+    // Get all mix templates for lookup
+    const templates = await db.select().from(mixTemplates);
+    const templateMap = new Map(templates.map(t => [t.id, t]));
+    
+    for (const dispatch of allDispatches) {
+      try {
+        const template = templateMap.get(dispatch.mixTemplateId);
+        if (!template) continue;
+        
+        const theoreticalBitumenPercent = template.bitumenPercent || 0;
+        const theoreticalBitumenQty = (dispatch.loadWeight * theoreticalBitumenPercent) / 100;
+        const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
+        const theoreticalLdoQty = dispatch.loadWeight * ldoNorm;
+        
+        // Only update actual values if they are null/undefined/0 (don't overwrite user-entered data)
+        const updateData: any = {
+          theoreticalBitumenPercent,
+          theoreticalBitumenQty,
+          theoreticalLdoQty,
+        };
+        
+        // Only backfill actual values if missing (null, undefined, or 0)
+        if (!dispatch.actualBitumenPercent) {
+          updateData.actualBitumenPercent = theoreticalBitumenPercent;
+        }
+        if (!dispatch.actualBitumenQty) {
+          updateData.actualBitumenQty = theoreticalBitumenQty;
+        }
+        if (!dispatch.actualLdoQty) {
+          updateData.actualLdoQty = theoreticalLdoQty;
+        }
+        
+        await db.update(truckDispatches)
+          .set(updateData)
+          .where(eq(truckDispatches.id, dispatch.id));
+        
+        updated++;
+      } catch (err) {
+        console.error(`Error updating dispatch ${dispatch.id}:`, err);
+        errors++;
+      }
+    }
+    
+    return { updated, errors };
   }
 }
 

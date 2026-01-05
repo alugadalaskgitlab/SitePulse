@@ -628,6 +628,17 @@ export async function registerRoutes(
     }
   });
 
+  // Recalculate all dispatch consumption from mix templates
+  app.post("/api/plant-module/dispatches/recalculate-all", async (req, res) => {
+    try {
+      const result = await storage.recalculateAllDispatchConsumption();
+      res.json(result);
+    } catch (err) {
+      console.error("Recalculate dispatches error:", err);
+      res.status(500).json({ message: "Failed to recalculate dispatches" });
+    }
+  });
+
   // Equipment Usage
   app.get("/api/plant-module/equipment-usage", async (req, res) => {
     try {
