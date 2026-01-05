@@ -329,16 +329,28 @@ export default function PlantGeneratorLogs() {
       </html>
     `;
     
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 250);
-    } else {
-      toast({ title: "Please allow popups to print", variant: "destructive" });
+    // Use iframe approach - doesn't trigger popup blockers
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.left = '-9999px';
+    document.body.appendChild(iframe);
+    
+    const iframeDoc = iframe.contentWindow?.document;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(printContent);
+      iframeDoc.close();
+      
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 100);
+      };
     }
   };
 

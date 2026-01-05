@@ -391,7 +391,7 @@ export default function PlantMaterialReceipts() {
   };
 
   const handlePrint = () => {
-    // Create a printable version formatted for A4 portrait
+    // Create a printable version formatted for A4 portrait using iframe (no popup blocker issues)
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -400,7 +400,7 @@ export default function PlantMaterialReceipts() {
           <style>
             @page { size: A4 portrait; margin: 15mm; }
             * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
+            body { font-family: Arial, sans-serif; padding: 15px; margin: 0; font-size: 11px; }
             .header { margin-bottom: 15px; }
             h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
             .date { color: #666; margin: 0; font-size: 10px; }
@@ -453,17 +453,28 @@ export default function PlantMaterialReceipts() {
       </html>
     `;
     
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      // Use setTimeout to ensure content is loaded before printing
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 250);
-    } else {
-      toast({ title: "Please allow popups to print", variant: "destructive" });
+    // Use iframe approach - doesn't trigger popup blockers
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.left = '-9999px';
+    document.body.appendChild(iframe);
+    
+    const iframeDoc = iframe.contentWindow?.document;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(printContent);
+      iframeDoc.close();
+      
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 100);
+      };
     }
   };
 
