@@ -26,6 +26,7 @@ export default function Plant() {
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [unlockedTabs, setUnlockedTabs] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+  const { setAccess } = useAccess();
 
   const handleTabChange = (tab: string) => {
     // Masters and Dashboard tabs require admin PIN
@@ -39,6 +40,8 @@ export default function Plant() {
 
   const handlePinSuccess = (role: "manager" | "admin") => {
     if (role === "admin" && pendingTab) {
+      // Also set global access to admin so canEdit/canDelete work in Masters
+      setAccess("admin");
       setUnlockedTabs(prev => {
         const newSet = new Set(Array.from(prev));
         newSet.add(pendingTab);
@@ -874,9 +877,9 @@ function MixTemplateMaster() {
                         {template.mixType} - Bitumen: {template.bitumenPercent}% - LDO: {template.ldoNorm || 6} L/ton
                         {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
                       </p>
-                      {canEdit && templateComponents.length > 0 && (
+                      {templateComponents.length > 0 && (
                         <div className="mt-2 text-xs text-muted-foreground">
-                          <span className="font-medium">Components:</span>{" "}
+                          <span className="font-medium">Aggregates:</span>{" "}
                           {templateComponents.map((c, idx) => (
                             <span key={c.id}>
                               {getMaterialName(c.materialId)}: {c.percent}%{idx < templateComponents.length - 1 ? ", " : ""}
