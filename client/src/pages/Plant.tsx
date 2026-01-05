@@ -877,6 +877,11 @@ function MixTemplateMaster() {
                         {template.mixType} - Bitumen: {template.bitumenPercent}% - LDO: {template.ldoNorm || 6} L/ton
                         {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
                       </p>
+                      {template.createdAt && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Created: {format(new Date(template.createdAt), "dd-MMM-yyyy HH:mm")}
+                        </p>
+                      )}
                       {templateComponents.length > 0 && (
                         <div className="mt-2 text-xs text-muted-foreground">
                           <span className="font-medium">Aggregates:</span>{" "}
