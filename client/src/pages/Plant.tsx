@@ -1434,6 +1434,10 @@ function DashboardTab() {
           </style>
         </head>
         <body>
+          <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px;">
+            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+          </div>
           <div class="header">
             <h1>Plant Dispatch Summary Report</h1>
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")} | Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}</p>
