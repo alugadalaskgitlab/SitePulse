@@ -147,25 +147,6 @@ export async function registerRoutes(
     }
   });
 
-  // Get current PINs (admin only - for display in settings)
-  app.post("/api/admin/get-pins", async (req, res) => {
-    try {
-      const pinVerify = z.object({ pin: z.string().length(4) });
-      const input = pinVerify.parse(req.body);
-      
-      const isAdmin = await storage.verifyPin("admin", input.pin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid admin PIN" });
-      }
-      
-      const managerPin = await storage.getSetting("manager_pin") || "1234";
-      const adminPin = await storage.getSetting("admin_pin") || "5678";
-      
-      res.json({ managerPin, adminPin });
-    } catch (err) {
-      res.status(500).json({ message: "Failed to get PINs" });
-    }
-  });
 
   // Create a new version of DPR with edited data
   // Creates a copy with timestamp instead of overwriting original

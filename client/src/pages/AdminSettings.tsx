@@ -31,15 +31,16 @@ export default function AdminSettings() {
         const error = await response.json();
         throw new Error(error.message || "Failed to update PIN");
       }
-      return response.json();
+      return data.newPin;
     },
-    onSuccess: () => {
+    onSuccess: (newPin: string) => {
       toast({
         title: "Admin PIN Updated",
-        description: "Admin PIN has been changed successfully. Use the new PIN next time.",
+        description: "Admin PIN has been changed successfully.",
       });
       setNewAdminPin("");
       setConfirmAdminPin("");
+      setAuthenticatedPin(newPin);
     },
     onError: (error: any) => {
       toast({
