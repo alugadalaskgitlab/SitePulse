@@ -176,7 +176,7 @@ function OperationsTab() {
               <Truck className="w-7 h-7 text-green-600 dark:text-green-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Mix Dispatches</h3>
+              <h3 className="font-semibold text-lg">Plant Production and Dispatches</h3>
               <p className="text-sm text-muted-foreground">Log outgoing truck loads with mix data</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />

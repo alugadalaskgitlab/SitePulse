@@ -327,7 +327,7 @@ export default function PlantDispatches() {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       doc.setFontSize(16);
-      doc.text("Mix Dispatches Report", 14, 15);
+      doc.text("Plant Production and Dispatches Report", 14, 15);
       doc.setFontSize(10);
       doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
       if (filterDateFrom || filterDateTo) {
@@ -397,7 +397,7 @@ export default function PlantDispatches() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Mix Dispatches Report</title>
+          <title>Plant Production and Dispatches Report</title>
           <style>
             @page { size: A4 portrait; margin: 15mm; }
             * { box-sizing: border-box; }
@@ -417,7 +417,7 @@ export default function PlantDispatches() {
         </head>
         <body>
           <div class="header">
-            <h1>Mix Dispatches Report</h1>
+            <h1>Plant Production and Dispatches Report</h1>
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
           </div>
           <table>
@@ -511,7 +511,7 @@ export default function PlantDispatches() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Mix Dispatches</h1>
+            <h1 className="text-2xl font-bold">Plant Production and Dispatches</h1>
             <p className="text-muted-foreground">Record outgoing mix loads by party/job</p>
           </div>
         </div>
@@ -523,7 +523,7 @@ export default function PlantDispatches() {
           </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingDispatch ? "Edit Dispatch" : "Record Mix Dispatch"}</DialogTitle>
+              <DialogTitle>{editingDispatch ? "Edit Dispatch" : "Record Production Dispatch"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
