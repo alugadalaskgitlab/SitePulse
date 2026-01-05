@@ -18,6 +18,7 @@ import { useAccess } from "@/lib/access-context";
 import { PinAuth } from "@/components/PinAuth";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES, MIX_TYPES } from "@shared/schema";
+import { format } from "date-fns";
 
 export default function Plant() {
   const [activeTab, setActiveTab] = useState("operations");
@@ -1209,107 +1210,272 @@ function DashboardTab() {
   const subtotalLdo = tableFilteredDispatches.reduce((sum, d) => sum + (d.actualLdoQty || 0), 0);
   const subtotalTrips = tableFilteredDispatches.length;
 
+  // Build filename with date range and filters
+  const buildFilename = (extension: string) => {
+    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
+    const fromDate = tableDateFrom || "All";
+    const toDate = tableDateTo || "All";
+    const partyFilter = tablePartyId !== "all" ? getPartyName(Number(tablePartyId)).replace(/\s+/g, '') : "";
+    const siteFilter = tableSite !== "all" ? tableSite.replace(/\s+/g, '') : "";
+    const mixFilter = tableMixType !== "all" ? tableMixType.replace(/\s+/g, '') : "";
+    const filters = [partyFilter, siteFilter, mixFilter].filter(Boolean).join("_");
+    return `SiteLog_Plant_Dashboard_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
+  };
+
+  // Universal download function for all devices including iPad
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   // Export functions
-  const exportToExcel = () => {
-    const headerRows = [
-      ["PLANT DISPATCH SUMMARY REPORT"],
-      [`Generated: ${new Date().toLocaleString()}`],
-      [`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`],
-      [`Filters: Party: ${tablePartyId === "all" ? "All" : getPartyName(Number(tablePartyId))}, Site: ${tableSite === "all" ? "All" : tableSite}, Mix: ${tableMixType === "all" ? "All" : tableMixType}, Vehicle: ${tableVehicle === "all" ? "All" : tableVehicle}`],
-      [],
-      ["DISPATCH DATE & TIME", "PARTY", "SITE", "MIX TYPE", "LOAD / TONS (MT)", "VEHICLE NO", "BITUMEN CONSUMED (MT)", "LDO CONSUMED (L)"]
-    ];
+  const exportToExcel = async () => {
+    try {
+      const headerRows = [
+        ["PLANT DISPATCH SUMMARY REPORT"],
+        [`Generated: ${new Date().toLocaleString()}`],
+        [`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`],
+        [`Filters: Party: ${tablePartyId === "all" ? "All" : getPartyName(Number(tablePartyId))}, Site: ${tableSite === "all" ? "All" : tableSite}, Mix: ${tableMixType === "all" ? "All" : tableMixType}, Vehicle: ${tableVehicle === "all" ? "All" : tableVehicle}`],
+        [],
+        ["DISPATCH DATE & TIME", "PARTY", "SITE", "MIX TYPE", "LOAD / TONS (MT)", "VEHICLE NO", "BITUMEN CONSUMED (MT)", "LDO CONSUMED (L)"]
+      ];
 
-    const dataRows = tableFilteredDispatches.map(d => [
-      `${d.date} ${d.time || ""}`.trim().toUpperCase(),
-      getPartyName(d.partyId),
-      (d.deliveryLocation || "").toUpperCase(),
-      getMixType(d.mixTemplateId),
-      d.loadWeight?.toFixed(2) || "0.00",
-      (d.truckNumber || "").toUpperCase(),
-      ((d.actualBitumenQty || 0) / 1000).toFixed(3),
-      (d.actualLdoQty || 0).toFixed(1)
-    ]);
+      const dataRows = tableFilteredDispatches.map(d => [
+        `${d.date} ${d.time || ""}`.trim().toUpperCase(),
+        getPartyName(d.partyId),
+        (d.deliveryLocation || "").toUpperCase(),
+        getMixType(d.mixTemplateId),
+        d.loadWeight?.toFixed(2) || "0.00",
+        (d.truckNumber || "").toUpperCase(),
+        ((d.actualBitumenQty || 0) / 1000).toFixed(3),
+        (d.actualLdoQty || 0).toFixed(1)
+      ]);
 
-    const totalRows = [
-      [],
-      ["TOTALS", "", "", "", subtotalTons.toFixed(2), `${subtotalTrips} TRIPS`, subtotalBitumen.toFixed(3), subtotalLdo.toFixed(1)]
-    ];
+      const totalRows = [
+        [],
+        ["TOTALS", "", "", "", subtotalTons.toFixed(2), `${subtotalTrips} TRIPS`, subtotalBitumen.toFixed(3), subtotalLdo.toFixed(1)]
+      ];
 
-    const ws = XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows, ...totalRows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Dispatch Summary");
-    XLSX.writeFile(wb, `dispatch_summary_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const ws = XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows, ...totalRows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dispatch Summary");
+      
+      const filename = buildFilename("xlsx");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Excel Files',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(buffer);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+        }
+      }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      triggerDownload(blob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
+    }
   };
 
   const exportToPdf = async () => {
-    const { default: jsPDF } = await import("jspdf");
-    await import("jspdf-autotable");
-    
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    
-    const headers = [["DISPATCH DATE & TIME", "PARTY", "SITE", "MIX TYPE", "LOAD (MT)", "VEHICLE NO", "BITUMEN (MT)", "LDO (L)"]];
-    const data = tableFilteredDispatches.map(d => [
-      `${d.date} ${d.time || ""}`.trim().toUpperCase(),
-      getPartyName(d.partyId),
-      (d.deliveryLocation || "").toUpperCase(),
-      getMixType(d.mixTemplateId),
-      d.loadWeight?.toFixed(2) || "0.00",
-      (d.truckNumber || "").toUpperCase(),
-      ((d.actualBitumenQty || 0) / 1000).toFixed(3),
-      (d.actualLdoQty || 0).toFixed(1)
-    ]);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      await import("jspdf-autotable");
+      
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      
+      const headers = [["DATE/TIME", "PARTY", "SITE", "MIX", "LOAD", "VEHICLE", "BITUMEN", "LDO"]];
+      const data = tableFilteredDispatches.map(d => [
+        `${d.date} ${d.time || ""}`.trim(),
+        getPartyName(d.partyId),
+        (d.deliveryLocation || ""),
+        getMixType(d.mixTemplateId),
+        d.loadWeight?.toFixed(2) || "0.00",
+        (d.truckNumber || ""),
+        ((d.actualBitumenQty || 0) / 1000).toFixed(3),
+        (d.actualLdoQty || 0).toFixed(1)
+      ]);
 
-    let currentPage = 1;
-    const addHeader = () => {
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "bold");
-      doc.text("PLANT DISPATCH SUMMARY REPORT", pageWidth / 2, 15, { align: "center" });
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`, 14, 22);
-    };
+      let currentPage = 1;
+      const addHeader = () => {
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("PLANT DISPATCH SUMMARY REPORT", pageWidth / 2, 15, { align: "center" });
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`, 14, 22);
+      };
 
-    const addFooter = (pageNum: number, totalPages: number, isLast: boolean) => {
-      doc.setFontSize(8);
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, pageHeight - 10);
-      doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
-    };
+      const addFooter = (pageNum: number, totalPages: number) => {
+        doc.setFontSize(8);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, pageHeight - 10);
+        doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
+      };
 
-    (doc as any).autoTable({
-      head: headers,
-      body: data,
-      startY: 28,
-      theme: "grid",
-      headStyles: { fillColor: [50, 50, 50], textColor: 255, fontSize: 8, fontStyle: "bold" },
-      bodyStyles: { fontSize: 8 },
-      margin: { top: 28, bottom: 25 },
-      didDrawPage: (data: any) => {
+      (doc as any).autoTable({
+        head: headers,
+        body: data,
+        startY: 28,
+        theme: "grid",
+        headStyles: { fillColor: [50, 50, 50], textColor: 255, fontSize: 7, fontStyle: "bold" },
+        bodyStyles: { fontSize: 7 },
+        margin: { top: 28, bottom: 25, left: 10, right: 10 },
+        didDrawPage: () => {
+          addHeader();
+          currentPage++;
+        },
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY || 100;
+      if (finalY + 20 > pageHeight - 25) {
+        doc.addPage();
         addHeader();
-        currentPage = data.pageNumber;
-      },
-    });
+      }
 
-    const finalY = (doc as any).lastAutoTable.finalY || 100;
-    if (finalY + 20 > pageHeight - 25) {
-      doc.addPage();
-      addHeader();
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      const subtotalY = Math.min(finalY + 10, pageHeight - 30);
+      doc.text(`TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(2)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(1)} L`, 14, subtotalY);
+
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        addFooter(i, totalPages);
+      }
+
+      const filename = buildFilename("pdf");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PDF Files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const pdfBlob = doc.output('blob');
+          await writable.write(pdfBlob);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+        }
+      }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const pdfBlob = doc.output('blob');
+      triggerDownload(pdfBlob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    const subtotalY = Math.min(finalY + 10, pageHeight - 30);
-    doc.text(`TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(2)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(1)} L`, 14, subtotalY);
-
-    const totalPages = doc.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      addFooter(i, totalPages, i === totalPages);
+  };
+  
+  const handlePrint = () => {
+    // Create a printable version formatted for A4 portrait
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Plant Dispatch Summary Report</title>
+          <style>
+            @page { size: A4 portrait; margin: 15mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 10px; }
+            .header { margin-bottom: 15px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 16px; }
+            .date { color: #666; margin: 0; font-size: 9px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc; padding: 4px 3px; text-align: left; font-size: 8px; }
+            th { background-color: #f0f0f0; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            .totals { margin-top: 15px; font-weight: bold; font-size: 10px; }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Plant Dispatch Summary Report</h1>
+            <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")} | Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Date/Time</th>
+                <th>Party</th>
+                <th>Site</th>
+                <th>Mix</th>
+                <th>Load (MT)</th>
+                <th>Vehicle</th>
+                <th>Bitumen (MT)</th>
+                <th>LDO (L)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableFilteredDispatches.map(d => `
+                <tr>
+                  <td>${d.date} ${d.time || ''}</td>
+                  <td>${getPartyName(d.partyId)}</td>
+                  <td>${d.deliveryLocation || '-'}</td>
+                  <td>${getMixType(d.mixTemplateId)}</td>
+                  <td>${d.loadWeight?.toFixed(2) || '0.00'}</td>
+                  <td>${d.truckNumber || '-'}</td>
+                  <td>${((d.actualBitumenQty || 0) / 1000).toFixed(3)}</td>
+                  <td>${(d.actualLdoQty || 0).toFixed(1)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="totals">
+            TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(2)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(1)} L
+          </div>
+        </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 250);
+    } else {
+      toast({ title: "Please allow popups to print", variant: "destructive" });
     }
-
-    doc.save(`dispatch_summary_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   // Per-action PIN authentication handlers
@@ -1331,7 +1497,7 @@ function DashboardTab() {
         exportToPdf();
         break;
       case "print":
-        window.print();
+        handlePrint();
         break;
     }
     setPendingAction(null);

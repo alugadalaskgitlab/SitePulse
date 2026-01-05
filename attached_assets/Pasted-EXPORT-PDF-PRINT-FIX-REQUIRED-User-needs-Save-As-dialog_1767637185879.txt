@@ -1,0 +1,43 @@
+EXPORT / PDF / PRINT — FIX REQUIRED (User needs Save As dialog + file location choice)
+
+In the Plant Module (and Site Module if export exists there too), the current Export says “completed” but the user cannot choose file name or location, and Print does not reliably open the system dialog.
+
+Please implement the following behavior exactly:
+
+1) EXPORT TO EXCEL (XLSX)
+- When user clicks “Export Excel”, DO NOT silently save to server or unknown location.
+- Trigger a real download/save action so the browser shows the Save/Download behavior.
+- The user must be able to choose file name and location via the browser’s Save dialog (or “Save to Files” on iPad/iPhone).
+- Use a default file name format:
+  SiteLog_Plant_<FromDate>_to_<ToDate>_<Filters>_<YYYYMMDD_HHMM>.xlsx
+- After generating the file (client-side preferred), create a Blob and trigger download using an <a download> link OR File System Access API when available, with fallback to standard download.
+- If the app is currently generating the file on the backend, change it so the response sets proper headers:
+  Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+  Content-Disposition: attachment; filename="<default filename>.xlsx"
+  and return the binary file stream. This ensures the user gets the Save dialog.
+
+2) EXPORT TO PDF
+- Add a button “Export PDF”.
+- Same rules: must download as a file with Save dialog (no silent server save).
+- Use default file name:
+  SiteLog_Plant_<FromDate>_to_<ToDate>_<Filters>_<YYYYMMDD_HHMM>.pdf
+- Generate PDF either:
+  a) client-side from the report HTML (recommended for speed) using a stable library, OR
+  b) server-side and return with:
+     Content-Type: application/pdf
+     Content-Disposition: attachment; filename="....pdf"
+
+3) PRINT
+- Print button must open the OS/browser print dialog reliably (window.print()).
+- Print must be formatted for A4 portrait with proper margins and page breaks.
+- Ensure it works from iPad “Share/Print” flow also.
+
+4) IMPORTANT UX REQUIREMENT
+- After export, show a toast: “File download started. Check your Downloads/Files app.”
+- Do not say “Export completed” unless the file was actually generated and the download trigger executed successfully.
+
+5) SCOPE
+- Apply this behavior to exports from the Plant Dashboard and any filtered views.
+- Export must respect filters/date range: export only what is currently filtered/visible.
+
+Please implement this now without adding unrelated features.

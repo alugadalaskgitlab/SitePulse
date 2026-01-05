@@ -107,102 +107,139 @@ export default function PlantLdoLogs() {
     requestPinAuth({ type: "print" });
   };
 
+  // Build filename with timestamp
+  const buildFilename = (extension: string) => {
+    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
+    return `SiteLog_Plant_LdoLogs_${timestamp}.${extension}`;
+  };
+
+  // Universal download function that works on all devices including iPad
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   const exportToExcel = async () => {
     if (!logs?.length) return;
-    const data = logs.map(log => ({
-      Date: log.date,
-      "Opening Stock (L)": log.openingStock || 0,
-      "LDO Received (L)": log.ldoReceived || 0,
-      "LDO Consumed (L)": log.ldoConsumed || 0,
-      "Closing Stock (L)": log.closingStock || 0,
-      "Tons Produced (MT)": log.tonsProduced || 0,
-      "Expected LDO (L)": log.expectedLdo?.toFixed(1) || 0,
-      "Efficiency (L/ton)": log.efficiency?.toFixed(2) || 0,
-      "Variance (L)": log.variance?.toFixed(1) || 0,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "LDO Logs");
-    
-    const defaultFilename = `ldo_logs_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'Excel Files',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        await writable.write(buffer);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const data = logs.map(log => ({
+        Date: log.date,
+        "Opening Stock (L)": log.openingStock || 0,
+        "LDO Received (L)": log.ldoReceived || 0,
+        "LDO Consumed (L)": log.ldoConsumed || 0,
+        "Closing Stock (L)": log.closingStock || 0,
+        "Tons Produced (MT)": log.tonsProduced || 0,
+        "Expected LDO (L)": log.expectedLdo?.toFixed(1) || 0,
+        "Efficiency (L/ton)": log.efficiency?.toFixed(2) || 0,
+        "Variance (L)": log.variance?.toFixed(1) || 0,
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "LDO Logs");
+      
+      const filename = buildFilename("xlsx");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Excel Files',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(buffer);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      triggerDownload(blob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    XLSX.writeFile(wb, defaultFilename);
-    toast({ title: "Exported to Excel" });
   };
 
   const exportToPDF = async () => {
     if (!logs?.length) return;
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    doc.setFontSize(16);
-    doc.text("LDO Consumption Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
-    
-    const tableData = logs.map(log => [
-      log.date,
-      log.openingStock?.toString() || "-",
-      log.ldoReceived?.toString() || "-",
-      log.ldoConsumed?.toString() || "-",
-      log.closingStock?.toString() || "-",
-      log.tonsProduced?.toFixed(1) || "-",
-      log.expectedLdo?.toFixed(1) || "-",
-      log.efficiency?.toFixed(2) || "-",
-      log.variance?.toFixed(1) || "-",
-    ]);
-    
-    (doc as any).autoTable({
-      startY: 28,
-      head: [["Date", "Opening (L)", "Received (L)", "Consumed (L)", "Closing (L)", "Production (MT)", "Expected (L)", "Efficiency (L/ton)", "Variance (L)"]],
-      body: tableData,
-      theme: "striped",
-      headStyles: { fillColor: [59, 130, 246] },
-      styles: { fontSize: 8 },
-    });
-    
-    const defaultFilename = `ldo_logs_${format(new Date(), "yyyy-MM-dd")}.pdf`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'PDF Files',
-            accept: { 'application/pdf': ['.pdf'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const pdfBlob = doc.output('blob');
-        await writable.write(pdfBlob);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      doc.setFontSize(16);
+      doc.text("LDO Consumption Report", 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+      
+      const tableData = logs.map(log => [
+        log.date,
+        log.openingStock?.toString() || "-",
+        log.ldoReceived?.toString() || "-",
+        log.ldoConsumed?.toString() || "-",
+        log.closingStock?.toString() || "-",
+        log.tonsProduced?.toFixed(1) || "-",
+        log.expectedLdo?.toFixed(1) || "-",
+        log.efficiency?.toFixed(2) || "-",
+        log.variance?.toFixed(1) || "-",
+      ]);
+      
+      (doc as any).autoTable({
+        startY: 28,
+        head: [["Date", "Open(L)", "Recv(L)", "Cons(L)", "Close(L)", "Prod(MT)", "Expect(L)", "Eff(L/ton)", "Var(L)"]],
+        body: tableData,
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 8 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      const filename = buildFilename("pdf");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PDF Files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const pdfBlob = doc.output('blob');
+          await writable.write(pdfBlob);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const pdfBlob = doc.output('blob');
+      triggerDownload(pdfBlob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    doc.save(defaultFilename);
-    toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
@@ -213,34 +250,39 @@ export default function PlantLdoLogs() {
         <head>
           <title>LDO Consumption Report</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; margin-bottom: 5px; }
-            .date { color: #666; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
+            @page { size: A4 portrait; margin: 15mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
+            .date { color: #666; margin: 0; font-size: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             @media print {
-              body { padding: 0; }
-              button { display: none; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <h1>LDO Consumption Report</h1>
-          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <div class="header">
+            <h1>LDO Consumption Report</h1>
+            <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          </div>
           <table>
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Opening (L)</th>
-                <th>Received (L)</th>
-                <th>Consumed (L)</th>
-                <th>Closing (L)</th>
-                <th>Production (MT)</th>
-                <th>Expected (L)</th>
-                <th>Efficiency (L/ton)</th>
-                <th>Variance (L)</th>
+                <th>Open (L)</th>
+                <th>Recv (L)</th>
+                <th>Cons (L)</th>
+                <th>Close (L)</th>
+                <th>Prod (MT)</th>
+                <th>Expect (L)</th>
+                <th>Eff (L/ton)</th>
+                <th>Var (L)</th>
               </tr>
             </thead>
             <tbody>
@@ -267,9 +309,10 @@ export default function PlantLdoLogs() {
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
-      printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
         printWindow.print();
-      };
+      }, 250);
     } else {
       toast({ title: "Please allow popups to print", variant: "destructive" });
     }

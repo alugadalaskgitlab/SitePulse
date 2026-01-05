@@ -110,111 +110,157 @@ export default function PlantStock() {
     return true;
   });
 
+  // Build filename with date range and filters
+  const buildFilename = (extension: string) => {
+    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
+    const fromDate = dateFrom || "All";
+    const toDate = dateTo || "All";
+    const partyFilter = selectedPartyId !== "all" 
+      ? (selectedPartyId === "common" ? "PlantCommon" : parties?.find(p => p.id === parseInt(selectedPartyId))?.name?.replace(/\s+/g, '') || "")
+      : "";
+    const materialFilter = selectedMaterialId !== "all" 
+      ? materials?.find(m => m.id === parseInt(selectedMaterialId))?.name?.replace(/\s+/g, '') || ""
+      : "";
+    const filters = [partyFilter, materialFilter].filter(Boolean).join("_");
+    return `SiteLog_Plant_Stock_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
+  };
+
+  // Universal download function that works on all devices including iPad
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   const exportToExcel = async () => {
-    const summaryData = stockSummary.map(item => ({
-      Material: item.materialName,
-      "Stock Owner": item.partyName,
-      Opening: item.opening.toFixed(2),
-      Received: item.received.toFixed(2),
-      Consumed: item.consumed.toFixed(2),
-      Closing: item.closing.toFixed(2),
-      UOM: item.uom,
-    }));
-    
-    const ledgerData = (ledger || []).map(entry => ({
-      Date: entry.date,
-      Material: getMaterialName(entry.materialId),
-      "Stock Owner": getPartyName(entry.partyId),
-      Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : 'Equip Issue',
-      In: entry.quantityIn?.toFixed(2) || "-",
-      Out: entry.quantityOut?.toFixed(2) || "-",
-      Balance: entry.balanceAfter?.toFixed(2) || "-",
-      UOM: entry.uom,
-    }));
-    
-    const wb = XLSX.utils.book_new();
-    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-    const wsLedger = XLSX.utils.json_to_sheet(ledgerData);
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Stock Summary");
-    XLSX.utils.book_append_sheet(wb, wsLedger, "Stock Ledger");
-    
-    const defaultFilename = `stock_report_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'Excel Files',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        await writable.write(buffer);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const summaryData = stockSummary.map(item => ({
+        Material: item.materialName,
+        "Stock Owner": item.partyName,
+        Opening: item.opening.toFixed(2),
+        Received: item.received.toFixed(2),
+        Consumed: item.consumed.toFixed(2),
+        Closing: item.closing.toFixed(2),
+        UOM: item.uom,
+      }));
+      
+      const ledgerData = (ledger || []).map(entry => ({
+        Date: entry.date,
+        Material: getMaterialName(entry.materialId),
+        "Stock Owner": getPartyName(entry.partyId),
+        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : 'Equip Issue',
+        In: entry.quantityIn?.toFixed(2) || "-",
+        Out: entry.quantityOut?.toFixed(2) || "-",
+        Balance: entry.balanceAfter?.toFixed(2) || "-",
+        UOM: entry.uom,
+      }));
+      
+      const wb = XLSX.utils.book_new();
+      const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+      const wsLedger = XLSX.utils.json_to_sheet(ledgerData);
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Stock Summary");
+      XLSX.utils.book_append_sheet(wb, wsLedger, "Stock Ledger");
+      
+      const filename = buildFilename("xlsx");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Excel Files',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(buffer);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      triggerDownload(blob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    XLSX.writeFile(wb, defaultFilename);
-    toast({ title: "Exported to Excel" });
   };
 
   const exportToPDF = async () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    doc.setFontSize(16);
-    doc.text("Stock Balances & Ledger Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Period: ${dateFrom} to ${dateTo}`, 14, 22);
-    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 28);
-    
-    const summaryTableData = stockSummary.map(item => [
-      item.materialName,
-      item.partyName,
-      item.opening.toFixed(2),
-      item.received.toFixed(2),
-      item.consumed.toFixed(2),
-      item.closing.toFixed(2),
-      item.uom,
-    ]);
-    
-    (doc as any).autoTable({
-      startY: 34,
-      head: [["Material", "Stock Owner", "Opening", "Received", "Consumed", "Closing", "UOM"]],
-      body: summaryTableData,
-      theme: "striped",
-      headStyles: { fillColor: [59, 130, 246] },
-      styles: { fontSize: 8 },
-    });
-    
-    const defaultFilename = `stock_report_${format(new Date(), "yyyy-MM-dd")}.pdf`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'PDF Files',
-            accept: { 'application/pdf': ['.pdf'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const pdfBlob = doc.output('blob');
-        await writable.write(pdfBlob);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      doc.setFontSize(16);
+      doc.text("Stock Balances & Ledger Report", 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Period: ${dateFrom} to ${dateTo}`, 14, 22);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 28);
+      
+      const summaryTableData = stockSummary.map(item => [
+        item.materialName,
+        item.partyName,
+        item.opening.toFixed(2),
+        item.received.toFixed(2),
+        item.consumed.toFixed(2),
+        item.closing.toFixed(2),
+        item.uom,
+      ]);
+      
+      (doc as any).autoTable({
+        startY: 34,
+        head: [["Material", "Stock Owner", "Opening", "Received", "Consumed", "Closing", "UOM"]],
+        body: summaryTableData,
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 8 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      const filename = buildFilename("pdf");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PDF Files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const pdfBlob = doc.output('blob');
+          await writable.write(pdfBlob);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const pdfBlob = doc.output('blob');
+      triggerDownload(pdfBlob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    doc.save(defaultFilename);
-    toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
@@ -224,26 +270,30 @@ export default function PlantStock() {
         <head>
           <title>Stock Balances Report</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; margin-bottom: 5px; }
-            .date { color: #666; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
+            @page { size: A4 portrait; margin: 15mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
+            .date { color: #666; margin: 0; font-size: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             .text-right { text-align: right; }
             .text-green { color: #16a34a; }
             .text-red { color: #dc2626; }
             @media print {
-              body { padding: 0; }
-              button { display: none; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <h1>Stock Balances Report</h1>
-          <p class="date">Period: ${dateFrom} to ${dateTo}</p>
-          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <div class="header">
+            <h1>Stock Balances Report</h1>
+            <p class="date">Period: ${dateFrom} to ${dateTo} | Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          </div>
           <table>
             <thead>
               <tr>
@@ -278,9 +328,10 @@ export default function PlantStock() {
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
-      printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
         printWindow.print();
-      };
+      }, 250);
     } else {
       toast({ title: "Please allow popups to print", variant: "destructive" });
     }

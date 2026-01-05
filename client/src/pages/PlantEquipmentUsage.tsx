@@ -238,6 +238,31 @@ export default function PlantEquipmentUsage() {
 
   const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
+  // Build filename with date range and filters
+  const buildFilename = (extension: string) => {
+    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
+    const fromDate = filterDateFrom || "All";
+    const toDate = filterDateTo || "All";
+    const equipFilter = filterEquipmentId !== "all" 
+      ? equipment?.find(e => e.id === parseInt(filterEquipmentId))?.name?.replace(/\s+/g, '') || ""
+      : "";
+    const filters = equipFilter ? `_${equipFilter}` : "";
+    return `SiteLog_Plant_EquipmentUsage_${fromDate}_to_${toDate}${filters}_${timestamp}.${extension}`;
+  };
+
+  // Universal download function that works on all devices including iPad
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   const getExportData = () => {
     return filteredUsage.map(entry => {
       const equip = equipment?.find(e => e.id === entry.equipmentId);
@@ -260,87 +285,108 @@ export default function PlantEquipmentUsage() {
   };
 
   const exportToExcel = async () => {
-    const data = getExportData();
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Equipment Usage");
-    
-    const defaultFilename = `equipment_usage_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'Excel Files',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        await writable.write(buffer);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const data = getExportData();
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Equipment Usage");
+      
+      const filename = buildFilename("xlsx");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Excel Files',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(buffer);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      triggerDownload(blob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    XLSX.writeFile(wb, defaultFilename);
-    toast({ title: "Exported to Excel" });
   };
 
   const exportToPdf = async () => {
-    const data = getExportData();
-    const doc = new jsPDF({ orientation: "landscape" });
-    doc.setFontSize(16);
-    doc.text("Equipment Usage Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
-    
-    autoTable(doc, {
-      startY: 28,
-      head: [["Date", "Equipment", "Opening Reading", "Closing Reading", "Hours/KM Run", "Opening Diesel", "Diesel Issued", "Closing Diesel", "Expected Diesel"]],
-      body: data.map(row => [
-        row.Date,
-        row.Equipment,
-        row["Opening Reading"],
-        row["Closing Reading"],
-        row["Hours/KM Run"],
-        row["Opening Diesel"],
-        row["Diesel Issued"],
-        row["Closing Diesel"],
-        row["Expected Diesel"],
-      ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [41, 128, 185] },
-    });
-    
-    const defaultFilename = `equipment_usage_${format(new Date(), "yyyy-MM-dd")}.pdf`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'PDF Files',
-            accept: { 'application/pdf': ['.pdf'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const pdfBlob = doc.output('blob');
-        await writable.write(pdfBlob);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const data = getExportData();
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      doc.setFontSize(16);
+      doc.text("Equipment Usage Report", 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+      if (filterDateFrom || filterDateTo) {
+        doc.text(`Date Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}`, 14, 28);
       }
+      
+      autoTable(doc, {
+        startY: filterDateFrom || filterDateTo ? 34 : 28,
+        head: [["Date", "Equipment", "Open Rdg", "Close Rdg", "Hrs/KM", "Open Diesel", "Issued", "Close Diesel", "Expected"]],
+        body: data.map(row => [
+          row.Date,
+          row.Equipment,
+          row["Opening Reading"],
+          row["Closing Reading"],
+          row["Hours/KM Run"],
+          row["Opening Diesel"],
+          row["Diesel Issued"],
+          row["Closing Diesel"],
+          row["Expected Diesel"],
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [41, 128, 185] },
+        margin: { left: 14, right: 14 },
+      });
+      
+      const filename = buildFilename("pdf");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PDF Files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const pdfBlob = doc.output('blob');
+          await writable.write(pdfBlob);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
+      }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const pdfBlob = doc.output('blob');
+      triggerDownload(pdfBlob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    doc.save(defaultFilename);
-    toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
@@ -351,34 +397,39 @@ export default function PlantEquipmentUsage() {
         <head>
           <title>Equipment Usage Report</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; margin-bottom: 5px; }
-            .date { color: #666; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
+            @page { size: A4 portrait; margin: 15mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
+            .date { color: #666; margin: 0; font-size: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             @media print {
-              body { padding: 0; }
-              button { display: none; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <h1>Equipment Usage Report</h1>
-          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <div class="header">
+            <h1>Equipment Usage Report</h1>
+            <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
+          </div>
           <table>
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Equipment</th>
-                <th>Opening Reading</th>
-                <th>Closing Reading</th>
-                <th>Hours/KM Run</th>
-                <th>Opening Diesel</th>
-                <th>Diesel Issued</th>
-                <th>Closing Diesel</th>
-                <th>Expected Diesel</th>
+                <th>Open Rdg</th>
+                <th>Close Rdg</th>
+                <th>Hrs/KM</th>
+                <th>Open Diesel</th>
+                <th>Issued</th>
+                <th>Close Diesel</th>
+                <th>Expected</th>
               </tr>
             </thead>
             <tbody>
@@ -405,9 +456,10 @@ export default function PlantEquipmentUsage() {
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
-      printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
         printWindow.print();
-      };
+      }, 250);
     } else {
       toast({ title: "Please allow popups to print", variant: "destructive" });
     }

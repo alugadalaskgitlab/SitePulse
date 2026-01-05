@@ -247,139 +247,188 @@ export default function PlantMaterialReceipts() {
   // Sort dates descending
   const sortedDates = Object.keys(groupedReceipts).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
+  // Build filename with date range and filters
+  const buildFilename = (extension: string) => {
+    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
+    const fromDate = filterDateFrom || "All";
+    const toDate = filterDateTo || "All";
+    const partyFilter = filterPartyId !== "all" 
+      ? (filterPartyId === "plant-common" ? "PlantCommon" : parties?.find(p => p.id === parseInt(filterPartyId))?.name?.replace(/\s+/g, '') || "")
+      : "";
+    const materialFilter = filterMaterialId !== "all" 
+      ? materials?.find(m => m.id === parseInt(filterMaterialId))?.name?.replace(/\s+/g, '') || ""
+      : "";
+    const filters = [partyFilter, materialFilter].filter(Boolean).join("_");
+    return `SiteLog_Plant_MaterialReceipts_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
+  };
+
+  // Universal download function that works on all devices including iPad
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   // Export functions
   const exportToExcel = async () => {
-    const data = filteredReceipts.map(r => ({
-      Date: r.date,
-      Time: r.time || "",
-      Material: getMaterialName(r.materialId),
-      Quantity: r.quantity,
-      UOM: r.uom,
-      "Vehicle No": r.vehicleNumber || "",
-      "Challan No": r.challanNumber || "",
-      Supplier: r.supplier || "",
-      "Party/Job": getPartyName(r.partyId),
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Material Receipts");
-    
-    const defaultFilename = `material_receipts_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-    
-    // Try to use File System Access API for save dialog
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'Excel Files',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        await writable.write(buffer);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return; // User cancelled
+    try {
+      const data = filteredReceipts.map(r => ({
+        Date: r.date,
+        Time: r.time || "",
+        Material: getMaterialName(r.materialId),
+        Quantity: r.quantity,
+        UOM: r.uom,
+        "Vehicle No": r.vehicleNumber || "",
+        "Challan No": r.challanNumber || "",
+        Supplier: r.supplier || "",
+        "Party/Job": getPartyName(r.partyId),
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Material Receipts");
+      
+      const filename = buildFilename("xlsx");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Excel Files',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(buffer);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      triggerDownload(blob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    // Fallback for browsers without File System Access API
-    XLSX.writeFile(wb, defaultFilename);
-    toast({ title: "Exported to Excel" });
   };
 
   const exportToPDF = async () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    doc.setFontSize(16);
-    doc.text("Material Receipts Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
-    
-    const tableData = filteredReceipts.map(r => [
-      r.date,
-      r.time || "-",
-      getMaterialName(r.materialId),
-      `${r.quantity} ${r.uom}`,
-      r.vehicleNumber || "-",
-      r.challanNumber || "-",
-      r.supplier || "-",
-      getPartyName(r.partyId),
-    ]);
-    
-    (doc as any).autoTable({
-      startY: 28,
-      head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Challan No", "Supplier", "Party/Job"]],
-      body: tableData,
-      theme: "striped",
-      headStyles: { fillColor: [59, 130, 246] },
-      styles: { fontSize: 8 },
-    });
-    
-    const defaultFilename = `material_receipts_${format(new Date(), "yyyy-MM-dd")}.pdf`;
-    
-    // Try to use File System Access API for save dialog
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'PDF Files',
-            accept: { 'application/pdf': ['.pdf'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const pdfBlob = doc.output('blob');
-        await writable.write(pdfBlob);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return; // User cancelled
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      doc.setFontSize(16);
+      doc.text("Material Receipts Report", 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+      if (filterDateFrom || filterDateTo) {
+        doc.text(`Date Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}`, 14, 28);
       }
+      
+      const tableData = filteredReceipts.map(r => [
+        r.date,
+        r.time || "-",
+        getMaterialName(r.materialId),
+        `${r.quantity} ${r.uom}`,
+        r.vehicleNumber || "-",
+        getPartyName(r.partyId),
+      ]);
+      
+      (doc as any).autoTable({
+        startY: filterDateFrom || filterDateTo ? 34 : 28,
+        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Party/Job"]],
+        body: tableData,
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 8 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      const filename = buildFilename("pdf");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PDF Files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const pdfBlob = doc.output('blob');
+          await writable.write(pdfBlob);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
+      }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const pdfBlob = doc.output('blob');
+      triggerDownload(pdfBlob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    // Fallback for browsers without File System Access API
-    doc.save(defaultFilename);
-    toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
-    // Create a printable version of the table
+    // Create a printable version formatted for A4 portrait
     const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Material Receipts Report</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; margin-bottom: 5px; }
-            .date { color: #666; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
+            @page { size: A4 portrait; margin: 15mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
+            .date { color: #666; margin: 0; font-size: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             @media print {
-              body { padding: 0; }
-              button { display: none; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <h1>Material Receipts Report</h1>
-          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <div class="header">
+            <h1>Material Receipts Report</h1>
+            <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
+          </div>
           <table>
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Time</th>
                 <th>Material</th>
-                <th>Quantity</th>
-                <th>Vehicle No</th>
-                <th>Challan No</th>
+                <th>Qty</th>
+                <th>UOM</th>
+                <th>Vehicle</th>
+                <th>Challan</th>
                 <th>Supplier</th>
                 <th>Party/Job</th>
               </tr>
@@ -390,7 +439,8 @@ export default function PlantMaterialReceipts() {
                   <td>${r.date}</td>
                   <td>${r.time || '-'}</td>
                   <td>${getMaterialName(r.materialId)}</td>
-                  <td>${r.quantity} ${r.uom}</td>
+                  <td>${r.quantity}</td>
+                  <td>${r.uom}</td>
                   <td>${r.vehicleNumber || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
                   <td>${r.supplier || '-'}</td>
@@ -407,9 +457,11 @@ export default function PlantMaterialReceipts() {
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
-      printWindow.onload = () => {
+      // Use setTimeout to ensure content is loaded before printing
+      setTimeout(() => {
+        printWindow.focus();
         printWindow.print();
-      };
+      }, 250);
     } else {
       toast({ title: "Please allow popups to print", variant: "destructive" });
     }

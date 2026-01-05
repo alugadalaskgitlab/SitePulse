@@ -127,104 +127,141 @@ export default function PlantGeneratorLogs() {
     requestPinAuth({ type: "print" });
   };
 
+  // Build filename with timestamp
+  const buildFilename = (extension: string) => {
+    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
+    return `SiteLog_Plant_GeneratorLogs_${timestamp}.${extension}`;
+  };
+
+  // Universal download function that works on all devices including iPad
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   const exportToExcel = async () => {
     if (!logs?.length) return;
-    const data = logs.map(log => ({
-      Date: log.date,
-      Generator: log.generatorName,
-      "Start Time": log.startTime || "",
-      "End Time": log.endTime || "",
-      "Hours Run": log.hoursRun?.toFixed(1) || "",
-      "Opening Diesel (L)": log.openingDiesel || 0,
-      "Diesel Issued (L)": log.dieselIssued || 0,
-      "Diesel Consumed (L)": log.dieselConsumed?.toFixed(1) || 0,
-      "Closing Diesel (L)": log.closingDiesel || 0,
-      "Efficiency (L/hr)": log.efficiency?.toFixed(2) || "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Generator Logs");
-    
-    const defaultFilename = `generator_logs_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'Excel Files',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        await writable.write(buffer);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const data = logs.map(log => ({
+        Date: log.date,
+        Generator: log.generatorName,
+        "Start Time": log.startTime || "",
+        "End Time": log.endTime || "",
+        "Hours Run": log.hoursRun?.toFixed(1) || "",
+        "Opening Diesel (L)": log.openingDiesel || 0,
+        "Diesel Issued (L)": log.dieselIssued || 0,
+        "Diesel Consumed (L)": log.dieselConsumed?.toFixed(1) || 0,
+        "Closing Diesel (L)": log.closingDiesel || 0,
+        "Efficiency (L/hr)": log.efficiency?.toFixed(2) || "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Generator Logs");
+      
+      const filename = buildFilename("xlsx");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Excel Files',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(buffer);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      triggerDownload(blob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    XLSX.writeFile(wb, defaultFilename);
-    toast({ title: "Exported to Excel" });
   };
 
   const exportToPDF = async () => {
     if (!logs?.length) return;
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    doc.setFontSize(16);
-    doc.text("Generator Diesel Tracking Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
-    
-    const tableData = logs.map(log => [
-      log.date,
-      log.generatorName,
-      log.startTime || "-",
-      log.endTime || "-",
-      log.hoursRun?.toFixed(1) || "-",
-      log.openingDiesel || 0,
-      log.dieselIssued || 0,
-      log.dieselConsumed?.toFixed(1) || 0,
-      log.closingDiesel || 0,
-      log.efficiency?.toFixed(2) || "-",
-    ]);
-    
-    (doc as any).autoTable({
-      startY: 28,
-      head: [["Date", "Generator", "Start", "End", "Hours", "Opening (L)", "Issued (L)", "Consumed (L)", "Closing (L)", "L/hr"]],
-      body: tableData,
-      theme: "striped",
-      headStyles: { fillColor: [59, 130, 246] },
-      styles: { fontSize: 8 },
-    });
-    
-    const defaultFilename = `generator_logs_${format(new Date(), "yyyy-MM-dd")}.pdf`;
-    
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: defaultFilename,
-          types: [{
-            description: 'PDF Files',
-            accept: { 'application/pdf': ['.pdf'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        const pdfBlob = doc.output('blob');
-        await writable.write(pdfBlob);
-        await writable.close();
-        toast({ title: "File saved successfully" });
-        return;
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      doc.setFontSize(16);
+      doc.text("Generator Diesel Tracking Report", 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+      
+      const tableData = logs.map(log => [
+        log.date,
+        log.generatorName,
+        log.startTime || "-",
+        log.endTime || "-",
+        log.hoursRun?.toFixed(1) || "-",
+        log.openingDiesel || 0,
+        log.dieselIssued || 0,
+        log.dieselConsumed?.toFixed(1) || 0,
+        log.closingDiesel || 0,
+        log.efficiency?.toFixed(2) || "-",
+      ]);
+      
+      (doc as any).autoTable({
+        startY: 28,
+        head: [["Date", "Gen", "Start", "End", "Hrs", "Open(L)", "Issue(L)", "Cons(L)", "Close(L)", "L/hr"]],
+        body: tableData,
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 8 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      const filename = buildFilename("pdf");
+      
+      // Try File System Access API for save dialog (Chrome/Edge desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PDF Files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const pdfBlob = doc.output('blob');
+          await writable.write(pdfBlob);
+          await writable.close();
+          toast({ title: "File saved successfully" });
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          // Fall through to standard download
+        }
       }
+      
+      // Standard download for Safari, mobile, and other browsers
+      const pdfBlob = doc.output('blob');
+      triggerDownload(pdfBlob, filename);
+      toast({ title: "File download started", description: "Check your Downloads or Files app." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
     }
-    
-    doc.save(defaultFilename);
-    toast({ title: "Exported to PDF" });
   };
 
   const handlePrint = () => {
@@ -235,22 +272,27 @@ export default function PlantGeneratorLogs() {
         <head>
           <title>Generator Diesel Tracking Report</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; margin-bottom: 5px; }
-            .date { color: #666; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
+            @page { size: A4 portrait; margin: 15mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
+            .date { color: #666; margin: 0; font-size: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             @media print {
-              body { padding: 0; }
-              button { display: none; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <h1>Generator Diesel Tracking Report</h1>
-          <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          <div class="header">
+            <h1>Generator Diesel Tracking Report</h1>
+            <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
+          </div>
           <table>
             <thead>
               <tr>
@@ -259,11 +301,11 @@ export default function PlantGeneratorLogs() {
                 <th>Start</th>
                 <th>End</th>
                 <th>Hours</th>
-                <th>Opening (L)</th>
-                <th>Issued (L)</th>
-                <th>Consumed (L)</th>
-                <th>Closing (L)</th>
-                <th>Efficiency (L/hr)</th>
+                <th>Open (L)</th>
+                <th>Issue (L)</th>
+                <th>Cons (L)</th>
+                <th>Close (L)</th>
+                <th>L/hr</th>
               </tr>
             </thead>
             <tbody>
@@ -291,9 +333,10 @@ export default function PlantGeneratorLogs() {
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
-      printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
         printWindow.print();
-      };
+      }, 250);
     } else {
       toast({ title: "Please allow popups to print", variant: "destructive" });
     }
