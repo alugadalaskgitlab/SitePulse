@@ -53,7 +53,9 @@ export function AccessProvider({ children }: { children: ReactNode }) {
   // Admin PIN verification - in production this should be server-side
   const ADMIN_PIN = "1234";
   const requestAdminAccess = (pin: string): boolean => {
-    if (pin.trim() === ADMIN_PIN) {
+    const trimmedPin = pin.trim();
+    console.log("PIN attempt:", trimmedPin, "Expected:", ADMIN_PIN, "Match:", trimmedPin === ADMIN_PIN);
+    if (trimmedPin === ADMIN_PIN) {
       setAccess("admin");
       return true;
     }
