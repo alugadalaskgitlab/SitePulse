@@ -24,12 +24,13 @@ export default function Plant() {
   const [activeTab, setActiveTab] = useState("operations");
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [unlockedTabs, setUnlockedTabs] = useState<Set<string>>(new Set());
+  // Track which tabs are unlocked and by which role (manager or admin)
+  const [unlockedTabs, setUnlockedTabs] = useState<Map<string, "manager" | "admin">>(new Map());
   const { toast } = useToast();
   const { setAccess } = useAccess();
 
   const handleTabChange = (tab: string) => {
-    // Masters and Dashboard tabs require admin PIN
+    // Masters and Dashboard tabs require PIN (manager or admin)
     if ((tab === "masters" || tab === "dashboard") && !unlockedTabs.has(tab)) {
       setPendingTab(tab);
       setShowPinAuth(true);
@@ -39,18 +40,17 @@ export default function Plant() {
   };
 
   const handlePinSuccess = (role: "manager" | "admin") => {
-    if (role === "admin" && pendingTab) {
-      // Also set global access to admin so canEdit/canDelete work in Masters
-      setAccess("admin");
+    if (pendingTab) {
+      // Set global access based on role
+      setAccess(role);
       setUnlockedTabs(prev => {
-        const newSet = new Set(Array.from(prev));
-        newSet.add(pendingTab);
-        return newSet;
+        const newMap = new Map(prev);
+        newMap.set(pendingTab, role);
+        return newMap;
       });
       setActiveTab(pendingTab);
-      toast({ title: `${pendingTab === "masters" ? "Masters" : "Dashboard"} unlocked` });
-    } else {
-      toast({ title: "Admin access required", description: "Only admin PIN can access this section", variant: "destructive" });
+      const tabName = pendingTab === "masters" ? "Masters" : "Dashboard";
+      toast({ title: `${tabName} unlocked`, description: role === "manager" ? "View and add only" : "Full access" });
     }
     setShowPinAuth(false);
     setPendingTab(null);
@@ -79,7 +79,7 @@ export default function Plant() {
 
       {showPinAuth && (
         <PinAuth
-          targetRole="admin"
+          targetRole="any"
           onSuccess={handlePinSuccess}
           onClose={handlePinClose}
         />
@@ -115,13 +115,13 @@ export default function Plant() {
 
         <TabsContent value="masters" className="mt-6">
           {unlockedTabs.has("masters") ? (
-            <MastersTab />
+            <MastersTab unlockedRole={unlockedTabs.get("masters")!} />
           ) : (
             <Card className="py-12">
               <CardContent className="text-center">
                 <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Admin Access Required</h3>
-                <p className="text-muted-foreground mb-4">Enter admin PIN to access Masters settings</p>
+                <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
+                <p className="text-muted-foreground mb-4">Enter Manager or Admin PIN to access Masters</p>
                 <Button onClick={() => handleTabChange("masters")} data-testid="button-unlock-masters">
                   <Lock className="w-4 h-4 mr-2" /> Unlock Masters
                 </Button>
@@ -132,13 +132,13 @@ export default function Plant() {
 
         <TabsContent value="dashboard" className="mt-6">
           {unlockedTabs.has("dashboard") ? (
-            <DashboardTab />
+            <DashboardTab unlockedRole={unlockedTabs.get("dashboard")!} />
           ) : (
             <Card className="py-12">
               <CardContent className="text-center">
                 <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Admin Access Required</h3>
-                <p className="text-muted-foreground mb-2">Enter admin PIN to access Dashboard</p>
+                <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
+                <p className="text-muted-foreground mb-2">Enter Manager or Admin PIN to access Dashboard</p>
                 <Button onClick={() => handleTabChange("dashboard")} data-testid="button-unlock-dashboard">
                   <Lock className="w-4 h-4 mr-2" /> Unlock Dashboard
                 </Button>
@@ -223,20 +223,30 @@ function StockDetailsTab() {
   );
 }
 
-function MastersTab() {
+function MastersTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
+  const isManager = unlockedRole === "manager";
   return (
     <div className="space-y-6">
-      <PartyMaster />
-      <MaterialMaster />
-      <MixTemplateMaster />
-      <EquipmentMasterSection />
+      {isManager && (
+        <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
+          Manager access: You can view and add new entries. Editing and exports are disabled.
+        </div>
+      )}
+      <PartyMaster isManagerMode={isManager} />
+      <MaterialMaster isManagerMode={isManager} />
+      <MixTemplateMaster isManagerMode={isManager} />
+      <EquipmentMasterSection isManagerMode={isManager} />
     </div>
   );
 }
 
-function PartyMaster() {
+function PartyMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
+  // Manager mode disables edit/delete/export
+  const canEdit = !isManagerMode && globalCanEdit;
+  const canDelete = !isManagerMode && globalCanDelete;
+  const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
@@ -319,12 +329,16 @@ function PartyMaster() {
           Party/Job Master
         </CardTitle>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => parties && exportToExcel(parties)} disabled={!parties?.length} data-testid="button-export-parties">
-            <Download className="w-4 h-4" /> Excel
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print-parties">
-            <Printer className="w-4 h-4" /> Print
-          </Button>
+          {canExport && (
+            <>
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => parties && exportToExcel(parties)} disabled={!parties?.length} data-testid="button-export-parties">
+                <Download className="w-4 h-4" /> Excel
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print-parties">
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+            </>
+          )}
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1" data-testid="button-add-party">
@@ -400,9 +414,12 @@ function PartyMaster() {
   );
 }
 
-function MaterialMaster() {
+function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
+  const canEdit = !isManagerMode && globalCanEdit;
+  const canDelete = !isManagerMode && globalCanDelete;
+  const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
@@ -482,9 +499,11 @@ function MaterialMaster() {
           Material Master
         </CardTitle>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => materials && exportToExcel(materials)} disabled={!materials?.length} data-testid="button-export-materials">
-            <Download className="w-4 h-4" /> Excel
-          </Button>
+          {canExport && (
+            <Button size="sm" variant="outline" className="gap-1" onClick={() => materials && exportToExcel(materials)} disabled={!materials?.length} data-testid="button-export-materials">
+              <Download className="w-4 h-4" /> Excel
+            </Button>
+          )}
           <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1" data-testid="button-add-material">
@@ -590,9 +609,12 @@ type MixTemplateComponent = {
   uom: string;
 };
 
-function MixTemplateMaster() {
+function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
+  const canEdit = !isManagerMode && globalCanEdit;
+  const canDelete = !isManagerMode && globalCanDelete;
+  const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
   const [name, setName] = useState("");
@@ -916,9 +938,12 @@ function MixTemplateMaster() {
   );
 }
 
-function EquipmentMasterSection() {
+function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
-  const { canEdit, canDelete } = useAccess();
+  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
+  const canEdit = !isManagerMode && globalCanEdit;
+  const canDelete = !isManagerMode && globalCanDelete;
+  const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
@@ -1122,10 +1147,12 @@ function EquipmentMasterSection() {
   );
 }
 
-function DashboardTab() {
+function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const { toast } = useToast();
+  const isManager = unlockedRole === "manager";
+  const canExport = !isManager; // Managers cannot export
   
-  // PIN auth state for per-action authentication
+  // PIN auth state for per-action authentication (only for admin)
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
   const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" } | null>(null);
@@ -1550,6 +1577,11 @@ function DashboardTab() {
 
   return (
     <div className="space-y-6">
+      {isManager && (
+        <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
+          Manager access: View only. Exports and printing are disabled.
+        </div>
+      )}
       {/* KPI Date Range Selector */}
       <Card>
         <CardHeader className="pb-2">
@@ -1639,20 +1671,22 @@ function DashboardTab() {
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <CardTitle>DISPATCH SUMMARY</CardTitle>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleExportExcelClick} data-testid="button-export-excel">
-                <Download className="w-4 h-4 mr-1" />
-                EXPORT EXCEL
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportPdfClick} data-testid="button-export-pdf">
-                <Printer className="w-4 h-4 mr-1" />
-                EXPORT PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={handlePrintClick} data-testid="button-print">
-                <Printer className="w-4 h-4 mr-1" />
-                PRINT
-              </Button>
-            </div>
+            {canExport && (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleExportExcelClick} data-testid="button-export-excel">
+                  <Download className="w-4 h-4 mr-1" />
+                  EXPORT EXCEL
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExportPdfClick} data-testid="button-export-pdf">
+                  <Printer className="w-4 h-4 mr-1" />
+                  EXPORT PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={handlePrintClick} data-testid="button-print">
+                  <Printer className="w-4 h-4 mr-1" />
+                  PRINT
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
