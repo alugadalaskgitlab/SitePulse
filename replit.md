@@ -95,8 +95,8 @@ Preferred communication style: Simple, everyday language.
 
 ### Access Control
 - **Engineer**: Can add new entries (dispatches, receipts, logs), view data
-- **Manager**: View-only access to reports and dashboards (cannot edit or delete)
-- **Admin**: Full access including edit and delete capabilities
+- **Manager**: Can unlock Dashboard and Masters tabs with PIN for view + add capabilities; no edit/delete/export/print
+- **Admin**: Full access including edit, delete, export, and print capabilities
 
 ### Key Business Rules
 - Stock balances are always derived from ledger - no manual entry
