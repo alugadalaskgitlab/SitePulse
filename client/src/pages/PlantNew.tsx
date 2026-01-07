@@ -47,7 +47,7 @@ export default function PlantNew() {
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/plant">
+        <Link href="/plant/dashboard">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -95,7 +95,7 @@ export default function PlantNew() {
 
           {/* Submit */}
           <div className="flex gap-4 justify-end">
-            <Link href="/plant">
+            <Link href="/plant/dashboard">
               <Button type="button" variant="outline" data-testid="button-cancel">Cancel</Button>
             </Link>
             <Button 

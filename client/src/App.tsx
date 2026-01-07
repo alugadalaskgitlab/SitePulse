@@ -4,12 +4,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { AccessProvider } from "@/lib/access-context";
 import Home from "@/pages/Home";
+import SiteHome from "@/pages/SiteHome";
 import SiteDashboard from "@/pages/SiteDashboard";
 import SiteEntry from "@/pages/SiteEntry";
 import SiteEdit from "@/pages/SiteEdit";
 import SiteSuccess from "@/pages/SiteSuccess";
 import SiteReport from "@/pages/SiteReport";
 import Plant from "@/pages/Plant";
+import PlantHome from "@/pages/PlantHome";
 import PlantNew from "@/pages/PlantNew";
 import PlantDetails from "@/pages/PlantDetails";
 import PlantMaterialReceipts from "@/pages/PlantMaterialReceipts";
@@ -60,12 +62,14 @@ function Router() {
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
             <Route path="/" component={Home} />
-            <Route path="/site" component={SiteDashboard} />
+            <Route path="/site" component={SiteHome} />
+            <Route path="/site/dashboard" component={SiteDashboard} />
             <Route path="/site/new" component={SiteEntry} />
             <Route path="/site/edit/:id" component={SiteEdit} />
             <Route path="/site/success/:id" component={SiteSuccess} />
             <Route path="/site/report/:id" component={SiteReport} />
-            <Route path="/plant" component={Plant} />
+            <Route path="/plant" component={PlantHome} />
+            <Route path="/plant/dashboard" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />
             <Route path="/plant/material-receipts" component={PlantMaterialReceipts} />
             <Route path="/plant/dispatches" component={PlantDispatches} />

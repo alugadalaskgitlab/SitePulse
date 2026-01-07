@@ -90,7 +90,7 @@ export default function Dashboard() {
               <Plus className="w-4 h-4" /> New Report
             </Button>
           </Link>
-          <Link href="/plant">
+          <Link href="/plant/dashboard">
             <Button variant="outline" className="gap-2">
               <Factory className="w-4 h-4" /> Plant Module
             </Button>

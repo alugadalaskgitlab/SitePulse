@@ -18,7 +18,7 @@ export default function Home() {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
-        <Link href="/site">
+        <Link href="/site/dashboard">
           <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-primary/50" data-testid="card-site-report">
             <CardContent className="p-8 flex flex-col items-center text-center">
               <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />
@@ -33,7 +33,7 @@ export default function Home() {
           </Card>
         </Link>
 
-        <Link href="/plant">
+        <Link href="/plant/dashboard">
           <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-purple-500/50" data-testid="card-plant-report">
             <CardContent className="p-8 flex flex-col items-center text-center">
               <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />

@@ -141,7 +141,7 @@ export default function SiteDashboard() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/">
+          <Link href="/site">
             <Button variant="ghost" size="icon" data-testid="button-back-home">
               <ChevronLeft className="w-5 h-5" />
             </Button>

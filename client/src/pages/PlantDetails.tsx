@@ -144,7 +144,7 @@ export default function PlantDetails() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">Plant report not found.</p>
-        <Link href="/plant">
+        <Link href="/plant/dashboard">
           <Button variant="outline" className="mt-4">Back to Plant Reports</Button>
         </Link>
       </div>
@@ -166,7 +166,7 @@ export default function PlantDetails() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/plant">
+          <Link href="/plant/dashboard">
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

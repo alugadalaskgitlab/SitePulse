@@ -178,7 +178,7 @@ export default function SiteReport() {
       {/* Header Actions */}
       <div className="flex items-center justify-between print:hidden flex-col md:flex-row gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/site">
+          <Link href="/site/dashboard">
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>
