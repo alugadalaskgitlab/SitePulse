@@ -37,6 +37,9 @@ export default function SiteDashboard() {
   
   const printRef = useRef<HTMLDivElement>(null);
   
+  const isFromPortal = new URLSearchParams(window.location.search).get("origin") === "portal";
+  const backLink = isFromPortal ? "/" : "/site";
+  
   const { data: allDprs } = useDprs({});
   const { data: dprs, isLoading } = useDprs(filters);
 
@@ -141,7 +144,7 @@ export default function SiteDashboard() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/site">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back-home">
               <ChevronLeft className="w-5 h-5" />
             </Button>

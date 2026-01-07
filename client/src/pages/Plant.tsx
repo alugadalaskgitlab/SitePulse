@@ -28,6 +28,9 @@ export default function Plant() {
   const [unlockedTabs, setUnlockedTabs] = useState<Map<string, "manager" | "admin">>(new Map());
   const { toast } = useToast();
   const { setAccess } = useAccess();
+  
+  const isFromPortal = new URLSearchParams(window.location.search).get("origin") === "portal";
+  const backLink = isFromPortal ? "/" : "/plant";
 
   const handleTabChange = (tab: string) => {
     // Masters and Dashboard tabs require PIN (manager or admin)
@@ -65,7 +68,7 @@ export default function Plant() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/plant">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>
