@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useDprs } from "@/hooks/use-dprs";
 import { 
   Plus, 
@@ -37,7 +37,8 @@ export default function SiteDashboard() {
   
   const printRef = useRef<HTMLDivElement>(null);
   
-  const isFromPortal = new URLSearchParams(window.location.search).get("origin") === "portal";
+  const searchString = useSearch();
+  const isFromPortal = new URLSearchParams(searchString).get("origin") === "portal";
   const backLink = isFromPortal ? "/" : "/site";
   
   const { data: allDprs } = useDprs({});

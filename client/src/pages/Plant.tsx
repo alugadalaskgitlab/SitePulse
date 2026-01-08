@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
@@ -29,7 +29,8 @@ export default function Plant() {
   const { toast } = useToast();
   const { setAccess } = useAccess();
   
-  const isFromPortal = new URLSearchParams(window.location.search).get("origin") === "portal";
+  const searchString = useSearch();
+  const isFromPortal = new URLSearchParams(searchString).get("origin") === "portal";
   const backLink = isFromPortal ? "/" : "/plant";
 
   const handleTabChange = (tab: string) => {
