@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2, Fuel, Home } from "lucide-react";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,8 @@ export default function SiteReport() {
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { toast } = useToast();
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/site/dashboard");
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [authenticatedRole, setAuthenticatedRole] = useState<"manager" | "admin" | null>(null);
@@ -49,7 +52,7 @@ export default function SiteReport() {
         title: "Report Cloned",
         description: "A new version has been created. Redirecting...",
       });
-      setLocation(`/site/report/${newDpr.id}`);
+      setLocation(appendOrigin(`/site/report/${newDpr.id}`));
     },
     onError: () => {
       toast({
@@ -70,7 +73,7 @@ export default function SiteReport() {
         title: "Report Deleted",
         description: "The report has been deleted.",
       });
-      setLocation("/site");
+      setLocation(backLink);
     },
     onError: () => {
       toast({
@@ -101,7 +104,7 @@ export default function SiteReport() {
       // Store PIN and role in sessionStorage (not exposed in URL)
       sessionStorage.setItem(`edit_pin_${id}`, authenticatedPin);
       sessionStorage.setItem(`auth_role_${id}`, authenticatedRole);
-      setLocation(`/site/edit/${id}`);
+      setLocation(appendOrigin(`/site/edit/${id}`));
     }
   };
 
@@ -178,7 +181,7 @@ export default function SiteReport() {
       {/* Header Actions */}
       <div className="flex items-center justify-between print:hidden flex-col md:flex-row gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/site/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

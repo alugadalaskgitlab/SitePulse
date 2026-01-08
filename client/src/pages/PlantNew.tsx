@@ -6,6 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Trash2, ChevronLeft, Factory, Package } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +15,8 @@ import { createPlantReportRequestSchema, type CreatePlantReportRequest } from "@
 export default function PlantNew() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
 
   const form = useForm<CreatePlantReportRequest>({
     resolver: zodResolver(createPlantReportRequestSchema),
@@ -32,7 +35,7 @@ export default function PlantNew() {
     onSuccess: () => {
       toast({ title: "Plant report created successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/plant'] });
-      setLocation("/plant");
+      setLocation(appendOrigin("/plant/dashboard"));
     },
     onError: () => {
       toast({ title: "Failed to create plant report", variant: "destructive" });
@@ -47,7 +50,7 @@ export default function PlantNew() {
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/plant/dashboard">
+        <Link href={backLink}>
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -95,7 +98,7 @@ export default function PlantNew() {
 
           {/* Submit */}
           <div className="flex gap-4 justify-end">
-            <Link href="/plant/dashboard">
+            <Link href={backLink}>
               <Button type="button" variant="outline" data-testid="button-cancel">Cancel</Button>
             </Link>
             <Button 

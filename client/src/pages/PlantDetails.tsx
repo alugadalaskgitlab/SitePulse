@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ChevronLeft, Factory, Package, Trash2, Copy, Loader2, Shield, ShieldCheck, Edit } from "lucide-react";
@@ -19,6 +20,8 @@ export default function PlantDetails() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { access, canEdit, canDelete } = useAccess();
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");
@@ -45,7 +48,7 @@ export default function PlantDetails() {
         description: "A new copy has been created for editing.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/plant"] });
-      setLocation(`/plant/${data.id}`);
+      setLocation(appendOrigin(`/plant/${data.id}`));
     },
     onError: () => {
       toast({
@@ -66,7 +69,7 @@ export default function PlantDetails() {
         description: "The plant report has been deleted.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/plant"] });
-      setLocation("/plant");
+      setLocation(appendOrigin("/plant/dashboard"));
     },
     onError: () => {
       toast({
@@ -144,7 +147,7 @@ export default function PlantDetails() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">Plant report not found.</p>
-        <Link href="/plant/dashboard">
+        <Link href={backLink}>
           <Button variant="outline" className="mt-4">Back to Plant Reports</Button>
         </Link>
       </div>
@@ -166,7 +169,7 @@ export default function PlantDetails() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/plant/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

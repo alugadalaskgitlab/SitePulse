@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Trash2, Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +87,8 @@ function calculateLengthFromChainage(from: string, to: string): number | null {
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
 
   const [header, setHeader] = useState({
@@ -220,7 +223,7 @@ export default function SiteEntry() {
         title: "Report Saved Successfully",
         description: "Your site report has been submitted.",
       });
-      setLocation(`/site/success/${data.id}`);
+      setLocation(appendOrigin(`/site/success/${data.id}`));
     },
     onError: () => {
       toast({
@@ -282,7 +285,7 @@ export default function SiteEntry() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/site")} data-testid="button-back">
+        <Button variant="ghost" size="icon" onClick={() => setLocation(backLink)} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />
         </Button>
         <div>
@@ -850,7 +853,7 @@ export default function SiteEntry() {
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-4 pt-4">
-        <Button variant="outline" onClick={() => setLocation("/site")} data-testid="button-cancel">
+        <Button variant="outline" onClick={() => setLocation(backLink)} data-testid="button-cancel">
           Cancel
         </Button>
         <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -22,6 +23,8 @@ import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
+  const { getBackLink } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -495,7 +498,7 @@ export default function PlantMaterialReceipts() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/plant/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

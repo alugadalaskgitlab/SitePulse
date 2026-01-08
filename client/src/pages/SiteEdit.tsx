@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useLocation, useRoute } from "wouter";
+import { useLocation, useRoute, Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Trash2, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,7 +87,9 @@ export default function SiteEdit() {
   const [, params] = useRoute("/site/edit/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { getBackLink, appendOrigin } = useOrigin();
   const id = parseInt(params?.id || "0");
+  const backToReport = appendOrigin(`/site/report/${id}`);
 
   // Get PIN and role from sessionStorage (set by SiteReport before navigating)
   // Keep credentials in sessionStorage until successful save to handle page refresh
@@ -209,7 +212,7 @@ export default function SiteEdit() {
         description: "Your edited version has been saved successfully.",
       });
       // Redirect to the new version's report
-      setLocation(`/site/report/${newVersion.id}`);
+      setLocation(appendOrigin(`/site/report/${newVersion.id}`));
     },
     onError: (error: any) => {
       toast({
@@ -322,7 +325,7 @@ export default function SiteEdit() {
     return (
       <div className="p-20 text-center">
         <p className="text-muted-foreground mb-4">Authorization required to edit this report.</p>
-        <Button onClick={() => setLocation(`/site/report/${id}`)} data-testid="button-back-to-report">
+        <Button onClick={() => setLocation(backToReport)} data-testid="button-back-to-report">
           Back to Report
         </Button>
       </div>
@@ -333,7 +336,7 @@ export default function SiteEdit() {
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => setLocation(`/site/report/${id}`)} data-testid="button-back">
+          <Button variant="ghost" size="icon" onClick={() => setLocation(backToReport)} data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
@@ -881,7 +884,7 @@ export default function SiteEdit() {
       </Card>
 
       <div className="flex justify-end gap-4 pt-4">
-        <Button variant="outline" onClick={() => setLocation(`/site/report/${id}`)} data-testid="button-cancel">
+        <Button variant="outline" onClick={() => setLocation(backToReport)} data-testid="button-cancel">
           Cancel
         </Button>
         <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save-bottom">

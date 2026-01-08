@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +21,8 @@ import { DEFAULT_LDO_NORM } from "@shared/schema";
 
 export default function PlantLdoLogs() {
   const { toast } = useToast();
+  const { getBackLink } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   
@@ -347,7 +350,7 @@ export default function PlantLdoLogs() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/plant/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

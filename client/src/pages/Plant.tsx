@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
@@ -29,9 +30,8 @@ export default function Plant() {
   const { toast } = useToast();
   const { setAccess } = useAccess();
   
-  const searchString = useSearch();
-  const isFromPortal = new URLSearchParams(searchString).get("origin") === "portal";
-  const backLink = isFromPortal ? "/" : "/plant";
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/plant");
 
   const handleTabChange = (tab: string) => {
     // Masters and Dashboard tabs require PIN (manager or admin)
@@ -156,9 +156,10 @@ export default function Plant() {
 }
 
 function OperationsTab() {
+  const { appendOrigin } = useOrigin();
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Link href="/plant/material-receipts">
+      <Link href={appendOrigin("/plant/material-receipts")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -173,7 +174,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href="/plant/dispatches">
+      <Link href={appendOrigin("/plant/dispatches")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -188,7 +189,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href="/plant/equipment-usage">
+      <Link href={appendOrigin("/plant/equipment-usage")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
@@ -207,9 +208,10 @@ function OperationsTab() {
 }
 
 function StockDetailsTab() {
+  const { appendOrigin } = useOrigin();
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <Link href="/plant/stock">
+      <Link href={appendOrigin("/plant/stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">

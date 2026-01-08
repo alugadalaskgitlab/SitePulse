@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDprs, useExportDprs } from "@/hooks/use-dprs";
 import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { 
   Plus, 
   Download, 
@@ -27,6 +28,7 @@ export default function Dashboard() {
     engineer: "",
   });
   const { access, setAccess } = useAccess();
+  const { appendOrigin } = useOrigin();
   const [showPinModal, setShowPinModal] = useState<"manager" | "admin" | null>(null);
   
   const { data: dprs, isLoading } = useDprs(filters);
@@ -90,7 +92,7 @@ export default function Dashboard() {
               <Plus className="w-4 h-4" /> New Report
             </Button>
           </Link>
-          <Link href="/plant/dashboard">
+          <Link href={appendOrigin("/plant/dashboard")}>
             <Button variant="outline" className="gap-2">
               <Factory className="w-4 h-4" /> Plant Module
             </Button>

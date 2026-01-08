@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -22,6 +23,8 @@ const MIX_TYPES = ["BC", "DBM"];
 
 export default function PlantDispatches() {
   const { toast } = useToast();
+  const { getBackLink } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -509,7 +512,7 @@ export default function PlantDispatches() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/plant/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

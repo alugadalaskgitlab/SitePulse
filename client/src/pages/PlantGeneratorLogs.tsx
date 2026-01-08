@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Zap, Loader2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -19,6 +20,8 @@ import type { GeneratorLog } from "@shared/schema";
 
 export default function PlantGeneratorLogs() {
   const { toast } = useToast();
+  const { getBackLink } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   
   // PIN auth state for per-action authentication
@@ -371,7 +374,7 @@ export default function PlantGeneratorLogs() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/plant/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

@@ -2,10 +2,13 @@ import { Link, useRoute } from "wouter";
 import { CheckCircle, Plus, Home, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useOrigin } from "@/hooks/use-origin";
 
 export default function SiteSuccess() {
   const [, params] = useRoute("/site/success/:id");
   const reportId = params?.id;
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/site/dashboard");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -22,20 +25,20 @@ export default function SiteSuccess() {
           
           <div className="flex flex-col gap-3">
             {reportId && (
-              <Link href={`/site/report/${reportId}`}>
+              <Link href={appendOrigin(`/site/report/${reportId}`)}>
                 <Button variant="outline" className="w-full gap-2" data-testid="button-view-report">
                   <Eye className="w-4 h-4" />
                   View Report
                 </Button>
               </Link>
             )}
-            <Link href="/site/new">
+            <Link href={appendOrigin("/site/new")}>
               <Button className="w-full gap-2" data-testid="button-create-new">
                 <Plus className="w-4 h-4" />
                 Create New Site Report
               </Button>
             </Link>
-            <Link href="/">
+            <Link href={backLink}>
               <Button variant="ghost" className="w-full gap-2" data-testid="button-back-home">
                 <Home className="w-4 h-4" />
                 Back to Home

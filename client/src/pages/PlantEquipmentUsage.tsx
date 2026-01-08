@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +22,8 @@ import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
+  const { getBackLink } = useOrigin();
+  const backLink = getBackLink("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -494,7 +497,7 @@ export default function PlantEquipmentUsage() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/plant/dashboard">
+          <Link href={backLink}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

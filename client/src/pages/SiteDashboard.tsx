@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from "react";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
 import { useDprs } from "@/hooks/use-dprs";
+import { useOrigin } from "@/hooks/use-origin";
 import { 
   Plus, 
   ChevronLeft, 
@@ -37,9 +38,8 @@ export default function SiteDashboard() {
   
   const printRef = useRef<HTMLDivElement>(null);
   
-  const searchString = useSearch();
-  const isFromPortal = new URLSearchParams(searchString).get("origin") === "portal";
-  const backLink = isFromPortal ? "/" : "/site";
+  const { getBackLink, appendOrigin } = useOrigin();
+  const backLink = getBackLink("/site");
   
   const { data: allDprs } = useDprs({});
   const { data: dprs, isLoading } = useDprs(filters);
@@ -160,7 +160,7 @@ export default function SiteDashboard() {
             <Printer className="w-4 h-4" />
             Print
           </Button>
-          <Link href="/site/new">
+          <Link href={appendOrigin("/site/new")}>
             <Button className="gap-2" data-testid="button-new-report">
               <Plus className="w-4 h-4" />
               New Report
@@ -250,7 +250,7 @@ export default function SiteDashboard() {
                   : "Get started by creating your first site report."}
               </p>
               {!hasActiveFilters && (
-                <Link href="/site/new">
+                <Link href={appendOrigin("/site/new")}>
                   <Button className="gap-2">
                     <Plus className="w-4 h-4" />
                     Create Report
@@ -265,7 +265,7 @@ export default function SiteDashboard() {
               Showing {dprs.length} report{dprs.length !== 1 ? 's' : ''}
             </div>
             {dprs.map((dpr: any) => (
-              <Link key={dpr.id} href={`/site/report/${dpr.id}`}>
+              <Link key={dpr.id} href={appendOrigin(`/site/report/${dpr.id}`)}>
                 <Card className="hover-elevate cursor-pointer transition-all" data-testid={`card-report-${dpr.id}`}>
                   <CardContent className="p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 flex-1 min-w-0">
