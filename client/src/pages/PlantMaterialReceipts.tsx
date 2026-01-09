@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useAutosave } from "@/hooks/use-autosave";
+import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -52,6 +54,43 @@ export default function PlantMaterialReceipts() {
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
 
+  interface ReceiptFormData {
+    date: string;
+    time: string;
+    partyId: string;
+    isPlantCommon: boolean;
+    materialId: string;
+    quantity: string;
+    uom: string;
+    supplier: string;
+    vehicleNumber: string;
+    challanNumber: string;
+  }
+
+  const formData = useMemo<ReceiptFormData>(() => ({
+    date, time, partyId, isPlantCommon, materialId, quantity, uom, supplier, vehicleNumber, challanNumber
+  }), [date, time, partyId, isPlantCommon, materialId, quantity, uom, supplier, vehicleNumber, challanNumber]);
+
+  const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
+    setDate(data.date);
+    setTime(data.time);
+    setPartyId(data.partyId);
+    setIsPlantCommon(data.isPlantCommon);
+    setMaterialId(data.materialId);
+    setQuantity(data.quantity);
+    setUom(data.uom);
+    setSupplier(data.supplier);
+    setVehicleNumber(data.vehicleNumber);
+    setChallanNumber(data.challanNumber);
+  }, []);
+
+  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
+    formKey: "plant-material-receipt-new",
+    data: formData,
+    enabled: dialogOpen && !editingReceipt,
+    onRestore: handleRestoreDraft,
+  });
+
   const { data: receipts, isLoading } = useQuery<MaterialReceipt[]>({
     queryKey: ["/api/plant-module/material-receipts"],
   });
@@ -67,7 +106,8 @@ export default function PlantMaterialReceipts() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest("POST", "/api/plant-module/material-receipts", data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });

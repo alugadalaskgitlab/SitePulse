@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useAutosave } from "@/hooks/use-autosave";
+import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -51,6 +53,39 @@ export default function PlantDispatches() {
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
 
+  interface DispatchFormData {
+    date: string;
+    time: string;
+    partyId: string;
+    mixTemplateId: string;
+    truckNumber: string;
+    loadWeight: string;
+    deliveryLocation: string;
+    actualBitumenPercent: string;
+  }
+
+  const formData = useMemo<DispatchFormData>(() => ({
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent]);
+
+  const handleRestoreDraft = useCallback((data: DispatchFormData) => {
+    setDate(data.date);
+    setTime(data.time);
+    setPartyId(data.partyId);
+    setMixTemplateId(data.mixTemplateId);
+    setTruckNumber(data.truckNumber);
+    setLoadWeight(data.loadWeight);
+    setDeliveryLocation(data.deliveryLocation);
+    setActualBitumenPercent(data.actualBitumenPercent);
+  }, []);
+
+  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
+    formKey: "plant-dispatch-new",
+    data: formData,
+    enabled: dialogOpen && !editingDispatch,
+    onRestore: handleRestoreDraft,
+  });
+
   const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
     queryKey: ["/api/plant-module/dispatches"],
   });
@@ -66,7 +101,8 @@ export default function PlantDispatches() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest("POST", "/api/plant-module/dispatches", data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
@@ -532,6 +568,13 @@ export default function PlantDispatches() {
             <DialogHeader>
               <DialogTitle>{editingDispatch ? "Edit Dispatch" : "Record Production Dispatch"}</DialogTitle>
             </DialogHeader>
+            {hasDraft && !editingDispatch && (
+              <DraftRestoreBanner
+                draftAge={draftAge}
+                onRestore={restoreDraft}
+                onDiscard={discardDraft}
+              />
+            )}
             <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>

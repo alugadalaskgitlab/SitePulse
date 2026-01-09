@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useLocation, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useAutosave } from "@/hooks/use-autosave";
+import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Trash2, Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +62,14 @@ const MATERIAL_OPTIONS = ["WMM", "GSB", "6MM", "10MM", "20MM", "40MM", "Dust", "
 const MATERIAL_UOM = ["Tons", "Liters", "Bags", "Trips", "CFT"];
 const MATERIAL_TYPE_OPTIONS = ["Received", "Issued", "Consumed"];
 
+interface SiteEntryFormData {
+  header: { date: string; site: string; engineer: string };
+  progress: ProgressEntry[];
+  equipment: EquipmentEntry[];
+  labour: LabourEntry[];
+  materials: MaterialEntry[];
+}
+
 // Helper to parse chainage like "0+500" or "1+250" or decimal km like "5.2" into meters
 function parseChainageToMeters(chainage: string): number | null {
   if (!chainage) return null;
@@ -112,6 +122,28 @@ export default function SiteEntry() {
   const [materials, setMaterials] = useState<MaterialEntry[]>([
     { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }
   ]);
+
+  const formData = useMemo<SiteEntryFormData>(() => ({
+    header,
+    progress,
+    equipment,
+    labour,
+    materials,
+  }), [header, progress, equipment, labour, materials]);
+
+  const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
+    setHeader(data.header);
+    setProgress(data.progress);
+    setEquipment(data.equipment);
+    setLabour(data.labour);
+    setMaterials(data.materials);
+  }, []);
+
+  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
+    formKey: "site-entry-new",
+    data: formData,
+    onRestore: handleRestoreDraft,
+  });
 
   // Calculate length from chainage if not manually entered
   const getEffectiveLength = (entry: ProgressEntry): number | null => {
@@ -217,7 +249,8 @@ export default function SiteEntry() {
       });
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       toast({
         title: "Report Saved Successfully",
@@ -293,6 +326,14 @@ export default function SiteEntry() {
           <p className="text-muted-foreground text-sm">Fill in the daily progress details</p>
         </div>
       </div>
+
+      {hasDraft && (
+        <DraftRestoreBanner
+          draftAge={draftAge}
+          onRestore={restoreDraft}
+          onDiscard={discardDraft}
+        />
+      )}
 
       {/* Header Section */}
       <Card>
