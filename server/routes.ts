@@ -37,6 +37,21 @@ export async function registerRoutes(
     }
   });
 
+  // Get site material logs with filters (for Material Summary feature)
+  app.get("/api/dprs/material-summary", async (req, res) => {
+    try {
+      const filters = {
+        site: req.query.site as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const materialLogs = await storage.getSiteMaterialLogs(filters);
+      res.json(materialLogs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch material summary" });
+    }
+  });
+
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
     const dpr = await storage.getDpr(Number(req.params.id));

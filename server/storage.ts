@@ -139,6 +139,22 @@ export interface IStorage {
   
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }>;
+  
+  // Site Material Logs Summary
+  getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
+    id: number;
+    dprId: number;
+    date: string;
+    site: string;
+    type: string;
+    material: string;
+    quantity: number | null;
+    uom: string | null;
+    supplier: string | null;
+    vehicleNumber: string | null;
+    location: string | null;
+    receiptNumber: string | null;
+  }[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -1743,6 +1759,49 @@ export class DatabaseStorage implements IStorage {
     }
     
     return { updated, errors };
+  }
+
+  async getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
+    id: number;
+    dprId: number;
+    date: string;
+    site: string;
+    type: string;
+    material: string;
+    quantity: number | null;
+    uom: string | null;
+    supplier: string | null;
+    vehicleNumber: string | null;
+    location: string | null;
+    receiptNumber: string | null;
+  }[]> {
+    let dprConditions = [];
+    
+    if (filters?.site) dprConditions.push(eq(dprs.site, filters.site));
+    if (filters?.dateFrom) dprConditions.push(gte(dprs.date, filters.dateFrom));
+    if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
+
+    const result = await db
+      .select({
+        id: materialLogs.id,
+        dprId: materialLogs.dprId,
+        date: dprs.date,
+        site: dprs.site,
+        type: materialLogs.type,
+        material: materialLogs.material,
+        quantity: materialLogs.quantity,
+        uom: materialLogs.uom,
+        supplier: materialLogs.supplier,
+        vehicleNumber: materialLogs.vehicleNumber,
+        location: materialLogs.location,
+        receiptNumber: materialLogs.receiptNumber,
+      })
+      .from(materialLogs)
+      .innerJoin(dprs, eq(materialLogs.dprId, dprs.id))
+      .where(dprConditions.length > 0 ? and(...dprConditions) : undefined)
+      .orderBy(desc(dprs.date), desc(materialLogs.id));
+
+    return result;
   }
 }
 
