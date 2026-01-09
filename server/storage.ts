@@ -1761,7 +1761,7 @@ export class DatabaseStorage implements IStorage {
     return { updated, errors };
   }
 
-  async getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
+  async getSiteMaterialLogs(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<{
     id: number;
     dprId: number;
     date: string;
@@ -1775,11 +1775,12 @@ export class DatabaseStorage implements IStorage {
     location: string | null;
     receiptNumber: string | null;
   }[]> {
-    let dprConditions: any[] = [];
+    let conditions: any[] = [];
     
-    if (filters?.site) dprConditions.push(eq(dprs.site, filters.site));
-    if (filters?.dateFrom) dprConditions.push(gte(dprs.date, filters.dateFrom));
-    if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
+    if (filters?.site) conditions.push(eq(dprs.site, filters.site));
+    if (filters?.material) conditions.push(eq(materialLogs.material, filters.material));
+    if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
 
     const query = db
       .select({
@@ -1799,8 +1800,8 @@ export class DatabaseStorage implements IStorage {
       .from(materialLogs)
       .innerJoin(dprs, eq(materialLogs.dprId, dprs.id));
 
-    const result = dprConditions.length > 0
-      ? await query.where(and(...dprConditions)).orderBy(desc(dprs.date), desc(materialLogs.id))
+    const result = conditions.length > 0
+      ? await query.where(and(...conditions)).orderBy(desc(dprs.date), desc(materialLogs.id))
       : await query.orderBy(desc(dprs.date), desc(materialLogs.id));
 
     return result;

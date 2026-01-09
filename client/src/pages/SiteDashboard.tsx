@@ -59,6 +59,7 @@ export default function SiteDashboard() {
   
   const [materialFilters, setMaterialFilters] = useState({
     site: "",
+    material: "",
     dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"),
     dateTo: format(new Date(), "yyyy-MM-dd"),
   });
@@ -71,19 +72,39 @@ export default function SiteDashboard() {
   const { data: allDprs } = useDprs({});
   const { data: dprs, isLoading } = useDprs(filters);
 
-  const { data: materialLogs, isLoading: materialsLoading } = useQuery<SiteMaterialLog[]>({
-    queryKey: ["/api/dprs/material-summary", materialFilters],
+  // Fetch all material logs for the date range and site (without material filter) to get the unique materials list
+  const baseFilters = useMemo(() => ({
+    site: materialFilters.site,
+    dateFrom: materialFilters.dateFrom,
+    dateTo: materialFilters.dateTo,
+  }), [materialFilters.site, materialFilters.dateFrom, materialFilters.dateTo]);
+
+  const { data: allMaterialLogs, isLoading: materialsLoading } = useQuery<SiteMaterialLog[]>({
+    queryKey: ["/api/dprs/material-summary", baseFilters],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (materialFilters.site) params.set("site", materialFilters.site);
-      if (materialFilters.dateFrom) params.set("dateFrom", materialFilters.dateFrom);
-      if (materialFilters.dateTo) params.set("dateTo", materialFilters.dateTo);
+      if (baseFilters.site) params.set("site", baseFilters.site);
+      if (baseFilters.dateFrom) params.set("dateFrom", baseFilters.dateFrom);
+      if (baseFilters.dateTo) params.set("dateTo", baseFilters.dateTo);
       const res = await fetch(`/api/dprs/material-summary?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch material summary");
       return res.json();
     },
     enabled: activeTab === "materials",
   });
+  
+  // Derive filtered logs and unique materials from the single query
+  const materialLogs = useMemo(() => {
+    if (!allMaterialLogs) return undefined;
+    if (!materialFilters.material) return allMaterialLogs;
+    return allMaterialLogs.filter(log => log.material === materialFilters.material);
+  }, [allMaterialLogs, materialFilters.material]);
+  
+  const uniqueMaterials = useMemo(() => {
+    if (!allMaterialLogs) return [];
+    const materials = Array.from(new Set(allMaterialLogs.map((log) => log.material).filter(Boolean)));
+    return materials.sort();
+  }, [allMaterialLogs]);
 
   const uniqueSites = useMemo(() => {
     if (!allDprs) return [];
@@ -109,13 +130,14 @@ export default function SiteDashboard() {
   const clearMaterialFilters = () => {
     setMaterialFilters({
       site: "",
+      material: "",
       dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"),
       dateTo: format(new Date(), "yyyy-MM-dd"),
     });
   };
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo;
-  const hasMaterialFilters = materialFilters.site || materialFilters.dateFrom || materialFilters.dateTo;
+  const hasMaterialFilters = materialFilters.site || materialFilters.material || materialFilters.dateFrom || materialFilters.dateTo;
 
   const materialTotals = useMemo(() => {
     if (!materialLogs) return { received: new Map(), issued: new Map() };
@@ -395,7 +417,7 @@ export default function SiteDashboard() {
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs">Date From</Label>
                   <Input
@@ -427,6 +449,23 @@ export default function SiteDashboard() {
                       <SelectItem value="all">All Sites</SelectItem>
                       {uniqueSites.map((site) => (
                         <SelectItem key={site} value={site}>{site}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Material</Label>
+                  <Select 
+                    value={materialFilters.material} 
+                    onValueChange={(value) => setMaterialFilters({ ...materialFilters, material: value === "all" ? "" : value })}
+                  >
+                    <SelectTrigger data-testid="select-material-type">
+                      <SelectValue placeholder="All Materials" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Materials</SelectItem>
+                      {uniqueMaterials.map((material) => (
+                        <SelectItem key={material} value={material}>{material}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

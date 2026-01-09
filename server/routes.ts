@@ -42,6 +42,7 @@ export async function registerRoutes(
     try {
       const filters = {
         site: req.query.site as string | undefined,
+        material: req.query.material as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
       };
