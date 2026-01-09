@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useAutosave } from "@/hooks/use-autosave";
+import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +24,8 @@ import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
-  const { getBackLink } = useOrigin();
-  const backLink = getBackLink("/plant/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -37,6 +39,37 @@ export default function PlantEquipmentUsage() {
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [userModifiedOpening, setUserModifiedOpening] = useState(false);
+
+  interface EquipmentFormData {
+    date: string;
+    equipmentId: string;
+    openingReading: string;
+    closingReading: string;
+    openingDiesel: string;
+    dieselIssued: string;
+    remarks: string;
+  }
+
+  const formData = useMemo<EquipmentFormData>(() => ({
+    date, equipmentId, openingReading, closingReading, openingDiesel, dieselIssued, remarks
+  }), [date, equipmentId, openingReading, closingReading, openingDiesel, dieselIssued, remarks]);
+
+  const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
+    setDate(data.date);
+    setEquipmentId(data.equipmentId);
+    setOpeningReading(data.openingReading);
+    setClosingReading(data.closingReading);
+    setOpeningDiesel(data.openingDiesel);
+    setDieselIssued(data.dieselIssued);
+    setRemarks(data.remarks);
+  }, []);
+
+  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<EquipmentFormData>({
+    formKey: "plant-equipment-usage-new",
+    data: formData,
+    enabled: dialogOpen && !editingUsage,
+    onRestore: handleRestoreDraft,
+  });
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -58,7 +91,8 @@ export default function PlantEquipmentUsage() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest("POST", "/api/plant-module/equipment-usage", data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       setDialogOpen(false);
       resetForm();
@@ -513,10 +547,17 @@ export default function PlantEquipmentUsage() {
               <Plus className="w-4 h-4" /> New Entry
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}</DialogTitle>
             </DialogHeader>
+            {hasDraft && !editingUsage && (
+              <DraftRestoreBanner
+                draftAge={draftAge}
+                onRestore={restoreDraft}
+                onDiscard={discardDraft}
+              />
+            )}
             <div className="space-y-4 pt-4">
               <div>
                 <Label>Date</Label>

@@ -23,8 +23,8 @@ export default function SiteReport() {
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { toast } = useToast();
-  const { getBackLink, appendOrigin } = useOrigin();
-  const backLink = getBackLink("/site/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/site/dashboard");
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [authenticatedRole, setAuthenticatedRole] = useState<"manager" | "admin" | null>(null);

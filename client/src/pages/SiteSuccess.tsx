@@ -7,8 +7,8 @@ import { useOrigin } from "@/hooks/use-origin";
 export default function SiteSuccess() {
   const [, params] = useRoute("/site/success/:id");
   const reportId = params?.id;
-  const { getBackLink, appendOrigin } = useOrigin();
-  const backLink = getBackLink("/site/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/site/dashboard");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

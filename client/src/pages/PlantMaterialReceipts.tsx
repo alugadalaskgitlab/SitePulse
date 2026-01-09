@@ -25,8 +25,8 @@ import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
-  const { getBackLink } = useOrigin();
-  const backLink = getBackLink("/plant/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -558,6 +558,13 @@ export default function PlantMaterialReceipts() {
             <DialogHeader>
               <DialogTitle>{editingReceipt ? "Edit Receipt" : "Record Material Receipt"}</DialogTitle>
             </DialogHeader>
+            {hasDraft && !editingReceipt && (
+              <DraftRestoreBanner
+                draftAge={draftAge}
+                onRestore={restoreDraft}
+                onDiscard={discardDraft}
+              />
+            )}
             <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>

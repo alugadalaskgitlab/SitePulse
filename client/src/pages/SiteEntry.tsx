@@ -97,8 +97,8 @@ function calculateLengthFromChainage(from: string, to: string): number | null {
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { getBackLink, appendOrigin } = useOrigin();
-  const backLink = getBackLink("/site/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
 
   const [header, setHeader] = useState({

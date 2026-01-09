@@ -21,8 +21,8 @@ import { DEFAULT_LDO_NORM } from "@shared/schema";
 
 export default function PlantLdoLogs() {
   const { toast } = useToast();
-  const { getBackLink } = useOrigin();
-  const backLink = getBackLink("/plant/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   

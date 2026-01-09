@@ -20,8 +20,8 @@ import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 
 export default function PlantStock() {
   const { toast } = useToast();
-  const { getBackLink } = useOrigin();
-  const backLink = getBackLink("/plant/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedPartyId, setSelectedPartyId] = useState<string>("all");

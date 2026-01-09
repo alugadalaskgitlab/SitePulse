@@ -25,8 +25,8 @@ const MIX_TYPES = ["BC", "DBM"];
 
 export default function PlantDispatches() {
   const { toast } = useToast();
-  const { getBackLink } = useOrigin();
-  const backLink = getBackLink("/plant/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);

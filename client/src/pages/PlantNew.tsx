@@ -15,8 +15,8 @@ import { createPlantReportRequestSchema, type CreatePlantReportRequest } from "@
 export default function PlantNew() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { getBackLink, appendOrigin } = useOrigin();
-  const backLink = getBackLink("/plant/dashboard");
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
 
   const form = useForm<CreatePlantReportRequest>({
     resolver: zodResolver(createPlantReportRequestSchema),
