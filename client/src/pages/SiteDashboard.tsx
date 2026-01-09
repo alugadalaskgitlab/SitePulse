@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useDprs } from "@/hooks/use-dprs";
 import { useOrigin } from "@/hooks/use-origin";
 import { 
@@ -13,12 +14,16 @@ import {
   HardHat,
   Printer,
   Filter,
-  X
+  X,
+  Package
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -26,14 +31,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
+
+interface SiteMaterialLog {
+  id: number;
+  dprId: number;
+  date: string;
+  site: string;
+  type: string;
+  material: string;
+  quantity: number | null;
+  uom: string | null;
+  supplier: string | null;
+  vehicleNumber: string | null;
+  location: string | null;
+  receiptNumber: string | null;
+}
 
 export default function SiteDashboard() {
+  const [activeTab, setActiveTab] = useState("reports");
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
     dateFrom: "",
     dateTo: "",
+  });
+  
+  const [materialFilters, setMaterialFilters] = useState({
+    site: "",
+    dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+    dateTo: format(new Date(), "yyyy-MM-dd"),
   });
   
   const printRef = useRef<HTMLDivElement>(null);
@@ -43,6 +70,20 @@ export default function SiteDashboard() {
   
   const { data: allDprs } = useDprs({});
   const { data: dprs, isLoading } = useDprs(filters);
+
+  const { data: materialLogs, isLoading: materialsLoading } = useQuery<SiteMaterialLog[]>({
+    queryKey: ["/api/dprs/material-summary", materialFilters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (materialFilters.site) params.set("site", materialFilters.site);
+      if (materialFilters.dateFrom) params.set("dateFrom", materialFilters.dateFrom);
+      if (materialFilters.dateTo) params.set("dateTo", materialFilters.dateTo);
+      const res = await fetch(`/api/dprs/material-summary?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch material summary");
+      return res.json();
+    },
+    enabled: activeTab === "materials",
+  });
 
   const uniqueSites = useMemo(() => {
     if (!allDprs) return [];
@@ -65,7 +106,33 @@ export default function SiteDashboard() {
     });
   };
 
+  const clearMaterialFilters = () => {
+    setMaterialFilters({
+      site: "",
+      dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+      dateTo: format(new Date(), "yyyy-MM-dd"),
+    });
+  };
+
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo;
+  const hasMaterialFilters = materialFilters.site || materialFilters.dateFrom || materialFilters.dateTo;
+
+  const materialTotals = useMemo(() => {
+    if (!materialLogs) return { received: new Map(), issued: new Map() };
+    
+    const received = new Map<string, { quantity: number; uom: string }>();
+    const issued = new Map<string, { quantity: number; uom: string }>();
+    
+    for (const log of materialLogs) {
+      const map = log.type === "Received" ? received : issued;
+      const key = `${log.material}-${log.uom}`;
+      const existing = map.get(key) || { quantity: 0, uom: log.uom || "" };
+      existing.quantity += log.quantity || 0;
+      map.set(key, existing);
+    }
+    
+    return { received, issued };
+  }, [materialLogs]);
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -156,146 +223,322 @@ export default function SiteDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
-            <Printer className="w-4 h-4" />
-            Print
-          </Button>
-          <Link href={appendOrigin("/site/new")}>
-            <Button className="gap-2" data-testid="button-new-report">
-              <Plus className="w-4 h-4" />
-              New Report
-            </Button>
-          </Link>
+          {activeTab === "reports" && (
+            <>
+              <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
+                <Printer className="w-4 h-4" />
+                Print
+              </Button>
+              <Link href={appendOrigin("/site/new")}>
+                <Button className="gap-2" data-testid="button-new-report">
+                  <Plus className="w-4 h-4" />
+                  New Report
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Filter className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Filters</span>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto gap-1" data-testid="button-clear-filters">
-                <X className="w-3 h-3" />
-                Clear
-              </Button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label className="text-xs">Date From</Label>
-              <Input
-                type="date"
-                value={filters.dateFrom}
-                onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                data-testid="input-date-from"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Date To</Label>
-              <Input
-                type="date"
-                value={filters.dateTo}
-                onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                data-testid="input-date-to"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Site</Label>
-              <Select value={filters.site} onValueChange={(value) => setFilters({ ...filters, site: value === "all" ? "" : value })}>
-                <SelectTrigger data-testid="select-site">
-                  <SelectValue placeholder="All Sites" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sites</SelectItem>
-                  {uniqueSites.map((site) => (
-                    <SelectItem key={site} value={site}>{site}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Engineer</Label>
-              <Select value={filters.engineer} onValueChange={(value) => setFilters({ ...filters, engineer: value === "all" ? "" : value })}>
-                <SelectTrigger data-testid="select-engineer">
-                  <SelectValue placeholder="All Engineers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Engineers</SelectItem>
-                  {uniqueEngineers.map((engineer) => (
-                    <SelectItem key={engineer} value={engineer}>{engineer}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="reports" className="gap-2" data-testid="tab-reports">
+            <Calendar className="w-4 h-4" />
+            Reports
+          </TabsTrigger>
+          <TabsTrigger value="materials" className="gap-2" data-testid="tab-materials">
+            <Package className="w-4 h-4" />
+            Material Log
+          </TabsTrigger>
+        </TabsList>
 
-      <div ref={printRef}>
-        {isLoading ? (
-          <div className="flex justify-center p-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : !dprs || dprs.length === 0 ? (
+        <TabsContent value="reports" className="space-y-6 mt-6">
           <Card>
-            <CardContent className="p-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                <Calendar className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No Reports Found</h3>
-              <p className="text-muted-foreground mb-6">
-                {hasActiveFilters 
-                  ? "No reports match your filter criteria." 
-                  : "Get started by creating your first site report."}
-              </p>
-              {!hasActiveFilters && (
-                <Link href={appendOrigin("/site/new")}>
-                  <Button className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    Create Report
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Filters</span>
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto gap-1" data-testid="button-clear-filters">
+                    <X className="w-3 h-3" />
+                    Clear
                   </Button>
-                </Link>
-              )}
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Date From</Label>
+                  <Input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                    data-testid="input-date-from"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Date To</Label>
+                  <Input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                    data-testid="input-date-to"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Site</Label>
+                  <Select value={filters.site} onValueChange={(value) => setFilters({ ...filters, site: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-site">
+                      <SelectValue placeholder="All Sites" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sites</SelectItem>
+                      {uniqueSites.map((site) => (
+                        <SelectItem key={site} value={site}>{site}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Engineer</Label>
+                  <Select value={filters.engineer} onValueChange={(value) => setFilters({ ...filters, engineer: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-engineer">
+                      <SelectValue placeholder="All Engineers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Engineers</SelectItem>
+                      {uniqueEngineers.map((engineer) => (
+                        <SelectItem key={engineer} value={engineer}>{engineer}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardContent>
           </Card>
-        ) : (
-          <div className="space-y-3">
-            <div className="text-sm text-muted-foreground px-1">
-              Showing {dprs.length} report{dprs.length !== 1 ? 's' : ''}
+
+          <div ref={printRef}>
+            {isLoading ? (
+              <div className="flex justify-center p-12">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : !dprs || dprs.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                    <Calendar className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No Reports Found</h3>
+                  <p className="text-muted-foreground mb-6">
+                    {hasActiveFilters 
+                      ? "No reports match your filter criteria." 
+                      : "Get started by creating your first site report."}
+                  </p>
+                  {!hasActiveFilters && (
+                    <Link href={appendOrigin("/site/new")}>
+                      <Button className="gap-2">
+                        <Plus className="w-4 h-4" />
+                        Create Report
+                      </Button>
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground px-1">
+                  Showing {dprs.length} report{dprs.length !== 1 ? 's' : ''}
+                </div>
+                {dprs.map((dpr: any) => (
+                  <Link key={dpr.id} href={appendOrigin(`/site/report/${dpr.id}`)}>
+                    <Card className="hover-elevate cursor-pointer transition-all" data-testid={`card-report-${dpr.id}`}>
+                      <CardContent className="p-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <Calendar className="w-6 h-6 text-primary" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-semibold truncate">{dpr.site}</h3>
+                            </div>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {format(new Date(dpr.date), "MMM d, yyyy")}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <HardHat className="w-3 h-3" />
+                                {dpr.engineer}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="materials" className="space-y-6 mt-6">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Filters</span>
+                {hasMaterialFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearMaterialFilters} className="ml-auto gap-1" data-testid="button-clear-material-filters">
+                    <X className="w-3 h-3" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Date From</Label>
+                  <Input
+                    type="date"
+                    value={materialFilters.dateFrom}
+                    onChange={(e) => setMaterialFilters({ ...materialFilters, dateFrom: e.target.value })}
+                    data-testid="input-material-date-from"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Date To</Label>
+                  <Input
+                    type="date"
+                    value={materialFilters.dateTo}
+                    onChange={(e) => setMaterialFilters({ ...materialFilters, dateTo: e.target.value })}
+                    data-testid="input-material-date-to"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Site</Label>
+                  <Select 
+                    value={materialFilters.site} 
+                    onValueChange={(value) => setMaterialFilters({ ...materialFilters, site: value === "all" ? "" : value })}
+                  >
+                    <SelectTrigger data-testid="select-material-site">
+                      <SelectValue placeholder="All Sites" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sites</SelectItem>
+                      {uniqueSites.map((site) => (
+                        <SelectItem key={site} value={site}>{site}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {materialsLoading ? (
+            <div className="flex justify-center p-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-            {dprs.map((dpr: any) => (
-              <Link key={dpr.id} href={appendOrigin(`/site/report/${dpr.id}`)}>
-                <Card className="hover-elevate cursor-pointer transition-all" data-testid={`card-report-${dpr.id}`}>
-                  <CardContent className="p-4 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Calendar className="w-6 h-6 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold truncate">{dpr.site}</h3>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {format(new Date(dpr.date), "MMM d, yyyy")}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <HardHat className="w-3 h-3" />
-                            {dpr.engineer}
-                          </span>
-                        </div>
-                      </div>
+          ) : !materialLogs || materialLogs.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                  <Package className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Material Logs Found</h3>
+                <p className="text-muted-foreground">
+                  No materials were recorded in the selected date range.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-green-600 dark:text-green-400 mb-3">Materials Received</h3>
+                    <div className="space-y-2">
+                      {Array.from(materialTotals.received.entries()).map(([key, value]) => {
+                        const [material] = key.split("-");
+                        return (
+                          <div key={key} className="flex justify-between items-center text-sm">
+                            <span>{material}</span>
+                            <Badge variant="secondary">{value.quantity.toFixed(2)} {value.uom}</Badge>
+                          </div>
+                        );
+                      })}
+                      {materialTotals.received.size === 0 && (
+                        <p className="text-sm text-muted-foreground">No materials received</p>
+                      )}
                     </div>
-                    <ChevronRight className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                   </CardContent>
                 </Card>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-orange-600 dark:text-orange-400 mb-3">Materials Issued</h3>
+                    <div className="space-y-2">
+                      {Array.from(materialTotals.issued.entries()).map(([key, value]) => {
+                        const [material] = key.split("-");
+                        return (
+                          <div key={key} className="flex justify-between items-center text-sm">
+                            <span>{material}</span>
+                            <Badge variant="secondary">{value.quantity.toFixed(2)} {value.uom}</Badge>
+                          </div>
+                        );
+                      })}
+                      {materialTotals.issued.size === 0 && (
+                        <p className="text-sm text-muted-foreground">No materials issued</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-sm text-muted-foreground mb-4">
+                    Showing {materialLogs.length} material log{materialLogs.length !== 1 ? 's' : ''}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Site</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Material</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead>UOM</TableHead>
+                          <TableHead>Supplier</TableHead>
+                          <TableHead>Vehicle</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {materialLogs.map((log) => (
+                          <TableRow key={log.id} data-testid={`row-material-${log.id}`}>
+                            <TableCell className="whitespace-nowrap">{format(new Date(log.date), "dd MMM")}</TableCell>
+                            <TableCell className="max-w-32 truncate">{log.site}</TableCell>
+                            <TableCell>
+                              <Badge variant={log.type === "Received" ? "default" : "secondary"}>
+                                {log.type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{log.material}</TableCell>
+                            <TableCell className="text-right">{log.quantity?.toFixed(2) || "-"}</TableCell>
+                            <TableCell>{log.uom || "-"}</TableCell>
+                            <TableCell className="max-w-24 truncate">{log.supplier || "-"}</TableCell>
+                            <TableCell>{log.vehicleNumber || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

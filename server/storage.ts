@@ -1775,13 +1775,13 @@ export class DatabaseStorage implements IStorage {
     location: string | null;
     receiptNumber: string | null;
   }[]> {
-    let dprConditions = [];
+    let dprConditions: any[] = [];
     
     if (filters?.site) dprConditions.push(eq(dprs.site, filters.site));
     if (filters?.dateFrom) dprConditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
 
-    const result = await db
+    const query = db
       .select({
         id: materialLogs.id,
         dprId: materialLogs.dprId,
@@ -1797,9 +1797,11 @@ export class DatabaseStorage implements IStorage {
         receiptNumber: materialLogs.receiptNumber,
       })
       .from(materialLogs)
-      .innerJoin(dprs, eq(materialLogs.dprId, dprs.id))
-      .where(dprConditions.length > 0 ? and(...dprConditions) : undefined)
-      .orderBy(desc(dprs.date), desc(materialLogs.id));
+      .innerJoin(dprs, eq(materialLogs.dprId, dprs.id));
+
+    const result = dprConditions.length > 0
+      ? await query.where(and(...dprConditions)).orderBy(desc(dprs.date), desc(materialLogs.id))
+      : await query.orderBy(desc(dprs.date), desc(materialLogs.id));
 
     return result;
   }
