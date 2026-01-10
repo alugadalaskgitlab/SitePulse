@@ -87,6 +87,9 @@ export default function SiteDashboard() {
     engineer: "",
     dateFrom: "",
     dateTo: "",
+    activity: "",
+    equipment: "",
+    hasDiesel: false,
   });
   
   const [materialFilters, setMaterialFilters] = useState({
@@ -102,8 +105,63 @@ export default function SiteDashboard() {
   const { getBackLink, appendOrigin } = useOrigin();
   const backLink = getBackLink("/site");
   
-  const { data: allDprs } = useDprs({});
-  const { data: dprs, isLoading } = useDprs(filters);
+  // Use detailed DPR data for advanced filtering
+  // Only send date filters to server; site/engineer/activity/equipment/diesel are filtered client-side
+  const dateFilters = useMemo(() => ({
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+  }), [filters.dateFrom, filters.dateTo]);
+  
+  const { data: dprsWithDetails, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/dprs/with-details", dateFilters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dateFilters.dateFrom) params.set("dateFrom", dateFilters.dateFrom);
+      if (dateFilters.dateTo) params.set("dateTo", dateFilters.dateTo);
+      const queryString = params.toString();
+      const url = queryString ? `/api/dprs/with-details?${queryString}` : "/api/dprs/with-details";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch DPRs");
+      return res.json();
+    },
+  });
+  
+  // Client-side filtering for all filters (site, engineer, activity, equipment, diesel)
+  // Date filters are applied server-side
+  const dprs = useMemo(() => {
+    if (!dprsWithDetails) return [];
+    
+    return dprsWithDetails.filter((dpr: any) => {
+      // Site filter - compare using base site name
+      if (filters.site) {
+        const dprBaseSite = getBaseSiteName(dpr.site);
+        if (dprBaseSite !== filters.site) return false;
+      }
+      
+      // Engineer filter
+      if (filters.engineer && dpr.engineer !== filters.engineer) return false;
+      
+      // Activity filter
+      if (filters.activity) {
+        const hasActivity = dpr.progress?.some((p: any) => p.activity === filters.activity);
+        if (!hasActivity) return false;
+      }
+      
+      // Equipment filter
+      if (filters.equipment) {
+        const hasEquipment = dpr.equipment?.some((e: any) => e.machine === filters.equipment);
+        if (!hasEquipment) return false;
+      }
+      
+      // Diesel filter
+      if (filters.hasDiesel) {
+        const hasDieselUsage = dpr.equipment?.some((e: any) => e.diesel && e.diesel > 0);
+        if (!hasDieselUsage) return false;
+      }
+      
+      return true;
+    });
+  }, [dprsWithDetails, filters]);
 
   // Fetch all material logs for the date range and site (without material filter) to get the unique materials list
   const baseFilters = useMemo(() => ({
@@ -144,17 +202,46 @@ export default function SiteDashboard() {
     return materials.sort();
   }, [allMaterialLogs]);
 
+  // Build unique site names from detailed DPRs (using base site names)
   const uniqueSites = useMemo(() => {
-    if (!allDprs) return [];
-    const sites = Array.from(new Set(allDprs.map((dpr: any) => dpr.site)));
-    return sites.sort();
-  }, [allDprs]);
+    if (!dprsWithDetails) return [];
+    const sites = new Set<string>();
+    dprsWithDetails.forEach((dpr: any) => {
+      sites.add(getBaseSiteName(dpr.site));
+    });
+    return Array.from(sites).sort();
+  }, [dprsWithDetails]);
 
   const uniqueEngineers = useMemo(() => {
-    if (!allDprs) return [];
-    const engineers = Array.from(new Set(allDprs.map((dpr: any) => dpr.engineer)));
-    return engineers.sort();
-  }, [allDprs]);
+    if (!dprsWithDetails) return [];
+    const engineers = new Set<string>();
+    dprsWithDetails.forEach((dpr: any) => {
+      if (dpr.engineer) engineers.add(dpr.engineer);
+    });
+    return Array.from(engineers).sort();
+  }, [dprsWithDetails]);
+
+  const uniqueActivities = useMemo(() => {
+    if (!dprsWithDetails) return [];
+    const activities = new Set<string>();
+    dprsWithDetails.forEach((dpr: any) => {
+      dpr.progress?.forEach((p: any) => {
+        if (p.activity) activities.add(p.activity);
+      });
+    });
+    return Array.from(activities).sort();
+  }, [dprsWithDetails]);
+
+  const uniqueEquipmentList = useMemo(() => {
+    if (!dprsWithDetails) return [];
+    const equipment = new Set<string>();
+    dprsWithDetails.forEach((dpr: any) => {
+      dpr.equipment?.forEach((e: any) => {
+        if (e.machine) equipment.add(e.machine);
+      });
+    });
+    return Array.from(equipment).sort();
+  }, [dprsWithDetails]);
 
   const clearFilters = () => {
     setFilters({
@@ -162,6 +249,9 @@ export default function SiteDashboard() {
       engineer: "",
       dateFrom: "",
       dateTo: "",
+      activity: "",
+      equipment: "",
+      hasDiesel: false,
     });
   };
 
@@ -174,7 +264,7 @@ export default function SiteDashboard() {
     });
   };
 
-  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel;
   const hasMaterialFilters = materialFilters.site || materialFilters.material || materialFilters.dateFrom || materialFilters.dateTo;
 
   const materialTotals = useMemo(() => {
@@ -505,6 +595,9 @@ export default function SiteDashboard() {
     if (filters.dateTo) filterLines.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
     if (filters.site) filterLines.push(`Site: ${filters.site}`);
     if (filters.engineer) filterLines.push(`Engineer: ${filters.engineer}`);
+    if (filters.activity) filterLines.push(`Activity: ${filters.activity}`);
+    if (filters.equipment) filterLines.push(`Equipment: ${filters.equipment}`);
+    if (filters.hasDiesel) filterLines.push(`With Diesel Usage`);
     if (filterLines.length > 0) {
       doc.text(`Filters: ${filterLines.join(" | ")}`, 14, 36);
     }
@@ -565,11 +658,14 @@ export default function SiteDashboard() {
     if (filters.dateTo) filtersText.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
     if (filters.site) filtersText.push(`Site: ${filters.site}`);
     if (filters.engineer) filtersText.push(`Engineer: ${filters.engineer}`);
+    if (filters.activity) filtersText.push(`Activity: ${filters.activity}`);
+    if (filters.equipment) filtersText.push(`Equipment: ${filters.equipment}`);
+    if (filters.hasDiesel) filtersText.push(`With Diesel Usage`);
 
     const reportsHtml = dprs?.map((dpr: any) => `
       <div class="report-item">
         <div>
-          <div class="report-site">${dpr.site}</div>
+          <div class="report-site">${getBaseSiteName(dpr.site)}</div>
           <div class="report-meta">Engineer: ${dpr.engineer}</div>
         </div>
         <div class="report-date">${format(new Date(dpr.date), "dd MMM yyyy")}</div>
@@ -691,7 +787,7 @@ export default function SiteDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Site</Label>
-                  <Select value={filters.site} onValueChange={(value) => setFilters({ ...filters, site: value === "all" ? "" : value })}>
+                  <Select value={filters.site || "all"} onValueChange={(value) => setFilters({ ...filters, site: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-site">
                       <SelectValue placeholder="All Sites" />
                     </SelectTrigger>
@@ -705,7 +801,7 @@ export default function SiteDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Engineer</Label>
-                  <Select value={filters.engineer} onValueChange={(value) => setFilters({ ...filters, engineer: value === "all" ? "" : value })}>
+                  <Select value={filters.engineer || "all"} onValueChange={(value) => setFilters({ ...filters, engineer: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-engineer">
                       <SelectValue placeholder="All Engineers" />
                     </SelectTrigger>
@@ -714,6 +810,46 @@ export default function SiteDashboard() {
                       {uniqueEngineers.map((engineer) => (
                         <SelectItem key={engineer} value={engineer}>{engineer}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Activity</Label>
+                  <Select value={filters.activity || "all"} onValueChange={(value) => setFilters({ ...filters, activity: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-activity">
+                      <SelectValue placeholder="All Activities" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Activities</SelectItem>
+                      {uniqueActivities.map((activity) => (
+                        <SelectItem key={activity} value={activity}>{activity}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Equipment</Label>
+                  <Select value={filters.equipment || "all"} onValueChange={(value) => setFilters({ ...filters, equipment: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-equipment">
+                      <SelectValue placeholder="All Equipment" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Equipment</SelectItem>
+                      {uniqueEquipmentList.map((equip) => (
+                        <SelectItem key={equip} value={equip}>{equip}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Diesel Usage</Label>
+                  <Select value={filters.hasDiesel ? "yes" : "all"} onValueChange={(value) => setFilters({ ...filters, hasDiesel: value === "yes" })}>
+                    <SelectTrigger data-testid="select-diesel">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Reports</SelectItem>
+                      <SelectItem value="yes">With Diesel Usage</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

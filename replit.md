@@ -105,12 +105,19 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
 
-### Site Reports Export
+### Site Reports Enhanced Filtering & Export
+- **Filters**: Extended filter options on Site Reports page (/site/dashboard)
+  - Date range (from/to)
+  - Site-wise filtering
+  - Engineer-wise filtering
+  - Activity-wise filtering (populated from DPR progress entries)
+  - Equipment-wise filtering (populated from DPR equipment logs)
+  - Diesel usage filter (show only reports with diesel usage)
 - **Admin-Only Export**: Excel, PDF, and Print features require Admin PIN authentication
   - Excel: Exports site reports with Date, Site, Engineer, and Role columns
   - PDF: Formatted document with High Lane Constructions header and applied filters
   - Print: Browser print dialog with formatted report list
-- **Filters**: Date range (from/to), site-wise, and engineer-wise filtering
+- **Data Source**: Uses DprWithDetails API endpoint for rich filtering capabilities
 
 ### Material Log Enhancements
 - **Filters**: Date range, site-wise, and material-wise filtering with stable React Query keys
