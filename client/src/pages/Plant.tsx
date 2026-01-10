@@ -954,7 +954,6 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
-  const [equipmentType, setEquipmentType] = useState("Generator");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
 
@@ -963,7 +962,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; registrationNumber?: string; equipmentType: string; meterType: string; consumptionNorm?: number }) =>
+    mutationFn: (data: { name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number }) =>
       apiRequest("POST", "/api/plant-module/equipment", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -973,7 +972,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; equipmentType: string; meterType: string; consumptionNorm?: number }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number }> }) =>
       apiRequest("PATCH", `/api/plant-module/equipment/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -996,7 +995,6 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     setEditingEquipment(null);
     setName("");
     setRegistrationNumber("");
-    setEquipmentType("Generator");
     setMeterType("hour_meter");
     setConsumptionNorm("");
   };
@@ -1005,7 +1003,6 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     setEditingEquipment(equip);
     setName(equip.name);
     setRegistrationNumber((equip as any).registrationNumber || "");
-    setEquipmentType(equip.equipmentType);
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
     setDialogOpen(true);
@@ -1015,7 +1012,6 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     const data = {
       name,
       registrationNumber: registrationNumber || undefined,
-      equipmentType,
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
     };
@@ -1063,19 +1059,6 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
                   placeholder="e.g., MH12AB1234"
                   data-testid="input-registration-number"
                 />
-              </div>
-              <div>
-                <Label htmlFor="equipment-type">Equipment Type</Label>
-                <Select value={equipmentType} onValueChange={setEquipmentType}>
-                  <SelectTrigger data-testid="select-equipment-type">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EQUIPMENT_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               <div>
                 <Label htmlFor="meter-type">Meter Type</Label>
@@ -1128,7 +1111,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
                   <p className="font-medium">{equip.name}</p>
                   <p className="text-sm text-muted-foreground">
                     {(equip as any).registrationNumber && <span className="font-medium">{(equip as any).registrationNumber} | </span>}
-                    {equip.equipmentType} | {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} | 
+                    {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} | 
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 </div>

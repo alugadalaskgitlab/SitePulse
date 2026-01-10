@@ -105,6 +105,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
 
+### Site Reports Export
+- **Admin-Only Export**: Excel, PDF, and Print features require Admin PIN authentication
+  - Excel: Exports site reports with Date, Site, Engineer, and Role columns
+  - PDF: Formatted document with High Lane Constructions header and applied filters
+  - Print: Browser print dialog with formatted report list
+- **Filters**: Date range (from/to), site-wise, and engineer-wise filtering
+
 ### Material Log Enhancements
 - **Filters**: Date range, site-wise, and material-wise filtering with stable React Query keys
 - **Collapsible Date Groups**: Data grouped by date with material totals (trips and quantity) 

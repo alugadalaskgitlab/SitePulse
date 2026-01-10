@@ -162,6 +162,10 @@ export default function PlantEquipmentUsage() {
           const data = await res.json();
           setPreviousDieselBalance(data.previousBalance);
           setOpeningDiesel(String(data.previousBalance));
+          // Auto-populate opening reading from previous closing reading
+          if (data.previousClosingReading) {
+            setOpeningReading(String(data.previousClosingReading));
+          }
         } else {
           setPreviousDieselBalance(0);
           setOpeningDiesel("0");

@@ -794,7 +794,7 @@ export async function registerRoutes(
     }
   });
 
-  // Get previous diesel balance for equipment (for new entry creation)
+  // Get previous diesel balance and closing reading for equipment (for new entry creation)
   app.get("/api/plant-module/equipment-usage/previous-balance/:equipmentId", async (req, res) => {
     try {
       const equipmentId = parseInt(req.params.equipmentId);
@@ -808,9 +808,10 @@ export async function registerRoutes(
       
       // Get the most recent entry for this equipment (includes same-day entries)
       const previousBalance = filteredUsage.length > 0 ? filteredUsage[0].closingDiesel || 0 : 0;
-      res.json({ previousBalance });
+      const previousClosingReading = filteredUsage.length > 0 ? filteredUsage[0].closingReading || 0 : 0;
+      res.json({ previousBalance, previousClosingReading });
     } catch (err) {
-      res.status(500).json({ message: "Failed to fetch previous balance", previousBalance: 0 });
+      res.status(500).json({ message: "Failed to fetch previous balance", previousBalance: 0, previousClosingReading: 0 });
     }
   });
 

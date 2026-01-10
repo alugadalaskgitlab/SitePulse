@@ -80,7 +80,7 @@ export default function SiteDashboard() {
   const { isAdmin, setAccess } = useAccess();
   const [activeTab, setActiveTab] = useState("reports");
   const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"excel" | "pdf" | "print" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"excel" | "pdf" | "print" | "reports-excel" | "reports-pdf" | "reports-print" | null>(null);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({
     site: "",
@@ -254,7 +254,7 @@ export default function SiteDashboard() {
   };
 
   // Admin action handlers
-  const handleAdminAction = (action: "excel" | "pdf" | "print") => {
+  const handleAdminAction = (action: "excel" | "pdf" | "print" | "reports-excel" | "reports-pdf" | "reports-print") => {
     if (isAdmin) {
       executeAction(action);
     } else {
@@ -274,7 +274,7 @@ export default function SiteDashboard() {
     setPendingAction(null);
   };
 
-  const executeAction = (action: "excel" | "pdf" | "print") => {
+  const executeAction = (action: "excel" | "pdf" | "print" | "reports-excel" | "reports-pdf" | "reports-print") => {
     switch (action) {
       case "excel":
         exportMaterialsToExcel();
@@ -284,6 +284,15 @@ export default function SiteDashboard() {
         break;
       case "print":
         handleMaterialPrint();
+        break;
+      case "reports-excel":
+        exportReportsToExcel();
+        break;
+      case "reports-pdf":
+        exportReportsToPDF();
+        break;
+      case "reports-print":
+        handlePrint();
         break;
     }
   };
@@ -456,6 +465,72 @@ export default function SiteDashboard() {
     };
   };
 
+  const exportReportsToExcel = () => {
+    if (!dprs || dprs.length === 0) return;
+    
+    const wb = XLSX.utils.book_new();
+    
+    // Reports sheet
+    const reportsData = dprs.map((dpr: any) => ({
+      Date: format(new Date(dpr.date), "dd/MM/yyyy"),
+      Site: getBaseSiteName(dpr.site),
+      Engineer: dpr.engineer,
+      Role: dpr.role || "",
+    }));
+    const reportsSheet = XLSX.utils.json_to_sheet(reportsData);
+    XLSX.utils.book_append_sheet(wb, reportsSheet, "Site Reports");
+    
+    const fileName = `SiteReports_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    toast({ title: "Export Complete", description: `Downloaded ${fileName}` });
+  };
+
+  const exportReportsToPDF = () => {
+    if (!dprs || dprs.length === 0) return;
+    
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    // Header
+    doc.setFontSize(16);
+    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, 15, { align: "center" });
+    doc.setFontSize(12);
+    doc.text("Site Reports Summary", pageWidth / 2, 22, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`, pageWidth / 2, 28, { align: "center" });
+    
+    // Filters info
+    const filterLines = [];
+    if (filters.dateFrom) filterLines.push(`From: ${format(new Date(filters.dateFrom), "dd MMM yyyy")}`);
+    if (filters.dateTo) filterLines.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
+    if (filters.site) filterLines.push(`Site: ${filters.site}`);
+    if (filters.engineer) filterLines.push(`Engineer: ${filters.engineer}`);
+    if (filterLines.length > 0) {
+      doc.text(`Filters: ${filterLines.join(" | ")}`, 14, 36);
+    }
+    
+    // Reports table
+    const reportsRows = dprs.map((dpr: any) => [
+      format(new Date(dpr.date), "dd MMM yyyy"),
+      getBaseSiteName(dpr.site),
+      dpr.engineer,
+      dpr.role || "",
+    ]);
+    
+    autoTable(doc, {
+      startY: 42,
+      head: [["Date", "Site", "Engineer", "Role"]],
+      body: reportsRows,
+      theme: 'grid',
+      headStyles: { fillColor: [80, 80, 80] },
+      styles: { fontSize: 9 },
+    });
+    
+    const fileName = `SiteReports_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    doc.save(fileName);
+    toast({ title: "Export Complete", description: `Downloaded ${fileName}` });
+  };
+
   const handlePrint = () => {
     const printContent = printRef.current;
     if (!printContent) return;
@@ -547,7 +622,15 @@ export default function SiteDashboard() {
         <div className="flex items-center gap-2">
           {activeTab === "reports" && (
             <>
-              <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
+              <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
+                <FileSpreadsheet className="w-4 h-4" />
+                Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
+                <FileText className="w-4 h-4" />
+                PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
                 <Printer className="w-4 h-4" />
                 Print
               </Button>
