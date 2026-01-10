@@ -119,6 +119,12 @@ Preferred communication style: Simple, everyday language.
 - **Notification Types**: info, warning, success, error with color-coded icons
 - **CRUD Operations**: Create, read, mark as read, delete notifications
 - **API Endpoints**: /api/notifications with Zod validation
+- **Automatic Triggers**:
+  - DPR edited/submitted by Manager (via version/clone routes)
+  - Material receipt added (Plant module)
+  - Truck dispatch created (Plant module)
+- **Sound Alert**: Plays notification sound when new notifications arrive
+- **Auto-refresh**: Polls for new notifications every 30 seconds
 
 ### Access Control PINs (Database Stored)
 - Default Manager PIN: 1234 (can be changed via settings)

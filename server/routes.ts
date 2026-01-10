@@ -250,6 +250,17 @@ export async function registerRoutes(
       }
       
       const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy, input.clientTimestamp);
+      
+      // Notify admin when manager edits DPR
+      if (input.editedBy === "manager") {
+        await storage.createNotification({
+          type: "info",
+          title: "DPR Edited by Manager",
+          message: `DPR for ${input.data.site} (${input.data.date}) was edited by Manager`,
+          isRead: 0,
+        });
+      }
+      
       res.status(201).json(newVersion);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -285,6 +296,17 @@ export async function registerRoutes(
       if (!cloned) {
         return res.status(404).json({ message: "Original DPR not found" });
       }
+      
+      // Notify admin when manager submits DPR
+      if (input.editedBy === "manager") {
+        await storage.createNotification({
+          type: "success",
+          title: "DPR Submitted by Manager",
+          message: `New DPR submitted for ${cloned.site} (${cloned.date}) by Manager`,
+          isRead: 0,
+        });
+      }
+      
       res.status(201).json(cloned);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -649,6 +671,15 @@ export async function registerRoutes(
   app.post("/api/plant-module/material-receipts", async (req, res) => {
     try {
       const receipt = await storage.createMaterialReceipt(req.body);
+      
+      // Notify admin of new material receipt
+      await storage.createNotification({
+        type: "info",
+        title: "Material Receipt Added",
+        message: `New material receipt: ${receipt.quantity} ${receipt.uom} received on ${receipt.date}`,
+        isRead: 0,
+      });
+      
       res.status(201).json(receipt);
     } catch (err) {
       res.status(500).json({ message: "Failed to create material receipt" });
@@ -693,6 +724,15 @@ export async function registerRoutes(
   app.post("/api/plant-module/dispatches", async (req, res) => {
     try {
       const result = await storage.createTruckDispatchWithStockDeduction(req.body);
+      
+      // Notify admin of new mix dispatch
+      await storage.createNotification({
+        type: "success",
+        title: "Mix Dispatched",
+        message: `Truck dispatch: ${result.dispatch.loadWeight} MT dispatched on ${result.dispatch.date}`,
+        isRead: 0,
+      });
+      
       res.status(201).json(result);
     } catch (err) {
       console.error("Dispatch error:", err);
