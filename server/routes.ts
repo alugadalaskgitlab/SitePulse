@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -50,6 +50,71 @@ export async function registerRoutes(
       res.json(materialLogs);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch material summary" });
+    }
+  });
+
+  // ============================================
+  // ADMIN NOTIFICATIONS
+  // ============================================
+  
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const notifications = await storage.getNotifications();
+      res.json(notifications);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", async (req, res) => {
+    try {
+      const count = await storage.getUnreadNotificationCount();
+      res.json({ count });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch unread count" });
+    }
+  });
+
+  app.post("/api/notifications", async (req, res) => {
+    try {
+      const input = insertAdminNotificationSchema.parse(req.body);
+      const notification = await storage.createNotification(input);
+      res.status(201).json(notification);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Failed to create notification" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", async (req, res) => {
+    try {
+      await storage.markNotificationRead(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.patch("/api/notifications/read-all", async (req, res) => {
+    try {
+      await storage.markAllNotificationsRead();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to mark all notifications as read" });
+    }
+  });
+
+  app.delete("/api/notifications/:id", async (req, res) => {
+    try {
+      await storage.deleteNotification(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete notification" });
     }
   });
 

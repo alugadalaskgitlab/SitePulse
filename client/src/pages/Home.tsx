@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { HardHat, Factory, BarChart3, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AdminNotifications } from "@/components/AdminNotifications";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
 export default function Home() {
@@ -49,7 +50,7 @@ export default function Home() {
         </Link>
       </div>
 
-      <div className="mt-8 flex gap-4">
+      <div className="mt-8 flex items-center gap-4">
         <Link href="/admin/reports">
           <Button variant="outline" className="gap-2" data-testid="button-admin-reports">
             <BarChart3 className="w-4 h-4" />
@@ -62,6 +63,7 @@ export default function Home() {
             Settings
           </Button>
         </Link>
+        <AdminNotifications />
       </div>
     </div>
   );

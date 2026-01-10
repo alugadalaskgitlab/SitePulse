@@ -102,3 +102,25 @@ Preferred communication style: Simple, everyday language.
 - Stock balances are always derived from ledger - no manual entry
 - Theoretical consumption is used for stock deduction
 - Actual consumption is for management analysis (savings/wastage)
+
+## Recent Changes (January 2026)
+
+### Material Log Enhancements
+- **Filters**: Date range, site-wise, and material-wise filtering with stable React Query keys
+- **Collapsible Date Groups**: Data grouped by date with material totals (trips and quantity) 
+- **Expand/Collapse All**: Buttons to expand or collapse all date groups at once
+- **Admin-Only Export**: Excel, PDF, and Print features require Admin PIN authentication
+  - Excel: Multi-sheet export with material logs and summary
+  - PDF: Formatted document with jsPDF/autoTable
+  - Print: Browser print dialog
+
+### Admin Notifications
+- **Notification System**: In-app notifications with bell icon on Home page
+- **Notification Types**: info, warning, success, error with color-coded icons
+- **CRUD Operations**: Create, read, mark as read, delete notifications
+- **API Endpoints**: /api/notifications with Zod validation
+
+### Access Control PINs (Database Stored)
+- Default Manager PIN: 1234 (can be changed via settings)
+- Default Admin PIN: 5678 (can be changed via settings)
+- Actual PINs stored in app_settings table

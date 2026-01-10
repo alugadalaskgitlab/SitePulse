@@ -22,6 +22,7 @@ import {
   ldoLogs,
   stockBalances,
   stockLedger,
+  adminNotifications,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -53,6 +54,8 @@ import {
   type InsertStockBalance,
   type StockLedgerEntry,
   type InsertStockLedger,
+  type AdminNotification,
+  type InsertAdminNotification,
   DEFAULT_LDO_NORM
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, notInArray, sql, asc, isNull } from "drizzle-orm";
@@ -155,6 +158,14 @@ export interface IStorage {
     location: string | null;
     receiptNumber: string | null;
   }[]>;
+  
+  // Admin Notifications
+  getNotifications(): Promise<AdminNotification[]>;
+  getUnreadNotificationCount(): Promise<number>;
+  createNotification(data: InsertAdminNotification): Promise<AdminNotification>;
+  markNotificationRead(id: number): Promise<void>;
+  markAllNotificationsRead(): Promise<void>;
+  deleteNotification(id: number): Promise<void>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -1805,6 +1816,35 @@ export class DatabaseStorage implements IStorage {
       : await query.orderBy(desc(dprs.date), desc(materialLogs.id));
 
     return result;
+  }
+
+  // Admin Notifications
+  async getNotifications(): Promise<AdminNotification[]> {
+    return await db.select().from(adminNotifications).orderBy(desc(adminNotifications.createdAt));
+  }
+
+  async getUnreadNotificationCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(adminNotifications)
+      .where(eq(adminNotifications.isRead, 0));
+    return result[0]?.count || 0;
+  }
+
+  async createNotification(data: InsertAdminNotification): Promise<AdminNotification> {
+    const [notification] = await db.insert(adminNotifications).values(data).returning();
+    return notification;
+  }
+
+  async markNotificationRead(id: number): Promise<void> {
+    await db.update(adminNotifications).set({ isRead: 1 }).where(eq(adminNotifications.id, id));
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    await db.update(adminNotifications).set({ isRead: 1 }).where(eq(adminNotifications.isRead, 0));
+  }
+
+  async deleteNotification(id: number): Promise<void> {
+    await db.delete(adminNotifications).where(eq(adminNotifications.id, id));
   }
 }
 

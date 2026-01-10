@@ -449,3 +449,20 @@ export const MIX_TYPES = ["BC", "DBM"] as const;
 
 // Default LDO norm (liters per ton)
 export const DEFAULT_LDO_NORM = 6;
+
+// ============================================
+// ADMIN NOTIFICATIONS
+// ============================================
+
+export const adminNotifications = pgTable("admin_notifications", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(), // "info", "warning", "success", "error"
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  isRead: integer("is_read").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
+export type AdminNotification = typeof adminNotifications.$inferSelect;
+export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;

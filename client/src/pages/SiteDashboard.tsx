@@ -3,19 +3,29 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useDprs } from "@/hooks/use-dprs";
 import { useOrigin } from "@/hooks/use-origin";
+import { useAccess } from "@/lib/access-context";
+import { PinAuth } from "@/components/PinAuth";
+import { useToast } from "@/hooks/use-toast";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { 
   Plus, 
   ChevronLeft, 
   Calendar, 
   MapPin, 
   ChevronRight,
+  ChevronDown,
   Loader2,
   Search,
   HardHat,
   Printer,
   Filter,
   X,
-  Package
+  Package,
+  FileSpreadsheet,
+  FileText,
+  ChevronsUpDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -31,7 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format, subDays } from "date-fns";
+import { format, subDays, parseISO } from "date-fns";
 
 interface SiteMaterialLog {
   id: number;
@@ -48,8 +59,22 @@ interface SiteMaterialLog {
   receiptNumber: string | null;
 }
 
+interface DateGroupedMaterials {
+  date: string;
+  formattedDate: string;
+  materials: { material: string; trips: number; quantity: number; uom: string }[];
+  totalTrips: number;
+  totalQuantity: number;
+  logs: SiteMaterialLog[];
+}
+
 export default function SiteDashboard() {
+  const { toast } = useToast();
+  const { isAdmin, setAccess } = useAccess();
   const [activeTab, setActiveTab] = useState("reports");
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"excel" | "pdf" | "print" | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
@@ -65,6 +90,7 @@ export default function SiteDashboard() {
   });
   
   const printRef = useRef<HTMLDivElement>(null);
+  const materialPrintRef = useRef<HTMLDivElement>(null);
   
   const { getBackLink, appendOrigin } = useOrigin();
   const backLink = getBackLink("/site");
@@ -155,6 +181,268 @@ export default function SiteDashboard() {
     
     return { received, issued };
   }, [materialLogs]);
+
+  // Group material logs by date with totals
+  const dateGroupedMaterials = useMemo((): DateGroupedMaterials[] => {
+    if (!materialLogs) return [];
+    
+    const grouped: Record<string, DateGroupedMaterials> = {};
+    
+    for (const log of materialLogs) {
+      const dateKey = log.date;
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = {
+          date: dateKey,
+          formattedDate: format(parseISO(dateKey), "dd MMM yyyy"),
+          materials: [],
+          totalTrips: 0,
+          totalQuantity: 0,
+          logs: [],
+        };
+      }
+      
+      grouped[dateKey].logs.push(log);
+      grouped[dateKey].totalTrips += 1;
+      grouped[dateKey].totalQuantity += log.quantity || 0;
+      
+      // Aggregate by material
+      const existingMaterial = grouped[dateKey].materials.find(m => m.material === log.material && m.uom === (log.uom || ""));
+      if (existingMaterial) {
+        existingMaterial.trips += 1;
+        existingMaterial.quantity += log.quantity || 0;
+      } else {
+        grouped[dateKey].materials.push({
+          material: log.material,
+          trips: 1,
+          quantity: log.quantity || 0,
+          uom: log.uom || "",
+        });
+      }
+    }
+    
+    return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
+  }, [materialLogs]);
+
+  const toggleDateExpand = (date: string) => {
+    const newExpanded = new Set(expandedDates);
+    if (newExpanded.has(date)) {
+      newExpanded.delete(date);
+    } else {
+      newExpanded.add(date);
+    }
+    setExpandedDates(newExpanded);
+  };
+
+  const expandAll = () => {
+    setExpandedDates(new Set(dateGroupedMaterials.map(g => g.date)));
+  };
+
+  const collapseAll = () => {
+    setExpandedDates(new Set());
+  };
+
+  // Admin action handlers
+  const handleAdminAction = (action: "excel" | "pdf" | "print") => {
+    if (isAdmin) {
+      executeAction(action);
+    } else {
+      setPendingAction(action);
+      setShowPinAuth(true);
+    }
+  };
+
+  const handlePinSuccess = (role: "manager" | "admin", _pin: string) => {
+    setAccess(role);
+    setShowPinAuth(false);
+    if (pendingAction && role === "admin") {
+      executeAction(pendingAction);
+    } else if (pendingAction && role === "manager") {
+      toast({ title: "Access Denied", description: "Export/Print requires Admin access", variant: "destructive" });
+    }
+    setPendingAction(null);
+  };
+
+  const executeAction = (action: "excel" | "pdf" | "print") => {
+    switch (action) {
+      case "excel":
+        exportMaterialsToExcel();
+        break;
+      case "pdf":
+        exportMaterialsToPDF();
+        break;
+      case "print":
+        handleMaterialPrint();
+        break;
+    }
+  };
+
+  const exportMaterialsToExcel = () => {
+    if (!materialLogs) return;
+    
+    const wb = XLSX.utils.book_new();
+    
+    // Summary sheet - grouped by date
+    const summaryData = dateGroupedMaterials.map(group => ({
+      Date: group.formattedDate,
+      'Total Trips': group.totalTrips,
+      'Total Quantity': group.totalQuantity.toFixed(2),
+      'Materials': group.materials.map(m => `${m.material} (${m.trips} trips, ${m.quantity.toFixed(2)} ${m.uom})`).join("; "),
+    }));
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary by Date");
+    
+    // Detailed logs sheet
+    const detailedData = materialLogs.map(log => ({
+      Date: format(parseISO(log.date), "dd/MM/yyyy"),
+      Site: log.site,
+      Type: log.type,
+      Material: log.material,
+      Quantity: log.quantity?.toFixed(2) || "",
+      UOM: log.uom || "",
+      Supplier: log.supplier || "",
+      Vehicle: log.vehicleNumber || "",
+    }));
+    const detailedSheet = XLSX.utils.json_to_sheet(detailedData);
+    XLSX.utils.book_append_sheet(wb, detailedSheet, "Detailed Logs");
+    
+    // Material totals sheet
+    const totalsData: any[] = [];
+    materialTotals.received.forEach((value, key) => {
+      const [material] = key.split("-");
+      totalsData.push({ Type: "Received", Material: material, Quantity: value.quantity.toFixed(2), UOM: value.uom });
+    });
+    materialTotals.issued.forEach((value, key) => {
+      const [material] = key.split("-");
+      totalsData.push({ Type: "Issued", Material: material, Quantity: value.quantity.toFixed(2), UOM: value.uom });
+    });
+    if (totalsData.length > 0) {
+      const totalsSheet = XLSX.utils.json_to_sheet(totalsData);
+      XLSX.utils.book_append_sheet(wb, totalsSheet, "Material Totals");
+    }
+    
+    const fileName = `MaterialLogs_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    toast({ title: "Export Complete", description: `Downloaded ${fileName}` });
+  };
+
+  const exportMaterialsToPDF = () => {
+    if (!materialLogs) return;
+    
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    // Header
+    doc.setFontSize(16);
+    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, 15, { align: "center" });
+    doc.setFontSize(12);
+    doc.text("Material Log Summary", pageWidth / 2, 22, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`, pageWidth / 2, 28, { align: "center" });
+    
+    // Filters info
+    const filterLines = [];
+    if (materialFilters.dateFrom) filterLines.push(`From: ${format(parseISO(materialFilters.dateFrom), "dd MMM yyyy")}`);
+    if (materialFilters.dateTo) filterLines.push(`To: ${format(parseISO(materialFilters.dateTo), "dd MMM yyyy")}`);
+    if (materialFilters.site) filterLines.push(`Site: ${materialFilters.site}`);
+    if (materialFilters.material) filterLines.push(`Material: ${materialFilters.material}`);
+    if (filterLines.length > 0) {
+      doc.text(`Filters: ${filterLines.join(" | ")}`, 14, 36);
+    }
+    
+    // Summary table by date
+    const summaryRows = dateGroupedMaterials.map(group => [
+      group.formattedDate,
+      group.totalTrips.toString(),
+      group.totalQuantity.toFixed(2),
+      group.materials.map(m => m.material).join(", "),
+    ]);
+    
+    autoTable(doc, {
+      startY: 42,
+      head: [["Date", "Trips", "Total Qty", "Materials"]],
+      body: summaryRows,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [245, 158, 11] },
+    });
+    
+    const fileName = `MaterialLogs_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    doc.save(fileName);
+    toast({ title: "Export Complete", description: `Downloaded ${fileName}` });
+  };
+
+  const handleMaterialPrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast({ title: "Error", description: "Please allow pop-ups to print", variant: "destructive" });
+      return;
+    }
+    
+    const styles = `
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; font-size: 12px; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+        .header h1 { font-size: 18px; margin-bottom: 5px; }
+        .header p { font-size: 11px; color: #666; }
+        .filters { background: #f5f5f5; padding: 8px; margin-bottom: 15px; border-radius: 4px; }
+        .date-group { margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        .date-header { background: #f59e0b; color: white; padding: 8px 12px; font-weight: bold; display: flex; justify-content: space-between; }
+        .date-content { padding: 10px; }
+        .material-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
+        .material-row:last-child { border-bottom: none; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background: #f5f5f5; }
+        @media print { body { padding: 10px; } }
+      </style>
+    `;
+    
+    const filterLines = [];
+    if (materialFilters.dateFrom) filterLines.push(`From: ${format(parseISO(materialFilters.dateFrom), "dd MMM yyyy")}`);
+    if (materialFilters.dateTo) filterLines.push(`To: ${format(parseISO(materialFilters.dateTo), "dd MMM yyyy")}`);
+    if (materialFilters.site) filterLines.push(`Site: ${materialFilters.site}`);
+    if (materialFilters.material) filterLines.push(`Material: ${materialFilters.material}`);
+    
+    const groupsHtml = dateGroupedMaterials.map(group => `
+      <div class="date-group">
+        <div class="date-header">
+          <span>${group.formattedDate}</span>
+          <span>${group.totalTrips} trips | ${group.totalQuantity.toFixed(2)} qty</span>
+        </div>
+        <div class="date-content">
+          ${group.materials.map(m => `
+            <div class="material-row">
+              <span>${m.material}</span>
+              <span>${m.trips} trips | ${m.quantity.toFixed(2)} ${m.uom}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Material Logs - High Lane Constructions Pvt Ltd</title>
+          ${styles}
+        </head>
+        <body>
+          <div class="header">
+            <h1>High Lane Constructions Pvt Ltd</h1>
+            <p>Material Log Summary</p>
+            <p>Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}</p>
+          </div>
+          ${filterLines.length > 0 ? `<div class="filters"><strong>Filters:</strong> ${filterLines.join(' | ')}</div>` : ''}
+          ${groupsHtml}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  };
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -474,6 +762,52 @@ export default function SiteDashboard() {
             </CardContent>
           </Card>
 
+          {/* Admin Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleAdminAction("excel")} 
+              className="gap-1"
+              data-testid="button-export-excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Excel
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleAdminAction("pdf")} 
+              className="gap-1"
+              data-testid="button-export-pdf"
+            >
+              <FileText className="w-4 h-4" />
+              PDF
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleAdminAction("print")} 
+              className="gap-1"
+              data-testid="button-print-materials"
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </Button>
+            {dateGroupedMaterials.length > 0 && (
+              <>
+                <div className="flex-1" />
+                <Button variant="ghost" size="sm" onClick={expandAll} className="gap-1" data-testid="button-expand-all">
+                  <ChevronsUpDown className="w-4 h-4" />
+                  Expand All
+                </Button>
+                <Button variant="ghost" size="sm" onClick={collapseAll} className="gap-1" data-testid="button-collapse-all">
+                  Collapse All
+                </Button>
+              </>
+            )}
+          </div>
+
           {materialsLoading ? (
             <div className="flex justify-center p-12">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -491,7 +825,8 @@ export default function SiteDashboard() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6" ref={materialPrintRef}>
+              {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardContent className="p-4">
@@ -533,51 +868,123 @@ export default function SiteDashboard() {
                 </Card>
               </div>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="text-sm text-muted-foreground mb-4">
-                    Showing {materialLogs.length} material log{materialLogs.length !== 1 ? 's' : ''}
-                  </div>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Site</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Material</TableHead>
-                          <TableHead className="text-right">Qty</TableHead>
-                          <TableHead>UOM</TableHead>
-                          <TableHead>Supplier</TableHead>
-                          <TableHead>Vehicle</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {materialLogs.map((log) => (
-                          <TableRow key={log.id} data-testid={`row-material-${log.id}`}>
-                            <TableCell className="whitespace-nowrap">{format(new Date(log.date), "dd MMM")}</TableCell>
-                            <TableCell className="max-w-32 truncate">{log.site}</TableCell>
-                            <TableCell>
-                              <Badge variant={log.type === "Received" ? "default" : "secondary"}>
-                                {log.type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{log.material}</TableCell>
-                            <TableCell className="text-right">{log.quantity?.toFixed(2) || "-"}</TableCell>
-                            <TableCell>{log.uom || "-"}</TableCell>
-                            <TableCell className="max-w-24 truncate">{log.supplier || "-"}</TableCell>
-                            <TableCell>{log.vehicleNumber || "-"}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Collapsible Date Groups */}
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground px-1">
+                  {dateGroupedMaterials.length} day{dateGroupedMaterials.length !== 1 ? 's' : ''} with {materialLogs.length} material log{materialLogs.length !== 1 ? 's' : ''}
+                </div>
+                {dateGroupedMaterials.map((group) => (
+                  <Collapsible 
+                    key={group.date} 
+                    open={expandedDates.has(group.date)}
+                    onOpenChange={() => toggleDateExpand(group.date)}
+                  >
+                    <Card>
+                      <CollapsibleTrigger asChild>
+                        <CardContent className="p-4 cursor-pointer hover-elevate" data-testid={`date-group-${group.date}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <Calendar className="w-5 h-5 text-primary" />
+                              </div>
+                              <div>
+                                <h3 className="font-semibold">{group.formattedDate}</h3>
+                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                  <span>{group.totalTrips} trip{group.totalTrips !== 1 ? 's' : ''}</span>
+                                  <span>{group.totalQuantity.toFixed(2)} total qty</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="hidden sm:flex flex-wrap gap-1 max-w-xs">
+                                {group.materials.slice(0, 3).map((m, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">
+                                    {m.material}: {m.trips}
+                                  </Badge>
+                                ))}
+                                {group.materials.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{group.materials.length - 3} more
+                                  </Badge>
+                                )}
+                              </div>
+                              <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${expandedDates.has(group.date) ? 'rotate-180' : ''}`} />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="border-t px-4 pb-4">
+                          {/* Material Summary for this date */}
+                          <div className="py-3 space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">Material Breakdown</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                              {group.materials.map((m, idx) => (
+                                <div key={idx} className="p-2 bg-muted/50 rounded-md">
+                                  <p className="font-medium text-sm truncate">{m.material}</p>
+                                  <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>{m.trips} trip{m.trips !== 1 ? 's' : ''}</span>
+                                    <span>{m.quantity.toFixed(2)} {m.uom}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Detailed logs table */}
+                          <div className="overflow-x-auto mt-2">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Site</TableHead>
+                                  <TableHead>Type</TableHead>
+                                  <TableHead>Material</TableHead>
+                                  <TableHead className="text-right">Qty</TableHead>
+                                  <TableHead>UOM</TableHead>
+                                  <TableHead>Supplier</TableHead>
+                                  <TableHead>Vehicle</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.logs.map((log) => (
+                                  <TableRow key={log.id} data-testid={`row-material-${log.id}`}>
+                                    <TableCell className="max-w-32 truncate">{log.site}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={log.type === "Received" ? "default" : "secondary"} className="text-xs">
+                                        {log.type}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>{log.material}</TableCell>
+                                    <TableCell className="text-right">{log.quantity?.toFixed(2) || "-"}</TableCell>
+                                    <TableCell>{log.uom || "-"}</TableCell>
+                                    <TableCell className="max-w-24 truncate">{log.supplier || "-"}</TableCell>
+                                    <TableCell>{log.vehicleNumber || "-"}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Card>
+                  </Collapsible>
+                ))}
+              </div>
             </div>
           )}
         </TabsContent>
       </Tabs>
+
+      {/* PIN Auth Modal */}
+      {showPinAuth && (
+        <PinAuth
+          targetRole="admin"
+          onSuccess={handlePinSuccess}
+          onClose={() => {
+            setShowPinAuth(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
     </div>
   );
 }
