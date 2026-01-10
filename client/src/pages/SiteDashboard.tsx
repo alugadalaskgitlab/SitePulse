@@ -44,6 +44,13 @@ import {
 } from "@/components/ui/select";
 import { format, subDays, parseISO } from "date-fns";
 
+// Helper to strip "Edited by..." suffix from site names
+function getBaseSiteName(site: string): string {
+  // Pattern: "Site Name – Edited by Role – YYYY-MM-DD HH:MM:SS"
+  const editedPattern = / – Edited by .+$/;
+  return site.replace(editedPattern, "").trim();
+}
+
 interface SiteMaterialLog {
   id: number;
   dprId: number;
@@ -120,10 +127,15 @@ export default function SiteDashboard() {
   });
   
   // Derive filtered logs and unique materials from the single query
+  // Also clean site names by stripping "Edited by..." suffix
   const materialLogs = useMemo(() => {
     if (!allMaterialLogs) return undefined;
-    if (!materialFilters.material) return allMaterialLogs;
-    return allMaterialLogs.filter(log => log.material === materialFilters.material);
+    const cleanedLogs = allMaterialLogs.map(log => ({
+      ...log,
+      site: getBaseSiteName(log.site),
+    }));
+    if (!materialFilters.material) return cleanedLogs;
+    return cleanedLogs.filter(log => log.material === materialFilters.material);
   }, [allMaterialLogs, materialFilters.material]);
   
   const uniqueMaterials = useMemo(() => {

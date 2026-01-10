@@ -1786,9 +1786,58 @@ export class DatabaseStorage implements IStorage {
     location: string | null;
     receiptNumber: string | null;
   }[]> {
+    // First, get only the latest version of each DPR (same logic as getDprs)
+    const allDprs = await db.select().from(dprs).orderBy(desc(dprs.date));
+    
+    // Deduplicate by base site name + date, keeping only the latest version
+    const latestDprIds = new Set<number>();
+    const latestByKey = new Map<string, { id: number }>();
+    
+    for (const dpr of allDprs) {
+      const baseSite = this.getBaseSiteName(dpr.site);
+      const key = `${baseSite}|${dpr.date}`;
+      const existing = latestByKey.get(key);
+      if (!existing) {
+        latestByKey.set(key, { id: dpr.id });
+      } else if (dpr.id > existing.id) {
+        // Higher ID = newer version
+        latestByKey.set(key, { id: dpr.id });
+      }
+    }
+    
+    // Collect only the latest DPR IDs
+    Array.from(latestByKey.values()).forEach(entry => {
+      latestDprIds.add(entry.id);
+    });
+    
+    // Now query materials only from latest DPRs
     let conditions: any[] = [];
     
-    if (filters?.site) conditions.push(eq(dprs.site, filters.site));
+    if (filters?.site) {
+      // For site filter, we need to match against base site name
+      // Get DPR IDs that match the site filter (using base site name matching)
+      const matchingDprIds: number[] = [];
+      for (const dpr of allDprs) {
+        if (latestDprIds.has(dpr.id)) {
+          const baseSite = this.getBaseSiteName(dpr.site);
+          if (baseSite === filters.site || dpr.site === filters.site) {
+            matchingDprIds.push(dpr.id);
+          }
+        }
+      }
+      if (matchingDprIds.length === 0) {
+        return []; // No matching DPRs
+      }
+      conditions.push(sql`${materialLogs.dprId} IN (${sql.join(matchingDprIds.map(id => sql`${id}`), sql`, `)})`);
+    } else {
+      // Filter to only latest DPRs
+      const latestIds = Array.from(latestDprIds);
+      if (latestIds.length === 0) {
+        return [];
+      }
+      conditions.push(sql`${materialLogs.dprId} IN (${sql.join(latestIds.map(id => sql`${id}`), sql`, `)})`);
+    }
+    
     if (filters?.material) conditions.push(eq(materialLogs.material, filters.material));
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
@@ -1811,9 +1860,7 @@ export class DatabaseStorage implements IStorage {
       .from(materialLogs)
       .innerJoin(dprs, eq(materialLogs.dprId, dprs.id));
 
-    const result = conditions.length > 0
-      ? await query.where(and(...conditions)).orderBy(desc(dprs.date), desc(materialLogs.id))
-      : await query.orderBy(desc(dprs.date), desc(materialLogs.id));
+    const result = await query.where(and(...conditions)).orderBy(desc(dprs.date), desc(materialLogs.id));
 
     return result;
   }
