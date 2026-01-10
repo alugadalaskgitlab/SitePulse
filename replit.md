@@ -113,6 +113,9 @@ Preferred communication style: Simple, everyday language.
   - Excel: Multi-sheet export with material logs and summary
   - PDF: Formatted document with jsPDF/autoTable
   - Print: Browser print dialog
+- **Duplicate Prevention**: Material Log shows only entries from the latest DPR version per site+date
+  - Server-side: Deduplicates by keeping highest DPR ID per base site name + date
+  - Client-side: Strips "– Edited by..." suffix from site names using getBaseSiteName helper
 
 ### Admin Notifications
 - **Notification System**: In-app notifications with bell icon on Home page
