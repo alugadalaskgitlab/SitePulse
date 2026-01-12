@@ -187,10 +187,31 @@ export default function SiteDashboard() {
     },
     enabled: activeTab === "materials",
   });
+
+  // Fetch DPR details for Dashboard tab's date range (for engineer/activity/equipment/diesel filtering and dropdown options)
+  const dashboardDateFilters = useMemo(() => ({
+    dateFrom: materialFilters.dateFrom,
+    dateTo: materialFilters.dateTo,
+  }), [materialFilters.dateFrom, materialFilters.dateTo]);
+
+  const { data: dashboardDprsWithDetails } = useQuery<any[]>({
+    queryKey: ["/api/dprs/with-details", "dashboard", dashboardDateFilters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dashboardDateFilters.dateFrom) params.set("dateFrom", dashboardDateFilters.dateFrom);
+      if (dashboardDateFilters.dateTo) params.set("dateTo", dashboardDateFilters.dateTo);
+      const queryString = params.toString();
+      const url = queryString ? `/api/dprs/with-details?${queryString}` : "/api/dprs/with-details";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch DPRs for dashboard");
+      return res.json();
+    },
+    enabled: activeTab === "materials",
+  });
   
   // Derive filtered logs and unique materials from the single query
   // Also clean site names by stripping "Edited by..." suffix
-  // Filter by engineer, activity, equipment, and diesel usage using dprsWithDetails
+  // Filter by engineer, activity, equipment, and diesel usage using dashboardDprsWithDetails
   const materialLogs = useMemo(() => {
     if (!allMaterialLogs) return undefined;
     const cleanedLogs = allMaterialLogs.map(log => ({
@@ -205,10 +226,10 @@ export default function SiteDashboard() {
     }
     
     // Apply filters based on matching DPR records (engineer, activity, equipment, diesel)
-    if (dprsWithDetails && (materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel)) {
+    if (dashboardDprsWithDetails && (materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel)) {
       // Create a set of valid (date, site) combinations from filtered DPRs
       const validDprKeys = new Set<string>();
-      dprsWithDetails.forEach((dpr: any) => {
+      dashboardDprsWithDetails.forEach((dpr: any) => {
         const baseSite = getBaseSiteName(dpr.site);
         const dprDate = dpr.date;
         
@@ -241,7 +262,7 @@ export default function SiteDashboard() {
     }
     
     return filtered;
-  }, [allMaterialLogs, materialFilters.material, materialFilters.engineer, materialFilters.activity, materialFilters.equipment, materialFilters.hasDiesel, dprsWithDetails]);
+  }, [allMaterialLogs, materialFilters.material, materialFilters.engineer, materialFilters.activity, materialFilters.equipment, materialFilters.hasDiesel, dashboardDprsWithDetails]);
   
   const uniqueMaterials = useMemo(() => {
     if (!allMaterialLogs) return [];
@@ -289,6 +310,47 @@ export default function SiteDashboard() {
     });
     return Array.from(equipment).sort();
   }, [dprsWithDetails]);
+
+  // Dashboard-specific unique lists (based on Dashboard tab's date range)
+  const dashboardUniqueSites = useMemo(() => {
+    if (!dashboardDprsWithDetails) return [];
+    const sites = new Set<string>();
+    dashboardDprsWithDetails.forEach((dpr: any) => {
+      sites.add(getBaseSiteName(dpr.site));
+    });
+    return Array.from(sites).sort();
+  }, [dashboardDprsWithDetails]);
+
+  const dashboardUniqueEngineers = useMemo(() => {
+    if (!dashboardDprsWithDetails) return [];
+    const engineers = new Set<string>();
+    dashboardDprsWithDetails.forEach((dpr: any) => {
+      if (dpr.engineer) engineers.add(dpr.engineer);
+    });
+    return Array.from(engineers).sort();
+  }, [dashboardDprsWithDetails]);
+
+  const dashboardUniqueActivities = useMemo(() => {
+    if (!dashboardDprsWithDetails) return [];
+    const activities = new Set<string>();
+    dashboardDprsWithDetails.forEach((dpr: any) => {
+      dpr.progress?.forEach((p: any) => {
+        if (p.activity) activities.add(p.activity);
+      });
+    });
+    return Array.from(activities).sort();
+  }, [dashboardDprsWithDetails]);
+
+  const dashboardUniqueEquipment = useMemo(() => {
+    if (!dashboardDprsWithDetails) return [];
+    const equipment = new Set<string>();
+    dashboardDprsWithDetails.forEach((dpr: any) => {
+      dpr.equipment?.forEach((e: any) => {
+        if (e.machine) equipment.add(e.machine);
+      });
+    });
+    return Array.from(equipment).sort();
+  }, [dashboardDprsWithDetails]);
 
   const clearFilters = () => {
     setFilters({
@@ -1023,7 +1085,7 @@ export default function SiteDashboard() {
                 <div className="space-y-2">
                   <Label className="text-xs">Site</Label>
                   <Select 
-                    value={materialFilters.site} 
+                    value={materialFilters.site || "all"} 
                     onValueChange={(value) => setMaterialFilters({ ...materialFilters, site: value === "all" ? "" : value })}
                   >
                     <SelectTrigger data-testid="select-material-site">
@@ -1031,7 +1093,7 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Sites</SelectItem>
-                      {uniqueSites.map((site) => (
+                      {dashboardUniqueSites.map((site) => (
                         <SelectItem key={site} value={site}>{site}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1065,7 +1127,7 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Engineers</SelectItem>
-                      {uniqueEngineers.map((engineer) => (
+                      {dashboardUniqueEngineers.map((engineer) => (
                         <SelectItem key={engineer} value={engineer}>{engineer}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1082,7 +1144,7 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Activities</SelectItem>
-                      {uniqueActivities.map((activity) => (
+                      {dashboardUniqueActivities.map((activity) => (
                         <SelectItem key={activity} value={activity}>{activity}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1099,7 +1161,7 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Equipment</SelectItem>
-                      {uniqueEquipmentList.map((equip) => (
+                      {dashboardUniqueEquipment.map((equip) => (
                         <SelectItem key={equip} value={equip}>{equip}</SelectItem>
                       ))}
                     </SelectContent>
