@@ -613,6 +613,7 @@ export default function SiteDashboard() {
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
+      printWindow.close();
     }, 250);
   };
 
@@ -761,6 +762,7 @@ export default function SiteDashboard() {
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
+      printWindow.close();
     }, 250);
   };
 
