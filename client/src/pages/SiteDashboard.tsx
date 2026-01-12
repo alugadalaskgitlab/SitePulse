@@ -95,6 +95,10 @@ export default function SiteDashboard() {
   const [materialFilters, setMaterialFilters] = useState({
     site: "",
     material: "",
+    engineer: "",
+    activity: "",
+    equipment: "",
+    hasDiesel: false,
     dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"),
     dateTo: format(new Date(), "yyyy-MM-dd"),
   });
@@ -186,15 +190,58 @@ export default function SiteDashboard() {
   
   // Derive filtered logs and unique materials from the single query
   // Also clean site names by stripping "Edited by..." suffix
+  // Filter by engineer, activity, equipment, and diesel usage using dprsWithDetails
   const materialLogs = useMemo(() => {
     if (!allMaterialLogs) return undefined;
     const cleanedLogs = allMaterialLogs.map(log => ({
       ...log,
       site: getBaseSiteName(log.site),
     }));
-    if (!materialFilters.material) return cleanedLogs;
-    return cleanedLogs.filter(log => log.material === materialFilters.material);
-  }, [allMaterialLogs, materialFilters.material]);
+    
+    // Apply material filter
+    let filtered = cleanedLogs;
+    if (materialFilters.material) {
+      filtered = filtered.filter(log => log.material === materialFilters.material);
+    }
+    
+    // Apply filters based on matching DPR records (engineer, activity, equipment, diesel)
+    if (dprsWithDetails && (materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel)) {
+      // Create a set of valid (date, site) combinations from filtered DPRs
+      const validDprKeys = new Set<string>();
+      dprsWithDetails.forEach((dpr: any) => {
+        const baseSite = getBaseSiteName(dpr.site);
+        const dprDate = dpr.date;
+        
+        // Check engineer filter
+        if (materialFilters.engineer && dpr.engineer !== materialFilters.engineer) return;
+        
+        // Check activity filter
+        if (materialFilters.activity) {
+          const hasActivity = dpr.progress?.some((p: any) => p.activity === materialFilters.activity);
+          if (!hasActivity) return;
+        }
+        
+        // Check equipment filter
+        if (materialFilters.equipment) {
+          const hasEquipment = dpr.equipment?.some((e: any) => e.machine === materialFilters.equipment);
+          if (!hasEquipment) return;
+        }
+        
+        // Check diesel filter
+        if (materialFilters.hasDiesel) {
+          const hasDieselUsage = dpr.equipment?.some((e: any) => e.diesel && e.diesel > 0);
+          if (!hasDieselUsage) return;
+        }
+        
+        validDprKeys.add(`${dprDate}|${baseSite}`);
+      });
+      
+      // Filter material logs to only those matching valid DPR records
+      filtered = filtered.filter(log => validDprKeys.has(`${log.date}|${log.site}`));
+    }
+    
+    return filtered;
+  }, [allMaterialLogs, materialFilters.material, materialFilters.engineer, materialFilters.activity, materialFilters.equipment, materialFilters.hasDiesel, dprsWithDetails]);
   
   const uniqueMaterials = useMemo(() => {
     if (!allMaterialLogs) return [];
@@ -259,13 +306,17 @@ export default function SiteDashboard() {
     setMaterialFilters({
       site: "",
       material: "",
+      engineer: "",
+      activity: "",
+      equipment: "",
+      hasDiesel: false,
       dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"),
       dateTo: format(new Date(), "yyyy-MM-dd"),
     });
   };
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel;
-  const hasMaterialFilters = materialFilters.site || materialFilters.material || materialFilters.dateFrom || materialFilters.dateTo;
+  const hasMaterialFilters = materialFilters.site || materialFilters.material || materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel || materialFilters.dateFrom || materialFilters.dateTo;
 
   const materialTotals = useMemo(() => {
     if (!materialLogs) return { received: new Map(), issued: new Map() };
@@ -456,6 +507,10 @@ export default function SiteDashboard() {
     if (materialFilters.dateTo) filterLines.push(`To: ${format(parseISO(materialFilters.dateTo), "dd MMM yyyy")}`);
     if (materialFilters.site) filterLines.push(`Site: ${materialFilters.site}`);
     if (materialFilters.material) filterLines.push(`Material: ${materialFilters.material}`);
+    if (materialFilters.engineer) filterLines.push(`Engineer: ${materialFilters.engineer}`);
+    if (materialFilters.activity) filterLines.push(`Activity: ${materialFilters.activity}`);
+    if (materialFilters.equipment) filterLines.push(`Equipment: ${materialFilters.equipment}`);
+    if (materialFilters.hasDiesel) filterLines.push(`Diesel Usage: Yes`);
     if (filterLines.length > 0) {
       doc.text(`Filters: ${filterLines.join(" | ")}`, 14, 36);
     }
@@ -513,6 +568,10 @@ export default function SiteDashboard() {
     if (materialFilters.dateTo) filterLines.push(`To: ${format(parseISO(materialFilters.dateTo), "dd MMM yyyy")}`);
     if (materialFilters.site) filterLines.push(`Site: ${materialFilters.site}`);
     if (materialFilters.material) filterLines.push(`Material: ${materialFilters.material}`);
+    if (materialFilters.engineer) filterLines.push(`Engineer: ${materialFilters.engineer}`);
+    if (materialFilters.activity) filterLines.push(`Activity: ${materialFilters.activity}`);
+    if (materialFilters.equipment) filterLines.push(`Equipment: ${materialFilters.equipment}`);
+    if (materialFilters.hasDiesel) filterLines.push(`Diesel Usage: Yes`);
     
     const groupsHtml = dateGroupedMaterials.map(group => `
       <div class="date-group">
@@ -550,9 +609,11 @@ export default function SiteDashboard() {
       </html>
     `);
     printWindow.document.close();
-    printWindow.onload = () => {
+    // Use setTimeout to ensure content is fully rendered before printing
+    setTimeout(() => {
+      printWindow.focus();
       printWindow.print();
-    };
+    }, 250);
   };
 
   const exportReportsToExcel = () => {
@@ -696,9 +757,11 @@ export default function SiteDashboard() {
       </html>
     `);
     printWindow.document.close();
-    printWindow.onload = () => {
+    // Use setTimeout to ensure content is fully rendered before printing
+    setTimeout(() => {
+      printWindow.focus();
       printWindow.print();
-    };
+    }, 250);
   };
 
   return (
@@ -749,7 +812,7 @@ export default function SiteDashboard() {
           </TabsTrigger>
           <TabsTrigger value="materials" className="gap-2" data-testid="tab-materials">
             <Package className="w-4 h-4" />
-            Material Log
+            Dashboard
           </TabsTrigger>
         </TabsList>
 
@@ -986,6 +1049,72 @@ export default function SiteDashboard() {
                       {uniqueMaterials.map((material) => (
                         <SelectItem key={material} value={material}>{material}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Engineer</Label>
+                  <Select 
+                    value={materialFilters.engineer || "all"} 
+                    onValueChange={(value) => setMaterialFilters({ ...materialFilters, engineer: value === "all" ? "" : value })}
+                  >
+                    <SelectTrigger data-testid="select-dashboard-engineer">
+                      <SelectValue placeholder="All Engineers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Engineers</SelectItem>
+                      {uniqueEngineers.map((engineer) => (
+                        <SelectItem key={engineer} value={engineer}>{engineer}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Activity</Label>
+                  <Select 
+                    value={materialFilters.activity || "all"} 
+                    onValueChange={(value) => setMaterialFilters({ ...materialFilters, activity: value === "all" ? "" : value })}
+                  >
+                    <SelectTrigger data-testid="select-dashboard-activity">
+                      <SelectValue placeholder="All Activities" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Activities</SelectItem>
+                      {uniqueActivities.map((activity) => (
+                        <SelectItem key={activity} value={activity}>{activity}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Equipment</Label>
+                  <Select 
+                    value={materialFilters.equipment || "all"} 
+                    onValueChange={(value) => setMaterialFilters({ ...materialFilters, equipment: value === "all" ? "" : value })}
+                  >
+                    <SelectTrigger data-testid="select-dashboard-equipment">
+                      <SelectValue placeholder="All Equipment" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Equipment</SelectItem>
+                      {uniqueEquipmentList.map((equip) => (
+                        <SelectItem key={equip} value={equip}>{equip}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Diesel Usage</Label>
+                  <Select 
+                    value={materialFilters.hasDiesel ? "yes" : "all"} 
+                    onValueChange={(value) => setMaterialFilters({ ...materialFilters, hasDiesel: value === "yes" })}
+                  >
+                    <SelectTrigger data-testid="select-dashboard-diesel">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Reports</SelectItem>
+                      <SelectItem value="yes">With Diesel Usage</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
