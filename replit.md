@@ -119,15 +119,25 @@ Preferred communication style: Simple, everyday language.
   - Print: Browser print dialog with formatted report list
 - **Data Source**: Uses DprWithDetails API endpoint for rich filtering capabilities
 
-### Material Log Enhancements
-- **Filters**: Date range, site-wise, and material-wise filtering with stable React Query keys
+### Dashboard Tab (formerly Material Log)
+- **Tab Renamed**: "Material Log" tab renamed to "Dashboard" for clarity
+- **Enhanced Filters**: 8 comprehensive filter options
+  - Date range (from/to)
+  - Site-wise filtering
+  - Material-wise filtering
+  - Engineer-wise filtering (NEW)
+  - Activity-wise filtering (NEW)
+  - Equipment-wise filtering (NEW)
+  - Diesel usage filter (NEW)
+- **Cross-Reference Filtering**: Engineer/activity/equipment/diesel filters match material logs to DPR records via date+site correlation
 - **Collapsible Date Groups**: Data grouped by date with material totals (trips and quantity) 
 - **Expand/Collapse All**: Buttons to expand or collapse all date groups at once
 - **Admin-Only Export**: Excel, PDF, and Print features require Admin PIN authentication
   - Excel: Multi-sheet export with material logs and summary
-  - PDF: Formatted document with jsPDF/autoTable
-  - Print: Browser print dialog
-- **Duplicate Prevention**: Material Log shows only entries from the latest DPR version per site+date
+  - PDF: Formatted document with jsPDF/autoTable showing applied filters
+  - Print: Browser print dialog with filter information
+- **Print Fix**: Print functions use setTimeout(250ms) + focus() for reliable cross-browser print dialog triggering
+- **Duplicate Prevention**: Dashboard shows only entries from the latest DPR version per site+date
   - Server-side: Deduplicates by keeping highest DPR ID per base site name + date
   - Client-side: Strips "– Edited by..." suffix from site names using getBaseSiteName helper
 
