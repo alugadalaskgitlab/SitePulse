@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialOpeningStockSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -764,6 +764,67 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material issue" });
+    }
+  });
+
+  // Material Opening Stocks
+  app.get("/api/plant-module/opening-stocks", async (req, res) => {
+    try {
+      const filters = {
+        materialId: req.query.materialId ? Number(req.query.materialId) : undefined,
+        partyId: req.query.partyId ? (req.query.partyId === "null" ? null : Number(req.query.partyId)) : undefined,
+      };
+      const stocks = await storage.getMaterialOpeningStocks(filters);
+      res.json(stocks);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch opening stocks" });
+    }
+  });
+
+  app.get("/api/plant-module/opening-stocks/:id", async (req, res) => {
+    try {
+      const stock = await storage.getMaterialOpeningStock(Number(req.params.id));
+      if (!stock) return res.status(404).json({ message: "Opening stock not found" });
+      res.json(stock);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch opening stock" });
+    }
+  });
+
+  app.post("/api/plant-module/opening-stocks", async (req, res) => {
+    try {
+      const input = insertMaterialOpeningStockSchema.parse(req.body);
+      const stock = await storage.createMaterialOpeningStock(input);
+      res.status(201).json(stock);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: "Failed to create opening stock" });
+    }
+  });
+
+  app.put("/api/plant-module/opening-stocks/:id", async (req, res) => {
+    try {
+      const input = insertMaterialOpeningStockSchema.partial().parse(req.body);
+      const updated = await storage.updateMaterialOpeningStock(Number(req.params.id), input);
+      if (!updated) return res.status(404).json({ message: "Opening stock not found" });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: "Failed to update opening stock" });
+    }
+  });
+
+  app.delete("/api/plant-module/opening-stocks/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMaterialOpeningStock(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Opening stock not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete opening stock" });
     }
   });
 

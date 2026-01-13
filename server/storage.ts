@@ -57,6 +57,9 @@ import {
   type InsertStockLedger,
   type MaterialIssue,
   type InsertMaterialIssue,
+  type MaterialOpeningStock,
+  type InsertMaterialOpeningStock,
+  materialOpeningStocks,
   type AdminNotification,
   type InsertAdminNotification,
   DEFAULT_LDO_NORM
@@ -145,6 +148,13 @@ export interface IStorage {
   createMaterialIssue(issue: InsertMaterialIssue): Promise<MaterialIssue>;
   updateMaterialIssue(id: number, issue: Partial<InsertMaterialIssue>): Promise<MaterialIssue | undefined>;
   deleteMaterialIssue(id: number): Promise<boolean>;
+  
+  // Material Opening Stocks
+  getMaterialOpeningStocks(filters?: { materialId?: number; partyId?: number }): Promise<MaterialOpeningStock[]>;
+  getMaterialOpeningStock(id: number): Promise<MaterialOpeningStock | undefined>;
+  createMaterialOpeningStock(stock: InsertMaterialOpeningStock): Promise<MaterialOpeningStock>;
+  updateMaterialOpeningStock(id: number, stock: Partial<InsertMaterialOpeningStock>): Promise<MaterialOpeningStock | undefined>;
+  deleteMaterialOpeningStock(id: number): Promise<boolean>;
   
   // Enhanced dispatch with stock deduction
   createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
@@ -2097,6 +2107,197 @@ export class DatabaseStorage implements IStorage {
       
       // Delete the issue
       await tx.delete(materialIssues).where(eq(materialIssues.id, id));
+      
+      return true;
+    });
+  }
+
+  // Material Opening Stocks
+  async getMaterialOpeningStocks(filters?: { materialId?: number; partyId?: number }): Promise<MaterialOpeningStock[]> {
+    let conditions = [];
+    if (filters?.materialId !== undefined) {
+      conditions.push(eq(materialOpeningStocks.materialId, filters.materialId));
+    }
+    if (filters?.partyId !== undefined) {
+      conditions.push(filters.partyId === null 
+        ? sql`${materialOpeningStocks.partyId} IS NULL`
+        : eq(materialOpeningStocks.partyId, filters.partyId));
+    }
+    
+    return db.select().from(materialOpeningStocks)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(materialOpeningStocks.date));
+  }
+
+  async getMaterialOpeningStock(id: number): Promise<MaterialOpeningStock | undefined> {
+    const [result] = await db.select().from(materialOpeningStocks)
+      .where(eq(materialOpeningStocks.id, id))
+      .limit(1);
+    return result;
+  }
+
+  async createMaterialOpeningStock(stock: InsertMaterialOpeningStock): Promise<MaterialOpeningStock> {
+    return db.transaction(async (tx) => {
+      const [result] = await tx.insert(materialOpeningStocks).values(stock).returning();
+      
+      // Determine stock owner (partyId or plant common)
+      const stockPartyId = stock.isPlantCommon ? null : stock.partyId;
+      
+      // Update stock balance
+      const condition = stockPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, stock.materialId))
+        : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, stock.materialId));
+      
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      const newBalance = (existing?.balance ?? 0) + stock.quantity;
+      
+      if (existing) {
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: stockPartyId,
+          materialId: stock.materialId,
+          balance: newBalance,
+          uom: stock.uom,
+        });
+      }
+      
+      // Add ledger entry for opening stock
+      await tx.insert(stockLedger).values({
+        date: stock.date,
+        partyId: stockPartyId,
+        materialId: stock.materialId,
+        transactionType: "opening",
+        referenceId: result.id,
+        quantityIn: stock.quantity,
+        balanceAfter: newBalance,
+        uom: stock.uom,
+        notes: stock.notes ?? "Opening stock entry",
+      });
+      
+      return result;
+    });
+  }
+
+  async updateMaterialOpeningStock(id: number, updates: Partial<InsertMaterialOpeningStock>): Promise<MaterialOpeningStock | undefined> {
+    return db.transaction(async (tx) => {
+      const [original] = await tx.select().from(materialOpeningStocks)
+        .where(eq(materialOpeningStocks.id, id))
+        .limit(1);
+      if (!original) return undefined;
+      
+      // Reverse original stock balance
+      const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
+      const origCondition = originalStockPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
+        : and(eq(stockBalances.partyId, originalStockPartyId), eq(stockBalances.materialId, original.materialId));
+      
+      const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
+      if (origBal) {
+        await tx.update(stockBalances)
+          .set({ balance: origBal.balance - original.quantity, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, origBal.id));
+      }
+      
+      // Update the opening stock record
+      const [result] = await tx.update(materialOpeningStocks)
+        .set(updates)
+        .where(eq(materialOpeningStocks.id, id))
+        .returning();
+      
+      // Apply new stock balance
+      const newStockPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
+      const newMaterialId = updates.materialId ?? original.materialId;
+      const newQuantity = updates.quantity ?? original.quantity;
+      const newUom = updates.uom ?? original.uom;
+      
+      const newCondition = newStockPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
+        : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
+      
+      const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
+      const newBalance = (newBal?.balance ?? 0) + newQuantity;
+      
+      if (newBal) {
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, newBal.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: newStockPartyId,
+          materialId: newMaterialId,
+          balance: newBalance,
+          uom: newUom,
+        });
+      }
+      
+      // Delete old ledger entry and create new one
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, "opening"), eq(stockLedger.referenceId, id))
+      );
+      
+      const newDate = updates.date ?? original.date;
+      const newNotes = updates.notes ?? original.notes;
+      
+      await tx.insert(stockLedger).values({
+        date: newDate,
+        partyId: newStockPartyId,
+        materialId: newMaterialId,
+        transactionType: "opening",
+        referenceId: result.id,
+        quantityIn: newQuantity,
+        balanceAfter: newBalance,
+        uom: newUom,
+        notes: newNotes ?? "Opening stock entry",
+      });
+      
+      return result;
+    });
+  }
+
+  async deleteMaterialOpeningStock(id: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [stock] = await tx.select().from(materialOpeningStocks)
+        .where(eq(materialOpeningStocks.id, id))
+        .limit(1);
+      if (!stock) return false;
+      
+      // Reverse stock balance
+      const stockPartyId = stock.isPlantCommon ? null : stock.partyId;
+      const condition = stockPartyId === null 
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, stock.materialId))
+        : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, stock.materialId));
+      
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      if (existing) {
+        const newBalance = existing.balance - stock.quantity;
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+        
+        // Add reversal ledger entry
+        await tx.insert(stockLedger).values({
+          date: format(new Date(), "yyyy-MM-dd"),
+          partyId: stockPartyId,
+          materialId: stock.materialId,
+          transactionType: "adjustment",
+          referenceId: id,
+          quantityOut: stock.quantity,
+          balanceAfter: newBalance,
+          uom: stock.uom,
+          notes: `Deleted opening stock #${id} reversal`,
+        });
+      }
+      
+      // Delete ledger entries for this opening stock
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, "opening"), eq(stockLedger.referenceId, id))
+      );
+      
+      // Delete the opening stock record
+      await tx.delete(materialOpeningStocks).where(eq(materialOpeningStocks.id, id));
       
       return true;
     });
