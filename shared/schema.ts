@@ -138,6 +138,19 @@ export const plantMaterials = pgTable("plant_materials", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Material Opening Stocks (per material, per party/stock owner)
+export const materialOpeningStocks = pgTable("material_opening_stocks", {
+  id: serial("id").primaryKey(),
+  materialId: integer("material_id").notNull(),
+  partyId: integer("party_id"), // NULL for PLANT COMMON
+  isPlantCommon: integer("is_plant_common").default(0),
+  quantity: real("quantity").notNull(),
+  uom: text("uom").notNull(),
+  date: date("date").notNull(), // Date of opening stock entry
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Mix Template Master
 export const mixTemplates = pgTable("mix_templates", {
   id: serial("id").primaryKey(),
@@ -419,6 +432,7 @@ export const insertAppSettingSchema = createInsertSchema(appSettings).omit({ id:
 // Insert Schemas
 export const insertPartySchema = createInsertSchema(parties).omit({ id: true, createdAt: true });
 export const insertPlantMaterialSchema = createInsertSchema(plantMaterials).omit({ id: true, createdAt: true });
+export const insertMaterialOpeningStockSchema = createInsertSchema(materialOpeningStocks).omit({ id: true, createdAt: true });
 export const insertMixTemplateSchema = createInsertSchema(mixTemplates).omit({ id: true, createdAt: true });
 export const insertMixTemplateComponentSchema = createInsertSchema(mixTemplateComponents).omit({ id: true });
 export const insertEquipmentMasterSchema = createInsertSchema(equipmentMaster).omit({ id: true, createdAt: true });
@@ -434,6 +448,7 @@ export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit
 // Types
 export type Party = typeof parties.$inferSelect;
 export type PlantMaterial = typeof plantMaterials.$inferSelect;
+export type MaterialOpeningStock = typeof materialOpeningStocks.$inferSelect;
 export type MixTemplate = typeof mixTemplates.$inferSelect;
 export type MixTemplateComponent = typeof mixTemplateComponents.$inferSelect;
 export type EquipmentMasterType = typeof equipmentMaster.$inferSelect;
@@ -449,6 +464,7 @@ export type MaterialIssue = typeof materialIssues.$inferSelect;
 // Insert Types
 export type InsertParty = z.infer<typeof insertPartySchema>;
 export type InsertPlantMaterial = z.infer<typeof insertPlantMaterialSchema>;
+export type InsertMaterialOpeningStock = z.infer<typeof insertMaterialOpeningStockSchema>;
 export type InsertMixTemplate = z.infer<typeof insertMixTemplateSchema>;
 export type InsertMixTemplateComponent = z.infer<typeof insertMixTemplateComponentSchema>;
 export type InsertEquipmentMaster = z.infer<typeof insertEquipmentMasterSchema>;
