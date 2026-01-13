@@ -446,7 +446,15 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
-  const [openingStock, setOpeningStock] = useState("");
+  
+  // Opening Stock dialog state
+  const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
+  const [selectedMaterialForStock, setSelectedMaterialForStock] = useState<PlantMaterial | null>(null);
+  const [stockQuantity, setStockQuantity] = useState("");
+  const [stockOwnerType, setStockOwnerType] = useState<"plant" | "party">("plant");
+  const [stockPartyId, setStockPartyId] = useState<string>("");
+  const [stockDate, setStockDate] = useState(new Date().toISOString().split('T')[0]);
+  const [stockNotes, setStockNotes] = useState("");
 
   const exportToExcel = (data: PlantMaterial[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(m => ({ Name: m.name, Category: m.category || "", UOM: m.defaultUom })));
@@ -460,8 +468,12 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     queryKey: ["/api/plant-module/materials"],
   });
 
+  const { data: parties } = useQuery<Party[]>({
+    queryKey: ["/api/plant-module/parties"],
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; category?: string; defaultUom: string; openingStock?: number | null }) =>
+    mutationFn: (data: { name: string; category?: string; defaultUom: string }) =>
       apiRequest("POST", "/api/plant-module/materials", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -471,12 +483,22 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; openingStock?: number | null }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string }> }) =>
       apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
       resetForm();
       toast({ title: "Material updated successfully" });
+    },
+  });
+
+  const createOpeningStockMutation = useMutation({
+    mutationFn: (data: { materialId: number; partyId?: number | null; isPlantCommon: number; quantity: number; uom: string; date: string; notes?: string }) =>
+      apiRequest("POST", "/api/plant-module/opening-stocks", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().includes('stock') || false });
+      resetOpeningStockForm();
+      toast({ title: "Opening stock added successfully" });
     },
   });
 
@@ -495,7 +517,16 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     setName("");
     setCategory("");
     setDefaultUom("Ton");
-    setOpeningStock("");
+  };
+
+  const resetOpeningStockForm = () => {
+    setOpeningStockDialogOpen(false);
+    setSelectedMaterialForStock(null);
+    setStockQuantity("");
+    setStockOwnerType("plant");
+    setStockPartyId("");
+    setStockDate(new Date().toISOString().split('T')[0]);
+    setStockNotes("");
   };
 
   const openEdit = (material: PlantMaterial) => {
@@ -503,22 +534,39 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     setName(material.name);
     setCategory(material.category || "");
     setDefaultUom(material.defaultUom || "Ton");
-    setOpeningStock(material.openingStock !== null && material.openingStock !== undefined ? String(material.openingStock) : "");
     setDialogOpen(true);
+  };
+
+  const openOpeningStockDialog = (material: PlantMaterial) => {
+    setSelectedMaterialForStock(material);
+    setOpeningStockDialogOpen(true);
   };
 
   const handleSubmit = () => {
     const data = { 
       name, 
       category, 
-      defaultUom,
-      openingStock: openingStock ? parseFloat(openingStock) : null 
+      defaultUom
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
     } else {
       createMutation.mutate(data);
     }
+  };
+
+  const handleOpeningStockSubmit = () => {
+    if (!selectedMaterialForStock || !stockQuantity) return;
+    
+    createOpeningStockMutation.mutate({
+      materialId: selectedMaterialForStock.id,
+      partyId: stockOwnerType === "party" && stockPartyId ? Number(stockPartyId) : null,
+      isPlantCommon: stockOwnerType === "plant" ? 1 : 0,
+      quantity: parseFloat(stockQuantity),
+      uom: selectedMaterialForStock.defaultUom || "Ton",
+      date: stockDate,
+      notes: stockNotes || undefined,
+    });
   };
 
   return (
@@ -587,21 +635,6 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="opening-stock">Opening Stock (optional)</Label>
-                <Input
-                  id="opening-stock"
-                  type="number"
-                  step="0.01"
-                  value={openingStock}
-                  onChange={(e) => setOpeningStock(e.target.value)}
-                  placeholder="0.00"
-                  data-testid="input-opening-stock"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Initial stock quantity for Plant Common stock
-                </p>
-              </div>
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}
               </Button>
@@ -625,22 +658,113 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                   <p className="font-medium">{material.name}</p>
                   <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
                 </div>
-                {canEdit && (
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(material)} data-testid={`button-edit-material-${material.id}`}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    {canDelete && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => openOpeningStockDialog(material)} data-testid={`button-add-stock-${material.id}`} title="Add Opening Stock">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                  {canEdit && (
+                    <>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(material)} data-testid={`button-edit-material-${material.id}`}>
+                        <Pencil className="w-4 h-4" />
                       </Button>
-                    )}
-                  </div>
-                )}
+                      {canDelete && (
+                        <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(material.id)} data-testid={`button-delete-material-${material.id}`}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
+        
+        {/* Opening Stock Dialog */}
+          <Dialog open={openingStockDialogOpen} onOpenChange={(open) => { if (!open) resetOpeningStockForm(); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Opening Stock</DialogTitle>
+                {selectedMaterialForStock && (
+                  <p className="text-sm text-muted-foreground">{selectedMaterialForStock.name}</p>
+                )}
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div>
+                  <Label>Stock Owner</Label>
+                  <Select value={stockOwnerType} onValueChange={(v) => setStockOwnerType(v as "plant" | "party")}>
+                    <SelectTrigger data-testid="select-stock-owner-type">
+                      <SelectValue placeholder="Select owner type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plant">Plant Common Stock</SelectItem>
+                      <SelectItem value="party">Party/Job Specific</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {stockOwnerType === "party" && (
+                  <div>
+                    <Label>Party</Label>
+                    <Select value={stockPartyId} onValueChange={setStockPartyId}>
+                      <SelectTrigger data-testid="select-stock-party">
+                        <SelectValue placeholder="Select party" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {parties?.map((party) => (
+                          <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                <div>
+                  <Label htmlFor="stock-quantity">Quantity ({selectedMaterialForStock?.defaultUom || "Ton"})</Label>
+                  <Input
+                    id="stock-quantity"
+                    type="number"
+                    step="0.01"
+                    value={stockQuantity}
+                    onChange={(e) => setStockQuantity(e.target.value)}
+                    placeholder="0.00"
+                    data-testid="input-stock-quantity"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="stock-date">Date</Label>
+                  <Input
+                    id="stock-date"
+                    type="date"
+                    value={stockDate}
+                    onChange={(e) => setStockDate(e.target.value)}
+                    data-testid="input-stock-date"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="stock-notes">Notes (optional)</Label>
+                  <Input
+                    id="stock-notes"
+                    value={stockNotes}
+                    onChange={(e) => setStockNotes(e.target.value)}
+                    placeholder="Opening balance from previous period"
+                    data-testid="input-stock-notes"
+                  />
+                </div>
+                
+                <Button 
+                  onClick={handleOpeningStockSubmit} 
+                  className="w-full" 
+                  disabled={createOpeningStockMutation.isPending || !stockQuantity || (stockOwnerType === "party" && !stockPartyId)}
+                  data-testid="button-save-opening-stock"
+                >
+                  {createOpeningStockMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Opening Stock"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
       </CardContent>
     </Card>
   );

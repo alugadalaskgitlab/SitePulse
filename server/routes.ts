@@ -770,10 +770,13 @@ export async function registerRoutes(
   // Material Opening Stocks
   app.get("/api/plant-module/opening-stocks", async (req, res) => {
     try {
-      const filters = {
+      const filters: { materialId?: number; partyId?: number } = {
         materialId: req.query.materialId ? Number(req.query.materialId) : undefined,
-        partyId: req.query.partyId ? (req.query.partyId === "null" ? null : Number(req.query.partyId)) : undefined,
       };
+      // Only add partyId filter if it's a valid number (null partyId = plant common, filter separately if needed)
+      if (req.query.partyId && req.query.partyId !== "null") {
+        filters.partyId = Number(req.query.partyId);
+      }
       const stocks = await storage.getMaterialOpeningStocks(filters);
       res.json(stocks);
     } catch (err) {
