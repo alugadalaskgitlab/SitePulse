@@ -172,7 +172,14 @@ Preferred communication style: Simple, everyday language.
 - **Notifications**: Material issues trigger admin notifications (type: warning)
 - **Route**: /plant/material-issues
 
-### Material Masters - Opening Stock
-- **Opening Stock Field**: Added optional opening stock field to Material Masters creation form
-- **Purpose**: Allows setting initial stock quantity for Plant Common stock when creating/editing materials
-- **Integration**: Opening stock values are used for initial stock balance calculations
+### Material Opening Stocks (Plant Module)
+- **Schema**: `materialOpeningStocks` table with stock owner support (partyId for party-specific or isPlantCommon=1 for plant common)
+- **Purpose**: Allows entering initial stock balances for materials with proper stock owner attribution
+- **UI Features**:
+  - "+" button on each material in Masters tab opens Add Opening Stock dialog
+  - Stock owner selection: Plant Common Stock or Party/Job Specific
+  - Party dropdown appears when Party/Job Specific is selected
+  - Quantity, date, and notes fields
+- **Ledger Integration**: Opening stock entries create ledger entries with transactionType="opening"
+- **Stock Balance**: Opening stocks are added to stock balance calculations
+- **API Endpoints**: /api/plant-module/opening-stocks (GET, POST)
