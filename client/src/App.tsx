@@ -15,6 +15,7 @@ import PlantHome from "@/pages/PlantHome";
 import PlantNew from "@/pages/PlantNew";
 import PlantDetails from "@/pages/PlantDetails";
 import PlantMaterialReceipts from "@/pages/PlantMaterialReceipts";
+import PlantMaterialIssues from "@/pages/PlantMaterialIssues";
 import PlantDispatches from "@/pages/PlantDispatches";
 import PlantEquipmentUsage from "@/pages/PlantEquipmentUsage";
 import PlantGeneratorLogs from "@/pages/PlantGeneratorLogs";
@@ -72,6 +73,7 @@ function Router() {
             <Route path="/plant/dashboard" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />
             <Route path="/plant/material-receipts" component={PlantMaterialReceipts} />
+            <Route path="/plant/material-issues" component={PlantMaterialIssues} />
             <Route path="/plant/dispatches" component={PlantDispatches} />
             <Route path="/plant/equipment-usage" component={PlantEquipmentUsage} />
             <Route path="/plant/generator-logs" component={PlantGeneratorLogs} />

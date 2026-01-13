@@ -85,9 +85,9 @@ export default function PlantStock() {
         };
       }
 
-      if (entry.transactionType === "receipt") {
+      if (entry.transactionType === "receipt" || entry.transactionType === "opening" || entry.transactionType === "adjustment") {
         summaryMap[key].received += entry.quantityIn || 0;
-      } else if (entry.transactionType === "dispatch") {
+      } else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
         summaryMap[key].consumed += Math.abs(entry.quantityOut || 0);
       }
     });
@@ -157,7 +157,7 @@ export default function PlantStock() {
         Date: entry.date,
         Material: getMaterialName(entry.materialId),
         "Stock Owner": getPartyName(entry.partyId),
-        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : 'Equip Issue',
+        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : 'Equip Issue',
         In: entry.quantityIn?.toFixed(2) || "-",
         Out: entry.quantityOut?.toFixed(2) || "-",
         Balance: entry.balanceAfter?.toFixed(2) || "-",
@@ -641,11 +641,13 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 text-xs rounded ${
-                              entry.transactionType === 'receipt' 
+                              entry.transactionType === 'receipt' || entry.transactionType === 'opening' || entry.transactionType === 'adjustment'
                                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
+                                : entry.transactionType === 'issue'
+                                ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                                 : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}>
-                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : 'Equip Issue'}
+                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : 'Equip Issue'}
                             </span>
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">

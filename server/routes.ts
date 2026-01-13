@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -703,6 +703,67 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material receipt" });
+    }
+  });
+
+  // Material Issues (issues to sites/parties from central store)
+  app.get("/api/plant-module/material-issues", async (req, res) => {
+    try {
+      const filters = {
+        partyId: req.query.partyId ? Number(req.query.partyId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const issues = await storage.getMaterialIssues(filters);
+      res.json(issues);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch material issues" });
+    }
+  });
+
+  app.post("/api/plant-module/material-issues", async (req, res) => {
+    try {
+      const input = insertMaterialIssueSchema.parse(req.body);
+      const issue = await storage.createMaterialIssue(input);
+      
+      // Notify admin of new material issue
+      await storage.createNotification({
+        type: "warning",
+        title: "Material Issue",
+        message: `Material issued: ${issue.quantity} ${issue.uom} to ${issue.issuedTo} on ${issue.date}`,
+        isRead: 0,
+      });
+      
+      res.status(201).json(issue);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: "Failed to create material issue" });
+    }
+  });
+
+  app.put("/api/plant-module/material-issues/:id", async (req, res) => {
+    try {
+      const input = insertMaterialIssueSchema.partial().parse(req.body);
+      const updated = await storage.updateMaterialIssue(Number(req.params.id), input);
+      if (!updated) return res.status(404).json({ message: "Issue not found" });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: "Failed to update material issue" });
+    }
+  });
+
+  app.delete("/api/plant-module/material-issues/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMaterialIssue(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Issue not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete material issue" });
     }
   });
 

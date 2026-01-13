@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock } from "lucide-react";
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -168,6 +168,21 @@ function OperationsTab() {
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Material Receipts</h3>
               <p className="text-sm text-muted-foreground">Record incoming materials by party/job</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href={appendOrigin("/plant/material-issues")}>
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <ArrowUpRight className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Material Issues</h3>
+              <p className="text-sm text-muted-foreground">Issue materials to sites from central store</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
@@ -431,6 +446,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
+  const [openingStock, setOpeningStock] = useState("");
 
   const exportToExcel = (data: PlantMaterial[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(m => ({ Name: m.name, Category: m.category || "", UOM: m.defaultUom })));
@@ -445,7 +461,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; category?: string; defaultUom: string }) =>
+    mutationFn: (data: { name: string; category?: string; defaultUom: string; openingStock?: number | null }) =>
       apiRequest("POST", "/api/plant-module/materials", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -455,7 +471,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; openingStock?: number | null }> }) =>
       apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -479,6 +495,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     setName("");
     setCategory("");
     setDefaultUom("Ton");
+    setOpeningStock("");
   };
 
   const openEdit = (material: PlantMaterial) => {
@@ -486,14 +503,21 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     setName(material.name);
     setCategory(material.category || "");
     setDefaultUom(material.defaultUom || "Ton");
+    setOpeningStock(material.openingStock !== null && material.openingStock !== undefined ? String(material.openingStock) : "");
     setDialogOpen(true);
   };
 
   const handleSubmit = () => {
+    const data = { 
+      name, 
+      category, 
+      defaultUom,
+      openingStock: openingStock ? parseFloat(openingStock) : null 
+    };
     if (editingMaterial) {
-      updateMutation.mutate({ id: editingMaterial.id, data: { name, category, defaultUom } });
+      updateMutation.mutate({ id: editingMaterial.id, data });
     } else {
-      createMutation.mutate({ name, category, defaultUom });
+      createMutation.mutate(data);
     }
   };
 
@@ -562,6 +586,21 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                     <SelectItem value="Nos">Nos</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="opening-stock">Opening Stock (optional)</Label>
+                <Input
+                  id="opening-stock"
+                  type="number"
+                  step="0.01"
+                  value={openingStock}
+                  onChange={(e) => setOpeningStock(e.target.value)}
+                  placeholder="0.00"
+                  data-testid="input-opening-stock"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Initial stock quantity for Plant Common stock
+                </p>
               </div>
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}

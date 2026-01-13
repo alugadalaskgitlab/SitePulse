@@ -157,3 +157,22 @@ Preferred communication style: Simple, everyday language.
 - Default Manager PIN: 1234 (can be changed via settings)
 - Default Admin PIN: 5678 (can be changed via settings)
 - Actual PINs stored in app_settings table
+
+### Material Issues Register (Plant Module)
+- **Purpose**: Track materials issued from central plant store to sites
+- **Schema**: `material_issues` table with stock owner (partyId or isPlantCommon), materialId, quantity, issuedTo, purpose
+- **Stock Deduction**: Issues deduct from specified party stock or plant common stock
+- **Ledger Integration**: Creates ledger entries with transactionType="issue" for audit trail
+- **Transaction Types**: Stock ledger now supports: receipt, dispatch, issue, opening, equipment_usage
+- **UI Features**:
+  - Full CRUD operations with date/time, material, quantity, issued to, purpose, vehicle number
+  - Filters by date range, party/stock owner, and material
+  - Export to Excel/PDF and Print (Admin PIN required)
+  - Navigation from Plant Dashboard Operations tab
+- **Notifications**: Material issues trigger admin notifications (type: warning)
+- **Route**: /plant/material-issues
+
+### Material Masters - Opening Stock
+- **Opening Stock Field**: Added optional opening stock field to Material Masters creation form
+- **Purpose**: Allows setting initial stock quantity for Plant Common stock when creating/editing materials
+- **Integration**: Opening stock values are used for initial stock balance calculations

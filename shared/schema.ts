@@ -287,12 +287,29 @@ export const stockLedger = pgTable("stock_ledger", {
   date: date("date").notNull(),
   partyId: integer("party_id"), // NULL for plant-common
   materialId: integer("material_id").notNull(),
-  transactionType: text("transaction_type").notNull(), // "receipt" or "dispatch" or "adjustment"
-  referenceId: integer("reference_id"), // ID of receipt or dispatch
+  transactionType: text("transaction_type").notNull(), // "receipt", "dispatch", "issue", "opening", "adjustment"
+  referenceId: integer("reference_id"), // ID of receipt, dispatch, or issue
   quantityIn: real("quantity_in").default(0),
   quantityOut: real("quantity_out").default(0),
   balanceAfter: real("balance_after"),
   uom: text("uom"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Material Issues (issues to sites/parties from central store)
+export const materialIssues = pgTable("material_issues", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  partyId: integer("party_id"), // Stock owner - NULL for PLANT COMMON stock
+  isPlantCommon: integer("is_plant_common").default(0), // 1 if issuing from plant common stock
+  materialId: integer("material_id").notNull(),
+  quantity: real("quantity").notNull(),
+  uom: text("uom").notNull(),
+  issuedTo: text("issued_to").notNull(), // Site name or party name
+  purpose: text("purpose"), // Purpose/remarks
+  vehicleNumber: text("vehicle_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -412,6 +429,7 @@ export const insertGeneratorLogSchema = createInsertSchema(generatorLogs).omit({
 export const insertLdoLogSchema = createInsertSchema(ldoLogs).omit({ id: true, createdAt: true });
 export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({ id: true, lastUpdated: true });
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
+export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
 
 // Types
 export type Party = typeof parties.$inferSelect;
@@ -426,6 +444,7 @@ export type GeneratorLog = typeof generatorLogs.$inferSelect;
 export type LdoLog = typeof ldoLogs.$inferSelect;
 export type StockBalance = typeof stockBalances.$inferSelect;
 export type StockLedgerEntry = typeof stockLedger.$inferSelect;
+export type MaterialIssue = typeof materialIssues.$inferSelect;
 
 // Insert Types
 export type InsertParty = z.infer<typeof insertPartySchema>;
@@ -440,6 +459,7 @@ export type InsertGeneratorLog = z.infer<typeof insertGeneratorLogSchema>;
 export type InsertLdoLog = z.infer<typeof insertLdoLogSchema>;
 export type InsertStockBalance = z.infer<typeof insertStockBalanceSchema>;
 export type InsertStockLedger = z.infer<typeof insertStockLedgerSchema>;
+export type InsertMaterialIssue = z.infer<typeof insertMaterialIssueSchema>;
 
 // Constants for UOM options
 export const UOM_OPTIONS = ["Ton", "MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;
