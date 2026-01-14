@@ -464,6 +464,9 @@ export default function SiteDashboard() {
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel;
   const hasMaterialFilters = materialFilters.site || materialFilters.material || materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel || materialFilters.dateFrom || materialFilters.dateTo;
+  
+  // Check if any non-date filter is applied (determines whether to show data)
+  const hasNonDateFilters = materialFilters.site || materialFilters.material || materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel;
 
   const materialTotals = useMemo(() => {
     if (!materialLogs) return { received: new Map(), issued: new Map() };
@@ -1303,7 +1306,7 @@ export default function SiteDashboard() {
               <Printer className="w-4 h-4" />
               Print
             </Button>
-            {dateGroupedMaterials.length > 0 && (
+            {hasNonDateFilters && dateGroupedMaterials.length > 0 && (
               <>
                 <div className="flex-1" />
                 <Button variant="ghost" size="sm" onClick={expandAll} className="gap-1" data-testid="button-expand-all">
@@ -1317,19 +1320,31 @@ export default function SiteDashboard() {
             )}
           </div>
 
-          {materialsLoading ? (
+          {!hasNonDateFilters ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                  <Filter className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Select a Filter</h3>
+                <p className="text-muted-foreground">
+                  Please apply a filter (Site, Material, Engineer, Activity, Equipment, or Diesel Usage) to view data.
+                </p>
+              </CardContent>
+            </Card>
+          ) : materialsLoading ? (
             <div className="flex justify-center p-12">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : !materialLogs || materialLogs.length === 0 ? (
+          ) : (!materialLogs || materialLogs.length === 0) && equipmentLogs.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                   <Package className="w-8 h-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">No Material Logs Found</h3>
+                <h3 className="text-lg font-semibold mb-2">No Data Found</h3>
                 <p className="text-muted-foreground">
-                  No materials were recorded in the selected date range.
+                  No materials or equipment were recorded matching your filters.
                 </p>
               </CardContent>
             </Card>
@@ -1432,10 +1447,11 @@ export default function SiteDashboard() {
                 </Card>
               )}
 
-              {/* Collapsible Date Groups */}
+              {/* Collapsible Date Groups - only show if there are material logs */}
+              {materialLogs && materialLogs.length > 0 && (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground px-1">
-                  {dateGroupedMaterials.length} day{dateGroupedMaterials.length !== 1 ? 's' : ''} with {materialLogs.length} material log{materialLogs.length !== 1 ? 's' : ''}
+                  {dateGroupedMaterials.length} day{dateGroupedMaterials.length !== 1 ? 's' : ''} with {materialLogs?.length || 0} material log{(materialLogs?.length || 0) !== 1 ? 's' : ''}
                 </div>
                 {dateGroupedMaterials.map((group) => (
                   <Collapsible 
@@ -1533,6 +1549,7 @@ export default function SiteDashboard() {
                   </Collapsible>
                 ))}
               </div>
+              )}
             </div>
           )}
         </TabsContent>
