@@ -467,6 +467,12 @@ export default function SiteDashboard() {
   
   // Check if any non-date filter is applied (determines whether to show data)
   const hasNonDateFilters = materialFilters.site || materialFilters.material || materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel;
+  
+  // Determine what type of data to show based on which filter is applied
+  // Priority: Equipment/Diesel filters → Equipment only; Material filter → Materials only; Site/Engineer/Activity → Full report
+  const showEquipmentOnly = (materialFilters.equipment || materialFilters.hasDiesel) && !materialFilters.material && !materialFilters.site && !materialFilters.engineer && !materialFilters.activity;
+  const showMaterialsOnly = materialFilters.material && !materialFilters.equipment && !materialFilters.hasDiesel && !materialFilters.site && !materialFilters.engineer && !materialFilters.activity;
+  const showFullReport = materialFilters.site || materialFilters.engineer || materialFilters.activity;
 
   const materialTotals = useMemo(() => {
     if (!materialLogs) return { received: new Map(), issued: new Map() };
@@ -1350,50 +1356,52 @@ export default function SiteDashboard() {
             </Card>
           ) : (
             <div className="space-y-6" ref={materialPrintRef}>
-              {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-green-600 dark:text-green-400 mb-3">Materials Received</h3>
-                    <div className="space-y-2">
-                      {Array.from(materialTotals.received.entries()).map(([key, value]) => {
-                        const [material] = key.split("-");
-                        return (
-                          <div key={key} className="flex justify-between items-center text-sm">
-                            <span>{material}</span>
-                            <Badge variant="secondary">{value.quantity.toFixed(2)} {value.uom}</Badge>
-                          </div>
-                        );
-                      })}
-                      {materialTotals.received.size === 0 && (
-                        <p className="text-sm text-muted-foreground">No materials received</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-orange-600 dark:text-orange-400 mb-3">Materials Issued</h3>
-                    <div className="space-y-2">
-                      {Array.from(materialTotals.issued.entries()).map(([key, value]) => {
-                        const [material] = key.split("-");
-                        return (
-                          <div key={key} className="flex justify-between items-center text-sm">
-                            <span>{material}</span>
-                            <Badge variant="secondary">{value.quantity.toFixed(2)} {value.uom}</Badge>
-                          </div>
-                        );
-                      })}
-                      {materialTotals.issued.size === 0 && (
-                        <p className="text-sm text-muted-foreground">No materials issued</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Material Summary Cards - show only when NOT equipment-only filter */}
+              {!showEquipmentOnly && (materialLogs && materialLogs.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-green-600 dark:text-green-400 mb-3">Materials Received</h3>
+                      <div className="space-y-2">
+                        {Array.from(materialTotals.received.entries()).map(([key, value]) => {
+                          const [material] = key.split("-");
+                          return (
+                            <div key={key} className="flex justify-between items-center text-sm">
+                              <span>{material}</span>
+                              <Badge variant="secondary">{value.quantity.toFixed(2)} {value.uom}</Badge>
+                            </div>
+                          );
+                        })}
+                        {materialTotals.received.size === 0 && (
+                          <p className="text-sm text-muted-foreground">No materials received</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-orange-600 dark:text-orange-400 mb-3">Materials Issued</h3>
+                      <div className="space-y-2">
+                        {Array.from(materialTotals.issued.entries()).map(([key, value]) => {
+                          const [material] = key.split("-");
+                          return (
+                            <div key={key} className="flex justify-between items-center text-sm">
+                              <span>{material}</span>
+                              <Badge variant="secondary">{value.quantity.toFixed(2)} {value.uom}</Badge>
+                            </div>
+                          );
+                        })}
+                        {materialTotals.issued.size === 0 && (
+                          <p className="text-sm text-muted-foreground">No materials issued</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
-              {/* Equipment Usage Summary - only show when there are equipment logs */}
-              {equipmentLogs.length > 0 && (
+              {/* Equipment Usage Summary - show only when NOT materials-only filter */}
+              {!showMaterialsOnly && equipmentLogs.length > 0 && (
                 <Card>
                   <CardContent className="p-4">
                     <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-3">Equipment Usage</h3>
@@ -1447,8 +1455,8 @@ export default function SiteDashboard() {
                 </Card>
               )}
 
-              {/* Collapsible Date Groups - only show if there are material logs */}
-              {materialLogs && materialLogs.length > 0 && (
+              {/* Collapsible Date Groups - only show if NOT equipment-only filter and there are material logs */}
+              {!showEquipmentOnly && materialLogs && materialLogs.length > 0 && (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground px-1">
                   {dateGroupedMaterials.length} day{dateGroupedMaterials.length !== 1 ? 's' : ''} with {materialLogs?.length || 0} material log{(materialLogs?.length || 0) !== 1 ? 's' : ''}
