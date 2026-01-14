@@ -103,6 +103,7 @@ export default function SiteDashboard() {
     activity: "",
     equipment: "",
     hasDiesel: false,
+    material: "",
   });
   
   const [materialFilters, setMaterialFilters] = useState({
@@ -198,6 +199,12 @@ export default function SiteDashboard() {
         if (!hasDieselUsage) return false;
       }
       
+      // Material filter
+      if (filters.material) {
+        const hasMaterial = dpr.materials?.some((m: any) => m.material === filters.material);
+        if (!hasMaterial) return false;
+      }
+      
       return true;
     });
   }, [dprsWithDetails, filters]);
@@ -279,7 +286,7 @@ export default function SiteDashboard() {
     return filtered;
   }, [allMaterialLogs, materialFilters.material, materialFilters.engineer, materialFilters.activity, materialFilters.equipment, materialFilters.hasDiesel, dprsForMaterialTab]);
   
-  const uniqueMaterials = useMemo(() => {
+  const uniqueMaterialsForDashboard = useMemo(() => {
     if (!allMaterialLogs) return [];
     const materials = Array.from(new Set(allMaterialLogs.map((log) => log.material).filter(Boolean)));
     return materials.sort();
@@ -396,6 +403,17 @@ export default function SiteDashboard() {
     return Array.from(equipment).sort();
   }, [dprsWithDetails]);
 
+  const uniqueMaterials = useMemo(() => {
+    if (!dprsWithDetails) return [];
+    const materials = new Set<string>();
+    dprsWithDetails.forEach((dpr: any) => {
+      dpr.materials?.forEach((m: any) => {
+        if (m.material) materials.add(m.material);
+      });
+    });
+    return Array.from(materials).sort();
+  }, [dprsWithDetails]);
+
   // Unique lists for Dashboard tab - uses dprsForMaterialTab (same date range as material logs)
   const uniqueSitesForMaterials = useMemo(() => {
     if (!dprsForMaterialTab) return [];
@@ -446,6 +464,7 @@ export default function SiteDashboard() {
       activity: "",
       equipment: "",
       hasDiesel: false,
+      material: "",
     });
   };
 
@@ -462,7 +481,7 @@ export default function SiteDashboard() {
     });
   };
 
-  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel;
+  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material;
   const hasMaterialFilters = materialFilters.site || materialFilters.material || materialFilters.engineer || materialFilters.activity || materialFilters.equipment || materialFilters.hasDiesel || materialFilters.dateFrom || materialFilters.dateTo;
   
   // Check if any non-date filter is applied (determines whether to show data)
@@ -1074,6 +1093,20 @@ export default function SiteDashboard() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Material</Label>
+                  <Select value={filters.material || "all"} onValueChange={(value) => setFilters({ ...filters, material: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-material">
+                      <SelectValue placeholder="All Materials" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Materials</SelectItem>
+                      {uniqueMaterials.map((material) => (
+                        <SelectItem key={material} value={material}>{material}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1204,7 +1237,7 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Materials</SelectItem>
-                      {uniqueMaterials.map((material) => (
+                      {uniqueMaterialsForDashboard.map((material) => (
                         <SelectItem key={material} value={material}>{material}</SelectItem>
                       ))}
                     </SelectContent>
