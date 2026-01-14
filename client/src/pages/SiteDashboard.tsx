@@ -75,6 +75,19 @@ interface DateGroupedMaterials {
   logs: SiteMaterialLog[];
 }
 
+interface EquipmentLogEntry {
+  id: number;
+  dprId: number;
+  date: string;
+  site: string;
+  machine: string;
+  operator: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  diesel: number | null;
+  task: string | null;
+}
+
 export default function SiteDashboard() {
   const { toast } = useToast();
   const { isAdmin, setAccess } = useAccess();
@@ -271,6 +284,76 @@ export default function SiteDashboard() {
     const materials = Array.from(new Set(allMaterialLogs.map((log) => log.material).filter(Boolean)));
     return materials.sort();
   }, [allMaterialLogs]);
+
+  // Extract equipment logs from DPRs for Dashboard tab display
+  const equipmentLogs = useMemo((): EquipmentLogEntry[] => {
+    if (!dprsForMaterialTab) return [];
+    
+    const logs: EquipmentLogEntry[] = [];
+    
+    dprsForMaterialTab.forEach((dpr: any) => {
+      const baseSite = getBaseSiteName(dpr.site);
+      const dprDate = dpr.date;
+      
+      // Apply site filter
+      if (materialFilters.site && baseSite !== materialFilters.site) return;
+      
+      // Apply engineer filter
+      if (materialFilters.engineer && dpr.engineer !== materialFilters.engineer) return;
+      
+      // Apply activity filter
+      if (materialFilters.activity) {
+        const hasActivity = dpr.progress?.some((p: any) => p.activity === materialFilters.activity);
+        if (!hasActivity) return;
+      }
+      
+      // Apply diesel filter (at DPR level)
+      if (materialFilters.hasDiesel) {
+        const hasDieselUsage = dpr.equipment?.some((e: any) => e.diesel && e.diesel > 0);
+        if (!hasDieselUsage) return;
+      }
+      
+      // Add equipment logs from this DPR
+      dpr.equipment?.forEach((equip: any) => {
+        // Apply equipment filter if specified
+        if (materialFilters.equipment && equip.machine !== materialFilters.equipment) return;
+        
+        logs.push({
+          id: equip.id,
+          dprId: dpr.id,
+          date: dprDate,
+          site: baseSite,
+          machine: equip.machine,
+          operator: equip.operator,
+          startTime: equip.startTime,
+          endTime: equip.endTime,
+          diesel: equip.diesel,
+          task: equip.task,
+        });
+      });
+    });
+    
+    // Sort by date descending, then by machine
+    return logs.sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date);
+      if (dateCompare !== 0) return dateCompare;
+      return a.machine.localeCompare(b.machine);
+    });
+  }, [dprsForMaterialTab, materialFilters.site, materialFilters.engineer, materialFilters.activity, materialFilters.equipment, materialFilters.hasDiesel]);
+
+  // Calculate equipment summary totals
+  const equipmentTotals = useMemo(() => {
+    const totals = new Map<string, { count: number; totalDiesel: number }>();
+    
+    for (const log of equipmentLogs) {
+      const existing = totals.get(log.machine) || { count: 0, totalDiesel: 0 };
+      existing.count += 1;
+      existing.totalDiesel += log.diesel || 0;
+      totals.set(log.machine, existing);
+    }
+    
+    return totals;
+  }, [equipmentLogs]);
 
   // Build unique site names from detailed DPRs (using base site names)
   const uniqueSites = useMemo(() => {
@@ -1293,6 +1376,61 @@ export default function SiteDashboard() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Equipment Usage Summary - only show when there are equipment logs */}
+              {equipmentLogs.length > 0 && (
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-3">Equipment Usage</h3>
+                    <div className="space-y-2 mb-4">
+                      {Array.from(equipmentTotals.entries()).map(([machine, totals]) => (
+                        <div key={machine} className="flex justify-between items-center text-sm">
+                          <span>{machine}</span>
+                          <div className="flex gap-2">
+                            <Badge variant="secondary">{totals.count} entries</Badge>
+                            {totals.totalDiesel > 0 && (
+                              <Badge variant="outline">{totals.totalDiesel.toFixed(1)} L diesel</Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t pt-3">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Equipment Log Details</p>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Site</TableHead>
+                              <TableHead>Equipment</TableHead>
+                              <TableHead>Operator</TableHead>
+                              <TableHead>Start</TableHead>
+                              <TableHead>End</TableHead>
+                              <TableHead>Diesel (L)</TableHead>
+                              <TableHead>Task</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {equipmentLogs.map((log) => (
+                              <TableRow key={`${log.dprId}-${log.id}`} data-testid={`equipment-row-${log.id}`}>
+                                <TableCell className="whitespace-nowrap">{format(parseISO(log.date), "dd MMM")}</TableCell>
+                                <TableCell>{log.site}</TableCell>
+                                <TableCell className="font-medium">{log.machine}</TableCell>
+                                <TableCell>{log.operator || "-"}</TableCell>
+                                <TableCell>{log.startTime || "-"}</TableCell>
+                                <TableCell>{log.endTime || "-"}</TableCell>
+                                <TableCell>{log.diesel ? log.diesel.toFixed(1) : "-"}</TableCell>
+                                <TableCell className="max-w-[200px] truncate">{log.task || "-"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Collapsible Date Groups */}
               <div className="space-y-3">
