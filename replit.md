@@ -102,6 +102,7 @@ Preferred communication style: Simple, everyday language.
 - Stock balances are always derived from ledger - no manual entry
 - Theoretical consumption is used for stock deduction
 - Actual consumption is for management analysis (savings/wastage)
+- **Diesel should be issued via Material Issues only** - Equipment Usage tracks consumption for analysis but does NOT deduct stock
 
 ## Recent Changes (January 2026)
 
@@ -154,7 +155,7 @@ Preferred communication style: Simple, everyday language.
 - **Schema**: `material_issues` table with stock owner (partyId or isPlantCommon), materialId, quantity, issuedTo, purpose
 - **Stock Deduction**: Issues deduct from specified party stock or plant common stock
 - **Ledger Integration**: Creates ledger entries with transactionType="issue" for audit trail
-- **Transaction Types**: Stock ledger now supports: receipt, dispatch, issue, opening, equipment_usage
+- **Transaction Types**: Stock ledger now supports: receipt, dispatch, issue, opening (Note: equipment_usage no longer creates ledger entries)
 - **UI Features**:
   - Full CRUD operations with date/time, material, quantity, issued to, purpose, vehicle number
   - Filters by date range, party/stock owner, and material
@@ -174,3 +175,23 @@ Preferred communication style: Simple, everyday language.
 - **Ledger Integration**: Opening stock entries create ledger entries with transactionType="opening"
 - **Stock Balance**: Opening stocks are added to stock balance calculations
 - **API Endpoints**: /api/plant-module/opening-stocks (GET, POST)
+
+### Equipment Master Enhanced (Plant Module)
+- **Ownership Field**: Equipment can be marked as "Owned" or "Hired"
+- **Vendor Name**: For hired equipment, vendor/contractor name can be recorded
+- **Registration/ID Number**: Unique identifier for each equipment unit (e.g., MH12AB1234)
+- **Active Status**: Equipment can be marked as active/inactive (hide returned equipment)
+- **Display**: Equipment list shows ownership status with color coding (green for Owned, orange for Hired with vendor name)
+- **Use Case**: Track hired equipment like JCB, Tippers, Soil Compactor with varying vendors and quantities
+
+### Stock Summary Display Fix
+- **Opening Stock Separated**: Stock Summary now shows "Opening Stock" column separately from "Received" column
+- **Correct Classification**: Opening stock entries (from Masters tab) are no longer grouped with receipts
+- **Ledger Display**: Transaction type labels correctly show "Opening" for opening stock entries
+
+### Equipment Usage - Tracking Only (No Stock Impact)
+- **Purpose Changed**: Equipment Usage now only tracks consumption for analysis, does NOT deduct diesel stock
+- **Diesel Issue Flow**: Diesel should be issued via Material Issues only (single source of truth)
+- **Consumption Tracking**: Equipment Usage still calculates expected diesel, actual consumption, variance for analysis
+- **Tank Level Tracking**: Opening diesel, diesel issued, closing diesel fields remain for tank balance tracking per equipment
+- **No Duplication**: Eliminates previous issue of diesel being deducted both in Material Issues AND Equipment Usage

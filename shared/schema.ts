@@ -181,6 +181,8 @@ export const equipmentMaster = pgTable("equipment_master", {
   name: text("name").notNull(),
   registrationNumber: text("registration_number"), // Unique ID like KA05AB1234 for tippers/JCBs
   equipmentType: text("equipment_type").default("Equipment"), // Deprecated - kept for backward compatibility
+  ownership: text("ownership").default("owned"), // "owned" or "hired"
+  vendorName: text("vendor_name"), // Vendor/contractor name for hired equipment
   meterType: text("meter_type").notNull(), // hour_meter, odometer
   consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
   isActive: integer("is_active").default(1),

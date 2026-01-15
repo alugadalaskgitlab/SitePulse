@@ -63,7 +63,7 @@ export default function PlantStock() {
       partyId: number | null;
       partyName: string;
       uom: string;
-      opening: number;
+      openingStock: number;
       received: number;
       consumed: number;
       closing: number;
@@ -78,16 +78,23 @@ export default function PlantStock() {
           partyId: entry.partyId,
           partyName: getPartyName(entry.partyId),
           uom: entry.uom || "Ton",
-          opening: 0,
+          openingStock: 0,
           received: 0,
           consumed: 0,
           closing: 0,
         };
       }
 
-      if (entry.transactionType === "receipt" || entry.transactionType === "opening" || entry.transactionType === "adjustment") {
+      // Opening stock entries (from Masters -> Opening Stock)
+      if (entry.transactionType === "opening") {
+        summaryMap[key].openingStock += entry.quantityIn || 0;
+      }
+      // Receipts (from Material Receipts) and adjustments
+      else if (entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].received += entry.quantityIn || 0;
-      } else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
+      }
+      // Consumed: dispatch, issue (equipment_usage removed - no longer deducts stock)
+      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue") {
         summaryMap[key].consumed += Math.abs(entry.quantityOut || 0);
       }
     });
@@ -98,7 +105,6 @@ export default function PlantStock() {
       ) || [];
       const currentBalance = materialBalances.reduce((sum, b) => sum + (b.balance || 0), 0);
       item.closing = currentBalance;
-      item.opening = currentBalance - item.received + item.consumed;
     });
 
     return Object.values(summaryMap);
@@ -146,7 +152,7 @@ export default function PlantStock() {
       const summaryData = stockSummary.map(item => ({
         Material: item.materialName,
         "Stock Owner": item.partyName,
-        Opening: item.opening.toFixed(2),
+        Opening: item.openingStock.toFixed(2),
         Received: item.received.toFixed(2),
         Consumed: item.consumed.toFixed(2),
         Closing: item.closing.toFixed(2),
@@ -216,7 +222,7 @@ export default function PlantStock() {
       const summaryTableData = stockSummary.map(item => [
         item.materialName,
         item.partyName,
-        item.opening.toFixed(2),
+        item.openingStock.toFixed(2),
         item.received.toFixed(2),
         item.consumed.toFixed(2),
         item.closing.toFixed(2),
@@ -318,7 +324,7 @@ export default function PlantStock() {
                 <tr>
                   <td>${item.materialName}</td>
                   <td>${item.partyName}</td>
-                  <td class="text-right">${item.opening.toFixed(2)}</td>
+                  <td class="text-right">${item.openingStock.toFixed(2)}</td>
                   <td class="text-right text-green">+${item.received.toFixed(2)}</td>
                   <td class="text-right text-red">-${item.consumed.toFixed(2)}</td>
                   <td class="text-right"><strong>${item.closing.toFixed(2)}</strong></td>
@@ -536,7 +542,7 @@ export default function PlantStock() {
                               {item.partyName}
                             </span>
                           </td>
-                          <td className="py-3 px-2 text-right">{item.opening.toFixed(2)}</td>
+                          <td className="py-3 px-2 text-right">{item.openingStock.toFixed(2)}</td>
                           <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">+{item.received.toFixed(2)}</td>
                           <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">-{item.consumed.toFixed(2)}</td>
                           <td className="py-3 px-2 text-right font-bold">{item.closing.toFixed(2)}</td>

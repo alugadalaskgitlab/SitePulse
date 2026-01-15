@@ -1117,6 +1117,8 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
+  const [ownership, setOwnership] = useState("owned");
+  const [vendorName, setVendorName] = useState("");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
 
@@ -1125,7 +1127,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number }) =>
+    mutationFn: (data: { name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number }) =>
       apiRequest("POST", "/api/plant-module/equipment", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -1135,7 +1137,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number }> }) =>
       apiRequest("PATCH", `/api/plant-module/equipment/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -1158,6 +1160,8 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     setEditingEquipment(null);
     setName("");
     setRegistrationNumber("");
+    setOwnership("owned");
+    setVendorName("");
     setMeterType("hour_meter");
     setConsumptionNorm("");
   };
@@ -1166,6 +1170,8 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     setEditingEquipment(equip);
     setName(equip.name);
     setRegistrationNumber((equip as any).registrationNumber || "");
+    setOwnership((equip as any).ownership || "owned");
+    setVendorName((equip as any).vendorName || "");
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
     setDialogOpen(true);
@@ -1175,6 +1181,8 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     const data = {
       name,
       registrationNumber: registrationNumber || undefined,
+      ownership,
+      vendorName: ownership === "hired" ? vendorName || undefined : undefined,
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
     };
@@ -1223,6 +1231,30 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
                   data-testid="input-registration-number"
                 />
               </div>
+              <div>
+                <Label htmlFor="ownership">Ownership</Label>
+                <Select value={ownership} onValueChange={setOwnership}>
+                  <SelectTrigger data-testid="select-ownership">
+                    <SelectValue placeholder="Select ownership" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owned">Owned</SelectItem>
+                    <SelectItem value="hired">Hired</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {ownership === "hired" && (
+                <div>
+                  <Label htmlFor="vendor-name">Vendor / Contractor Name</Label>
+                  <Input
+                    id="vendor-name"
+                    value={vendorName}
+                    onChange={(e) => setVendorName(e.target.value.toUpperCase())}
+                    placeholder="e.g., ABC CONTRACTORS"
+                    data-testid="input-vendor-name"
+                  />
+                </div>
+              )}
               <div>
                 <Label htmlFor="meter-type">Meter Type</Label>
                 <Select value={meterType} onValueChange={setMeterType}>
@@ -1274,6 +1306,11 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
                   <p className="font-medium">{equip.name}</p>
                   <p className="text-sm text-muted-foreground">
                     {(equip as any).registrationNumber && <span className="font-medium">{(equip as any).registrationNumber} | </span>}
+                    {(equip as any).ownership === "hired" ? (
+                      <span className="text-orange-600 font-medium">Hired{(equip as any).vendorName ? ` - ${(equip as any).vendorName}` : ""} | </span>
+                    ) : (
+                      <span className="text-green-600 font-medium">Owned | </span>
+                    )}
                     {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} | 
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
