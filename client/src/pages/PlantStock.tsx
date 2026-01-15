@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,44 @@ export default function PlantStock() {
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
   const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Plant Common";
 
+  // Filter out old equipment_issue entries (legacy - no longer created) and calculate running balances
+  const processedLedger = useMemo(() => {
+    if (!ledger) return [];
+    
+    // Exclude old equipment_issue entries - they are legacy and should not affect calculations
+    const validEntries = ledger.filter(e => e.transactionType !== 'equipment_issue');
+    
+    // Sort chronologically (oldest first) for running balance calculation
+    const sorted = [...validEntries].sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      // Within same date, sort by creation time
+      const aCreated = a.createdAt ? String(a.createdAt) : '';
+      const bCreated = b.createdAt ? String(b.createdAt) : '';
+      return aCreated.localeCompare(bCreated);
+    });
+    
+    // Group by material + party for per-group running balance
+    const groupBalances: Record<string, number> = {};
+    
+    return sorted.map(entry => {
+      const key = `${entry.materialId}-${entry.partyId ?? 'common'}`;
+      if (groupBalances[key] === undefined) groupBalances[key] = 0;
+      
+      groupBalances[key] += (entry.quantityIn || 0) - (entry.quantityOut || 0);
+      
+      return {
+        ...entry,
+        calculatedBalance: groupBalances[key]
+      };
+    });
+  }, [ledger]);
+
+  // For display, reverse to show most recent first
+  const ledgerForDisplay = useMemo(() => {
+    return [...processedLedger].reverse();
+  }, [processedLedger]);
+
   const computeStockSummary = () => {
     if (!ledger || !materials) return [];
 
@@ -69,7 +107,8 @@ export default function PlantStock() {
       closing: number;
     }> = {};
 
-    ledger.forEach((entry) => {
+    // Use processedLedger which excludes equipment_issue entries
+    processedLedger.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? "common"}`;
       if (!summaryMap[key]) {
         summaryMap[key] = {
@@ -93,18 +132,15 @@ export default function PlantStock() {
       else if (entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].received += entry.quantityIn || 0;
       }
-      // Consumed: dispatch, issue (equipment_usage removed - no longer deducts stock)
+      // Consumed: dispatch, issue only (equipment_issue excluded from processedLedger)
       else if (entry.transactionType === "dispatch" || entry.transactionType === "issue") {
         summaryMap[key].consumed += Math.abs(entry.quantityOut || 0);
       }
     });
 
+    // Calculate closing balance from the ledger transactions (not from stockBalances API)
     Object.values(summaryMap).forEach((item) => {
-      const materialBalances = stockBalances?.filter(
-        (b) => b.materialId === item.materialId && b.partyId === item.partyId
-      ) || [];
-      const currentBalance = materialBalances.reduce((sum, b) => sum + (b.balance || 0), 0);
-      item.closing = currentBalance;
+      item.closing = item.openingStock + item.received - item.consumed;
     });
 
     return Object.values(summaryMap);
@@ -159,14 +195,14 @@ export default function PlantStock() {
         UOM: item.uom,
       }));
       
-      const ledgerData = (ledger || []).map(entry => ({
+      const ledgerData = processedLedger.map(entry => ({
         Date: entry.date,
         Material: getMaterialName(entry.materialId),
         "Stock Owner": getPartyName(entry.partyId),
-        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : 'Equip Issue',
+        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType,
         In: entry.quantityIn?.toFixed(2) || "-",
         Out: entry.quantityOut?.toFixed(2) || "-",
-        Balance: entry.balanceAfter?.toFixed(2) || "-",
+        Balance: entry.calculatedBalance?.toFixed(2) || "-",
         UOM: entry.uom,
       }));
       
@@ -616,7 +652,7 @@ export default function PlantStock() {
                 <div className="flex justify-center p-8">
                   <Loader2 className="w-6 h-6 animate-spin" />
                 </div>
-              ) : !ledger?.length ? (
+              ) : !ledgerForDisplay?.length ? (
                 <p className="text-muted-foreground text-center py-8">No transactions found for this period.</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -633,7 +669,7 @@ export default function PlantStock() {
                       </tr>
                     </thead>
                     <tbody>
-                      {ledger.slice(0, 100).map((entry) => (
+                      {ledgerForDisplay.slice(0, 100).map((entry) => (
                         <tr key={entry.id} className="border-b hover:bg-muted/30">
                           <td className="p-3">{entry.date}</td>
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
@@ -653,7 +689,7 @@ export default function PlantStock() {
                                 ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                                 : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}>
-                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : 'Equip Issue'}
+                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType}
                             </span>
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
@@ -662,14 +698,14 @@ export default function PlantStock() {
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
                             {(entry.quantityOut ?? 0) > 0 ? `${entry.quantityOut?.toFixed(2)}` : '-'}
                           </td>
-                          <td className="p-3 text-right font-bold">{entry.balanceAfter?.toFixed(2)} {entry.uom}</td>
+                          <td className="p-3 text-right font-bold">{entry.calculatedBalance?.toFixed(2)} {entry.uom}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {ledger.length > 100 && (
+                  {ledgerForDisplay.length > 100 && (
                     <p className="text-center text-muted-foreground text-sm py-4">
-                      Showing first 100 of {ledger.length} transactions
+                      Showing first 100 of {ledgerForDisplay.length} transactions
                     </p>
                   )}
                 </div>
