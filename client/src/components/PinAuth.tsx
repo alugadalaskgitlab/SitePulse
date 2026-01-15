@@ -135,7 +135,7 @@ export function PinAuth({ targetRole = "any", onSuccess, onClose }: PinAuthProps
                 )}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                Default PINs: Manager 1234 | Admin 5678
+                Contact administrator if you forgot your PIN
               </p>
             </div>
           </form>

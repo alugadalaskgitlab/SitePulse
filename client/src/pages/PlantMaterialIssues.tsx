@@ -15,7 +15,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer, ArrowUpRight } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -296,7 +296,7 @@ export default function PlantMaterialIssues() {
       issue.purpose || "",
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 28,
       head: [["Date", "Stock Owner", "Material", "Qty", "Issued To", "Purpose"]],
       body: tableData,

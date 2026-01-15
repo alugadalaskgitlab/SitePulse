@@ -14,7 +14,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -388,7 +388,7 @@ export default function PlantDispatches() {
         ];
       });
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
         head: [["Date", "Time", "Party", "Site", "Mix", "Load", "Vehicle", "Bitumen", "LDO"]],
         body: tableData,

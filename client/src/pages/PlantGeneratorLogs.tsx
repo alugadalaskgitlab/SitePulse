@@ -11,7 +11,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Zap, Loader2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -224,7 +224,7 @@ export default function PlantGeneratorLogs() {
         log.efficiency?.toFixed(2) || "-",
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 28,
         head: [["Date", "Gen", "Start", "End", "Hrs", "Open(L)", "Issue(L)", "Cons(L)", "Close(L)", "L/hr"]],
         body: tableData,

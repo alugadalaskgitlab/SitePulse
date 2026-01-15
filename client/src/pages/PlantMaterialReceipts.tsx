@@ -15,7 +15,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -390,7 +390,7 @@ export default function PlantMaterialReceipts() {
         getPartyName(r.partyId),
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
         head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Party/Job"]],
         body: tableData,

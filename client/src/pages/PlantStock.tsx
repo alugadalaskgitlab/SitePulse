@@ -13,7 +13,7 @@ import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Prin
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
@@ -265,7 +265,7 @@ export default function PlantStock() {
         item.uom,
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 34,
         head: [["Material", "Stock Owner", "Opening", "Received", "Consumed", "Closing", "UOM"]],
         body: summaryTableData,
@@ -277,29 +277,7 @@ export default function PlantStock() {
       
       const filename = buildFilename("pdf");
       
-      // Try File System Access API for save dialog (Chrome/Edge desktop)
-      if ('showSaveFilePicker' in window) {
-        try {
-          const handle = await (window as any).showSaveFilePicker({
-            suggestedName: filename,
-            types: [{
-              description: 'PDF Files',
-              accept: { 'application/pdf': ['.pdf'] }
-            }]
-          });
-          const writable = await handle.createWritable();
-          const pdfBlob = doc.output('blob');
-          await writable.write(pdfBlob);
-          await writable.close();
-          toast({ title: "File saved successfully" });
-          return;
-        } catch (err: any) {
-          if (err.name === 'AbortError') return;
-          // Fall through to standard download
-        }
-      }
-      
-      // Standard download for Safari, mobile, and other browsers
+      // Standard download - works reliably across all browsers
       const pdfBlob = doc.output('blob');
       triggerDownload(pdfBlob, filename);
       toast({ title: "File download started", description: "Check your Downloads or Files app." });

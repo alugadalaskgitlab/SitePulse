@@ -1527,7 +1527,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const exportToPdf = async () => {
     try {
       const { default: jsPDF } = await import("jspdf");
-      await import("jspdf-autotable");
+      const { default: autoTable } = await import("jspdf-autotable");
       
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -1561,7 +1561,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
         doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
       };
 
-      (doc as any).autoTable({
+      autoTable(doc, {
         head: headers,
         body: data,
         startY: 28,
@@ -1575,7 +1575,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
         },
       });
 
-      const finalY = (doc as any).lastAutoTable.finalY || 100;
+      const finalY = (doc as any).lastAutoTable?.finalY || 100;
       if (finalY + 20 > pageHeight - 25) {
         doc.addPage();
         addHeader();

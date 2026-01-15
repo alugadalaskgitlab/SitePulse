@@ -15,7 +15,7 @@ import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import type { LdoLog } from "@shared/schema";
 import { DEFAULT_LDO_NORM } from "@shared/schema";
 
@@ -202,7 +202,7 @@ export default function PlantLdoLogs() {
         log.variance?.toFixed(1) || "-",
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 28,
         head: [["Date", "Open(L)", "Recv(L)", "Cons(L)", "Close(L)", "Prod(MT)", "Expect(L)", "Eff(L/ton)", "Var(L)"]],
         body: tableData,
