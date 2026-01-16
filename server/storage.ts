@@ -1212,7 +1212,22 @@ export class DatabaseStorage implements IStorage {
     // Get equipment to calculate expected diesel
     const [equipment] = await db.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
     
-    const hoursOrKmRun = usage.closingReading - usage.openingReading;
+    // Calculate hours from meter readings or time entry (meter takes priority)
+    let hoursOrKmRun = 0;
+    
+    if (usage.openingReading !== null && usage.openingReading !== undefined && 
+        usage.closingReading !== null && usage.closingReading !== undefined) {
+      hoursOrKmRun = usage.closingReading - usage.openingReading;
+    } else if (usage.startTime && usage.endTime) {
+      // Calculate hours from time entry
+      const [startHour, startMin] = usage.startTime.split(':').map(Number);
+      const [endHour, endMin] = usage.endTime.split(':').map(Number);
+      const startMins = startHour * 60 + startMin;
+      const endMins = endHour * 60 + endMin;
+      const diff = endMins - startMins;
+      hoursOrKmRun = diff > 0 ? diff / 60 : 0;
+    }
+    
     const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
     
     // Use user-provided opening diesel, or default to 0
@@ -1250,10 +1265,27 @@ export class DatabaseStorage implements IStorage {
     
     const openingReading = usage.openingReading ?? existing.openingReading;
     const closingReading = usage.closingReading ?? existing.closingReading;
+    const startTime = usage.startTime ?? (existing as any).startTime;
+    const endTime = usage.endTime ?? (existing as any).endTime;
     const newDieselIssued = usage.dieselIssued ?? existing.dieselIssued ?? 0;
     const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
     
-    const hoursOrKmRun = closingReading - openingReading;
+    // Calculate hours from meter readings or time entry (meter takes priority)
+    let hoursOrKmRun = 0;
+    
+    if (openingReading !== null && openingReading !== undefined && 
+        closingReading !== null && closingReading !== undefined) {
+      hoursOrKmRun = closingReading - openingReading;
+    } else if (startTime && endTime) {
+      // Calculate hours from time entry
+      const [startHour, startMin] = startTime.split(':').map(Number);
+      const [endHour, endMin] = endTime.split(':').map(Number);
+      const startMins = startHour * 60 + startMin;
+      const endMins = endHour * 60 + endMin;
+      const diff = endMins - startMins;
+      hoursOrKmRun = diff > 0 ? diff / 60 : 0;
+    }
+    
     const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
     
     // Calculate closing diesel balance = opening + issued - consumed

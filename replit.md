@@ -106,6 +106,24 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
 
+### Equipment Tracking Dual Entry System
+- **Both Modules Support**: Site Report Equipment Log and Plant Module Equipment Usage now support BOTH time entry AND hour meter entry
+- **User Choice**: Users can enter:
+  - Time only (Start Time, End Time)
+  - Hour meter only (Opening Reading, Closing Reading)
+  - Both (hour meter takes priority for calculations)
+- **Database Schema Updates**:
+  - `equipmentLogs` table: Added openingReading, closingReading, hoursWorked, dieselNorm, expectedDiesel
+  - `equipmentUsage` table: Added startTime, endTime (readings now optional)
+- **Live Efficiency Calculation**: 
+  - Working Hours calculated automatically from time or meter
+  - Expected Diesel = hours × norm (L/hr)
+  - Efficiency = (expected / actual) × 100%
+  - Recalculates immediately when norm or entries change
+- **UI Enhancements**:
+  - Helper text: "Enter time OR hour meter readings (or both). Hour meter takes priority."
+  - Visual efficiency indicator (green for >=100%, red for <100%)
+
 ### Site Reports Enhanced Filtering & Export
 - **Filters**: Extended filter options on Site Reports page (/site/dashboard)
   - Date range (from/to)

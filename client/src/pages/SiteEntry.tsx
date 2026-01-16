@@ -33,6 +33,9 @@ interface EquipmentEntry {
   task: string;
   startTime: string;
   endTime: string;
+  openingReading: number | null;
+  closingReading: number | null;
+  dieselNorm: number | null;
   diesel: number | null;
 }
 
@@ -112,7 +115,7 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", operator: "", task: "", startTime: "", endTime: "", diesel: null }
+    { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, dieselNorm: null, diesel: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -180,6 +183,34 @@ export default function SiteEntry() {
     }
   };
 
+  // Calculate hours from meter readings (meter readings take priority over time entry)
+  const calculateMeterHours = (openingReading: number | null, closingReading: number | null): number | null => {
+    if (openingReading === null || closingReading === null) return null;
+    const diff = closingReading - openingReading;
+    return diff >= 0 ? diff : null;
+  };
+
+  // Get working hours - prefer meter reading if available, else time
+  const getWorkingHours = (entry: EquipmentEntry): number => {
+    const meterHours = calculateMeterHours(entry.openingReading, entry.closingReading);
+    if (meterHours !== null) return meterHours;
+    return calculateHours(entry.startTime, entry.endTime);
+  };
+
+  // Calculate expected diesel based on norm
+  const getExpectedDiesel = (entry: EquipmentEntry): number | null => {
+    const hours = getWorkingHours(entry);
+    if (hours === 0 || !entry.dieselNorm) return null;
+    return hours * entry.dieselNorm;
+  };
+
+  // Calculate efficiency percentage
+  const getEfficiency = (entry: EquipmentEntry): number | null => {
+    const expected = getExpectedDiesel(entry);
+    if (!expected || !entry.diesel || entry.diesel === 0) return null;
+    return (expected / entry.diesel) * 100;
+  };
+
   const getTotalDiesel = (): number => {
     return equipment.reduce((sum, e) => sum + (e.diesel || 0), 0);
   };
@@ -202,7 +233,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", diesel: null }]);
+      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, dieselNorm: null, diesel: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
@@ -545,116 +576,198 @@ export default function SiteEntry() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          {equipment.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-7 gap-3 p-4 border rounded-lg bg-muted/30">
-              <div>
-                <Label className="text-xs">Machine</Label>
-                <Input
-                  placeholder="Machine name"
-                  value={entry.machine}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].machine = e.target.value;
-                    setEquipment(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-equipment-machine-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Operator</Label>
-                <Input
-                  placeholder="Operator name"
-                  value={entry.operator}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].operator = e.target.value;
-                    setEquipment(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-equipment-operator-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Task</Label>
-                <Input
-                  placeholder="Task performed"
-                  value={entry.task}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].task = e.target.value;
-                    setEquipment(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-equipment-task-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Start</Label>
-                <Input
-                  type="time"
-                  value={entry.startTime}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].startTime = e.target.value;
-                    setEquipment(updated);
-                  }}
-                  data-testid={`input-equipment-start-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">End</Label>
-                <Input
-                  type="time"
-                  value={entry.endTime}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].endTime = e.target.value;
-                    setEquipment(updated);
-                  }}
-                  data-testid={`input-equipment-end-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Hours</Label>
-                <Input
-                  type="text"
-                  readOnly
-                  value={calculateHours(entry.startTime, entry.endTime) > 0 ? calculateHours(entry.startTime, entry.endTime).toFixed(2) : "-"}
-                  className="bg-muted"
-                  data-testid={`input-equipment-hours-${idx}`}
-                />
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label className="text-xs">Diesel (L)</Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    placeholder="0"
-                    value={entry.diesel ?? ""}
-                    onChange={(e) => {
-                      const updated = [...equipment];
-                      updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                      setEquipment(updated);
-                    }}
-                    data-testid={`input-equipment-diesel-${idx}`}
-                  />
+          {equipment.map((entry, idx) => {
+            const workingHours = getWorkingHours(entry);
+            const expectedDiesel = getExpectedDiesel(entry);
+            const efficiency = getEfficiency(entry);
+            
+            return (
+              <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  onClick={() => removeRow('equipment', idx)}
+                  disabled={equipment.length === 1}
+                  className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+                  data-testid={`button-remove-equipment-${idx}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+                
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Machine</Label>
+                    <Input
+                      placeholder="Machine name"
+                      value={entry.machine}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].machine = e.target.value;
+                        setEquipment(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-equipment-machine-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Operator</Label>
+                    <Input
+                      placeholder="Operator name"
+                      value={entry.operator}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].operator = e.target.value;
+                        setEquipment(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-equipment-operator-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Task</Label>
+                    <Input
+                      placeholder="Task performed"
+                      value={entry.task}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].task = e.target.value;
+                        setEquipment(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-equipment-task-${idx}`}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-end">
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    onClick={() => removeRow('equipment', idx)}
-                    disabled={equipment.length === 1}
-                    data-testid={`button-remove-equipment-${idx}`}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
+
+                <p className="text-xs text-muted-foreground italic">Enter time OR hour meter readings (or both). Hour meter takes priority for calculations.</p>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs">Start Time</Label>
+                    <Input
+                      type="time"
+                      value={entry.startTime}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].startTime = e.target.value;
+                        setEquipment(updated);
+                      }}
+                      data-testid={`input-equipment-start-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">End Time</Label>
+                    <Input
+                      type="time"
+                      value={entry.endTime}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].endTime = e.target.value;
+                        setEquipment(updated);
+                      }}
+                      data-testid={`input-equipment-end-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Opening Hour Meter</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 1234.5"
+                      value={entry.openingReading ?? ""}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
+                        setEquipment(updated);
+                      }}
+                      data-testid={`input-equipment-opening-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Closing Hour Meter</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 1238.0"
+                      value={entry.closingReading ?? ""}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].closingReading = e.target.value ? parseFloat(e.target.value) : null;
+                        setEquipment(updated);
+                      }}
+                      data-testid={`input-equipment-closing-${idx}`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div>
+                    <Label className="text-xs">Working Hours</Label>
+                    <div 
+                      className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
+                      data-testid={`display-working-hours-${idx}`}
+                    >
+                      {workingHours > 0 ? `${workingHours.toFixed(2)} hrs` : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Diesel Norm (L/hr)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 5.0"
+                      value={entry.dieselNorm ?? ""}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].dieselNorm = e.target.value ? parseFloat(e.target.value) : null;
+                        setEquipment(updated);
+                      }}
+                      data-testid={`input-diesel-norm-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Diesel Issued (L)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      placeholder="0"
+                      value={entry.diesel ?? ""}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
+                        setEquipment(updated);
+                      }}
+                      data-testid={`input-equipment-diesel-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Expected Diesel</Label>
+                    <div 
+                      className="bg-muted px-3 py-2 rounded border font-semibold text-sm"
+                      data-testid={`display-expected-diesel-${idx}`}
+                    >
+                      {expectedDiesel !== null ? `${expectedDiesel.toFixed(1)} L` : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Efficiency</Label>
+                    <div 
+                      className={`px-3 py-2 rounded border font-semibold text-sm ${
+                        efficiency !== null 
+                          ? efficiency >= 100 
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' 
+                            : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                          : 'bg-muted'
+                      }`}
+                      data-testid={`display-efficiency-${idx}`}
+                    >
+                      {efficiency !== null ? `${efficiency.toFixed(0)}%` : "-"}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
             <p className="text-sm text-muted-foreground">Total Diesel</p>
             <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(1)} L</p>

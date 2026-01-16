@@ -33,6 +33,8 @@ export default function PlantEquipmentUsage() {
   const [equipmentId, setEquipmentId] = useState<string>("");
   const [openingReading, setOpeningReading] = useState("");
   const [closingReading, setClosingReading] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -45,20 +47,24 @@ export default function PlantEquipmentUsage() {
     equipmentId: string;
     openingReading: string;
     closingReading: string;
+    startTime: string;
+    endTime: string;
     openingDiesel: string;
     dieselIssued: string;
     remarks: string;
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, openingDiesel, dieselIssued, remarks
-  }), [date, equipmentId, openingReading, closingReading, openingDiesel, dieselIssued, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, remarks
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, remarks]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
     setEquipmentId(data.equipmentId);
     setOpeningReading(data.openingReading);
     setClosingReading(data.closingReading);
+    setStartTime(data.startTime);
+    setEndTime(data.endTime);
     setOpeningDiesel(data.openingDiesel);
     setDieselIssued(data.dieselIssued);
     setRemarks(data.remarks);
@@ -127,6 +133,8 @@ export default function PlantEquipmentUsage() {
     setEquipmentId("");
     setOpeningReading("");
     setClosingReading("");
+    setStartTime("");
+    setEndTime("");
     setOpeningDiesel("");
     setDieselIssued("");
     setRemarks("");
@@ -140,8 +148,10 @@ export default function PlantEquipmentUsage() {
     setEditingUsage(entry);
     setDate(entry.date);
     setEquipmentId(String(entry.equipmentId));
-    setOpeningReading(String(entry.openingReading));
-    setClosingReading(String(entry.closingReading));
+    setOpeningReading(entry.openingReading ? String(entry.openingReading) : "");
+    setClosingReading(entry.closingReading ? String(entry.closingReading) : "");
+    setStartTime((entry as any).startTime || "");
+    setEndTime((entry as any).endTime || "");
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setRemarks(entry.remarks || "");
@@ -184,13 +194,22 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
-    if (!equipmentId || !openingReading || !closingReading) return;
+    // Either meter readings OR time entry must be provided
+    const hasMeterReading = openingReading && closingReading;
+    const hasTimeEntry = startTime && endTime;
+    
+    if (!equipmentId || (!hasMeterReading && !hasTimeEntry)) {
+      toast({ title: "Please provide either meter readings or time entry", variant: "destructive" });
+      return;
+    }
     
     const data = {
       date,
       equipmentId: parseInt(equipmentId),
-      openingReading: parseFloat(openingReading),
-      closingReading: parseFloat(closingReading),
+      openingReading: openingReading ? parseFloat(openingReading) : null,
+      closingReading: closingReading ? parseFloat(closingReading) : null,
+      startTime: startTime || null,
+      endTime: endTime || null,
       openingDiesel: openingDiesel ? parseFloat(openingDiesel) : 0,
       dieselIssued: dieselIssued ? parseFloat(dieselIssued) : 0,
       remarks: remarks.toUpperCase(),
@@ -260,7 +279,25 @@ export default function PlantEquipmentUsage() {
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
-  const runtime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
+  
+  // Calculate runtime from meter readings or time entry (meter takes priority)
+  const calculateTimeHours = (start?: string, end?: string) => {
+    if (!start || !end) return 0;
+    try {
+      const [startHour, startMin] = start.split(':').map(Number);
+      const [endHour, endMin] = end.split(':').map(Number);
+      const startMins = startHour * 60 + startMin;
+      const endMins = endHour * 60 + endMin;
+      const diff = endMins - startMins;
+      return diff > 0 ? diff / 60 : 0;
+    } catch {
+      return 0;
+    }
+  };
+  
+  const meterRuntime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
+  const timeRuntime = calculateTimeHours(startTime, endTime);
+  const runtime = meterRuntime > 0 ? meterRuntime : timeRuntime;
   const expectedDiesel = runtime * (selectedEquipment?.consumptionNorm || 0);
 
   const filteredUsage = usage?.filter(u => {
@@ -589,6 +626,8 @@ export default function PlantEquipmentUsage() {
                 )}
               </div>
 
+              <p className="text-xs text-muted-foreground italic">Enter meter readings OR time (or both). Meter takes priority.</p>
+              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Opening Reading</Label>
@@ -600,9 +639,20 @@ export default function PlantEquipmentUsage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Start Time</Label>
+                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-start-time" />
+                </div>
+                <div>
+                  <Label>End Time</Label>
+                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-end-time" />
+                </div>
+              </div>
+
               {runtime > 0 && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
-                  <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "km"}</strong></p>
+                  <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "hrs"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
                   <p>Diesel Consumed: <strong>{expectedDiesel.toFixed(1)} L</strong></p>
                 </div>
               )}
@@ -645,7 +695,12 @@ export default function PlantEquipmentUsage() {
                 <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value.toUpperCase())} placeholder="Optional notes" data-testid="input-usage-remarks" />
               </div>
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || !openingReading || !closingReading} data-testid="button-save-usage">
+              <Button 
+                onClick={handleSubmit} 
+                className="w-full" 
+                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || ((!openingReading || !closingReading) && (!startTime || !endTime))} 
+                data-testid="button-save-usage"
+              >
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingUsage ? "Update Entry" : "Save Entry"}
               </Button>
             </div>

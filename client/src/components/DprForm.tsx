@@ -1,4 +1,4 @@
-import { useForm, useFieldArray, Control } from "react-hook-form";
+import { useForm, useFieldArray, Control, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createDprRequestSchema, type CreateDprRequest } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -368,29 +368,270 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
   );
 }
 
+// Calculate hours from time entry
+const calculateTimeHours = (startTime?: string, endTime?: string) => {
+  if (!startTime || !endTime) return null;
+  try {
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    const startMins = startHour * 60 + startMin;
+    const endMins = endHour * 60 + endMin;
+    const diff = endMins - startMins;
+    if (diff < 0) return null;
+    return diff / 60;
+  } catch {
+    return null;
+  }
+};
+
+// Calculate hours from meter readings
+const calculateMeterHours = (openingReading?: number, closingReading?: number) => {
+  if (openingReading === undefined || closingReading === undefined) return null;
+  if (openingReading === null || closingReading === null) return null;
+  const diff = closingReading - openingReading;
+  if (diff < 0) return null;
+  return diff;
+};
+
+// Sub-component for equipment row with live calculations using useWatch
+function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRequest>; index: number; remove: (index: number) => void }) {
+  // Watch specific fields for this equipment entry for live recalculation
+  const watchedValues = useWatch({
+    control,
+    name: `equipment.${index}`,
+  });
+
+  const startTime = watchedValues?.startTime;
+  const endTime = watchedValues?.endTime;
+  const openingReading = watchedValues?.openingReading;
+  const closingReading = watchedValues?.closingReading;
+  const dieselNorm = watchedValues?.dieselNorm;
+  const diesel = watchedValues?.diesel;
+
+  // Get working hours - prefer meter reading if available, else time
+  const meterHours = calculateMeterHours(openingReading, closingReading);
+  const timeHours = calculateTimeHours(startTime, endTime);
+  const workingHours = meterHours !== null ? meterHours : timeHours;
+
+  // Calculate expected diesel based on norm
+  const expectedDiesel = workingHours !== null && dieselNorm ? workingHours * dieselNorm : null;
+
+  // Calculate efficiency percentage
+  const efficiency = expectedDiesel && diesel && diesel > 0 ? (expectedDiesel / diesel) * 100 : null;
+
+  return (
+    <Card className="bg-muted/30 relative">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+        onClick={() => remove(index)}
+      >
+        <Trash2 className="w-4 h-4" />
+      </Button>
+      <CardContent className="pt-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={control}
+            name={`equipment.${index}.machine`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Machine Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g. Excavator 01" {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`equipment.${index}.operator`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Operator Name (Optional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="Name" {...field} value={field.value || ''} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <p className="text-xs text-muted-foreground italic">Enter time OR hour meter readings (or both). Hour meter takes priority for calculations.</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FormField
+            control={control}
+            name={`equipment.${index}.startTime`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Start Time</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="time" 
+                    {...field} 
+                    value={field.value || ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`equipment.${index}.endTime`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>End Time</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="time" 
+                    {...field} 
+                    value={field.value || ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <div className="flex flex-col justify-end">
+            <FormLabel className="text-xs text-muted-foreground">Working Hours</FormLabel>
+            <div data-testid={`display-working-hours-${index}`} className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary">
+              {workingHours !== null ? `${workingHours.toFixed(2)} hrs` : '-'}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FormField
+            control={control}
+            name={`equipment.${index}.openingReading`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Opening Hour Meter</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="0.1" 
+                    placeholder="e.g. 1234.5" 
+                    {...field} 
+                    onChange={e => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`equipment.${index}.closingReading`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Closing Hour Meter</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="0.1" 
+                    placeholder="e.g. 1238.0" 
+                    {...field} 
+                    onChange={e => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`equipment.${index}.dieselNorm`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Diesel Norm (L/hr)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="0.1" 
+                    placeholder="e.g. 5.0" 
+                    data-testid={`input-diesel-norm-${index}`}
+                    {...field} 
+                    onChange={e => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <FormField
+            control={control}
+            name={`equipment.${index}.diesel`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Diesel Issued (L)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="0.1" 
+                    placeholder="0.0" 
+                    {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
+                    value={field.value || ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <div className="flex flex-col justify-end">
+            <FormLabel className="text-xs text-muted-foreground">Expected Diesel</FormLabel>
+            <div data-testid={`display-expected-diesel-${index}`} className="bg-muted px-3 py-2 rounded border font-semibold">
+              {expectedDiesel !== null ? `${expectedDiesel.toFixed(1)} L` : '-'}
+            </div>
+          </div>
+          <div className="flex flex-col justify-end">
+            <FormLabel className="text-xs text-muted-foreground">Efficiency</FormLabel>
+            <div data-testid={`display-efficiency-${index}`} className={`px-3 py-2 rounded border font-semibold ${
+              efficiency !== null 
+                ? efficiency >= 100 
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' 
+                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                : 'bg-muted'
+            }`}>
+              {efficiency !== null ? `${efficiency.toFixed(0)}%` : '-'}
+            </div>
+          </div>
+          <FormField
+            control={control}
+            name={`equipment.${index}.task`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Task Performed</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g. Rolling WMM" {...field} value={field.value || ''} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
   const { fields, append, remove } = useFieldArray({
     control,
     name: "equipment",
   });
 
-  const calculateWorkingHours = (startTime?: string, endTime?: string) => {
-    if (!startTime || !endTime) return null;
-    try {
-      const [startHour, startMin] = startTime.split(':').map(Number);
-      const [endHour, endMin] = endTime.split(':').map(Number);
-      const startMins = startHour * 60 + startMin;
-      const endMins = endHour * 60 + endMin;
-      const diff = endMins - startMins;
-      if (diff < 0) return null;
-      return (diff / 60).toFixed(2);
-    } catch {
-      return null;
-    }
-  };
+  // Watch all equipment for total diesel calculation
+  const watchedEquipment = useWatch({
+    control,
+    name: "equipment",
+  });
 
-  const totalDiesel = fields.reduce((sum, _, index) => {
-    const diesel = control._formValues.equipment?.[index]?.diesel || 0;
+  const totalDiesel = (watchedEquipment || []).reduce((sum, eq) => {
+    const diesel = eq?.diesel || 0;
     return sum + (typeof diesel === 'number' ? diesel : 0);
   }, 0);
 
@@ -401,128 +642,9 @@ function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Equipment Log</h3>
       </div>
       <div className="space-y-4">
-        {fields.map((field, index) => {
-          const startTime = control._formValues.equipment?.[index]?.startTime;
-          const endTime = control._formValues.equipment?.[index]?.endTime;
-          const workingHours = calculateWorkingHours(startTime, endTime);
-
-          return (
-            <Card key={field.id} className="bg-muted/30 relative">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
-                onClick={() => remove(index)}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-              <CardContent className="pt-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={control}
-                    name={`equipment.${index}.machine`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Machine Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g. Excavator 01" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`equipment.${index}.operator`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Operator Name (Optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Name" {...field} value={field.value || ''} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={control}
-                    name={`equipment.${index}.startTime`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Start Time</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="time" 
-                            {...field} 
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`equipment.${index}.endTime`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>End Time</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="time" 
-                            {...field} 
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex flex-col justify-end">
-                    <FormLabel className="text-xs text-muted-foreground">Working Hours</FormLabel>
-                    <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary">
-                      {workingHours !== null ? `${workingHours} hrs` : '-'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={control}
-                    name={`equipment.${index}.diesel`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Diesel Issued (Liters)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            step="0.1" 
-                            placeholder="0.0" 
-                            {...field} 
-                            onChange={e => field.onChange(parseFloat(e.target.value) || undefined)}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`equipment.${index}.task`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Task Performed (Optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g. Rolling WMM, Watering shoulders" {...field} value={field.value || ''} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {fields.map((field, index) => (
+          <EquipmentRow key={field.id} control={control} index={index} remove={remove} />
+        ))}
 
         {fields.length > 0 && (
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex justify-between items-center">
