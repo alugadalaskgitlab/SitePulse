@@ -102,7 +102,7 @@ Preferred communication style: Simple, everyday language.
 - Stock balances are always derived from ledger - no manual entry
 - Theoretical consumption is used for stock deduction
 - Actual consumption is for management analysis (savings/wastage)
-- **Diesel should be issued via Material Issues only** - Equipment Usage tracks consumption for analysis but does NOT deduct stock
+- **Equipment Usage diesel creates stock entries** - When "Diesel Issued" is entered in Equipment Usage, it automatically creates a ledger entry (transactionType="equipment_usage") and deducts from plant-common diesel stock
 
 ## Recent Changes (January 2026)
 
@@ -173,7 +173,7 @@ Preferred communication style: Simple, everyday language.
 - **Schema**: `material_issues` table with stock owner (partyId or isPlantCommon), materialId, quantity, issuedTo, purpose
 - **Stock Deduction**: Issues deduct from specified party stock or plant common stock
 - **Ledger Integration**: Creates ledger entries with transactionType="issue" for audit trail
-- **Transaction Types**: Stock ledger now supports: receipt, dispatch, issue, opening (Note: equipment_usage no longer creates ledger entries)
+- **Transaction Types**: Stock ledger now supports: receipt, dispatch, issue, opening, equipment_usage
 - **UI Features**:
   - Full CRUD operations with date/time, material, quantity, issued to, purpose, vehicle number
   - Filters by date range, party/stock owner, and material

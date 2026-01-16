@@ -1209,121 +1209,278 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
-    // Get equipment to calculate expected diesel
-    const [equipment] = await db.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
-    
-    // Calculate hours from meter readings or time entry (meter takes priority)
-    let hoursOrKmRun = 0;
-    
-    if (usage.openingReading !== null && usage.openingReading !== undefined && 
-        usage.closingReading !== null && usage.closingReading !== undefined) {
-      hoursOrKmRun = usage.closingReading - usage.openingReading;
-    } else if (usage.startTime && usage.endTime) {
-      // Calculate hours from time entry
-      const [startHour, startMin] = usage.startTime.split(':').map(Number);
-      const [endHour, endMin] = usage.endTime.split(':').map(Number);
-      const startMins = startHour * 60 + startMin;
-      const endMins = endHour * 60 + endMin;
-      const diff = endMins - startMins;
-      hoursOrKmRun = diff > 0 ? diff / 60 : 0;
-    }
-    
-    const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
-    
-    // Use user-provided opening diesel, or default to 0
-    const openingDiesel = usage.openingDiesel ?? 0;
-    const dieselIssued = usage.dieselIssued || 0;
-    
-    // Calculate closing diesel balance = opening + issued - consumed
-    const closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
-    
-    // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
-    const variance = dieselIssued - expectedDiesel;
-    
-    const [result] = await db.insert(equipmentUsage).values({
-      ...usage,
-      hoursOrKmRun,
-      expectedDiesel,
-      openingDiesel,
-      closingDiesel,
-      variance,
-    }).returning();
-    
-    // NOTE: Stock deduction removed - diesel should be issued via Material Issues only
-    // Equipment Usage only tracks consumption for analysis purposes
-    
-    return result;
-  }
-
-  async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
-    // Get existing record
-    const [existing] = await db.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
-    if (!existing) return undefined;
-
-    const equipmentId = usage.equipmentId ?? existing.equipmentId;
-    const [equipment] = await db.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
-    
-    const openingReading = usage.openingReading ?? existing.openingReading;
-    const closingReading = usage.closingReading ?? existing.closingReading;
-    const startTime = usage.startTime ?? (existing as any).startTime;
-    const endTime = usage.endTime ?? (existing as any).endTime;
-    const newDieselIssued = usage.dieselIssued ?? existing.dieselIssued ?? 0;
-    const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
-    
-    // Calculate hours from meter readings or time entry (meter takes priority)
-    let hoursOrKmRun = 0;
-    
-    if (openingReading !== null && openingReading !== undefined && 
-        closingReading !== null && closingReading !== undefined) {
-      hoursOrKmRun = closingReading - openingReading;
-    } else if (startTime && endTime) {
-      // Calculate hours from time entry
-      const [startHour, startMin] = startTime.split(':').map(Number);
-      const [endHour, endMin] = endTime.split(':').map(Number);
-      const startMins = startHour * 60 + startMin;
-      const endMins = endHour * 60 + endMin;
-      const diff = endMins - startMins;
-      hoursOrKmRun = diff > 0 ? diff / 60 : 0;
-    }
-    
-    const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
-    
-    // Calculate closing diesel balance = opening + issued - consumed
-    const closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
-    
-    // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
-    const variance = newDieselIssued - expectedDiesel;
-    
-    const [result] = await db.update(equipmentUsage)
-      .set({
+    return db.transaction(async (tx) => {
+      // Get equipment to calculate expected diesel
+      const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
+      
+      // Calculate hours from meter readings or time entry (meter takes priority)
+      let hoursOrKmRun = 0;
+      
+      if (usage.openingReading !== null && usage.openingReading !== undefined && 
+          usage.closingReading !== null && usage.closingReading !== undefined) {
+        hoursOrKmRun = usage.closingReading - usage.openingReading;
+      } else if (usage.startTime && usage.endTime) {
+        // Calculate hours from time entry
+        const [startHour, startMin] = usage.startTime.split(':').map(Number);
+        const [endHour, endMin] = usage.endTime.split(':').map(Number);
+        const startMins = startHour * 60 + startMin;
+        const endMins = endHour * 60 + endMin;
+        const diff = endMins - startMins;
+        hoursOrKmRun = diff > 0 ? diff / 60 : 0;
+      }
+      
+      const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+      
+      // Use user-provided opening diesel, or default to 0
+      const openingDiesel = usage.openingDiesel ?? 0;
+      const dieselIssued = usage.dieselIssued || 0;
+      
+      // Calculate closing diesel balance = opening + issued - consumed
+      const closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
+      
+      // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
+      const variance = dieselIssued - expectedDiesel;
+      
+      const [result] = await tx.insert(equipmentUsage).values({
         ...usage,
         hoursOrKmRun,
         expectedDiesel,
         openingDiesel,
         closingDiesel,
         variance,
-        remarks: usage.remarks?.toUpperCase(),
-      })
-      .where(eq(equipmentUsage.id, id))
-      .returning();
-    
-    // NOTE: Stock adjustment removed - diesel should be issued via Material Issues only
-    // Equipment Usage only tracks consumption for analysis purposes
-    
-    return result;
+      }).returning();
+      
+      // AUTO STOCK DEDUCTION: If diesel was issued, create ledger entry and deduct from plant-common stock
+      if (dieselIssued > 0) {
+        // Find diesel material (case-insensitive search)
+        const [dieselMaterial] = await tx.select().from(plantMaterials)
+          .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+          .limit(1);
+        
+        if (dieselMaterial) {
+          // Deduct from plant-common stock (partyId = null)
+          const [existingBalance] = await tx.select().from(stockBalances)
+            .where(and(
+              sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ))
+            .limit(1);
+          
+          const newBalance = (existingBalance?.balance || 0) - dieselIssued;
+          
+          if (existingBalance) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existingBalance.id));
+          } else {
+            await tx.insert(stockBalances).values({
+              partyId: null,
+              materialId: dieselMaterial.id,
+              balance: newBalance,
+              uom: dieselMaterial.defaultUom || 'Liters',
+            });
+          }
+          
+          // Create ledger entry for equipment diesel issue
+          await tx.insert(stockLedger).values({
+            date: usage.date,
+            partyId: null, // Plant common
+            materialId: dieselMaterial.id,
+            transactionType: "equipment_usage",
+            referenceId: result.id,
+            quantityOut: dieselIssued,
+            balanceAfter: newBalance,
+            uom: dieselMaterial.defaultUom || 'Liters',
+            notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
+          });
+        }
+      }
+      
+      return result;
+    });
+  }
+
+  async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
+    return db.transaction(async (tx) => {
+      // Get existing record
+      const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
+      if (!existing) return undefined;
+
+      const equipmentId = usage.equipmentId ?? existing.equipmentId;
+      const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
+      
+      const openingReading = usage.openingReading ?? existing.openingReading;
+      const closingReading = usage.closingReading ?? existing.closingReading;
+      const startTime = usage.startTime ?? (existing as any).startTime;
+      const endTime = usage.endTime ?? (existing as any).endTime;
+      const newDieselIssued = usage.dieselIssued ?? existing.dieselIssued ?? 0;
+      const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
+      const oldDieselIssued = existing.dieselIssued || 0;
+      
+      // Calculate hours from meter readings or time entry (meter takes priority)
+      let hoursOrKmRun = 0;
+      
+      if (openingReading !== null && openingReading !== undefined && 
+          closingReading !== null && closingReading !== undefined) {
+        hoursOrKmRun = closingReading - openingReading;
+      } else if (startTime && endTime) {
+        // Calculate hours from time entry
+        const [startHour, startMin] = startTime.split(':').map(Number);
+        const [endHour, endMin] = endTime.split(':').map(Number);
+        const startMins = startHour * 60 + startMin;
+        const endMins = endHour * 60 + endMin;
+        const diff = endMins - startMins;
+        hoursOrKmRun = diff > 0 ? diff / 60 : 0;
+      }
+      
+      const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+      
+      // Calculate closing diesel balance = opening + issued - consumed
+      const closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
+      
+      // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
+      const variance = newDieselIssued - expectedDiesel;
+      
+      const [result] = await tx.update(equipmentUsage)
+        .set({
+          ...usage,
+          hoursOrKmRun,
+          expectedDiesel,
+          openingDiesel,
+          closingDiesel,
+          variance,
+          remarks: usage.remarks?.toUpperCase(),
+        })
+        .where(eq(equipmentUsage.id, id))
+        .returning();
+      
+      // AUTO STOCK ADJUSTMENT: Handle diesel stock and ledger updates
+      // Need to update ledger if dieselIssued changes OR if date/equipment changes
+      const dieselDiff = newDieselIssued - oldDieselIssued;
+      const dateChanged = usage.date !== undefined && usage.date !== existing.date;
+      const equipmentChanged = usage.equipmentId !== undefined && usage.equipmentId !== existing.equipmentId;
+      const needsLedgerUpdate = dieselDiff !== 0 || ((dateChanged || equipmentChanged) && (oldDieselIssued > 0 || newDieselIssued > 0));
+      
+      if (needsLedgerUpdate || dieselDiff !== 0) {
+        // Find diesel material
+        const [dieselMaterial] = await tx.select().from(plantMaterials)
+          .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+          .limit(1);
+        
+        if (dieselMaterial) {
+          // Update plant-common stock if diesel quantity changed
+          if (dieselDiff !== 0) {
+            const [existingBalance] = await tx.select().from(stockBalances)
+              .where(and(
+                sql`${stockBalances.partyId} IS NULL`,
+                eq(stockBalances.materialId, dieselMaterial.id)
+              ))
+              .limit(1);
+            
+            // dieselDiff > 0 means more diesel issued (deduct more)
+            // dieselDiff < 0 means less diesel issued (restore some)
+            const newBalance = (existingBalance?.balance || 0) - dieselDiff;
+            
+            if (existingBalance) {
+              await tx.update(stockBalances)
+                .set({ balance: newBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, existingBalance.id));
+            } else {
+              await tx.insert(stockBalances).values({
+                partyId: null,
+                materialId: dieselMaterial.id,
+                balance: newBalance,
+                uom: dieselMaterial.defaultUom || 'Liters',
+              });
+            }
+          }
+          
+          // Get current balance for ledger entry
+          const [currentBalance] = await tx.select().from(stockBalances)
+            .where(and(
+              sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ))
+            .limit(1);
+          
+          // Delete old ledger entry
+          await tx.delete(stockLedger).where(
+            and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
+          );
+          
+          // Create new ledger entry if there's diesel issued
+          if (newDieselIssued > 0) {
+            const usageDate = usage.date ?? existing.date;
+            await tx.insert(stockLedger).values({
+              date: usageDate,
+              partyId: null,
+              materialId: dieselMaterial.id,
+              transactionType: "equipment_usage",
+              referenceId: result.id,
+              quantityOut: newDieselIssued,
+              balanceAfter: currentBalance?.balance || 0,
+              uom: dieselMaterial.defaultUom || 'Liters',
+              notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
+            });
+          }
+        }
+      }
+      
+      return result;
+    });
   }
 
   async deleteEquipmentUsage(id: number): Promise<boolean> {
-    // Get the existing record
-    const [existing] = await db.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
-    if (!existing) return false;
-    
-    // NOTE: Stock restoration removed - diesel is managed via Material Issues only
-    // Equipment Usage only tracks consumption for analysis purposes
-    
-    // Delete the usage record
-    await db.delete(equipmentUsage).where(eq(equipmentUsage.id, id));
-    return true;
+    return db.transaction(async (tx) => {
+      // Get the existing record
+      const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
+      if (!existing) return false;
+      
+      const dieselIssued = existing.dieselIssued || 0;
+      
+      // AUTO STOCK RESTORATION: If diesel was issued, restore to plant-common stock
+      if (dieselIssued > 0) {
+        // Find diesel material
+        const [dieselMaterial] = await tx.select().from(plantMaterials)
+          .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+          .limit(1);
+        
+        if (dieselMaterial) {
+          // Restore to plant-common stock
+          const [existingBalance] = await tx.select().from(stockBalances)
+            .where(and(
+              sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ))
+            .limit(1);
+          
+          const newBalance = (existingBalance?.balance || 0) + dieselIssued;
+          
+          if (existingBalance) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existingBalance.id));
+          } else {
+            // Create balance if it doesn't exist (edge case - shouldn't normally happen)
+            await tx.insert(stockBalances).values({
+              partyId: null,
+              materialId: dieselMaterial.id,
+              balance: newBalance,
+              uom: dieselMaterial.defaultUom || 'Liters',
+            });
+          }
+          
+          // Delete the ledger entry
+          await tx.delete(stockLedger).where(
+            and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
+          );
+        }
+      }
+      
+      // Delete the usage record
+      await tx.delete(equipmentUsage).where(eq(equipmentUsage.id, id));
+      return true;
+    });
   }
 
   // Generator Logs
