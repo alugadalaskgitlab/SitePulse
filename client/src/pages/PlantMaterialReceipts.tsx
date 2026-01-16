@@ -280,6 +280,20 @@ export default function PlantMaterialReceipts() {
   // Sort dates descending
   const sortedDates = Object.keys(groupedReceipts).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
+  // Calculate totals for filtered receipts (grouped by material)
+  const filteredTotals = useMemo(() => {
+    if (!filteredReceipts.length) return [];
+    const totalsMap: Record<string, { materialId: number; materialName: string; uom: string; total: number }> = {};
+    filteredReceipts.forEach(r => {
+      const key = `${r.materialId}-${r.uom}`;
+      if (!totalsMap[key]) {
+        totalsMap[key] = { materialId: r.materialId, materialName: getMaterialName(r.materialId), uom: r.uom, total: 0 };
+      }
+      totalsMap[key].total += r.quantity;
+    });
+    return Object.values(totalsMap);
+  }, [filteredReceipts, materials]);
+
   // Build filename with date range and filters
   const buildFilename = (extension: string) => {
     const timestamp = format(new Date(), "yyyyMMdd_HHmm");
@@ -733,6 +747,22 @@ export default function PlantMaterialReceipts() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Totals Summary */}
+      {filteredTotals.length > 0 && (
+        <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="font-semibold text-green-700 dark:text-green-300">Filtered Totals:</span>
+              {filteredTotals.map((t, i) => (
+                <Badge key={i} variant="outline" className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
+                  {t.materialName}: {t.total.toFixed(2)} {t.uom}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

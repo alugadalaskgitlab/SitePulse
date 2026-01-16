@@ -61,11 +61,28 @@ export default function PlantStock() {
     // Exclude old equipment_issue entries - they are legacy and should not affect calculations
     const validEntries = ledger.filter(e => e.transactionType !== 'equipment_issue');
     
+    // Transaction type priority: opening/receipt first, then issues/dispatches
+    const getTypePriority = (type: string) => {
+      switch (type) {
+        case 'opening': return 1;
+        case 'receipt': return 2;
+        case 'adjustment': return 3;
+        case 'equipment_usage': return 4;
+        case 'issue': return 5;
+        case 'dispatch': return 6;
+        default: return 7;
+      }
+    };
+    
     // Sort chronologically (oldest first) for running balance calculation
     const sorted = [...validEntries].sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
-      // Within same date, sort by creation time
+      // Within same date, sort by transaction type priority (receipts before issues)
+      const typePriorityA = getTypePriority(a.transactionType);
+      const typePriorityB = getTypePriority(b.transactionType);
+      if (typePriorityA !== typePriorityB) return typePriorityA - typePriorityB;
+      // Then by creation time
       const aCreated = a.createdAt ? String(a.createdAt) : '';
       const bCreated = b.createdAt ? String(b.createdAt) : '';
       return aCreated.localeCompare(bCreated);
@@ -91,6 +108,16 @@ export default function PlantStock() {
   const ledgerForDisplay = useMemo(() => {
     return [...processedLedger].reverse();
   }, [processedLedger]);
+
+  // Calculate totals for filtered ledger data
+  const ledgerTotals = useMemo(() => {
+    if (!ledgerForDisplay?.length) return { totalIn: 0, totalOut: 0, netChange: 0 };
+    return ledgerForDisplay.reduce((acc, entry) => ({
+      totalIn: acc.totalIn + (entry.quantityIn || 0),
+      totalOut: acc.totalOut + (entry.quantityOut || 0),
+      netChange: acc.netChange + (entry.quantityIn || 0) - (entry.quantityOut || 0)
+    }), { totalIn: 0, totalOut: 0, netChange: 0 });
+  }, [ledgerForDisplay]);
 
   const computeStockSummary = () => {
     if (!ledger || !materials) return [];
@@ -679,6 +706,20 @@ export default function PlantStock() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot className="bg-muted/70 border-t-2">
+                      <tr>
+                        <td colSpan={4} className="p-3 font-bold text-right">Filtered Totals:</td>
+                        <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">
+                          {ledgerTotals.totalIn.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">
+                          {ledgerTotals.totalOut.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-right font-bold">
+                          Net: {ledgerTotals.netChange >= 0 ? '+' : ''}{ledgerTotals.netChange.toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                   {ledgerForDisplay.length > 100 && (
                     <p className="text-center text-muted-foreground text-sm py-4">

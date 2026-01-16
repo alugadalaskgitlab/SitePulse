@@ -217,6 +217,20 @@ export default function PlantMaterialIssues() {
     });
   }, [issues, filterDateFrom, filterDateTo, filterPartyId, filterMaterialId]);
 
+  // Calculate totals for filtered issues (grouped by material)
+  const filteredTotals = useMemo(() => {
+    if (!filteredIssues.length) return [];
+    const totalsMap: Record<string, { materialId: number; materialName: string; uom: string; total: number }> = {};
+    filteredIssues.forEach(issue => {
+      const key = `${issue.materialId}-${issue.uom}`;
+      if (!totalsMap[key]) {
+        totalsMap[key] = { materialId: issue.materialId, materialName: getMaterialName(issue.materialId), uom: issue.uom, total: 0 };
+      }
+      totalsMap[key].total += issue.quantity;
+    });
+    return Object.values(totalsMap);
+  }, [filteredIssues, materials]);
+
   const handlePinSuccess = () => {
     setShowPinAuth(false);
     if (pendingAction) {
@@ -544,6 +558,22 @@ export default function PlantMaterialIssues() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Totals Summary */}
+      {filteredTotals.length > 0 && (
+        <Card className="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="font-semibold text-orange-700 dark:text-orange-300">Filtered Totals:</span>
+              {filteredTotals.map((t, i) => (
+                <Badge key={i} variant="outline" className="text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 text-sm px-3 py-1">
+                  {t.materialName}: {t.total.toFixed(2)} {t.uom}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center p-12">
