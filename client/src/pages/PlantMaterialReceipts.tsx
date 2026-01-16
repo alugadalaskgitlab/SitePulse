@@ -46,7 +46,6 @@ export default function PlantMaterialReceipts() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
   const [partyId, setPartyId] = useState<string>("");
-  const [isPlantCommon, setIsPlantCommon] = useState(false);
   const [materialId, setMaterialId] = useState<string>("");
   const [quantity, setQuantity] = useState("");
   const [uom, setUom] = useState("Ton");
@@ -58,7 +57,6 @@ export default function PlantMaterialReceipts() {
     date: string;
     time: string;
     partyId: string;
-    isPlantCommon: boolean;
     materialId: string;
     quantity: string;
     uom: string;
@@ -68,14 +66,13 @@ export default function PlantMaterialReceipts() {
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, isPlantCommon, materialId, quantity, uom, supplier, vehicleNumber, challanNumber
-  }), [date, time, partyId, isPlantCommon, materialId, quantity, uom, supplier, vehicleNumber, challanNumber]);
+    date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber
+  }), [date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
     setTime(data.time);
     setPartyId(data.partyId);
-    setIsPlantCommon(data.isPlantCommon);
     setMaterialId(data.materialId);
     setQuantity(data.quantity);
     setUom(data.uom);
@@ -147,7 +144,6 @@ export default function PlantMaterialReceipts() {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setTime(format(new Date(), "HH:mm"));
     setPartyId("");
-    setIsPlantCommon(false);
     setMaterialId("");
     setQuantity("");
     setUom("Ton");
@@ -161,7 +157,6 @@ export default function PlantMaterialReceipts() {
     setDate(receipt.date);
     setTime(receipt.time || "");
     setPartyId(receipt.partyId ? String(receipt.partyId) : "");
-    setIsPlantCommon(!!receipt.isPlantCommon);
     setMaterialId(String(receipt.materialId));
     setQuantity(String(receipt.quantity));
     setUom(receipt.uom);
@@ -172,14 +167,14 @@ export default function PlantMaterialReceipts() {
   };
 
   const handleSubmit = () => {
-    if (!materialId || !quantity) return;
+    if (!materialId || !quantity || !partyId) return;
     
     if (editingReceipt) {
       const updateData = {
         date,
         time,
-        partyId: isPlantCommon ? null : parseInt(partyId),
-        isPlantCommon: isPlantCommon ? 1 : 0,
+        partyId: parseInt(partyId),
+        isPlantCommon: 0,
         materialId: parseInt(materialId),
         quantity: parseFloat(quantity),
         uom,
@@ -192,8 +187,8 @@ export default function PlantMaterialReceipts() {
       const data = {
         date,
         time,
-        partyId: isPlantCommon ? null : parseInt(partyId),
-        isPlantCommon: isPlantCommon ? 1 : 0,
+        partyId: parseInt(partyId),
+        isPlantCommon: 0,
         materialId: parseInt(materialId),
         quantity: parseFloat(quantity),
         uom,
@@ -262,18 +257,14 @@ export default function PlantMaterialReceipts() {
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
-  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Plant Common";
+  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
 
   // Filter receipts
   const filteredReceipts = receipts?.filter(r => {
     if (filterDateFrom && r.date < filterDateFrom) return false;
     if (filterDateTo && r.date > filterDateTo) return false;
     if (filterPartyId !== "all") {
-      if (filterPartyId === "plant-common") {
-        if (!r.isPlantCommon) return false;
-      } else {
-        if (r.partyId !== parseInt(filterPartyId)) return false;
-      }
+      if (r.partyId !== parseInt(filterPartyId)) return false;
     }
     if (filterMaterialId !== "all" && r.materialId !== parseInt(filterMaterialId)) return false;
     return true;
@@ -296,7 +287,7 @@ export default function PlantMaterialReceipts() {
     const fromDate = filterDateFrom || "All";
     const toDate = filterDateTo || "All";
     const partyFilter = filterPartyId !== "all" 
-      ? (filterPartyId === "plant-common" ? "PlantCommon" : parties?.find(p => p.id === parseInt(filterPartyId))?.name?.replace(/\s+/g, '') || "")
+      ? (parties?.find(p => p.id === parseInt(filterPartyId))?.name?.replace(/\s+/g, '') || "")
       : "";
     const materialFilter = filterMaterialId !== "all" 
       ? materials?.find(m => m.id === parseInt(filterMaterialId))?.name?.replace(/\s+/g, '') || ""
@@ -577,26 +568,19 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <Switch checked={isPlantCommon} onCheckedChange={setIsPlantCommon} data-testid="switch-plant-common" />
-                <Label>Plant Common (Utilities)</Label>
+              <div>
+                <Label>Party/Job</Label>
+                <Select value={partyId} onValueChange={setPartyId}>
+                  <SelectTrigger data-testid="select-party">
+                    <SelectValue placeholder="Select party" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parties?.map((party) => (
+                      <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-
-              {!isPlantCommon && (
-                <div>
-                  <Label>Party/Job</Label>
-                  <Select value={partyId} onValueChange={setPartyId}>
-                    <SelectTrigger data-testid="select-party">
-                      <SelectValue placeholder="Select party" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {parties?.map((party) => (
-                        <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
 
               <div>
                 <Label>Material</Label>
@@ -711,7 +695,6 @@ export default function PlantMaterialReceipts() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
-                  <SelectItem value="plant-common">Plant Common</SelectItem>
                   {parties?.map((party) => (
                     <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
                   ))}

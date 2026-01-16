@@ -451,7 +451,6 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
   const [selectedMaterialForStock, setSelectedMaterialForStock] = useState<PlantMaterial | null>(null);
   const [stockQuantity, setStockQuantity] = useState("");
-  const [stockOwnerType, setStockOwnerType] = useState<"plant" | "party">("plant");
   const [stockPartyId, setStockPartyId] = useState<string>("");
   const [stockDate, setStockDate] = useState(new Date().toISOString().split('T')[0]);
   const [stockNotes, setStockNotes] = useState("");
@@ -523,7 +522,6 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     setOpeningStockDialogOpen(false);
     setSelectedMaterialForStock(null);
     setStockQuantity("");
-    setStockOwnerType("plant");
     setStockPartyId("");
     setStockDate(new Date().toISOString().split('T')[0]);
     setStockNotes("");
@@ -560,8 +558,8 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     
     createOpeningStockMutation.mutate({
       materialId: selectedMaterialForStock.id,
-      partyId: stockOwnerType === "party" && stockPartyId ? Number(stockPartyId) : null,
-      isPlantCommon: stockOwnerType === "plant" ? 1 : 0,
+      partyId: stockPartyId ? Number(stockPartyId) : null,
+      isPlantCommon: 0,
       quantity: parseFloat(stockQuantity),
       uom: selectedMaterialForStock.defaultUom || "Ton",
       date: stockDate,
@@ -691,33 +689,18 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div>
-                  <Label>Stock Owner</Label>
-                  <Select value={stockOwnerType} onValueChange={(v) => setStockOwnerType(v as "plant" | "party")}>
-                    <SelectTrigger data-testid="select-stock-owner-type">
-                      <SelectValue placeholder="Select owner type" />
+                  <Label>Party/Job</Label>
+                  <Select value={stockPartyId} onValueChange={setStockPartyId}>
+                    <SelectTrigger data-testid="select-stock-party">
+                      <SelectValue placeholder="Select party" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="plant">Plant Common Stock</SelectItem>
-                      <SelectItem value="party">Party/Job Specific</SelectItem>
+                      {parties?.map((party) => (
+                        <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-                
-                {stockOwnerType === "party" && (
-                  <div>
-                    <Label>Party</Label>
-                    <Select value={stockPartyId} onValueChange={setStockPartyId}>
-                      <SelectTrigger data-testid="select-stock-party">
-                        <SelectValue placeholder="Select party" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {parties?.map((party) => (
-                          <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
                 
                 <div>
                   <Label htmlFor="stock-quantity">Quantity ({selectedMaterialForStock?.defaultUom || "Ton"})</Label>
@@ -757,7 +740,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                 <Button 
                   onClick={handleOpeningStockSubmit} 
                   className="w-full" 
-                  disabled={createOpeningStockMutation.isPending || !stockQuantity || (stockOwnerType === "party" && !stockPartyId)}
+                  disabled={createOpeningStockMutation.isPending || !stockQuantity || !stockPartyId}
                   data-testid="button-save-opening-stock"
                 >
                   {createOpeningStockMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Opening Stock"}

@@ -43,7 +43,6 @@ export default function PlantMaterialIssues() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
   const [partyId, setPartyId] = useState<string>("");
-  const [isPlantCommon, setIsPlantCommon] = useState(false);
   const [materialId, setMaterialId] = useState<string>("");
   const [quantity, setQuantity] = useState("");
   const [uom, setUom] = useState("Liters");
@@ -56,7 +55,6 @@ export default function PlantMaterialIssues() {
     date: string;
     time: string;
     partyId: string;
-    isPlantCommon: boolean;
     materialId: string;
     quantity: string;
     uom: string;
@@ -67,14 +65,13 @@ export default function PlantMaterialIssues() {
   }
 
   const formData = useMemo<IssueFormData>(() => ({
-    date, time, partyId, isPlantCommon, materialId, quantity, uom, issuedTo, purpose, vehicleNumber, notes
-  }), [date, time, partyId, isPlantCommon, materialId, quantity, uom, issuedTo, purpose, vehicleNumber, notes]);
+    date, time, partyId, materialId, quantity, uom, issuedTo, purpose, vehicleNumber, notes
+  }), [date, time, partyId, materialId, quantity, uom, issuedTo, purpose, vehicleNumber, notes]);
 
   const handleRestoreDraft = useCallback((data: IssueFormData) => {
     setDate(data.date);
     setTime(data.time);
     setPartyId(data.partyId);
-    setIsPlantCommon(data.isPlantCommon);
     setMaterialId(data.materialId);
     setQuantity(data.quantity);
     setUom(data.uom);
@@ -154,7 +151,6 @@ export default function PlantMaterialIssues() {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setTime(format(new Date(), "HH:mm"));
     setPartyId("");
-    setIsPlantCommon(false);
     setMaterialId("");
     setQuantity("");
     setUom("Liters");
@@ -169,7 +165,6 @@ export default function PlantMaterialIssues() {
     setDate(issue.date);
     setTime(issue.time || "");
     setPartyId(issue.partyId ? String(issue.partyId) : "");
-    setIsPlantCommon(!!issue.isPlantCommon);
     setMaterialId(String(issue.materialId));
     setQuantity(String(issue.quantity));
     setUom(issue.uom);
@@ -181,13 +176,13 @@ export default function PlantMaterialIssues() {
   };
 
   const handleSubmit = () => {
-    if (!materialId || !quantity || !issuedTo) return;
+    if (!materialId || !quantity || !issuedTo || !partyId) return;
     
     const data = {
       date,
       time: time || null,
-      partyId: isPlantCommon ? null : (partyId ? parseInt(partyId) : null),
-      isPlantCommon: isPlantCommon ? 1 : 0,
+      partyId: parseInt(partyId),
+      isPlantCommon: 0,
       materialId: parseInt(materialId),
       quantity: parseFloat(quantity),
       uom,
@@ -206,7 +201,7 @@ export default function PlantMaterialIssues() {
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
   const getPartyName = (id: number | null) => {
-    if (id === null) return "PLANT COMMON";
+    if (id === null) return "Unknown";
     return parties?.find(p => p.id === id)?.name || `Party #${id}`;
   };
 
@@ -216,11 +211,7 @@ export default function PlantMaterialIssues() {
       if (filterDateFrom && issue.date < filterDateFrom) return false;
       if (filterDateTo && issue.date > filterDateTo) return false;
       if (filterPartyId !== "all") {
-        if (filterPartyId === "plant-common") {
-          if (!issue.isPlantCommon) return false;
-        } else {
-          if (issue.partyId !== parseInt(filterPartyId)) return false;
-        }
+        if (issue.partyId !== parseInt(filterPartyId)) return false;
       }
       if (filterMaterialId !== "all" && issue.materialId !== parseInt(filterMaterialId)) return false;
       return true;
@@ -263,7 +254,7 @@ export default function PlantMaterialIssues() {
     const data = filteredIssues.map(issue => ({
       Date: issue.date,
       Time: issue.time || "",
-      "Stock Owner": issue.isPlantCommon ? "PLANT COMMON" : getPartyName(issue.partyId),
+      "Stock Owner": getPartyName(issue.partyId),
       Material: getMaterialName(issue.materialId),
       Quantity: issue.quantity,
       UOM: issue.uom,
@@ -289,7 +280,7 @@ export default function PlantMaterialIssues() {
 
     const tableData = filteredIssues.map(issue => [
       issue.date,
-      issue.isPlantCommon ? "PLANT COMMON" : getPartyName(issue.partyId),
+      getPartyName(issue.partyId),
       getMaterialName(issue.materialId),
       `${issue.quantity} ${issue.uom}`,
       issue.issuedTo,
@@ -318,7 +309,7 @@ export default function PlantMaterialIssues() {
     const tableRows = filteredIssues.map(issue => `
       <tr>
         <td>${issue.date}</td>
-        <td>${issue.isPlantCommon ? "PLANT COMMON" : getPartyName(issue.partyId)}</td>
+        <td>${getPartyName(issue.partyId)}</td>
         <td>${getMaterialName(issue.materialId)}</td>
         <td>${issue.quantity} ${issue.uom}</td>
         <td>${issue.issuedTo}</td>
@@ -427,26 +418,19 @@ export default function PlantMaterialIssues() {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-4">
-                  <Label>Plant Common Stock</Label>
-                  <Switch checked={isPlantCommon} onCheckedChange={setIsPlantCommon} data-testid="switch-plant-common" />
+                <div>
+                  <Label>Stock Owner (Party)</Label>
+                  <Select value={partyId} onValueChange={setPartyId}>
+                    <SelectTrigger data-testid="select-party">
+                      <SelectValue placeholder="Select party" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {parties?.map(p => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                
-                {!isPlantCommon && (
-                  <div>
-                    <Label>Stock Owner (Party)</Label>
-                    <Select value={partyId} onValueChange={setPartyId}>
-                      <SelectTrigger data-testid="select-party">
-                        <SelectValue placeholder="Select party" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {parties?.map(p => (
-                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
                 
                 <div>
                   <Label>Material</Label>
@@ -538,7 +522,6 @@ export default function PlantMaterialIssues() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="plant-common">Plant Common</SelectItem>
                   {parties?.map(p => (
                     <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                   ))}
@@ -601,7 +584,7 @@ export default function PlantMaterialIssues() {
                         {issue.purpose && <span className="text-muted-foreground"> - {issue.purpose}</span>}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        From: {issue.isPlantCommon ? "PLANT COMMON" : getPartyName(issue.partyId)}
+                        From: {getPartyName(issue.partyId)}
                       </div>
                     </div>
                   </div>

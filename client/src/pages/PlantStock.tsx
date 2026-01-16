@@ -52,7 +52,7 @@ export default function PlantStock() {
   });
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
-  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Plant Common";
+  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Unknown";
 
   // Filter out old equipment_issue entries (legacy - no longer created) and calculate running balances
   const processedLedger = useMemo(() => {
@@ -466,7 +466,6 @@ export default function PlantStock() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
-                  <SelectItem value="common">Plant Common (HLC)</SelectItem>
                   {parties?.map((p) => (
                     <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                   ))}
