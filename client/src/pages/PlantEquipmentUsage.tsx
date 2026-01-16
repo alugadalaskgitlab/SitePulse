@@ -12,6 +12,7 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +38,7 @@ export default function PlantEquipmentUsage() {
   const [endTime, setEndTime] = useState("");
   const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
+  const [dieselIncluded, setDieselIncluded] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -51,12 +53,13 @@ export default function PlantEquipmentUsage() {
     endTime: string;
     openingDiesel: string;
     dieselIssued: string;
+    dieselIncluded: boolean;
     remarks: string;
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, remarks
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, remarks
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, remarks]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
@@ -67,6 +70,7 @@ export default function PlantEquipmentUsage() {
     setEndTime(data.endTime);
     setOpeningDiesel(data.openingDiesel);
     setDieselIssued(data.dieselIssued);
+    setDieselIncluded(data.dieselIncluded || false);
     setRemarks(data.remarks);
   }, []);
 
@@ -137,6 +141,7 @@ export default function PlantEquipmentUsage() {
     setEndTime("");
     setOpeningDiesel("");
     setDieselIssued("");
+    setDieselIncluded(false);
     setRemarks("");
     setEditingUsage(null);
     setPreviousDieselBalance(null);
@@ -154,6 +159,7 @@ export default function PlantEquipmentUsage() {
     setEndTime((entry as any).endTime || "");
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
+    setDieselIncluded((entry as any).dieselIncluded || false);
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);
@@ -210,8 +216,9 @@ export default function PlantEquipmentUsage() {
       closingReading: closingReading ? parseFloat(closingReading) : null,
       startTime: startTime || null,
       endTime: endTime || null,
-      openingDiesel: openingDiesel ? parseFloat(openingDiesel) : 0,
-      dieselIssued: dieselIssued ? parseFloat(dieselIssued) : 0,
+      openingDiesel: dieselIncluded ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
+      dieselIssued: dieselIncluded ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+      dieselIncluded,
       remarks: remarks.toUpperCase(),
     };
 
@@ -653,41 +660,57 @@ export default function PlantEquipmentUsage() {
               {runtime > 0 && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
                   <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "hrs"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
-                  <p>Diesel Consumed: <strong>{expectedDiesel.toFixed(1)} L</strong></p>
+                  {!dieselIncluded && <p>Diesel Consumed: <strong>{expectedDiesel.toFixed(1)} L</strong></p>}
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Opening Diesel Tank (L)</Label>
-                  <div className="relative">
-                    <Input 
-                      type="number" 
-                      step="0.1" 
-                      value={openingDiesel} 
-                      onChange={(e) => handleOpeningDieselChange(e.target.value)} 
-                      placeholder="Previous balance" 
-                      data-testid="input-opening-diesel"
-                      disabled={isLoadingBalance}
-                    />
-                    {isLoadingBalance && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
-                    )}
-                  </div>
-                  {previousDieselBalance !== null && !editingUsage && (
-                    <p className="text-xs text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(1)} L</p>
-                  )}
-                </div>
-                <div>
-                  <Label>Diesel Issued (L)</Label>
-                  <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued" />
-                </div>
+              <div className="flex items-center gap-2 py-2 px-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800">
+                <Checkbox 
+                  id="diesel-included" 
+                  checked={dieselIncluded} 
+                  onCheckedChange={(checked) => setDieselIncluded(checked === true)}
+                  data-testid="checkbox-diesel-included"
+                />
+                <Label htmlFor="diesel-included" className="text-sm font-medium cursor-pointer">
+                  Diesel provided by contractor (tracking only - no stock impact)
+                </Label>
               </div>
 
-              {openingDiesel && dieselIssued !== undefined && expectedDiesel > 0 && (
-                <div className="p-3 bg-primary/10 rounded-md text-sm">
-                  <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(1)} L</strong></p>
-                </div>
+              {!dieselIncluded && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Opening Diesel Tank (L)</Label>
+                      <div className="relative">
+                        <Input 
+                          type="number" 
+                          step="0.1" 
+                          value={openingDiesel} 
+                          onChange={(e) => handleOpeningDieselChange(e.target.value)} 
+                          placeholder="Previous balance" 
+                          data-testid="input-opening-diesel"
+                          disabled={isLoadingBalance}
+                        />
+                        {isLoadingBalance && (
+                          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                      {previousDieselBalance !== null && !editingUsage && (
+                        <p className="text-xs text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(1)} L</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label>Diesel Issued (L)</Label>
+                      <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued" />
+                    </div>
+                  </div>
+
+                  {openingDiesel && dieselIssued !== undefined && expectedDiesel > 0 && (
+                    <div className="p-3 bg-primary/10 rounded-md text-sm">
+                      <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(1)} L</strong></p>
+                    </div>
+                  )}
+                </>
               )}
 
               <div>
@@ -817,6 +840,7 @@ export default function PlantEquipmentUsage() {
                     <div className="space-y-2">
                       {dayUsage.map((entry) => {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
+                        const isDieselIncluded = (entry as any).dieselIncluded === true;
                         const openingDieselVal = (entry as any).openingDiesel ?? 0;
                         const dieselIssuedVal = entry.dieselIssued ?? 0;
                         const closingDieselEntry = (entry as any).closingDiesel;
@@ -834,6 +858,9 @@ export default function PlantEquipmentUsage() {
                                 {(equip as any)?.registrationNumber && (
                                   <span className="text-xs text-muted-foreground block">{(equip as any).registrationNumber}</span>
                                 )}
+                                {isDieselIncluded && (
+                                  <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>
+                                )}
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Runtime</span>
@@ -846,38 +873,48 @@ export default function PlantEquipmentUsage() {
                                   <span className="text-xs text-muted-foreground block">-</span>
                                 )}
                               </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Diesel Issued</span>
-                                <span className="font-medium">{dieselIssuedVal.toFixed(1)} L</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Consumed</span>
-                                <span className="font-medium">{consumed.toFixed(1)} L</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Efficiency</span>
-                                {(() => {
-                                  const runtime = entry.hoursOrKmRun || 0;
-                                  if (runtime <= 0 || consumed <= 0) {
-                                    return <span className="font-medium text-muted-foreground">-</span>;
-                                  }
-                                  const efficiencyValue = consumed / runtime;
-                                  const norm = equip?.consumptionNorm || 0;
-                                  const isGood = norm > 0 ? efficiencyValue <= norm : true;
-                                  return (
-                                    <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                      {efficiencyValue.toFixed(2)} {equip?.meterType === "hour_meter" ? "L/hr" : "L/km"}
-                                    </span>
-                                  );
-                                })()}
-                                {equip?.consumptionNorm && (
-                                  <span className="text-xs text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
-                                )}
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Tank Balance</span>
-                                <span className="font-medium">{closingDieselVal.toFixed(1)} L</span>
-                              </div>
+                              {isDieselIncluded ? (
+                                <>
+                                  <div className="col-span-4 flex items-center">
+                                    <span className="text-sm text-amber-600 dark:text-amber-400 italic">Diesel provided by contractor - tracking only</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Diesel Issued</span>
+                                    <span className="font-medium">{dieselIssuedVal.toFixed(1)} L</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Consumed</span>
+                                    <span className="font-medium">{consumed.toFixed(1)} L</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Efficiency</span>
+                                    {(() => {
+                                      const runtime = entry.hoursOrKmRun || 0;
+                                      if (runtime <= 0 || consumed <= 0) {
+                                        return <span className="font-medium text-muted-foreground">-</span>;
+                                      }
+                                      const efficiencyValue = consumed / runtime;
+                                      const norm = equip?.consumptionNorm || 0;
+                                      const isGood = norm > 0 ? efficiencyValue <= norm : true;
+                                      return (
+                                        <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                          {efficiencyValue.toFixed(2)} {equip?.meterType === "hour_meter" ? "L/hr" : "L/km"}
+                                        </span>
+                                      );
+                                    })()}
+                                    {equip?.consumptionNorm && (
+                                      <span className="text-xs text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Tank Balance</span>
+                                    <span className="font-medium">{closingDieselVal.toFixed(1)} L</span>
+                                  </div>
+                                </>
+                              )}
                             </div>
                             <div className="flex gap-2 ml-4">
                               <Button size="icon" variant="ghost" onClick={() => handleEditClick(entry)} data-testid={`button-edit-usage-${entry.id}`}>

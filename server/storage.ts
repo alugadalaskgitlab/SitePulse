@@ -1250,8 +1250,9 @@ export class DatabaseStorage implements IStorage {
         variance,
       }).returning();
       
-      // AUTO STOCK DEDUCTION: If diesel was issued, create ledger entry and deduct from HLC stock
-      if (dieselIssued > 0) {
+      // AUTO STOCK DEDUCTION: If diesel was issued AND not contractor-provided, create ledger entry and deduct from HLC stock
+      const dieselIncluded = usage.dieselIncluded === true;
+      if (dieselIssued > 0 && !dieselIncluded) {
         // Find diesel material (case-insensitive search)
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
@@ -1361,11 +1362,62 @@ export class DatabaseStorage implements IStorage {
         .returning();
       
       // AUTO STOCK ADJUSTMENT: Handle diesel stock and ledger updates
+      // Skip if diesel is provided by contractor (no stock impact)
+      const oldDieselIncluded = (existing as any).dieselIncluded === true;
+      const newDieselIncluded = usage.dieselIncluded !== undefined ? usage.dieselIncluded === true : oldDieselIncluded;
+      
       // Need to update ledger if dieselIssued changes OR if date/equipment changes
       const dieselDiff = newDieselIssued - oldDieselIssued;
       const dateChanged = usage.date !== undefined && usage.date !== existing.date;
       const equipmentChanged = usage.equipmentId !== undefined && usage.equipmentId !== existing.equipmentId;
-      const needsLedgerUpdate = dieselDiff !== 0 || ((dateChanged || equipmentChanged) && (oldDieselIssued > 0 || newDieselIssued > 0));
+      const dieselIncludedChanged = usage.dieselIncluded !== undefined && usage.dieselIncluded !== oldDieselIncluded;
+      
+      // Skip all stock operations if new state is dieselIncluded
+      if (newDieselIncluded) {
+        // Always clean up any existing ledger entry when dieselIncluded is true (handles legacy data)
+        await tx.delete(stockLedger).where(
+          and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
+        );
+        
+        // If changing FROM non-included TO included, need to restore stock
+        if (!oldDieselIncluded && oldDieselIssued > 0) {
+          const [dieselMaterial] = await tx.select().from(plantMaterials)
+            .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+            .limit(1);
+          const [hlcParty] = await tx.select().from(parties)
+            .where(sql`UPPER(${parties.name}) = 'HLC'`)
+            .limit(1);
+          const hlcPartyId = hlcParty?.id || null;
+          
+          if (dieselMaterial) {
+            // Restore stock (create balance if it doesn't exist)
+            const [existingBalance] = await tx.select().from(stockBalances)
+              .where(and(
+                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+                eq(stockBalances.materialId, dieselMaterial.id)
+              ))
+              .limit(1);
+            
+            const newBalance = (existingBalance?.balance || 0) + oldDieselIssued;
+            if (existingBalance) {
+              await tx.update(stockBalances)
+                .set({ balance: newBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, existingBalance.id));
+            } else {
+              // Create balance if it doesn't exist
+              await tx.insert(stockBalances).values({
+                partyId: hlcPartyId,
+                materialId: dieselMaterial.id,
+                balance: newBalance,
+                uom: dieselMaterial.defaultUom || 'Liters',
+              });
+            }
+          }
+        }
+        return result;
+      }
+      
+      const needsLedgerUpdate = dieselDiff !== 0 || dieselIncludedChanged || ((dateChanged || equipmentChanged) && (oldDieselIssued > 0 || newDieselIssued > 0));
       
       if (needsLedgerUpdate || dieselDiff !== 0) {
         // Find diesel material
@@ -1449,9 +1501,15 @@ export class DatabaseStorage implements IStorage {
       if (!existing) return false;
       
       const dieselIssued = existing.dieselIssued || 0;
+      const dieselIncluded = (existing as any).dieselIncluded === true;
       
-      // AUTO STOCK RESTORATION: If diesel was issued, restore to HLC stock
-      if (dieselIssued > 0) {
+      // Always delete any existing ledger entry (cleanup for any state)
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
+      );
+      
+      // AUTO STOCK RESTORATION: If diesel was issued AND not contractor-provided, restore to HLC stock
+      if (dieselIssued > 0 && !dieselIncluded) {
         // Find diesel material
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
@@ -1487,11 +1545,6 @@ export class DatabaseStorage implements IStorage {
               uom: dieselMaterial.defaultUom || 'Liters',
             });
           }
-          
-          // Delete the ledger entry
-          await tx.delete(stockLedger).where(
-            and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
-          );
         }
       }
       
