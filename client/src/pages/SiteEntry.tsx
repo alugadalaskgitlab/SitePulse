@@ -35,7 +35,6 @@ interface EquipmentEntry {
   endTime: string;
   openingReading: number | null;
   closingReading: number | null;
-  dieselNorm: number | null;
   diesel: number | null;
 }
 
@@ -115,7 +114,7 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, dieselNorm: null, diesel: null }
+    { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -197,20 +196,6 @@ export default function SiteEntry() {
     return calculateHours(entry.startTime, entry.endTime);
   };
 
-  // Calculate expected diesel based on norm
-  const getExpectedDiesel = (entry: EquipmentEntry): number | null => {
-    const hours = getWorkingHours(entry);
-    if (hours === 0 || !entry.dieselNorm) return null;
-    return hours * entry.dieselNorm;
-  };
-
-  // Calculate efficiency percentage
-  const getEfficiency = (entry: EquipmentEntry): number | null => {
-    const expected = getExpectedDiesel(entry);
-    if (!expected || !entry.diesel || entry.diesel === 0) return null;
-    return (expected / entry.diesel) * 100;
-  };
-
   const getTotalDiesel = (): number => {
     return equipment.reduce((sum, e) => sum + (e.diesel || 0), 0);
   };
@@ -233,7 +218,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, dieselNorm: null, diesel: null }]);
+      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
@@ -578,8 +563,6 @@ export default function SiteEntry() {
         <CardContent className="space-y-4">
           {equipment.map((entry, idx) => {
             const workingHours = getWorkingHours(entry);
-            const expectedDiesel = getExpectedDiesel(entry);
-            const efficiency = getEfficiency(entry);
             
             return (
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
@@ -700,7 +683,7 @@ export default function SiteEntry() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">Working Hours</Label>
                     <div 
@@ -709,21 +692,6 @@ export default function SiteEntry() {
                     >
                       {workingHours > 0 ? `${workingHours.toFixed(2)} hrs` : "-"}
                     </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Diesel Norm (L/hr)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      placeholder="e.g. 5.0"
-                      value={entry.dieselNorm ?? ""}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].dieselNorm = e.target.value ? parseFloat(e.target.value) : null;
-                        setEquipment(updated);
-                      }}
-                      data-testid={`input-diesel-norm-${idx}`}
-                    />
                   </div>
                   <div>
                     <Label className="text-xs">Diesel Issued (L)</Label>
@@ -739,30 +707,6 @@ export default function SiteEntry() {
                       }}
                       data-testid={`input-equipment-diesel-${idx}`}
                     />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Expected Diesel</Label>
-                    <div 
-                      className="bg-muted px-3 py-2 rounded border font-semibold text-sm"
-                      data-testid={`display-expected-diesel-${idx}`}
-                    >
-                      {expectedDiesel !== null ? `${expectedDiesel.toFixed(1)} L` : "-"}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Efficiency</Label>
-                    <div 
-                      className={`px-3 py-2 rounded border font-semibold text-sm ${
-                        efficiency !== null 
-                          ? efficiency >= 100 
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' 
-                            : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                          : 'bg-muted'
-                      }`}
-                      data-testid={`display-efficiency-${idx}`}
-                    >
-                      {efficiency !== null ? `${efficiency.toFixed(0)}%` : "-"}
-                    </div>
                   </div>
                 </div>
               </div>
