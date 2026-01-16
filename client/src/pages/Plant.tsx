@@ -1400,8 +1400,18 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   // KPI calculations
   const totalTons = kpiFilteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
   const totalTrips = kpiFilteredDispatches.length;
-  const totalDieselConsumed = kpiFilteredEquipment.reduce((sum, e) => sum + (e.dieselConsumed || 0), 0);
-  const totalHoursRun = kpiFilteredEquipment.reduce((sum, e) => sum + (e.hoursRun || 0), 0);
+  // Equipment usage: actual consumed = openingDiesel + dieselIssued - closingDiesel
+  // Fall back to expectedDiesel if tank levels not tracked
+  const totalDieselConsumed = kpiFilteredEquipment.reduce((sum, e) => {
+    const opening = e.openingDiesel || 0;
+    const issued = e.dieselIssued || 0;
+    const closing = e.closingDiesel;
+    // If closing is tracked, calculate actual consumed from tank levels
+    // Otherwise, use expected diesel (norm-based)
+    const actualConsumed = closing != null ? (opening + issued - closing) : (e.expectedDiesel || 0);
+    return sum + Math.max(0, actualConsumed);
+  }, 0);
+  const totalHoursRun = kpiFilteredEquipment.reduce((sum, e) => sum + (e.hoursOrKmRun || 0), 0);
   const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(2) : "N/A";
 
   const theoreticalVsActual = {

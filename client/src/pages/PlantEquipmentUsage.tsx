@@ -819,11 +819,15 @@ export default function PlantEquipmentUsage() {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
                         const openingDieselVal = (entry as any).openingDiesel ?? 0;
                         const dieselIssuedVal = entry.dieselIssued ?? 0;
-                        const consumed = entry.expectedDiesel ?? 0;
-                        const closingDieselVal = (entry as any).closingDiesel ?? (openingDieselVal + dieselIssuedVal - consumed);
+                        const closingDieselEntry = (entry as any).closingDiesel;
+                        // Actual consumed = opening + issued - closing; fallback to expected if closing not tracked
+                        const consumed = closingDieselEntry != null 
+                          ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
+                          : (entry.expectedDiesel ?? 0);
+                        const closingDieselVal = closingDieselEntry ?? (openingDieselVal + dieselIssuedVal - (entry.expectedDiesel ?? 0));
                         return (
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-xs block">Equipment</span>
                                 <span className="font-medium">{equip?.name || "Unknown"}</span>
@@ -834,7 +838,13 @@ export default function PlantEquipmentUsage() {
                               <div>
                                 <span className="text-muted-foreground text-xs block">Runtime</span>
                                 <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
-                                <span className="text-xs text-muted-foreground block">{entry.openingReading} - {entry.closingReading}</span>
+                                {entry.openingReading != null && entry.closingReading != null ? (
+                                  <span className="text-xs text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
+                                ) : entry.startTime && entry.endTime ? (
+                                  <span className="text-xs text-muted-foreground block">Time: {entry.startTime} - {entry.endTime}</span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground block">-</span>
+                                )}
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Diesel Issued</span>
@@ -843,6 +853,26 @@ export default function PlantEquipmentUsage() {
                               <div>
                                 <span className="text-muted-foreground text-xs block">Consumed</span>
                                 <span className="font-medium">{consumed.toFixed(1)} L</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Efficiency</span>
+                                {(() => {
+                                  const runtime = entry.hoursOrKmRun || 0;
+                                  if (runtime <= 0 || consumed <= 0) {
+                                    return <span className="font-medium text-muted-foreground">-</span>;
+                                  }
+                                  const efficiencyValue = consumed / runtime;
+                                  const norm = equip?.consumptionNorm || 0;
+                                  const isGood = norm > 0 ? efficiencyValue <= norm : true;
+                                  return (
+                                    <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                      {efficiencyValue.toFixed(2)} {equip?.meterType === "hour_meter" ? "L/hr" : "L/km"}
+                                    </span>
+                                  );
+                                })()}
+                                {equip?.consumptionNorm && (
+                                  <span className="text-xs text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
+                                )}
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Tank Balance</span>

@@ -13,6 +13,8 @@ import {
   ChevronLeft, 
   Calendar, 
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   HardHat,
   Printer,
@@ -20,6 +22,10 @@ import {
   X,
   FileSpreadsheet,
   FileText,
+  Wrench,
+  Users,
+  Package,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +52,7 @@ export default function SiteDashboard() {
   const { isAdmin, setAccess } = useAccess();
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingAction, setPendingAction] = useState<"reports-excel" | "reports-pdf" | "reports-print" | null>(null);
+  const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
@@ -233,19 +240,111 @@ export default function SiteDashboard() {
     
     const wb = XLSX.utils.book_new();
     
-    // Reports sheet
+    // Summary sheet
     const reportsData = dprs.map((dpr: any) => ({
       Date: format(new Date(dpr.date), "dd/MM/yyyy"),
       Site: getBaseSiteName(dpr.site),
       Engineer: dpr.engineer,
       Role: dpr.role || "",
+      "Progress Entries": dpr.progress?.length || 0,
+      "Equipment Logs": dpr.equipment?.length || 0,
+      "Labour Count": dpr.labour?.reduce((sum: number, l: any) => sum + (l.count || 0), 0) || 0,
+      "Material Entries": dpr.materials?.length || 0,
     }));
     const reportsSheet = XLSX.utils.json_to_sheet(reportsData);
-    XLSX.utils.book_append_sheet(wb, reportsSheet, "Site Reports");
+    XLSX.utils.book_append_sheet(wb, reportsSheet, "Summary");
+    
+    // Progress Details sheet
+    const progressData: any[] = [];
+    dprs.forEach((dpr: any) => {
+      dpr.progress?.forEach((p: any) => {
+        progressData.push({
+          Date: format(new Date(dpr.date), "dd/MM/yyyy"),
+          Site: getBaseSiteName(dpr.site),
+          Activity: p.activity || "",
+          Side: p.side || "",
+          "Chainage From": p.chainageFrom || "",
+          "Chainage To": p.chainageTo || "",
+          "Length (m)": p.length || 0,
+          "Width (m)": p.width || 0,
+          "Thickness (mm)": p.thickness || 0,
+          Quantity: p.quantity || 0,
+          UOM: p.uom || "",
+        });
+      });
+    });
+    if (progressData.length > 0) {
+      const progressSheet = XLSX.utils.json_to_sheet(progressData);
+      XLSX.utils.book_append_sheet(wb, progressSheet, "Progress");
+    }
+    
+    // Equipment Details sheet
+    const equipmentData: any[] = [];
+    dprs.forEach((dpr: any) => {
+      dpr.equipment?.forEach((e: any) => {
+        const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
+        equipmentData.push({
+          Date: format(new Date(dpr.date), "dd/MM/yyyy"),
+          Site: getBaseSiteName(dpr.site),
+          Machine: e.machine || "",
+          Operator: e.operator || "",
+          Task: e.task || "",
+          "Start Time": e.startTime || "",
+          "End Time": e.endTime || "",
+          "Opening Reading": e.openingReading ?? "",
+          "Closing Reading": e.closingReading ?? "",
+          "Hours Worked": hours?.toFixed(1) || "",
+          "Diesel (L)": e.diesel || 0,
+        });
+      });
+    });
+    if (equipmentData.length > 0) {
+      const equipmentSheet = XLSX.utils.json_to_sheet(equipmentData);
+      XLSX.utils.book_append_sheet(wb, equipmentSheet, "Equipment");
+    }
+    
+    // Labour Details sheet
+    const labourData: any[] = [];
+    dprs.forEach((dpr: any) => {
+      dpr.labour?.forEach((l: any) => {
+        labourData.push({
+          Date: format(new Date(dpr.date), "dd/MM/yyyy"),
+          Site: getBaseSiteName(dpr.site),
+          Category: l.category || "",
+          Gender: l.gender || "",
+          Count: l.count || 0,
+        });
+      });
+    });
+    if (labourData.length > 0) {
+      const labourSheet = XLSX.utils.json_to_sheet(labourData);
+      XLSX.utils.book_append_sheet(wb, labourSheet, "Labour");
+    }
+    
+    // Materials Details sheet
+    const materialsData: any[] = [];
+    dprs.forEach((dpr: any) => {
+      dpr.materials?.forEach((m: any) => {
+        materialsData.push({
+          Date: format(new Date(dpr.date), "dd/MM/yyyy"),
+          Site: getBaseSiteName(dpr.site),
+          Type: m.type || "",
+          Material: m.material || "",
+          Quantity: m.quantity || 0,
+          UOM: m.uom || "",
+          "Vehicle Number": m.vehicleNumber || "",
+          Supplier: m.supplier || "",
+        });
+      });
+    });
+    if (materialsData.length > 0) {
+      const materialsSheet = XLSX.utils.json_to_sheet(materialsData);
+      XLSX.utils.book_append_sheet(wb, materialsSheet, "Materials");
+    }
     
     const fileName = `SiteReports_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
     XLSX.writeFile(wb, fileName);
-    toast({ title: "Export Complete", description: `Downloaded ${fileName}` });
+    toast({ title: "Export Complete", description: `Downloaded ${fileName} with ${dprs.length} reports` });
   };
 
   const exportReportsToPDF = () => {
@@ -563,35 +662,214 @@ export default function SiteDashboard() {
                 <div className="text-sm text-muted-foreground px-1">
                   Showing {dprs.length} report{dprs.length !== 1 ? 's' : ''}
                 </div>
-                {dprs.map((dpr: any) => (
-                  <Link key={dpr.id} href={appendOrigin(`/site/report/${dpr.id}`)}>
-                    <Card className="hover-elevate cursor-pointer transition-all" data-testid={`card-report-${dpr.id}`}>
-                      <CardContent className="p-4 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-4 flex-1 min-w-0">
-                          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                            <Calendar className="w-6 h-6 text-primary" />
+                {dprs.map((dpr: any) => {
+                  const isExpanded = expandedReports.has(dpr.id);
+                  const toggleExpand = (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setExpandedReports(prev => {
+                      const next = new Set(prev);
+                      if (next.has(dpr.id)) {
+                        next.delete(dpr.id);
+                      } else {
+                        next.add(dpr.id);
+                      }
+                      return next;
+                    });
+                  };
+                  
+                  return (
+                    <Card key={dpr.id} className="transition-all" data-testid={`card-report-${dpr.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Calendar className="w-6 h-6 text-primary" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold truncate">{dpr.site}</h3>
+                              </div>
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {format(new Date(dpr.date), "MMM d, yyyy")}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <HardHat className="w-3 h-3" />
+                                  {dpr.engineer}
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-semibold truncate">{dpr.site}</h3>
-                            </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {format(new Date(dpr.date), "MMM d, yyyy")}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <HardHat className="w-3 h-3" />
-                                {dpr.engineer}
-                              </span>
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              onClick={toggleExpand}
+                              data-testid={`button-expand-${dpr.id}`}
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </Button>
+                            <Link href={appendOrigin(`/site/report/${dpr.id}`)}>
+                              <Button size="sm" variant="outline" className="gap-1" data-testid={`button-view-${dpr.id}`}>
+                                <ExternalLink className="w-3 h-3" />
+                                View
+                              </Button>
+                            </Link>
                           </div>
                         </div>
-                        <ChevronRight className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                        
+                        {isExpanded && (
+                          <div className="mt-4 pt-4 border-t space-y-4">
+                            {/* Progress Entries */}
+                            {dpr.progress && dpr.progress.length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                  <Calendar className="w-4 h-4" /> Progress Entries
+                                </h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted/50">
+                                        <th className="text-left p-2 border">Activity</th>
+                                        <th className="text-left p-2 border">Side</th>
+                                        <th className="text-left p-2 border">Chainage</th>
+                                        <th className="text-right p-2 border">L×W×T</th>
+                                        <th className="text-right p-2 border">Qty</th>
+                                        <th className="text-left p-2 border">UOM</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {dpr.progress.map((p: any, i: number) => (
+                                        <tr key={i} className="border-b">
+                                          <td className="p-2 border">{p.activity || "-"}</td>
+                                          <td className="p-2 border">{p.side || "-"}</td>
+                                          <td className="p-2 border">{p.chainageFrom} - {p.chainageTo}</td>
+                                          <td className="p-2 border text-right">{p.length || 0}×{p.width || 0}×{p.thickness || 0}</td>
+                                          <td className="p-2 border text-right">{p.quantity?.toFixed(2) || "-"}</td>
+                                          <td className="p-2 border">{p.uom || "-"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Equipment Log */}
+                            {dpr.equipment && dpr.equipment.length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                  <Wrench className="w-4 h-4" /> Equipment Log
+                                </h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted/50">
+                                        <th className="text-left p-2 border">Machine</th>
+                                        <th className="text-left p-2 border">Operator</th>
+                                        <th className="text-left p-2 border">Task</th>
+                                        <th className="text-left p-2 border">Time/Meter</th>
+                                        <th className="text-right p-2 border">Hours</th>
+                                        <th className="text-right p-2 border">Diesel (L)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {dpr.equipment.map((e: any, i: number) => {
+                                        const hasMeter = e.openingReading != null && e.closingReading != null;
+                                        const hasTime = e.startTime && e.endTime;
+                                        const meterHours = hasMeter ? e.closingReading - e.openingReading : null;
+                                        const hours = e.hoursWorked || meterHours;
+                                        const sourceLabel = hasMeter 
+                                          ? `Meter: ${e.openingReading} - ${e.closingReading}`
+                                          : hasTime
+                                            ? `Time: ${e.startTime} - ${e.endTime}`
+                                            : "-";
+                                        return (
+                                          <tr key={i} className="border-b">
+                                            <td className="p-2 border">{e.machine || "-"}</td>
+                                            <td className="p-2 border">{e.operator || "-"}</td>
+                                            <td className="p-2 border">{e.task || "-"}</td>
+                                            <td className="p-2 border">{sourceLabel}</td>
+                                            <td className="p-2 border text-right">{hours?.toFixed(1) || "-"}</td>
+                                            <td className="p-2 border text-right">{e.diesel?.toFixed(1) || "-"}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Labour Strength */}
+                            {dpr.labour && dpr.labour.length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                  <Users className="w-4 h-4" /> Labour Strength
+                                </h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted/50">
+                                        <th className="text-left p-2 border">Category</th>
+                                        <th className="text-left p-2 border">Gender</th>
+                                        <th className="text-right p-2 border">Count</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {dpr.labour.map((l: any, i: number) => (
+                                        <tr key={i} className="border-b">
+                                          <td className="p-2 border">{l.category || "-"}</td>
+                                          <td className="p-2 border">{l.gender || "-"}</td>
+                                          <td className="p-2 border text-right">{l.count || 0}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Materials */}
+                            {dpr.materials && dpr.materials.length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                  <Package className="w-4 h-4" /> Materials
+                                </h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted/50">
+                                        <th className="text-left p-2 border">Type</th>
+                                        <th className="text-left p-2 border">Material</th>
+                                        <th className="text-right p-2 border">Quantity</th>
+                                        <th className="text-left p-2 border">UOM</th>
+                                        <th className="text-left p-2 border">Vehicle</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {dpr.materials.map((m: any, i: number) => (
+                                        <tr key={i} className="border-b">
+                                          <td className="p-2 border">{m.type || "-"}</td>
+                                          <td className="p-2 border">{m.material || "-"}</td>
+                                          <td className="p-2 border text-right">{m.quantity?.toFixed(2) || "-"}</td>
+                                          <td className="p-2 border">{m.uom || "-"}</td>
+                                          <td className="p-2 border">{m.vehicleNumber || "-"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
-                  </Link>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
