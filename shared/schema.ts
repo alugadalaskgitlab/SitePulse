@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -260,6 +260,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   openingDiesel: real("opening_diesel"), // Tank level at start (from previous closing)
   closingDiesel: real("closing_diesel"), // Tank level at end = opening + issued - consumed
   variance: real("variance"), // For backwards compatibility
+  dieselIncluded: boolean("diesel_included").default(false), // True when diesel is provided by contractor (hired equipment)
   remarks: text("remarks"),
   createdAt: timestamp("created_at").defaultNow(),
 });
