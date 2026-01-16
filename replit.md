@@ -213,3 +213,14 @@ Preferred communication style: Simple, everyday language.
 - **Consumption Tracking**: Equipment Usage still calculates expected diesel, actual consumption, variance for analysis
 - **Tank Level Tracking**: Opening diesel, diesel issued, closing diesel fields remain for tank balance tracking per equipment
 - **No Duplication**: Eliminates previous issue of diesel being deducted both in Material Issues AND Equipment Usage
+
+### Diesel Efficiency Improvements (January 2026)
+- **Site Reports Simplified**: Removed diesel norm/efficiency from site equipment logs (efficiency tracking only meaningful for plant equipment with stored norms)
+- **Expand/Collapse Reports**: Site Reports now have expand/collapse feature showing Progress, Equipment, Labour, Materials inline
+- **Excel Export Enhanced**: Multi-sheet export (Summary, Progress, Equipment, Labour, Materials) with all DPR details
+- **Reading Source Labels**: Equipment tables now show "Meter: X - Y" or "Time: HH:MM - HH:MM" to clarify calculation source
+- **Plant Equipment Efficiency**: Added efficiency column (L/hr or L/km) with color-coded comparison to equipment norm
+- **Actual vs Expected Diesel**:
+  - Primary: Actual consumed = openingDiesel + dieselIssued - closingDiesel (from tank levels)
+  - Fallback: expectedDiesel (norm-based) only if closing tank level not tracked
+  - Applied consistently in Dashboard KPI and Equipment Usage display
