@@ -1250,18 +1250,24 @@ export class DatabaseStorage implements IStorage {
         variance,
       }).returning();
       
-      // AUTO STOCK DEDUCTION: If diesel was issued, create ledger entry and deduct from plant-common stock
+      // AUTO STOCK DEDUCTION: If diesel was issued, create ledger entry and deduct from HLC stock
       if (dieselIssued > 0) {
         // Find diesel material (case-insensitive search)
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
           .limit(1);
         
+        // Find HLC party for diesel stock
+        const [hlcParty] = await tx.select().from(parties)
+          .where(sql`UPPER(${parties.name}) = 'HLC'`)
+          .limit(1);
+        const hlcPartyId = hlcParty?.id || null;
+        
         if (dieselMaterial) {
-          // Deduct from plant-common stock (partyId = null)
+          // Deduct from HLC stock
           const [existingBalance] = await tx.select().from(stockBalances)
             .where(and(
-              sql`${stockBalances.partyId} IS NULL`,
+              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
               eq(stockBalances.materialId, dieselMaterial.id)
             ))
             .limit(1);
@@ -1274,7 +1280,7 @@ export class DatabaseStorage implements IStorage {
               .where(eq(stockBalances.id, existingBalance.id));
           } else {
             await tx.insert(stockBalances).values({
-              partyId: null,
+              partyId: hlcPartyId,
               materialId: dieselMaterial.id,
               balance: newBalance,
               uom: dieselMaterial.defaultUom || 'Liters',
@@ -1284,7 +1290,7 @@ export class DatabaseStorage implements IStorage {
           // Create ledger entry for equipment diesel issue
           await tx.insert(stockLedger).values({
             date: usage.date,
-            partyId: null, // Plant common
+            partyId: hlcPartyId,
             materialId: dieselMaterial.id,
             transactionType: "equipment_usage",
             referenceId: result.id,
@@ -1367,12 +1373,18 @@ export class DatabaseStorage implements IStorage {
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
           .limit(1);
         
+        // Find HLC party for diesel stock
+        const [hlcParty] = await tx.select().from(parties)
+          .where(sql`UPPER(${parties.name}) = 'HLC'`)
+          .limit(1);
+        const hlcPartyId = hlcParty?.id || null;
+        
         if (dieselMaterial) {
-          // Update plant-common stock if diesel quantity changed
+          // Update HLC stock if diesel quantity changed
           if (dieselDiff !== 0) {
             const [existingBalance] = await tx.select().from(stockBalances)
               .where(and(
-                sql`${stockBalances.partyId} IS NULL`,
+                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
                 eq(stockBalances.materialId, dieselMaterial.id)
               ))
               .limit(1);
@@ -1387,7 +1399,7 @@ export class DatabaseStorage implements IStorage {
                 .where(eq(stockBalances.id, existingBalance.id));
             } else {
               await tx.insert(stockBalances).values({
-                partyId: null,
+                partyId: hlcPartyId,
                 materialId: dieselMaterial.id,
                 balance: newBalance,
                 uom: dieselMaterial.defaultUom || 'Liters',
@@ -1398,7 +1410,7 @@ export class DatabaseStorage implements IStorage {
           // Get current balance for ledger entry
           const [currentBalance] = await tx.select().from(stockBalances)
             .where(and(
-              sql`${stockBalances.partyId} IS NULL`,
+              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
               eq(stockBalances.materialId, dieselMaterial.id)
             ))
             .limit(1);
@@ -1413,7 +1425,7 @@ export class DatabaseStorage implements IStorage {
             const usageDate = usage.date ?? existing.date;
             await tx.insert(stockLedger).values({
               date: usageDate,
-              partyId: null,
+              partyId: hlcPartyId,
               materialId: dieselMaterial.id,
               transactionType: "equipment_usage",
               referenceId: result.id,
@@ -1438,18 +1450,24 @@ export class DatabaseStorage implements IStorage {
       
       const dieselIssued = existing.dieselIssued || 0;
       
-      // AUTO STOCK RESTORATION: If diesel was issued, restore to plant-common stock
+      // AUTO STOCK RESTORATION: If diesel was issued, restore to HLC stock
       if (dieselIssued > 0) {
         // Find diesel material
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
           .limit(1);
         
+        // Find HLC party for diesel stock
+        const [hlcParty] = await tx.select().from(parties)
+          .where(sql`UPPER(${parties.name}) = 'HLC'`)
+          .limit(1);
+        const hlcPartyId = hlcParty?.id || null;
+        
         if (dieselMaterial) {
-          // Restore to plant-common stock
+          // Restore to HLC stock
           const [existingBalance] = await tx.select().from(stockBalances)
             .where(and(
-              sql`${stockBalances.partyId} IS NULL`,
+              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
               eq(stockBalances.materialId, dieselMaterial.id)
             ))
             .limit(1);
@@ -1463,7 +1481,7 @@ export class DatabaseStorage implements IStorage {
           } else {
             // Create balance if it doesn't exist (edge case - shouldn't normally happen)
             await tx.insert(stockBalances).values({
-              partyId: null,
+              partyId: hlcPartyId,
               materialId: dieselMaterial.id,
               balance: newBalance,
               uom: dieselMaterial.defaultUom || 'Liters',
