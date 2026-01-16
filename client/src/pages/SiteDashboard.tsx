@@ -15,6 +15,8 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  ChevronsDown,
+  ChevronsUp,
   Loader2,
   HardHat,
   Printer,
@@ -659,8 +661,32 @@ export default function SiteDashboard() {
               </Card>
             ) : (
               <div className="space-y-3">
-                <div className="text-sm text-muted-foreground px-1">
-                  Showing {dprs.length} report{dprs.length !== 1 ? 's' : ''}
+                <div className="flex items-center justify-between px-1">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {dprs.length} report{dprs.length !== 1 ? 's' : ''}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setExpandedReports(new Set(dprs.map((d: any) => d.id)))}
+                      disabled={expandedReports.size === dprs.length}
+                      data-testid="button-expand-all"
+                    >
+                      <ChevronsDown className="w-4 h-4 mr-1" />
+                      Expand All
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setExpandedReports(new Set())}
+                      disabled={expandedReports.size === 0}
+                      data-testid="button-collapse-all"
+                    >
+                      <ChevronsUp className="w-4 h-4 mr-1" />
+                      Collapse All
+                    </Button>
+                  </div>
                 </div>
                 {dprs.map((dpr: any) => {
                   const isExpanded = expandedReports.has(dpr.id);
