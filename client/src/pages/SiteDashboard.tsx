@@ -354,14 +354,18 @@ export default function SiteDashboard() {
     
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
+    let yPos = 15;
     
     // Header
     doc.setFontSize(16);
-    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, 15, { align: "center" });
+    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, yPos, { align: "center" });
+    yPos += 7;
     doc.setFontSize(12);
-    doc.text("Site Reports Summary", pageWidth / 2, 22, { align: "center" });
+    doc.text("Daily Progress Reports - Detailed", pageWidth / 2, yPos, { align: "center" });
+    yPos += 6;
     doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`, pageWidth / 2, 28, { align: "center" });
+    doc.text(`Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`, pageWidth / 2, yPos, { align: "center" });
+    yPos += 8;
     
     // Filters info
     const filterLines = [];
@@ -373,34 +377,163 @@ export default function SiteDashboard() {
     if (filters.equipment) filterLines.push(`Equipment: ${filters.equipment}`);
     if (filters.hasDiesel) filterLines.push(`With Diesel Usage`);
     if (filterLines.length > 0) {
-      doc.text(`Filters: ${filterLines.join(" | ")}`, 14, 36);
+      doc.setFontSize(9);
+      doc.text(`Filters: ${filterLines.join(" | ")}`, 14, yPos);
+      yPos += 6;
     }
     
-    // Reports table
-    const reportsRows = dprs.map((dpr: any) => [
-      format(new Date(dpr.date), "dd MMM yyyy"),
-      getBaseSiteName(dpr.site),
-      dpr.engineer,
-      dpr.role || "",
-    ]);
-    
-    autoTable(doc, {
-      startY: 42,
-      head: [["Date", "Site", "Engineer", "Role"]],
-      body: reportsRows,
-      theme: 'grid',
-      headStyles: { fillColor: [80, 80, 80] },
-      styles: { fontSize: 9 },
+    // Iterate through each DPR with full details
+    dprs.forEach((dpr: any, index: number) => {
+      // Check if we need a new page
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 15;
+      }
+      
+      // DPR Header
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${index + 1}. ${getBaseSiteName(dpr.site)}`, 14, yPos);
+      yPos += 5;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"}`, 14, yPos);
+      yPos += 6;
+      
+      // Progress Entries
+      if (dpr.progress?.length > 0) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("Progress Entries:", 14, yPos);
+        yPos += 4;
+        doc.setFont("helvetica", "normal");
+        
+        const progressRows = dpr.progress.map((p: any) => [
+          p.activity || "",
+          p.side || "",
+          `${p.chainageFrom || ""} - ${p.chainageTo || ""}`,
+          `${p.length || 0} x ${p.width || 0} x ${p.thickness || 0}`,
+          `${p.quantity || 0} ${p.uom || ""}`,
+        ]);
+        
+        autoTable(doc, {
+          startY: yPos,
+          head: [["Activity", "Side", "Chainage", "L x W x T", "Quantity"]],
+          body: progressRows,
+          theme: 'grid',
+          headStyles: { fillColor: [100, 100, 100], fontSize: 7 },
+          styles: { fontSize: 7, cellPadding: 1 },
+          margin: { left: 14, right: 14 },
+        });
+        yPos = (doc as any).lastAutoTable.finalY + 4;
+      }
+      
+      // Equipment Logs
+      if (dpr.equipment?.length > 0) {
+        if (yPos > 250) { doc.addPage(); yPos = 15; }
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("Equipment Log:", 14, yPos);
+        yPos += 4;
+        doc.setFont("helvetica", "normal");
+        
+        const equipRows = dpr.equipment.map((e: any) => {
+          const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
+          const readingSource = e.openingReading != null && e.closingReading != null 
+            ? `Meter: ${e.openingReading}-${e.closingReading}`
+            : (e.startTime && e.endTime ? `Time: ${e.startTime}-${e.endTime}` : "-");
+          return [
+            e.machine || "",
+            e.operator || "",
+            readingSource,
+            hours?.toFixed(1) || "-",
+            `${e.diesel || 0} L`,
+          ];
+        });
+        
+        autoTable(doc, {
+          startY: yPos,
+          head: [["Machine", "Operator", "Reading", "Hours", "Diesel"]],
+          body: equipRows,
+          theme: 'grid',
+          headStyles: { fillColor: [100, 100, 100], fontSize: 7 },
+          styles: { fontSize: 7, cellPadding: 1 },
+          margin: { left: 14, right: 14 },
+        });
+        yPos = (doc as any).lastAutoTable.finalY + 4;
+      }
+      
+      // Labour
+      if (dpr.labour?.length > 0) {
+        if (yPos > 250) { doc.addPage(); yPos = 15; }
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("Labour Strength:", 14, yPos);
+        yPos += 4;
+        doc.setFont("helvetica", "normal");
+        
+        const labourRows = dpr.labour.map((l: any) => [
+          l.category || "",
+          l.gender || "",
+          l.count || 0,
+        ]);
+        
+        autoTable(doc, {
+          startY: yPos,
+          head: [["Category", "Gender", "Count"]],
+          body: labourRows,
+          theme: 'grid',
+          headStyles: { fillColor: [100, 100, 100], fontSize: 7 },
+          styles: { fontSize: 7, cellPadding: 1 },
+          margin: { left: 14, right: 14 },
+        });
+        yPos = (doc as any).lastAutoTable.finalY + 4;
+      }
+      
+      // Materials
+      if (dpr.materials?.length > 0) {
+        if (yPos > 250) { doc.addPage(); yPos = 15; }
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("Materials:", 14, yPos);
+        yPos += 4;
+        doc.setFont("helvetica", "normal");
+        
+        const matRows = dpr.materials.map((m: any) => [
+          m.material || "",
+          `${m.quantity || 0} ${m.uom || ""}`,
+          m.vehicleNumber || "",
+          m.supplier || "",
+        ]);
+        
+        autoTable(doc, {
+          startY: yPos,
+          head: [["Material", "Quantity", "Vehicle", "Supplier"]],
+          body: matRows,
+          theme: 'grid',
+          headStyles: { fillColor: [100, 100, 100], fontSize: 7 },
+          styles: { fontSize: 7, cellPadding: 1 },
+          margin: { left: 14, right: 14 },
+        });
+        yPos = (doc as any).lastAutoTable.finalY + 4;
+      }
+      
+      // Add separator line between reports
+      if (index < dprs.length - 1) {
+        yPos += 2;
+        doc.setDrawColor(200, 200, 200);
+        doc.line(14, yPos, pageWidth - 14, yPos);
+        yPos += 6;
+      }
     });
     
-    const fileName = `SiteReports_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    const fileName = `SiteReports_Detailed_${format(new Date(), "yyyy-MM-dd")}.pdf`;
     doc.save(fileName);
-    toast({ title: "Export Complete", description: `Downloaded ${fileName}` });
+    toast({ title: "Export Complete", description: `Downloaded ${fileName} with ${dprs.length} detailed reports` });
   };
 
   const handlePrint = () => {
-    const printContent = printRef.current;
-    if (!printContent) return;
+    if (!dprs || dprs.length === 0) return;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -411,19 +544,26 @@ export default function SiteDashboard() {
     const styles = `
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; font-size: 11px; }
         .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-        .header h1 { font-size: 20px; margin-bottom: 5px; }
-        .header p { font-size: 12px; color: #666; }
-        .filters-info { background: #f5f5f5; padding: 10px; margin-bottom: 20px; border-radius: 4px; font-size: 12px; }
-        .report-list { }
-        .report-item { padding: 12px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
-        .report-item:last-child { border-bottom: none; }
-        .report-site { font-weight: 600; font-size: 14px; }
-        .report-meta { font-size: 12px; color: #666; margin-top: 4px; }
-        .report-date { text-align: right; font-size: 12px; color: #666; }
-        .summary { margin-top: 20px; padding-top: 15px; border-top: 2px solid #333; text-align: center; font-size: 12px; }
-        @media print { body { padding: 0; } }
+        .header h1 { font-size: 18px; margin-bottom: 5px; }
+        .header p { font-size: 11px; color: #666; }
+        .filters-info { background: #f5f5f5; padding: 8px; margin-bottom: 15px; border-radius: 4px; font-size: 10px; }
+        .report-card { border: 1px solid #ddd; margin-bottom: 15px; border-radius: 4px; page-break-inside: avoid; }
+        .report-header { background: #f8f8f8; padding: 10px; border-bottom: 1px solid #ddd; }
+        .report-site { font-weight: 600; font-size: 13px; }
+        .report-meta { font-size: 10px; color: #666; margin-top: 3px; }
+        .report-body { padding: 10px; }
+        .section { margin-bottom: 10px; }
+        .section-title { font-weight: 600; font-size: 10px; margin-bottom: 5px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+        table { width: 100%; border-collapse: collapse; font-size: 9px; }
+        th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+        th { background: #f0f0f0; font-weight: 600; }
+        .summary { margin-top: 20px; padding-top: 15px; border-top: 2px solid #333; text-align: center; font-size: 11px; }
+        @media print { 
+          body { padding: 10px; } 
+          .report-card { page-break-inside: avoid; }
+        }
       </style>
     `;
 
@@ -436,15 +576,114 @@ export default function SiteDashboard() {
     if (filters.equipment) filtersText.push(`Equipment: ${filters.equipment}`);
     if (filters.hasDiesel) filtersText.push(`With Diesel Usage`);
 
-    const reportsHtml = dprs?.map((dpr: any) => `
-      <div class="report-item">
-        <div>
-          <div class="report-site">${getBaseSiteName(dpr.site)}</div>
-          <div class="report-meta">Engineer: ${dpr.engineer}</div>
+    const reportsHtml = dprs?.map((dpr: any, index: number) => {
+      // Progress table
+      let progressHtml = "";
+      if (dpr.progress?.length > 0) {
+        progressHtml = `
+          <div class="section">
+            <div class="section-title">Progress Entries</div>
+            <table>
+              <tr><th>Activity</th><th>Side</th><th>Chainage</th><th>L x W x T</th><th>Quantity</th></tr>
+              ${dpr.progress.map((p: any) => `
+                <tr>
+                  <td>${p.activity || ""}</td>
+                  <td>${p.side || ""}</td>
+                  <td>${p.chainageFrom || ""} - ${p.chainageTo || ""}</td>
+                  <td>${p.length || 0} x ${p.width || 0} x ${p.thickness || 0}</td>
+                  <td>${p.quantity || 0} ${p.uom || ""}</td>
+                </tr>
+              `).join("")}
+            </table>
+          </div>
+        `;
+      }
+
+      // Equipment table
+      let equipmentHtml = "";
+      if (dpr.equipment?.length > 0) {
+        equipmentHtml = `
+          <div class="section">
+            <div class="section-title">Equipment Log</div>
+            <table>
+              <tr><th>Machine</th><th>Operator</th><th>Reading</th><th>Hours</th><th>Diesel</th></tr>
+              ${dpr.equipment.map((e: any) => {
+                const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
+                const readingSource = e.openingReading != null && e.closingReading != null 
+                  ? `Meter: ${e.openingReading}-${e.closingReading}`
+                  : (e.startTime && e.endTime ? `Time: ${e.startTime}-${e.endTime}` : "-");
+                return `
+                  <tr>
+                    <td>${e.machine || ""}</td>
+                    <td>${e.operator || ""}</td>
+                    <td>${readingSource}</td>
+                    <td>${hours?.toFixed(1) || "-"}</td>
+                    <td>${e.diesel || 0} L</td>
+                  </tr>
+                `;
+              }).join("")}
+            </table>
+          </div>
+        `;
+      }
+
+      // Labour table
+      let labourHtml = "";
+      if (dpr.labour?.length > 0) {
+        labourHtml = `
+          <div class="section">
+            <div class="section-title">Labour Strength</div>
+            <table>
+              <tr><th>Category</th><th>Gender</th><th>Count</th></tr>
+              ${dpr.labour.map((l: any) => `
+                <tr>
+                  <td>${l.category || ""}</td>
+                  <td>${l.gender || ""}</td>
+                  <td>${l.count || 0}</td>
+                </tr>
+              `).join("")}
+            </table>
+          </div>
+        `;
+      }
+
+      // Materials table
+      let materialsHtml = "";
+      if (dpr.materials?.length > 0) {
+        materialsHtml = `
+          <div class="section">
+            <div class="section-title">Materials</div>
+            <table>
+              <tr><th>Material</th><th>Quantity</th><th>Vehicle</th><th>Supplier</th></tr>
+              ${dpr.materials.map((m: any) => `
+                <tr>
+                  <td>${m.material || ""}</td>
+                  <td>${m.quantity || 0} ${m.uom || ""}</td>
+                  <td>${m.vehicleNumber || ""}</td>
+                  <td>${m.supplier || ""}</td>
+                </tr>
+              `).join("")}
+            </table>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="report-card">
+          <div class="report-header">
+            <div class="report-site">${index + 1}. ${getBaseSiteName(dpr.site)}</div>
+            <div class="report-meta">Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"}</div>
+          </div>
+          <div class="report-body">
+            ${progressHtml}
+            ${equipmentHtml}
+            ${labourHtml}
+            ${materialsHtml}
+            ${!progressHtml && !equipmentHtml && !labourHtml && !materialsHtml ? '<p style="color:#999;font-style:italic;">No entries recorded</p>' : ''}
+          </div>
         </div>
-        <div class="report-date">${format(new Date(dpr.date), "dd MMM yyyy")}</div>
-      </div>
-    `).join('') || '';
+      `;
+    }).join('') || '';
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -456,7 +695,7 @@ export default function SiteDashboard() {
         <body>
           <div class="header">
             <h1>High Lane Constructions Pvt Ltd</h1>
-            <p>Site Reports Summary</p>
+            <p>Daily Progress Reports - Detailed</p>
             <p>Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}</p>
           </div>
           ${filtersText.length > 0 ? `<div class="filters-info"><strong>Filters:</strong> ${filtersText.join(' | ')}</div>` : ''}
@@ -470,7 +709,6 @@ export default function SiteDashboard() {
       </html>
     `);
     printWindow.document.close();
-    // Use setTimeout to ensure content is fully rendered before printing
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
