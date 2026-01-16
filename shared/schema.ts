@@ -39,7 +39,13 @@ export const equipmentLogs = pgTable("equipment_logs", {
   operator: text("operator"),
   startTime: text("start_time"),
   endTime: text("end_time"),
+  // Hour meter fields (optional - user can choose time OR meter OR both)
+  openingReading: real("opening_reading"),
+  closingReading: real("closing_reading"),
+  hoursWorked: real("hours_worked"), // Auto-calculated from time or meter
   diesel: real("diesel"),
+  dieselNorm: real("diesel_norm"), // L/hr norm for efficiency calculation
+  expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursWorked * norm
   task: text("task"), // e.g., "Rolling WMM", "Watering shoulders"
 });
 
@@ -242,9 +248,13 @@ export const equipmentUsage = pgTable("equipment_usage", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   equipmentId: integer("equipment_id").notNull(),
-  openingReading: real("opening_reading").notNull(), // Hours or KM (meter)
-  closingReading: real("closing_reading").notNull(),
-  hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: closing - opening
+  // Hour meter fields (optional if using time entry)
+  openingReading: real("opening_reading"), // Hours or KM (meter) - now optional
+  closingReading: real("closing_reading"), // now optional
+  // Time entry fields (optional - user can choose time OR meter OR both)
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: from meter OR time
   dieselIssued: real("diesel_issued"), // Liters added to tank
   expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursOrKmRun * norm (consumed)
   openingDiesel: real("opening_diesel"), // Tank level at start (from previous closing)
