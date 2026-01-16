@@ -170,8 +170,8 @@ Preferred communication style: Simple, everyday language.
 
 ### Material Issues Register (Plant Module)
 - **Purpose**: Track materials issued from central plant store to sites
-- **Schema**: `material_issues` table with stock owner (partyId or isPlantCommon), materialId, quantity, issuedTo, purpose
-- **Stock Deduction**: Issues deduct from specified party stock or plant common stock
+- **Schema**: `material_issues` table with partyId (stock owner), materialId, quantity, issuedTo, purpose
+- **Stock Deduction**: Issues deduct from specified party stock
 - **Ledger Integration**: Creates ledger entries with transactionType="issue" for audit trail
 - **Transaction Types**: Stock ledger now supports: receipt, dispatch, issue, opening, equipment_usage
 - **UI Features**:
@@ -183,12 +183,11 @@ Preferred communication style: Simple, everyday language.
 - **Route**: /plant/material-issues
 
 ### Material Opening Stocks (Plant Module)
-- **Schema**: `materialOpeningStocks` table with stock owner support (partyId for party-specific or isPlantCommon=1 for plant common)
-- **Purpose**: Allows entering initial stock balances for materials with proper stock owner attribution
+- **Schema**: `materialOpeningStocks` table with partyId for stock owner attribution
+- **Purpose**: Allows entering initial stock balances for materials with party attribution
 - **UI Features**:
   - "+" button on each material in Masters tab opens Add Opening Stock dialog
-  - Stock owner selection: Plant Common Stock or Party/Job Specific
-  - Party dropdown appears when Party/Job Specific is selected
+  - Party selection dropdown (required)
   - Quantity, date, and notes fields
 - **Ledger Integration**: Opening stock entries create ledger entries with transactionType="opening"
 - **Stock Balance**: Opening stocks are added to stock balance calculations
@@ -213,6 +212,18 @@ Preferred communication style: Simple, everyday language.
 - **Consumption Tracking**: Equipment Usage still calculates expected diesel, actual consumption, variance for analysis
 - **Tank Level Tracking**: Opening diesel, diesel issued, closing diesel fields remain for tank balance tracking per equipment
 - **No Duplication**: Eliminates previous issue of diesel being deducted both in Material Issues AND Equipment Usage
+
+### Party-Based Stock Management (Plant Common Removal)
+- **Design Change**: Removed "Plant Common" stock concept entirely - all stock now party-based
+- **HLC Party**: HLC (High Lane Constructions) is the primary party for common plant stock (id=4)
+- **Migration Applied**: Existing plant-common stock balances and ledger entries migrated to HLC party
+- **UI Changes**:
+  - Material Receipts: Removed "Plant Common Stock" toggle - party selection always required
+  - Material Issues: Removed "Plant Common Stock" toggle - party selection always required
+  - Opening Stocks: Simplified to party-only selection (no "Plant Common" option)
+  - Stock Summary: Shows HLC party instead of "Plant Common" label
+- **Equipment Usage Diesel**: Automatically uses HLC party for diesel stock operations
+- **Benefits**: Simplified data model, consistent party attribution, no NULL partyId values
 
 ### Diesel Efficiency Improvements (January 2026)
 - **Site Reports Simplified**: Removed diesel norm/efficiency from site equipment logs (efficiency tracking only meaningful for plant equipment with stored norms)

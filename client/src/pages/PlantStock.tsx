@@ -75,7 +75,7 @@ export default function PlantStock() {
     const groupBalances: Record<string, number> = {};
     
     return sorted.map(entry => {
-      const key = `${entry.materialId}-${entry.partyId ?? 'common'}`;
+      const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (groupBalances[key] === undefined) groupBalances[key] = 0;
       
       groupBalances[key] += (entry.quantityIn || 0) - (entry.quantityOut || 0);
@@ -109,7 +109,7 @@ export default function PlantStock() {
 
     // Use processedLedger which excludes equipment_issue entries
     processedLedger.forEach((entry) => {
-      const key = `${entry.materialId}-${entry.partyId ?? "common"}`;
+      const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (!summaryMap[key]) {
         summaryMap[key] = {
           materialId: entry.materialId,
