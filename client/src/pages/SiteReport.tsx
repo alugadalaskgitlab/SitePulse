@@ -344,36 +344,50 @@ export default function SiteReport() {
                     <TableHead>Machine</TableHead>
                     <TableHead>Operator</TableHead>
                     <TableHead>Task</TableHead>
-                    <TableHead>Start</TableHead>
-                    <TableHead>End</TableHead>
+                    <TableHead>Time/Meter</TableHead>
                     <TableHead className="text-right">Hours</TableHead>
                     <TableHead className="text-right">Diesel (L)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {dpr.equipment.map((item: any, i: number) => {
-                    const calculateHours = (startTime?: string, endTime?: string) => {
-                      if (!startTime || !endTime) return '-';
+                    const calculateTimeHours = (startTime?: string, endTime?: string) => {
+                      if (!startTime || !endTime) return null;
                       try {
                         const [startHour, startMin] = startTime.split(':').map(Number);
                         const [endHour, endMin] = endTime.split(':').map(Number);
                         const startMins = startHour * 60 + startMin;
                         const endMins = endHour * 60 + endMin;
                         const diff = endMins - startMins;
-                        if (diff < 0) return '-';
-                        return (diff / 60).toFixed(2);
+                        if (diff < 0) return null;
+                        return diff / 60;
                       } catch {
-                        return '-';
+                        return null;
                       }
                     };
+                    const calculateMeterHours = (opening?: number, closing?: number) => {
+                      if (opening == null || closing == null) return null;
+                      const diff = closing - opening;
+                      return diff >= 0 ? diff : null;
+                    };
+                    
+                    const meterHours = calculateMeterHours(item.openingReading, item.closingReading);
+                    const timeHours = calculateTimeHours(item.startTime, item.endTime);
+                    const hours = meterHours ?? timeHours;
+                    
+                    const hasReading = item.openingReading != null && item.closingReading != null;
+                    const hasTime = item.startTime && item.endTime;
+                    const readingSource = hasReading 
+                      ? `Meter: ${item.openingReading} - ${item.closingReading}`
+                      : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
+                    
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
                         <TableCell className="font-medium">{item.machine}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
                         <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                        <TableCell>{item.startTime || '-'}</TableCell>
-                        <TableCell>{item.endTime || '-'}</TableCell>
-                        <TableCell className="text-right">{calculateHours(item.startTime, item.endTime)}</TableCell>
+                        <TableCell className="text-xs">{readingSource}</TableCell>
+                        <TableCell className="text-right">{hours != null ? hours.toFixed(2) : '-'}</TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                       </TableRow>
                     );

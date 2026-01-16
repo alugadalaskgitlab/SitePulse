@@ -31,6 +31,8 @@ interface EquipmentEntry {
   task: string;
   startTime: string;
   endTime: string;
+  openingReading: number | null;
+  closingReading: number | null;
   diesel: number | null;
 }
 
@@ -121,7 +123,7 @@ export default function SiteEdit() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", operator: "", task: "", startTime: "", endTime: "", diesel: null }
+    { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -161,6 +163,8 @@ export default function SiteEdit() {
           task: e.task || "",
           startTime: e.startTime || "",
           endTime: e.endTime || "",
+          openingReading: e.openingReading ?? null,
+          closingReading: e.closingReading ?? null,
           diesel: e.diesel,
         })));
       }
@@ -252,7 +256,7 @@ export default function SiteEdit() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", diesel: null }]);
+      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
@@ -546,8 +550,9 @@ export default function SiteEdit() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">Enter time OR hour meter readings (or both). Hour meter takes priority for hours calculation.</p>
           {equipment.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border rounded-lg bg-muted/30">
               <div>
                 <Label className="text-xs">Machine</Label>
                 <Input
@@ -614,6 +619,36 @@ export default function SiteEdit() {
                     setEquipment(updated);
                   }}
                   data-testid={`input-equipment-end-${idx}`}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Opening Reading</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="Meter"
+                  value={entry.openingReading ?? ""}
+                  onChange={(e) => {
+                    const updated = [...equipment];
+                    updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
+                    setEquipment(updated);
+                  }}
+                  data-testid={`input-equipment-opening-${idx}`}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Closing Reading</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="Meter"
+                  value={entry.closingReading ?? ""}
+                  onChange={(e) => {
+                    const updated = [...equipment];
+                    updated[idx].closingReading = e.target.value ? parseFloat(e.target.value) : null;
+                    setEquipment(updated);
+                  }}
+                  data-testid={`input-equipment-closing-${idx}`}
                 />
               </div>
               <div className="flex gap-2">
