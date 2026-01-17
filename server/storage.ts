@@ -162,8 +162,8 @@ export interface IStorage {
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }>;
   
-  // Create missing ledger entries for equipment usage diesel
-  reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number }>;
+  // Create missing ledger entries for equipment usage diesel and clean up orphaned reversals
+  reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number; cleaned: number }>;
   
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
@@ -1984,21 +1984,41 @@ export class DatabaseStorage implements IStorage {
     return { updated, errors };
   }
 
-  // Create missing ledger entries for equipment usage diesel
-  async reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number }> {
+  // Create missing ledger entries for equipment usage diesel and clean up orphaned reversals
+  async reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number; cleaned: number }> {
     let created = 0;
     let skipped = 0;
     let errors = 0;
+    let cleaned = 0;
 
     try {
-      // Get diesel material
+      // STEP 1: Clean up orphaned "Deleted issue reversal" adjustment entries
+      // These were created when material issues were deleted, but if the same diesel
+      // was re-entered via equipment usage, these reversals should be removed
+      const reversalEntries = await db.select().from(stockLedger)
+        .where(and(
+          eq(stockLedger.transactionType, 'adjustment'),
+          sql`${stockLedger.notes} LIKE '%Deleted issue%reversal%'`
+        ));
+      
+      for (const entry of reversalEntries) {
+        try {
+          await db.delete(stockLedger).where(eq(stockLedger.id, entry.id));
+          cleaned++;
+          console.log(`Cleaned up orphaned reversal entry #${entry.id}: ${entry.notes}`);
+        } catch (err) {
+          console.error(`Error cleaning reversal entry ${entry.id}:`, err);
+        }
+      }
+
+      // STEP 2: Get diesel material
       const [dieselMaterial] = await db.select().from(plantMaterials)
         .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
         .limit(1);
       
       if (!dieselMaterial) {
         console.error('Diesel material not found');
-        return { created: 0, skipped: 0, errors: 1 };
+        return { created: 0, skipped: 0, errors: 1, cleaned };
       }
 
       // Get HLC party
@@ -2064,7 +2084,7 @@ export class DatabaseStorage implements IStorage {
       errors++;
     }
 
-    return { created, skipped, errors };
+    return { created, skipped, errors, cleaned };
   }
 
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)

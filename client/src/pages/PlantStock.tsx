@@ -43,9 +43,15 @@ export default function PlantStock() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      const created = data.ledgerEntries?.created || 0;
+      const cleaned = data.ledgerEntries?.cleaned || 0;
+      let description = "";
+      if (created > 0) description += `Created ${created} ledger entries. `;
+      if (cleaned > 0) description += `Cleaned ${cleaned} orphan entries. `;
+      description += "Stock balances updated.";
       toast({
         title: "Data Reconciled",
-        description: `Created ${data.entriesCreated || 0} missing ledger entries. Stock balances updated.`,
+        description: description.trim(),
       });
     },
     onError: () => {
