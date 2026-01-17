@@ -162,6 +162,9 @@ export interface IStorage {
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }>;
   
+  // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
+  reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
+  
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
     id: number;
@@ -1976,6 +1979,79 @@ export class DatabaseStorage implements IStorage {
     }
     
     return { updated, errors };
+  }
+
+  // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
+  async reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }> {
+    let updated = 0;
+    let created = 0;
+    let errors = 0;
+
+    try {
+      // Get all ledger entries excluding legacy equipment_issue
+      const ledgerEntries = await db.select().from(stockLedger)
+        .where(sql`${stockLedger.transactionType} != 'equipment_issue'`);
+
+      // Calculate balance for each material-party combination
+      const balanceMap = new Map<string, { materialId: number; partyId: number | null; balance: number; uom: string }>();
+
+      for (const entry of ledgerEntries) {
+        const key = `${entry.materialId}-${entry.partyId ?? 'null'}`;
+        const existing = balanceMap.get(key);
+        const quantityIn = entry.quantityIn || 0;
+        const quantityOut = entry.quantityOut || 0;
+        const netChange = quantityIn - quantityOut;
+
+        if (existing) {
+          existing.balance += netChange;
+        } else {
+          balanceMap.set(key, {
+            materialId: entry.materialId,
+            partyId: entry.partyId,
+            balance: netChange,
+            uom: entry.uom || 'Units',
+          });
+        }
+      }
+
+      // Update stock_balances table to match calculated values
+      for (const data of Array.from(balanceMap.values())) {
+        try {
+          const condition = data.partyId === null
+            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, data.materialId))
+            : and(eq(stockBalances.partyId, data.partyId), eq(stockBalances.materialId, data.materialId));
+
+          const [existing] = await db.select().from(stockBalances).where(condition).limit(1);
+
+          if (existing) {
+            await db.update(stockBalances)
+              .set({ balance: data.balance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existing.id));
+            updated++;
+          } else {
+            await db.insert(stockBalances).values({
+              materialId: data.materialId,
+              partyId: data.partyId,
+              balance: data.balance,
+              uom: data.uom,
+            });
+            created++;
+          }
+        } catch (err) {
+          console.error(`Error reconciling balance for material ${data.materialId}, party ${data.partyId}:`, err);
+          errors++;
+        }
+      }
+
+      // Delete legacy equipment_issue entries from ledger (clean up)
+      await db.delete(stockLedger).where(eq(stockLedger.transactionType, 'equipment_issue'));
+
+    } catch (err) {
+      console.error('Error in reconcileStockBalancesFromLedger:', err);
+      errors++;
+    }
+
+    return { updated, created, errors };
   }
 
   async getSiteMaterialLogs(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<{

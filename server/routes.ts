@@ -1033,6 +1033,19 @@ export async function registerRoutes(
     }
   });
 
+  // Reconcile stock balances from ledger (admin maintenance endpoint)
+  app.post("/api/plant-module/reconcile-stock-balances", async (req, res) => {
+    try {
+      const result = await storage.reconcileStockBalancesFromLedger();
+      res.json({ 
+        message: "Stock balances reconciled from ledger entries", 
+        ...result 
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to reconcile stock balances" });
+    }
+  });
+
   // Stock Ledger
   app.get("/api/plant-module/stock-ledger", async (req, res) => {
     try {

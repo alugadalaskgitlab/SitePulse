@@ -354,6 +354,15 @@ export default function PlantEquipmentUsage() {
     return true;
   }) || [];
 
+  // Calculate totals for filtered data
+  const dieselTotals = useMemo(() => {
+    return filteredUsage.reduce((acc, entry) => ({
+      totalIssued: acc.totalIssued + (entry.dieselIssued || 0),
+      totalExpected: acc.totalExpected + (entry.expectedDiesel || 0),
+      entriesCount: acc.entriesCount + 1,
+    }), { totalIssued: 0, totalExpected: 0, entriesCount: 0 });
+  }, [filteredUsage]);
+
   const groupedUsage = filteredUsage.reduce((acc, entry) => {
     const dateKey = entry.date;
     if (!acc[dateKey]) acc[dateKey] = [];
@@ -920,13 +929,37 @@ export default function PlantEquipmentUsage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 flex-wrap">
             <Gauge className="w-5 h-5" />
             Usage Log
             {filteredUsage.length > 0 && (
               <Badge variant="secondary" className="ml-2">{filteredUsage.length} entries</Badge>
             )}
           </CardTitle>
+          {dieselTotals.totalIssued > 0 && (
+            <div className="flex flex-wrap gap-4 mt-2 text-sm" data-testid="diesel-totals-container">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-900/20" data-testid="diesel-total-issued">
+                <span className="text-blue-600 dark:text-blue-400 font-medium">Total Diesel Issued:</span>
+                <span className="font-bold text-blue-700 dark:text-blue-300">{dieselTotals.totalIssued.toFixed(1)} L</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-orange-50 dark:bg-orange-900/20" data-testid="diesel-total-expected">
+                <span className="text-orange-600 dark:text-orange-400 font-medium">Expected Consumption:</span>
+                <span className="font-bold text-orange-700 dark:text-orange-300">{dieselTotals.totalExpected.toFixed(1)} L</span>
+              </div>
+              {dieselTotals.totalIssued > dieselTotals.totalExpected && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-green-50 dark:bg-green-900/20" data-testid="diesel-total-surplus">
+                  <span className="text-green-600 dark:text-green-400 font-medium">Surplus:</span>
+                  <span className="font-bold text-green-700 dark:text-green-300">+{(dieselTotals.totalIssued - dieselTotals.totalExpected).toFixed(1)} L</span>
+                </div>
+              )}
+              {dieselTotals.totalExpected > dieselTotals.totalIssued && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20" data-testid="diesel-total-deficit">
+                  <span className="text-red-600 dark:text-red-400 font-medium">Deficit:</span>
+                  <span className="font-bold text-red-700 dark:text-red-300">-{(dieselTotals.totalExpected - dieselTotals.totalIssued).toFixed(1)} L</span>
+                </div>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (

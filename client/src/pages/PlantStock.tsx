@@ -34,9 +34,8 @@ export default function PlantStock() {
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
-  const { data: stockBalances, isLoading: balancesLoading } = useQuery<any[]>({ 
-    queryKey: ["/api/plant-module/stock-balances"] 
-  });
+  // Note: stock-balances API removed - Current Balances now derives from ledger entries via stockSummary
+  // This ensures consistency between Stock Summary and Current Balances tabs
 
   const buildLedgerUrl = () => {
     const params = new URLSearchParams();
@@ -175,7 +174,20 @@ export default function PlantStock() {
 
   const stockSummary = computeStockSummary();
 
-  const filteredBalances = stockBalances?.filter((b) => {
+  // Derive current balances from Stock Summary (which is computed from ledger entries, excluding legacy equipment_issue)
+  // This ensures Current Balances and Stock Summary are always consistent
+  const computedBalances = useMemo(() => {
+    return stockSummary.map(item => ({
+      materialId: item.materialId,
+      partyId: item.partyId,
+      balance: item.closing,
+      uom: item.uom,
+      materialName: item.materialName,
+      partyName: item.partyName,
+    }));
+  }, [stockSummary]);
+
+  const filteredBalances = computedBalances?.filter((b) => {
     if (selectedPartyId !== "all" && String(b.partyId ?? "") !== selectedPartyId && selectedPartyId !== "common") return false;
     if (selectedPartyId === "common" && b.partyId !== null) return false;
     if (selectedMaterialId !== "all" && b.materialId !== Number(selectedMaterialId)) return false;
@@ -611,7 +623,7 @@ export default function PlantStock() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {balancesLoading ? (
+              {ledgerLoading ? (
                 <div className="flex justify-center p-8">
                   <Loader2 className="w-6 h-6 animate-spin" />
                 </div>
@@ -624,7 +636,7 @@ export default function PlantStock() {
                       b.balance < 10 ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20' : 'bg-muted/50'
                     }`}>
                       <div className="flex justify-between items-start mb-2">
-                        <p className="font-medium">{getMaterialName(b.materialId)}</p>
+                        <p className="font-medium">{b.materialName}</p>
                         {b.balance < 10 && (
                           <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
                             LOW
@@ -637,7 +649,7 @@ export default function PlantStock() {
                           b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
                           'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                         }`}>
-                          {getPartyName(b.partyId)}
+                          {b.partyName}
                         </span>
                       </p>
                     </div>
