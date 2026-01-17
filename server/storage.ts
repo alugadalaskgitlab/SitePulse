@@ -1229,7 +1229,20 @@ export class DatabaseStorage implements IStorage {
         hoursOrKmRun = diff > 0 ? diff / 60 : 0;
       }
       
-      const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+      // Calculate total km from trip-based entry (for water tankers, etc.)
+      const numberOfTrips = (usage as any).numberOfTrips || 0;
+      const tripDistance = (usage as any).tripDistance || 0;
+      const totalKm = numberOfTrips * tripDistance * 2; // Round trip
+      
+      // Calculate expected diesel: use hours/km from meter OR trips
+      // Priority: meter readings > time entry > trip-based
+      let expectedDiesel = 0;
+      if (hoursOrKmRun > 0) {
+        expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+      } else if (totalKm > 0) {
+        // For trip-based, use km × norm (norm is L/km for these vehicles)
+        expectedDiesel = totalKm * (equipment?.consumptionNorm || 0);
+      }
       
       // Use user-provided opening diesel, or default to 0
       const openingDiesel = usage.openingDiesel ?? 0;
@@ -1244,6 +1257,9 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx.insert(equipmentUsage).values({
         ...usage,
         hoursOrKmRun,
+        numberOfTrips: numberOfTrips || null,
+        tripDistance: tripDistance || null,
+        totalKm: totalKm || null,
         expectedDiesel,
         openingDiesel,
         closingDiesel,
@@ -1324,6 +1340,11 @@ export class DatabaseStorage implements IStorage {
       const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
       const oldDieselIssued = existing.dieselIssued || 0;
       
+      // Trip-based fields
+      const numberOfTrips = (usage as any).numberOfTrips ?? (existing as any).numberOfTrips ?? 0;
+      const tripDistance = (usage as any).tripDistance ?? (existing as any).tripDistance ?? 0;
+      const totalKm = numberOfTrips * tripDistance * 2; // Round trip
+      
       // Calculate hours from meter readings or time entry (meter takes priority)
       let hoursOrKmRun = 0;
       
@@ -1340,7 +1361,15 @@ export class DatabaseStorage implements IStorage {
         hoursOrKmRun = diff > 0 ? diff / 60 : 0;
       }
       
-      const expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+      // Calculate expected diesel: use hours/km from meter OR trips
+      // Priority: meter readings > time entry > trip-based
+      let expectedDiesel = 0;
+      if (hoursOrKmRun > 0) {
+        expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
+      } else if (totalKm > 0) {
+        // For trip-based, use km × norm (norm is L/km for these vehicles)
+        expectedDiesel = totalKm * (equipment?.consumptionNorm || 0);
+      }
       
       // Calculate closing diesel balance = opening + issued - consumed
       const closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
@@ -1352,6 +1381,9 @@ export class DatabaseStorage implements IStorage {
         .set({
           ...usage,
           hoursOrKmRun,
+          numberOfTrips: numberOfTrips || null,
+          tripDistance: tripDistance || null,
+          totalKm: totalKm || null,
           expectedDiesel,
           openingDiesel,
           closingDiesel,
