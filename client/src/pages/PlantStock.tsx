@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -21,6 +21,7 @@ import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 export default function PlantStock() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
+  const queryClient = useQueryClient();
   const backLink = appendOrigin("/plant/dashboard");
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -30,7 +31,31 @@ export default function PlantStock() {
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" | "reconcile" } | null>(null);
+
+  // Reconciliation mutation to backfill missing ledger entries
+  const reconcileMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/plant-module/reconcile-equipment-usage-ledger', { method: 'POST' });
+      if (!res.ok) throw new Error('Reconciliation failed');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      toast({
+        title: "Data Reconciled",
+        description: `Created ${data.entriesCreated || 0} missing ledger entries. Stock balances updated.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Reconciliation Failed",
+        description: "Please try again or contact support.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
@@ -450,6 +475,9 @@ export default function PlantStock() {
       case "print":
         handlePrint();
         break;
+      case "reconcile":
+        reconcileMutation.mutate();
+        break;
     }
     setPendingAction(null);
   };
@@ -464,6 +492,10 @@ export default function PlantStock() {
 
   const handlePrintClick = () => {
     requestPinAuth({ type: "print" });
+  };
+
+  const handleReconcileClick = () => {
+    requestPinAuth({ type: "reconcile" });
   };
 
   return (
@@ -481,6 +513,21 @@ export default function PlantStock() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button 
+            size="sm" 
+            variant="default" 
+            className="gap-1" 
+            onClick={handleReconcileClick} 
+            disabled={reconcileMutation.isPending}
+            data-testid="button-reconcile-data"
+          >
+            {reconcileMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            Reconcile Data
+          </Button>
           <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!stockSummary.length} data-testid="button-export-excel">
             <Download className="w-4 h-4" /> Export Excel
           </Button>
