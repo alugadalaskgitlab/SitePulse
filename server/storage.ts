@@ -1229,19 +1229,29 @@ export class DatabaseStorage implements IStorage {
         hoursOrKmRun = diff > 0 ? diff / 60 : 0;
       }
       
-      // Calculate total km from trip-based entry (for water tankers, etc.)
+      // Calculate total km from trip-based entry
       const numberOfTrips = (usage as any).numberOfTrips || 0;
       const tripDistance = (usage as any).tripDistance || 0;
+      const tripBasedEntry = (usage as any).tripBasedEntry || false;
       const totalKm = numberOfTrips * tripDistance * 2; // Round trip
       
-      // Calculate expected diesel: use hours/km from meter OR trips
-      // Priority: meter readings > time entry > trip-based
+      // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
+      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
+      
+      // Calculate expected diesel:
+      // If tripBasedEntry is true, ALWAYS use trip-based calculation (even if meter/time exists)
+      // For trip-based: convert L/hr norm to L/km using average speed
+      const norm = equipment?.consumptionNorm || 0;
+      const isHourMeter = equipment?.meterType === "hour_meter";
+      
       let expectedDiesel = 0;
-      if (hoursOrKmRun > 0) {
-        expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
-      } else if (totalKm > 0) {
-        // For trip-based, use km × norm (norm is L/km for these vehicles)
-        expectedDiesel = totalKm * (equipment?.consumptionNorm || 0);
+      if (tripBasedEntry && totalKm > 0) {
+        // Trip-based: convert L/hr to L/km if equipment has hour-based norm
+        const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+        expectedDiesel = totalKm * normPerKm;
+      } else if (hoursOrKmRun > 0) {
+        // Meter/time based
+        expectedDiesel = hoursOrKmRun * norm;
       }
       
       // Use user-provided opening diesel, or default to 0
@@ -1343,6 +1353,7 @@ export class DatabaseStorage implements IStorage {
       // Trip-based fields
       const numberOfTrips = (usage as any).numberOfTrips ?? (existing as any).numberOfTrips ?? 0;
       const tripDistance = (usage as any).tripDistance ?? (existing as any).tripDistance ?? 0;
+      const tripBasedEntry = (usage as any).tripBasedEntry ?? !!(numberOfTrips && tripDistance);
       const totalKm = numberOfTrips * tripDistance * 2; // Round trip
       
       // Calculate hours from meter readings or time entry (meter takes priority)
@@ -1361,14 +1372,23 @@ export class DatabaseStorage implements IStorage {
         hoursOrKmRun = diff > 0 ? diff / 60 : 0;
       }
       
-      // Calculate expected diesel: use hours/km from meter OR trips
-      // Priority: meter readings > time entry > trip-based
+      // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
+      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
+      
+      // Calculate expected diesel:
+      // If tripBasedEntry is true, ALWAYS use trip-based calculation (even if meter/time exists)
+      // For trip-based: convert L/hr norm to L/km using average speed
+      const norm = equipment?.consumptionNorm || 0;
+      const isHourMeter = equipment?.meterType === "hour_meter";
+      
       let expectedDiesel = 0;
-      if (hoursOrKmRun > 0) {
-        expectedDiesel = hoursOrKmRun * (equipment?.consumptionNorm || 0);
-      } else if (totalKm > 0) {
-        // For trip-based, use km × norm (norm is L/km for these vehicles)
-        expectedDiesel = totalKm * (equipment?.consumptionNorm || 0);
+      if (tripBasedEntry && totalKm > 0) {
+        // Trip-based: convert L/hr to L/km if equipment has hour-based norm
+        const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+        expectedDiesel = totalKm * normPerKm;
+      } else if (hoursOrKmRun > 0) {
+        // Meter/time based
+        expectedDiesel = hoursOrKmRun * norm;
       }
       
       // Calculate closing diesel balance = opening + issued - consumed

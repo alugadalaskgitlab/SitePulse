@@ -41,6 +41,7 @@ export default function PlantEquipmentUsage() {
   const [dieselIncluded, setDieselIncluded] = useState(false);
   const [numberOfTrips, setNumberOfTrips] = useState("");
   const [tripDistance, setTripDistance] = useState("");
+  const [tripBasedEntry, setTripBasedEntry] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -58,12 +59,13 @@ export default function PlantEquipmentUsage() {
     dieselIncluded: boolean;
     numberOfTrips: string;
     tripDistance: string;
+    tripBasedEntry: boolean;
     remarks: string;
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, remarks
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, tripBasedEntry, remarks
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, tripBasedEntry, remarks]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
@@ -77,6 +79,7 @@ export default function PlantEquipmentUsage() {
     setDieselIncluded(data.dieselIncluded || false);
     setNumberOfTrips(data.numberOfTrips || "");
     setTripDistance(data.tripDistance || "");
+    setTripBasedEntry(data.tripBasedEntry || false);
     setRemarks(data.remarks);
   }, []);
 
@@ -150,6 +153,7 @@ export default function PlantEquipmentUsage() {
     setDieselIncluded(false);
     setNumberOfTrips("");
     setTripDistance("");
+    setTripBasedEntry(false);
     setRemarks("");
     setEditingUsage(null);
     setPreviousDieselBalance(null);
@@ -170,6 +174,8 @@ export default function PlantEquipmentUsage() {
     setDieselIncluded((entry as any).dieselIncluded || false);
     setNumberOfTrips((entry as any).numberOfTrips ? String((entry as any).numberOfTrips) : "");
     setTripDistance((entry as any).tripDistance ? String((entry as any).tripDistance) : "");
+    // Set tripBasedEntry to true if entry has trip data
+    setTripBasedEntry(!!((entry as any).numberOfTrips && (entry as any).tripDistance));
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);
@@ -210,13 +216,13 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
-    // Either meter readings OR time entry OR trip-based must be provided
+    // Either meter readings OR time entry OR trip-based (when checked) must be provided
     const hasMeterReading = openingReading && closingReading;
     const hasTimeEntry = startTime && endTime;
-    const hasTripEntry = numberOfTrips && tripDistance;
+    const hasTripEntry = tripBasedEntry && numberOfTrips && tripDistance;
     
     if (!equipmentId || (!hasMeterReading && !hasTimeEntry && !hasTripEntry)) {
-      toast({ title: "Please provide meter readings, time entry, or trip details", variant: "destructive" });
+      toast({ title: "Please provide meter readings, time entry, or trip details (with Trip Based Entry checked)", variant: "destructive" });
       return;
     }
     
@@ -227,8 +233,9 @@ export default function PlantEquipmentUsage() {
       closingReading: closingReading ? parseFloat(closingReading) : null,
       startTime: startTime || null,
       endTime: endTime || null,
-      numberOfTrips: numberOfTrips ? parseInt(numberOfTrips) : null,
-      tripDistance: tripDistance ? parseFloat(tripDistance) : null,
+      numberOfTrips: tripBasedEntry && numberOfTrips ? parseInt(numberOfTrips) : null,
+      tripDistance: tripBasedEntry && tripDistance ? parseFloat(tripDistance) : null,
+      tripBasedEntry, // Send flag to server
       openingDiesel: dieselIncluded ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
       dieselIssued: dieselIncluded ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
       dieselIncluded,
@@ -319,10 +326,26 @@ export default function PlantEquipmentUsage() {
   const timeRuntime = calculateTimeHours(startTime, endTime);
   const tripTotalKm = numberOfTrips && tripDistance ? parseInt(numberOfTrips) * parseFloat(tripDistance) * 2 : 0;
   const runtime = meterRuntime > 0 ? meterRuntime : timeRuntime;
-  // Expected diesel: from hours (meter/time) OR from trips (km-based)
-  const expectedDiesel = runtime > 0 
-    ? runtime * (selectedEquipment?.consumptionNorm || 0)
-    : tripTotalKm * (selectedEquipment?.consumptionNorm || 0);
+  
+  // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
+  const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
+  
+  // Expected diesel calculation:
+  // If tripBasedEntry is checked, ALWAYS use trip-based calculation (even if meter/time exists)
+  // For trip-based: convert L/hr norm to L/km using average speed
+  // L/km = L/hr ÷ km/hr
+  const norm = selectedEquipment?.consumptionNorm || 0;
+  const isHourMeter = selectedEquipment?.meterType === "hour_meter";
+  
+  let expectedDiesel = 0;
+  if (tripBasedEntry && tripTotalKm > 0) {
+    // Trip-based: convert L/hr to L/km if equipment has hour-based norm
+    const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+    expectedDiesel = tripTotalKm * normPerKm;
+  } else if (runtime > 0) {
+    // Meter/time based
+    expectedDiesel = runtime * norm;
+  }
 
   const filteredUsage = usage?.filter(u => {
     if (filterDateFrom && u.date < filterDateFrom) return false;
@@ -663,7 +686,7 @@ export default function PlantEquipmentUsage() {
                 )}
               </div>
 
-              <p className="text-xs text-muted-foreground italic">Enter meter readings OR time OR trips (for water tankers). Meter takes priority.</p>
+              <p className="text-xs text-muted-foreground italic">Enter meter readings OR time. Check "Trip Based Entry" for trip-based calculation.</p>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -687,42 +710,55 @@ export default function PlantEquipmentUsage() {
                 </div>
               </div>
 
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
-                <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">Trip-Based Entry (Water Tankers, etc.)</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-xs">No. of Trips</Label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      step="1" 
-                      value={numberOfTrips} 
-                      onChange={(e) => setNumberOfTrips(e.target.value)} 
-                      placeholder="e.g., 3" 
-                      data-testid="input-number-of-trips" 
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Distance to Source (km)</Label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      step="0.1" 
-                      value={tripDistance} 
-                      onChange={(e) => setTripDistance(e.target.value)} 
-                      placeholder="e.g., 6" 
-                      data-testid="input-trip-distance" 
-                    />
-                  </div>
-                </div>
-                {numberOfTrips && tripDistance && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Total: {parseInt(numberOfTrips) * parseFloat(tripDistance) * 2} km ({numberOfTrips} trips × {tripDistance} km × 2)
-                  </p>
-                )}
+              <div className="flex items-center gap-2 py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                <Checkbox 
+                  id="trip-based-entry" 
+                  checked={tripBasedEntry} 
+                  onCheckedChange={(checked) => setTripBasedEntry(checked === true)}
+                  data-testid="checkbox-trip-based"
+                />
+                <Label htmlFor="trip-based-entry" className="text-sm font-medium cursor-pointer">
+                  Trip Based Entry
+                </Label>
               </div>
 
-              {(runtime > 0 || tripTotalKm > 0) && selectedEquipment && (
+              {tripBasedEntry && (
+                <div className="p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-200/50 dark:border-blue-800/50 space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs">No. of Trips</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="1" 
+                        value={numberOfTrips} 
+                        onChange={(e) => setNumberOfTrips(e.target.value)} 
+                        placeholder="e.g., 3" 
+                        data-testid="input-number-of-trips" 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Distance to Source (km)</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.1" 
+                        value={tripDistance} 
+                        onChange={(e) => setTripDistance(e.target.value)} 
+                        placeholder="e.g., 6" 
+                        data-testid="input-trip-distance" 
+                      />
+                    </div>
+                  </div>
+                  {numberOfTrips && tripDistance && (
+                    <p className="text-xs text-muted-foreground">
+                      Total: {(parseInt(numberOfTrips) * parseFloat(tripDistance) * 2).toFixed(1)} km ({numberOfTrips} trips × {tripDistance} km × 2)
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {(runtime > 0 || (tripBasedEntry && tripTotalKm > 0)) && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
                   {runtime > 0 ? (
                     <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "hrs"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
@@ -790,7 +826,7 @@ export default function PlantEquipmentUsage() {
               <Button 
                 onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || ((!openingReading || !closingReading) && (!startTime || !endTime) && (!numberOfTrips || !tripDistance))} 
+                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || ((!openingReading || !closingReading) && (!startTime || !endTime) && !(tripBasedEntry && numberOfTrips && tripDistance))} 
                 data-testid="button-save-usage"
               >
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingUsage ? "Update Entry" : "Save Entry"}
