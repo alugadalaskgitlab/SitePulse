@@ -354,13 +354,15 @@ export default function PlantEquipmentUsage() {
     return true;
   }) || [];
 
-  // Calculate totals for filtered data
+  // Calculate totals for filtered data (exclude entries where dieselIncluded = true)
   const dieselTotals = useMemo(() => {
-    return filteredUsage.reduce((acc, entry) => ({
-      totalIssued: acc.totalIssued + (entry.dieselIssued || 0),
-      totalExpected: acc.totalExpected + (entry.expectedDiesel || 0),
-      entriesCount: acc.entriesCount + 1,
-    }), { totalIssued: 0, totalExpected: 0, entriesCount: 0 });
+    return filteredUsage
+      .filter(entry => !(entry as any).dieselIncluded)
+      .reduce((acc, entry) => ({
+        totalIssued: acc.totalIssued + (entry.dieselIssued || 0),
+        totalExpected: acc.totalExpected + (entry.expectedDiesel || 0),
+        entriesCount: acc.entriesCount + 1,
+      }), { totalIssued: 0, totalExpected: 0, entriesCount: 0 });
   }, [filteredUsage]);
 
   const groupedUsage = filteredUsage.reduce((acc, entry) => {
