@@ -317,12 +317,16 @@ export default function PlantStock() {
 
   const exportToPDF = async () => {
     try {
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       doc.setFontSize(16);
       doc.text("Stock Balances & Ledger Report", 14, 15);
       doc.setFontSize(10);
       doc.text(`Period: ${dateFrom} to ${dateTo}`, 14, 22);
       doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 28);
+      
+      // Stock Summary section
+      doc.setFontSize(12);
+      doc.text("Stock Summary", 14, 36);
       
       const summaryTableData = stockSummary.map(item => [
         item.materialName,
@@ -335,12 +339,55 @@ export default function PlantStock() {
       ]);
       
       autoTable(doc, {
-        startY: 34,
+        startY: 40,
         head: [["Material", "Stock Owner", "Opening", "Received", "Consumed", "Closing", "UOM"]],
         body: summaryTableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
         styles: { fontSize: 8 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      // Ledger Details section on new page
+      doc.addPage();
+      doc.setFontSize(12);
+      doc.text("Ledger Details", 14, 15);
+      
+      const getTransactionTypeLabel = (type: string) => {
+        switch(type) {
+          case 'receipt': return 'Receipt';
+          case 'dispatch': return 'Dispatch';
+          case 'issue': return 'Issue';
+          case 'opening': return 'Opening';
+          case 'adjustment': return 'Adjustment';
+          case 'equipment_usage': return 'Equip. Usage';
+          default: return type;
+        }
+      };
+      
+      const ledgerTableData = processedLedger.map(entry => [
+        entry.date,
+        getMaterialName(entry.materialId),
+        getPartyName(entry.partyId),
+        getTransactionTypeLabel(entry.transactionType),
+        entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+          ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+          : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+          ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+          : entry.notes || '-',
+        entry.quantityIn?.toFixed(2) || "-",
+        entry.quantityOut?.toFixed(2) || "-",
+        entry.calculatedBalance?.toFixed(2) || "-",
+        entry.uom,
+      ]);
+      
+      autoTable(doc, {
+        startY: 20,
+        head: [["Date", "Material", "Stock Owner", "Type", "Notes/Issued To", "In", "Out", "Balance", "UOM"]],
+        body: ledgerTableData,
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 7 },
         margin: { left: 14, right: 14 },
       });
       
@@ -356,40 +403,57 @@ export default function PlantStock() {
   };
 
   const handlePrint = () => {
+    const getTransactionTypeLabel = (type: string) => {
+      switch(type) {
+        case 'receipt': return 'Receipt';
+        case 'dispatch': return 'Dispatch';
+        case 'issue': return 'Issue';
+        case 'opening': return 'Opening';
+        case 'adjustment': return 'Adjustment';
+        case 'equipment_usage': return 'Equip. Usage';
+        default: return type;
+      }
+    };
+    
     const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Stock Balances Report</title>
+          <title>Stock Balances & Ledger Report</title>
           <style>
-            @page { size: A4 portrait; margin: 15mm; }
+            @page { size: A4 landscape; margin: 10mm; }
             * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
-            .header { margin-bottom: 15px; }
-            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
-            .date { color: #666; margin: 0; font-size: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 10px; }
+            .header { margin-bottom: 10px; }
+            h1 { color: #333; margin: 0 0 5px 0; font-size: 16px; }
+            h2 { color: #333; margin: 20px 0 5px 0; font-size: 14px; page-break-before: always; }
+            h2:first-of-type { page-break-before: avoid; }
+            .date { color: #666; margin: 0; font-size: 9px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; page-break-inside: auto; }
             tr { page-break-inside: avoid; page-break-after: auto; }
-            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th, td { border: 1px solid #ccc; padding: 4px 3px; text-align: left; font-size: 8px; }
             th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             .text-right { text-align: right; }
             .text-green { color: #16a34a; }
             .text-red { color: #dc2626; }
+            .section-title { font-size: 12px; font-weight: bold; margin: 15px 0 5px 0; color: #333; }
             @media print {
               body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+          <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 8px;">
+            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 40px; margin-bottom: 3px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 12px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
           </div>
           <div class="header">
-            <h1>Stock Balances Report</h1>
+            <h1>Stock Balances & Ledger Report</h1>
             <p class="date">Period: ${dateFrom} to ${dateTo} | Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
           </div>
+          
+          <div class="section-title">Stock Summary</div>
           <table>
             <thead>
               <tr>
@@ -412,6 +476,42 @@ export default function PlantStock() {
                   <td class="text-right text-red">-${item.consumed.toFixed(2)}</td>
                   <td class="text-right"><strong>${item.closing.toFixed(2)}</strong></td>
                   <td>${item.uom}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <h2>Ledger Details</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Material</th>
+                <th>Stock Owner</th>
+                <th>Type</th>
+                <th>Notes/Issued To</th>
+                <th class="text-right">In</th>
+                <th class="text-right">Out</th>
+                <th class="text-right">Balance</th>
+                <th>UOM</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${processedLedger.map(entry => `
+                <tr>
+                  <td>${entry.date}</td>
+                  <td>${getMaterialName(entry.materialId)}</td>
+                  <td>${getPartyName(entry.partyId)}</td>
+                  <td>${getTransactionTypeLabel(entry.transactionType)}</td>
+                  <td>${entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+                    ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+                    : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+                    ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+                    : entry.notes || '-'}</td>
+                  <td class="text-right text-green">${entry.quantityIn ? entry.quantityIn.toFixed(2) : '-'}</td>
+                  <td class="text-right text-red">${entry.quantityOut ? entry.quantityOut.toFixed(2) : '-'}</td>
+                  <td class="text-right"><strong>${entry.calculatedBalance?.toFixed(2) || '-'}</strong></td>
+                  <td>${entry.uom}</td>
                 </tr>
               `).join('')}
             </tbody>
