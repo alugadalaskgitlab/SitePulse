@@ -690,11 +690,11 @@ export default function PlantEquipmentUsage() {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Opening Reading</Label>
+                  <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
                   <Input type="number" step="0.1" value={openingReading} onChange={(e) => setOpeningReading(e.target.value)} placeholder="0.0" data-testid="input-opening-reading" />
                 </div>
                 <div>
-                  <Label>Closing Reading</Label>
+                  <Label>Closing {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
                   <Input type="number" step="0.1" value={closingReading} onChange={(e) => setClosingReading(e.target.value)} placeholder="0.0" data-testid="input-closing-reading" />
                 </div>
               </div>
@@ -969,7 +969,9 @@ export default function PlantEquipmentUsage() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">
-                                  {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? "Distance" : "Runtime"}
+                                  {(entry as any).totalKm > 0 && !entry.hoursOrKmRun 
+                                    ? "Distance" 
+                                    : (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")}
                                 </span>
                                 {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
                                   <>
