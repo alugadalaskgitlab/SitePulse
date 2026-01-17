@@ -255,6 +255,10 @@ export const equipmentUsage = pgTable("equipment_usage", {
   startTime: text("start_time"),
   endTime: text("end_time"),
   hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: from meter OR time
+  // Trip-based tracking (for water tankers, etc.)
+  numberOfTrips: integer("number_of_trips"), // Number of round trips
+  tripDistance: real("trip_distance"), // One-way distance to source (km)
+  totalKm: real("total_km"), // Auto-calculated: trips × distance × 2
   dieselIssued: real("diesel_issued"), // Liters added to tank
   expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursOrKmRun * norm (consumed)
   openingDiesel: real("opening_diesel"), // Tank level at start (from previous closing)
