@@ -1289,7 +1289,7 @@ export class DatabaseStorage implements IStorage {
         
         // Find HLC party for diesel stock
         const [hlcParty] = await tx.select().from(parties)
-          .where(sql`UPPER(${parties.name}) = 'HLC'`)
+          .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
           .limit(1);
         const hlcPartyId = hlcParty?.id || null;
         
@@ -1446,7 +1446,7 @@ export class DatabaseStorage implements IStorage {
             .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
             .limit(1);
           const [hlcParty] = await tx.select().from(parties)
-            .where(sql`UPPER(${parties.name}) = 'HLC'`)
+            .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
             .limit(1);
           const hlcPartyId = hlcParty?.id || null;
           
@@ -1488,7 +1488,7 @@ export class DatabaseStorage implements IStorage {
         
         // Find HLC party for diesel stock
         const [hlcParty] = await tx.select().from(parties)
-          .where(sql`UPPER(${parties.name}) = 'HLC'`)
+          .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
           .limit(1);
         const hlcPartyId = hlcParty?.id || null;
         
@@ -1578,7 +1578,7 @@ export class DatabaseStorage implements IStorage {
         
         // Find HLC party for diesel stock
         const [hlcParty] = await tx.select().from(parties)
-          .where(sql`UPPER(${parties.name}) = 'HLC'`)
+          .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
           .limit(1);
         const hlcPartyId = hlcParty?.id || null;
         
