@@ -1046,6 +1046,23 @@ export async function registerRoutes(
     }
   });
 
+  // Backfill missing equipment usage ledger entries (admin maintenance endpoint)
+  app.post("/api/plant-module/reconcile-equipment-usage-ledger", async (req, res) => {
+    try {
+      // First create missing ledger entries
+      const ledgerResult = await storage.reconcileEquipmentUsageLedger();
+      // Then reconcile stock balances from all ledger entries
+      const balanceResult = await storage.reconcileStockBalancesFromLedger();
+      res.json({ 
+        message: "Equipment usage ledger entries created and stock balances reconciled", 
+        ledgerEntries: ledgerResult,
+        stockBalances: balanceResult
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to reconcile equipment usage ledger" });
+    }
+  });
+
   // Stock Ledger
   app.get("/api/plant-module/stock-ledger", async (req, res) => {
     try {

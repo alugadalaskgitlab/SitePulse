@@ -162,6 +162,9 @@ export interface IStorage {
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }>;
   
+  // Create missing ledger entries for equipment usage diesel
+  reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number }>;
+  
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
   
@@ -1979,6 +1982,89 @@ export class DatabaseStorage implements IStorage {
     }
     
     return { updated, errors };
+  }
+
+  // Create missing ledger entries for equipment usage diesel
+  async reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number }> {
+    let created = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    try {
+      // Get diesel material
+      const [dieselMaterial] = await db.select().from(plantMaterials)
+        .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+        .limit(1);
+      
+      if (!dieselMaterial) {
+        console.error('Diesel material not found');
+        return { created: 0, skipped: 0, errors: 1 };
+      }
+
+      // Get HLC party
+      const [hlcParty] = await db.select().from(parties)
+        .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
+        .limit(1);
+      const hlcPartyId = hlcParty?.id || null;
+
+      // Get all equipment usage entries with diesel issued > 0 and not contractor-provided
+      const usageEntries = await db.select({
+        usage: equipmentUsage,
+        equipment: equipmentMaster,
+      })
+        .from(equipmentUsage)
+        .leftJoin(equipmentMaster, eq(equipmentUsage.equipmentId, equipmentMaster.id))
+        .where(and(
+          sql`${equipmentUsage.dieselIssued} > 0`,
+          sql`(${equipmentUsage.dieselIncluded} IS NULL OR ${equipmentUsage.dieselIncluded} = false)`
+        ));
+
+      // Get existing equipment_usage ledger entries
+      const existingLedgerEntries = await db.select().from(stockLedger)
+        .where(eq(stockLedger.transactionType, 'equipment_usage'));
+      
+      const existingRefIds = new Set(existingLedgerEntries.map(e => e.referenceId));
+
+      for (const { usage, equipment } of usageEntries) {
+        try {
+          // Skip if ledger entry already exists
+          if (existingRefIds.has(usage.id)) {
+            skipped++;
+            continue;
+          }
+
+          const dieselIssued = usage.dieselIssued || 0;
+          if (dieselIssued <= 0) {
+            skipped++;
+            continue;
+          }
+
+          // Create ledger entry (don't update stock balance here - will reconcile after)
+          await db.insert(stockLedger).values({
+            date: usage.date,
+            partyId: hlcPartyId,
+            materialId: dieselMaterial.id,
+            transactionType: "equipment_usage",
+            referenceId: usage.id,
+            quantityOut: dieselIssued,
+            balanceAfter: 0, // Will be recalculated by reconciliation
+            uom: dieselMaterial.defaultUom || 'Liters',
+            notes: `Diesel issued to ${equipment?.name || 'Equipment'} (backfilled)`,
+          });
+
+          created++;
+        } catch (err) {
+          console.error(`Error creating ledger entry for usage ${usage.id}:`, err);
+          errors++;
+        }
+      }
+
+    } catch (err) {
+      console.error('Error in reconcileEquipmentUsageLedger:', err);
+      errors++;
+    }
+
+    return { created, skipped, errors };
   }
 
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
