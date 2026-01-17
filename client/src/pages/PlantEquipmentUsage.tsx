@@ -174,8 +174,8 @@ export default function PlantEquipmentUsage() {
     setDieselIncluded((entry as any).dieselIncluded || false);
     setNumberOfTrips((entry as any).numberOfTrips ? String((entry as any).numberOfTrips) : "");
     setTripDistance((entry as any).tripDistance ? String((entry as any).tripDistance) : "");
-    // Set tripBasedEntry to true if entry has trip data
-    setTripBasedEntry(!!((entry as any).numberOfTrips && (entry as any).tripDistance));
+    // Use persisted tripBasedEntry flag from database
+    setTripBasedEntry((entry as any).tripBasedEntry === true);
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);

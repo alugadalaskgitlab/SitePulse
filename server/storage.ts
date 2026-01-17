@@ -1230,9 +1230,9 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Calculate total km from trip-based entry
-      const numberOfTrips = (usage as any).numberOfTrips || 0;
-      const tripDistance = (usage as any).tripDistance || 0;
-      const tripBasedEntry = (usage as any).tripBasedEntry || false;
+      const numberOfTrips = usage.numberOfTrips || 0;
+      const tripDistance = usage.tripDistance || 0;
+      const tripBasedEntry = usage.tripBasedEntry === true;
       const totalKm = numberOfTrips * tripDistance * 2; // Round trip
       
       // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
@@ -1245,10 +1245,13 @@ export class DatabaseStorage implements IStorage {
       const isHourMeter = equipment?.meterType === "hour_meter";
       
       let expectedDiesel = 0;
-      if (tripBasedEntry && totalKm > 0) {
-        // Trip-based: convert L/hr to L/km if equipment has hour-based norm
-        const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-        expectedDiesel = totalKm * normPerKm;
+      if (tripBasedEntry) {
+        // Trip-based: ALWAYS use trip calculation when flag is true (zero if no trip data)
+        if (totalKm > 0) {
+          const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+          expectedDiesel = totalKm * normPerKm;
+        }
+        // else expectedDiesel stays 0 - trip-based but no trip data
       } else if (hoursOrKmRun > 0) {
         // Meter/time based
         expectedDiesel = hoursOrKmRun * norm;
@@ -1350,10 +1353,13 @@ export class DatabaseStorage implements IStorage {
       const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
       const oldDieselIssued = existing.dieselIssued || 0;
       
-      // Trip-based fields
-      const numberOfTrips = (usage as any).numberOfTrips ?? (existing as any).numberOfTrips ?? 0;
-      const tripDistance = (usage as any).tripDistance ?? (existing as any).tripDistance ?? 0;
-      const tripBasedEntry = (usage as any).tripBasedEntry ?? !!(numberOfTrips && tripDistance);
+      // Trip-based fields - use persisted value from database if not in update
+      const numberOfTrips = usage.numberOfTrips ?? (existing as any).numberOfTrips ?? 0;
+      const tripDistance = usage.tripDistance ?? (existing as any).tripDistance ?? 0;
+      // Use explicit tripBasedEntry flag - persisted in database
+      const tripBasedEntry = usage.tripBasedEntry !== undefined 
+        ? usage.tripBasedEntry === true 
+        : (existing as any).tripBasedEntry === true;
       const totalKm = numberOfTrips * tripDistance * 2; // Round trip
       
       // Calculate hours from meter readings or time entry (meter takes priority)
@@ -1382,10 +1388,13 @@ export class DatabaseStorage implements IStorage {
       const isHourMeter = equipment?.meterType === "hour_meter";
       
       let expectedDiesel = 0;
-      if (tripBasedEntry && totalKm > 0) {
-        // Trip-based: convert L/hr to L/km if equipment has hour-based norm
-        const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-        expectedDiesel = totalKm * normPerKm;
+      if (tripBasedEntry) {
+        // Trip-based: ALWAYS use trip calculation when flag is true (zero if no trip data)
+        if (totalKm > 0) {
+          const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+          expectedDiesel = totalKm * normPerKm;
+        }
+        // else expectedDiesel stays 0 - trip-based but no trip data
       } else if (hoursOrKmRun > 0) {
         // Meter/time based
         expectedDiesel = hoursOrKmRun * norm;

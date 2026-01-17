@@ -256,6 +256,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   endTime: text("end_time"),
   hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: from meter OR time
   // Trip-based tracking (for water tankers, etc.)
+  tripBasedEntry: boolean("trip_based_entry").default(false), // Flag to use trip-based calculation
   numberOfTrips: integer("number_of_trips"), // Number of round trips
   tripDistance: real("trip_distance"), // One-way distance to source (km)
   totalKm: real("total_km"), // Auto-calculated: trips × distance × 2
