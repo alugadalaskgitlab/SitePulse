@@ -946,16 +946,16 @@ export default function PlantEquipmentUsage() {
                 <span className="text-orange-600 dark:text-orange-400 font-medium">Expected Consumption:</span>
                 <span className="font-bold text-orange-700 dark:text-orange-300">{dieselTotals.totalExpected.toFixed(1)} L</span>
               </div>
-              {dieselTotals.totalIssued > dieselTotals.totalExpected && (
+              {dieselTotals.totalIssued >= dieselTotals.totalExpected && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-green-50 dark:bg-green-900/20" data-testid="diesel-total-surplus">
-                  <span className="text-green-600 dark:text-green-400 font-medium">Surplus:</span>
-                  <span className="font-bold text-green-700 dark:text-green-300">+{(dieselTotals.totalIssued - dieselTotals.totalExpected).toFixed(1)} L</span>
+                  <span className="text-green-600 dark:text-green-400 font-medium">Balance in Tanks:</span>
+                  <span className="font-bold text-green-700 dark:text-green-300">{(dieselTotals.totalIssued - dieselTotals.totalExpected).toFixed(1)} L</span>
                 </div>
               )}
               {dieselTotals.totalExpected > dieselTotals.totalIssued && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20" data-testid="diesel-total-deficit">
-                  <span className="text-red-600 dark:text-red-400 font-medium">Deficit:</span>
-                  <span className="font-bold text-red-700 dark:text-red-300">-{(dieselTotals.totalExpected - dieselTotals.totalIssued).toFixed(1)} L</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium">Over-Consumed:</span>
+                  <span className="font-bold text-red-700 dark:text-red-300">{(dieselTotals.totalExpected - dieselTotals.totalIssued).toFixed(1)} L</span>
                 </div>
               )}
             </div>
