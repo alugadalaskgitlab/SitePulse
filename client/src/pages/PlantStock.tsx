@@ -159,8 +159,8 @@ export default function PlantStock() {
       else if (entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].received += entry.quantityIn || 0;
       }
-      // Consumed: dispatch, issue only (equipment_issue excluded from processedLedger)
-      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue") {
+      // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
+      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
         summaryMap[key].consumed += Math.abs(entry.quantityOut || 0);
       }
     });
@@ -226,7 +226,12 @@ export default function PlantStock() {
         Date: entry.date,
         Material: getMaterialName(entry.materialId),
         "Stock Owner": getPartyName(entry.partyId),
-        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType,
+        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType,
+        "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+          ? entry.notes.replace('Diesel issued to ', '')
+          : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+          ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+          : entry.notes || '-',
         In: entry.quantityIn?.toFixed(2) || "-",
         Out: entry.quantityOut?.toFixed(2) || "-",
         Balance: entry.calculatedBalance?.toFixed(2) || "-",
@@ -667,6 +672,7 @@ export default function PlantStock() {
                         <th className="text-left p-3 font-semibold">Material</th>
                         <th className="text-left p-3 font-semibold">Stock Owner</th>
                         <th className="text-left p-3 font-semibold">Type</th>
+                        <th className="text-left p-3 font-semibold">Issued To</th>
                         <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In</th>
                         <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out</th>
                         <th className="text-right p-3 font-semibold">Balance</th>
@@ -691,10 +697,19 @@ export default function PlantStock() {
                                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
                                 : entry.transactionType === 'issue'
                                 ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                                : entry.transactionType === 'equipment_usage'
+                                ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
                                 : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}>
-                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType}
+                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType}
                             </span>
+                          </td>
+                          <td className="p-3 text-muted-foreground text-sm">
+                            {entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+                              ? entry.notes.replace('Diesel issued to ', '')
+                              : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+                              ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+                              : entry.notes || '-'}
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
                             {(entry.quantityIn ?? 0) > 0 ? `${entry.quantityIn?.toFixed(2)}` : '-'}
@@ -708,7 +723,7 @@ export default function PlantStock() {
                     </tbody>
                     <tfoot className="bg-muted/70 border-t-2">
                       <tr>
-                        <td colSpan={4} className="p-3 font-bold text-right">Filtered Totals:</td>
+                        <td colSpan={5} className="p-3 font-bold text-right">Filtered Totals:</td>
                         <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">
                           {ledgerTotals.totalIn.toFixed(2)}
                         </td>
