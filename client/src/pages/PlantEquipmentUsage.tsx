@@ -372,12 +372,16 @@ export default function PlantEquipmentUsage() {
       const dieselIssuedVal = entry.dieselIssued ?? 0;
       const consumed = entry.expectedDiesel ?? 0;
       const closingDieselVal = (entry as any).closingDiesel ?? (openingDieselVal + dieselIssuedVal - consumed);
+      const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
       return {
         Date: entry.date,
         Equipment: equip?.name || "Unknown",
         "Opening Reading": entry.openingReading,
         "Closing Reading": entry.closingReading,
-        "Hours/KM Run": entry.hoursOrKmRun?.toFixed(1) || "0",
+        "Hours/KM Run": entry.hoursOrKmRun?.toFixed(1) || (isTripBased ? "-" : "0"),
+        "Trips": (entry as any).numberOfTrips || "-",
+        "Trip Dist (km)": (entry as any).tripDistance || "-",
+        "Total KM": (entry as any).totalKm?.toFixed(1) || "-",
         "Opening Diesel": openingDieselVal.toFixed(1),
         "Diesel Issued": dieselIssuedVal.toFixed(1),
         "Closing Diesel": closingDieselVal.toFixed(1),
@@ -441,21 +445,27 @@ export default function PlantEquipmentUsage() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Equipment", "Open Rdg", "Close Rdg", "Hrs/KM", "Open Diesel", "Issued", "Close Diesel", "Expected"]],
-        body: data.map(row => [
-          row.Date,
-          row.Equipment,
-          row["Opening Reading"],
-          row["Closing Reading"],
-          row["Hours/KM Run"],
-          row["Opening Diesel"],
-          row["Diesel Issued"],
-          row["Closing Diesel"],
-          row["Expected Diesel"],
-        ]),
+        head: [["Date", "Equipment", "Rdg/Trips", "Hrs/KM", "Open Diesel", "Issued", "Close Diesel", "Expected"]],
+        body: data.map(row => {
+          // Combine readings/trips into one column
+          const rdgOrTrips = row["Trips"] !== "-" 
+            ? `${row["Trips"]} trips × ${row["Trip Dist (km)"]} km`
+            : `${row["Opening Reading"] || "-"} - ${row["Closing Reading"] || "-"}`;
+          const hrsOrKm = row["Total KM"] !== "-" ? `${row["Total KM"]} km` : row["Hours/KM Run"];
+          return [
+            row.Date,
+            row.Equipment,
+            rdgOrTrips,
+            hrsOrKm,
+            row["Opening Diesel"],
+            row["Diesel Issued"],
+            row["Closing Diesel"],
+            row["Expected Diesel"],
+          ];
+        }),
         styles: { fontSize: 8 },
         headStyles: { fillColor: [41, 128, 185] },
-        margin: { left: 14, right: 14 },
+        margin: { left: 10, right: 10 },
       });
       
       const filename = buildFilename("pdf");
@@ -529,8 +539,7 @@ export default function PlantEquipmentUsage() {
               <tr>
                 <th>Date</th>
                 <th>Equipment</th>
-                <th>Open Rdg</th>
-                <th>Close Rdg</th>
+                <th>Rdg/Trips</th>
                 <th>Hrs/KM</th>
                 <th>Open Diesel</th>
                 <th>Issued</th>
@@ -539,19 +548,23 @@ export default function PlantEquipmentUsage() {
               </tr>
             </thead>
             <tbody>
-              ${data.map(row => `
+              ${data.map(row => {
+                const rdgOrTrips = row["Trips"] !== "-" 
+                  ? `${row["Trips"]} trips × ${row["Trip Dist (km)"]} km`
+                  : `${row["Opening Reading"] || "-"} - ${row["Closing Reading"] || "-"}`;
+                const hrsOrKm = row["Total KM"] !== "-" ? `${row["Total KM"]} km` : row["Hours/KM Run"];
+                return `
                 <tr>
                   <td>${row.Date}</td>
                   <td>${row.Equipment}</td>
-                  <td>${row["Opening Reading"]}</td>
-                  <td>${row["Closing Reading"]}</td>
-                  <td>${row["Hours/KM Run"]}</td>
+                  <td>${rdgOrTrips}</td>
+                  <td>${hrsOrKm}</td>
                   <td>${row["Opening Diesel"]}</td>
                   <td>${row["Diesel Issued"]}</td>
                   <td>${row["Closing Diesel"]}</td>
                   <td>${row["Expected Diesel"]}</td>
                 </tr>
-              `).join('')}
+              `}).join('')}
             </tbody>
           </table>
         </body>
@@ -919,14 +932,27 @@ export default function PlantEquipmentUsage() {
                                 )}
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Runtime</span>
-                                <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
-                                {entry.openingReading != null && entry.closingReading != null ? (
-                                  <span className="text-xs text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
-                                ) : entry.startTime && entry.endTime ? (
-                                  <span className="text-xs text-muted-foreground block">Time: {entry.startTime} - {entry.endTime}</span>
+                                <span className="text-muted-foreground text-xs block">
+                                  {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? "Distance" : "Runtime"}
+                                </span>
+                                {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
+                                  <>
+                                    <span className="font-medium">{((entry as any).totalKm || 0).toFixed(1)} km</span>
+                                    <span className="text-xs text-muted-foreground block">
+                                      {(entry as any).numberOfTrips} trips × {(entry as any).tripDistance} km × 2
+                                    </span>
+                                  </>
                                 ) : (
-                                  <span className="text-xs text-muted-foreground block">-</span>
+                                  <>
+                                    <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                                    {entry.openingReading != null && entry.closingReading != null ? (
+                                      <span className="text-xs text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
+                                    ) : entry.startTime && entry.endTime ? (
+                                      <span className="text-xs text-muted-foreground block">Time: {entry.startTime} - {entry.endTime}</span>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground block">-</span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                               {isDieselIncluded ? (
@@ -948,16 +974,19 @@ export default function PlantEquipmentUsage() {
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Efficiency</span>
                                     {(() => {
-                                      const runtime = entry.hoursOrKmRun || 0;
+                                      // Use hoursOrKmRun, or totalKm for trip-based entries
+                                      const runtime = entry.hoursOrKmRun || (entry as any).totalKm || 0;
+                                      const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
                                       if (runtime <= 0 || consumed <= 0) {
                                         return <span className="font-medium text-muted-foreground">-</span>;
                                       }
                                       const efficiencyValue = consumed / runtime;
                                       const norm = equip?.consumptionNorm || 0;
                                       const isGood = norm > 0 ? efficiencyValue <= norm : true;
+                                      const unit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
                                       return (
                                         <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                          {efficiencyValue.toFixed(2)} {equip?.meterType === "hour_meter" ? "L/hr" : "L/km"}
+                                          {efficiencyValue.toFixed(2)} {unit}
                                         </span>
                                       );
                                     })()}
