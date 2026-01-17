@@ -39,6 +39,8 @@ export default function PlantEquipmentUsage() {
   const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
   const [dieselIncluded, setDieselIncluded] = useState(false);
+  const [numberOfTrips, setNumberOfTrips] = useState("");
+  const [tripDistance, setTripDistance] = useState("");
   const [remarks, setRemarks] = useState("");
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -54,12 +56,14 @@ export default function PlantEquipmentUsage() {
     openingDiesel: string;
     dieselIssued: string;
     dieselIncluded: boolean;
+    numberOfTrips: string;
+    tripDistance: string;
     remarks: string;
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, remarks
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, remarks
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, remarks]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
@@ -71,6 +75,8 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel(data.openingDiesel);
     setDieselIssued(data.dieselIssued);
     setDieselIncluded(data.dieselIncluded || false);
+    setNumberOfTrips(data.numberOfTrips || "");
+    setTripDistance(data.tripDistance || "");
     setRemarks(data.remarks);
   }, []);
 
@@ -142,6 +148,8 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel("");
     setDieselIssued("");
     setDieselIncluded(false);
+    setNumberOfTrips("");
+    setTripDistance("");
     setRemarks("");
     setEditingUsage(null);
     setPreviousDieselBalance(null);
@@ -160,6 +168,8 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setDieselIncluded((entry as any).dieselIncluded || false);
+    setNumberOfTrips((entry as any).numberOfTrips ? String((entry as any).numberOfTrips) : "");
+    setTripDistance((entry as any).tripDistance ? String((entry as any).tripDistance) : "");
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);
@@ -200,12 +210,13 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
-    // Either meter readings OR time entry must be provided
+    // Either meter readings OR time entry OR trip-based must be provided
     const hasMeterReading = openingReading && closingReading;
     const hasTimeEntry = startTime && endTime;
+    const hasTripEntry = numberOfTrips && tripDistance;
     
-    if (!equipmentId || (!hasMeterReading && !hasTimeEntry)) {
-      toast({ title: "Please provide either meter readings or time entry", variant: "destructive" });
+    if (!equipmentId || (!hasMeterReading && !hasTimeEntry && !hasTripEntry)) {
+      toast({ title: "Please provide meter readings, time entry, or trip details", variant: "destructive" });
       return;
     }
     
@@ -216,6 +227,8 @@ export default function PlantEquipmentUsage() {
       closingReading: closingReading ? parseFloat(closingReading) : null,
       startTime: startTime || null,
       endTime: endTime || null,
+      numberOfTrips: numberOfTrips ? parseInt(numberOfTrips) : null,
+      tripDistance: tripDistance ? parseFloat(tripDistance) : null,
       openingDiesel: dieselIncluded ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
       dieselIssued: dieselIncluded ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
       dieselIncluded,
@@ -304,8 +317,12 @@ export default function PlantEquipmentUsage() {
   
   const meterRuntime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
   const timeRuntime = calculateTimeHours(startTime, endTime);
+  const tripTotalKm = numberOfTrips && tripDistance ? parseInt(numberOfTrips) * parseFloat(tripDistance) * 2 : 0;
   const runtime = meterRuntime > 0 ? meterRuntime : timeRuntime;
-  const expectedDiesel = runtime * (selectedEquipment?.consumptionNorm || 0);
+  // Expected diesel: from hours (meter/time) OR from trips (km-based)
+  const expectedDiesel = runtime > 0 
+    ? runtime * (selectedEquipment?.consumptionNorm || 0)
+    : tripTotalKm * (selectedEquipment?.consumptionNorm || 0);
 
   const filteredUsage = usage?.filter(u => {
     if (filterDateFrom && u.date < filterDateFrom) return false;
@@ -633,7 +650,7 @@ export default function PlantEquipmentUsage() {
                 )}
               </div>
 
-              <p className="text-xs text-muted-foreground italic">Enter meter readings OR time (or both). Meter takes priority.</p>
+              <p className="text-xs text-muted-foreground italic">Enter meter readings OR time OR trips (for water tankers). Meter takes priority.</p>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -657,10 +674,49 @@ export default function PlantEquipmentUsage() {
                 </div>
               </div>
 
-              {runtime > 0 && selectedEquipment && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">Trip-Based Entry (Water Tankers, etc.)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs">No. of Trips</Label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      step="1" 
+                      value={numberOfTrips} 
+                      onChange={(e) => setNumberOfTrips(e.target.value)} 
+                      placeholder="e.g., 3" 
+                      data-testid="input-number-of-trips" 
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Distance to Source (km)</Label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      step="0.1" 
+                      value={tripDistance} 
+                      onChange={(e) => setTripDistance(e.target.value)} 
+                      placeholder="e.g., 6" 
+                      data-testid="input-trip-distance" 
+                    />
+                  </div>
+                </div>
+                {numberOfTrips && tripDistance && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Total: {parseInt(numberOfTrips) * parseFloat(tripDistance) * 2} km ({numberOfTrips} trips × {tripDistance} km × 2)
+                  </p>
+                )}
+              </div>
+
+              {(runtime > 0 || tripTotalKm > 0) && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
-                  <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "hrs"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
-                  {!dieselIncluded && <p>Diesel Consumed: <strong>{expectedDiesel.toFixed(1)} L</strong></p>}
+                  {runtime > 0 ? (
+                    <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "hrs"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
+                  ) : tripTotalKm > 0 ? (
+                    <p>Distance: <strong>{tripTotalKm.toFixed(1)} km</strong> (from trips)</p>
+                  ) : null}
+                  {!dieselIncluded && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(1)} L</strong></p>}
                 </div>
               )}
 
@@ -721,7 +777,7 @@ export default function PlantEquipmentUsage() {
               <Button 
                 onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || ((!openingReading || !closingReading) && (!startTime || !endTime))} 
+                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || ((!openingReading || !closingReading) && (!startTime || !endTime) && (!numberOfTrips || !tripDistance))} 
                 data-testid="button-save-usage"
               >
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingUsage ? "Update Entry" : "Save Entry"}
