@@ -51,7 +51,7 @@ function getBaseSiteName(site: string): string {
 
 export default function SiteDashboard() {
   const { toast } = useToast();
-  const { isAdmin, setAccess } = useAccess();
+  const { isAdmin, access, setAccess } = useAccess();
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingAction, setPendingAction] = useState<"reports-excel" | "reports-pdf" | "reports-print" | null>(null);
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
@@ -202,9 +202,10 @@ export default function SiteDashboard() {
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material;
 
-  // Admin action handlers
+  // Export action handlers - requires manager or admin PIN
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
-    if (isAdmin) {
+    // Allow if already manager or admin
+    if (access === "manager" || access === "admin") {
       executeAction(action);
     } else {
       setPendingAction(action);
@@ -215,10 +216,9 @@ export default function SiteDashboard() {
   const handlePinSuccess = (role: "manager" | "admin", _pin: string) => {
     setAccess(role);
     setShowPinAuth(false);
-    if (pendingAction && role === "admin") {
+    // Both manager and admin can export/print
+    if (pendingAction && (role === "admin" || role === "manager")) {
       executeAction(pendingAction);
-    } else if (pendingAction && role === "manager") {
-      toast({ title: "Access Denied", description: "Export/Print requires Admin access", variant: "destructive" });
     }
     setPendingAction(null);
   };
@@ -1155,10 +1155,10 @@ export default function SiteDashboard() {
           </div>
       </div>
 
-      {/* PIN Auth Modal */}
+      {/* PIN Auth Modal - Manager or Admin can export */}
       {showPinAuth && (
         <PinAuth
-          targetRole="admin"
+          targetRole="any"
           onSuccess={handlePinSuccess}
           onClose={() => {
             setShowPinAuth(false);
