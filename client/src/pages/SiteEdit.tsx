@@ -41,6 +41,7 @@ interface LabourEntry {
   category: string;
   gender: string;
   count: number;
+  task: string;
 }
 
 interface MaterialEntry {
@@ -128,7 +129,7 @@ export default function SiteEdit() {
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0 }
+    { category: "Skilled", gender: "Male", count: 0, task: "" }
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([
@@ -176,6 +177,7 @@ export default function SiteEdit() {
           category: l.category || "Skilled",
           gender: l.gender || "Male",
           count: l.count,
+          task: l.task || "",
         })));
       }
 
@@ -260,7 +262,7 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "" }]);
     } else if (section === 'materials') {
       setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }]);
     }
@@ -713,7 +715,7 @@ export default function SiteEdit() {
         </CardHeader>
         <CardContent className="space-y-4">
           {labour.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border rounded-lg bg-muted/30">
               <div>
                 <Label className="text-xs">Category</Label>
                 <Select
@@ -762,6 +764,20 @@ export default function SiteEdit() {
                     setLabour(updated);
                   }}
                   data-testid={`input-labour-count-${idx}`}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Task/Work</Label>
+                <Input
+                  placeholder="e.g. Spreading WMM"
+                  value={entry.task}
+                  onChange={(e) => {
+                    const updated = [...labour];
+                    updated[idx].task = e.target.value;
+                    setLabour(updated);
+                  }}
+                  className="uppercase"
+                  data-testid={`input-labour-task-${idx}`}
                 />
               </div>
               <div className="flex items-end">

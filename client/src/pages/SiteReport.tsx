@@ -414,6 +414,7 @@ export default function SiteReport() {
                     <TableHead>Category</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead className="text-right">Count</TableHead>
+                    <TableHead>Task/Work</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -422,6 +423,7 @@ export default function SiteReport() {
                       <TableCell>{item.category}</TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
+                      <TableCell>{item.task || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
