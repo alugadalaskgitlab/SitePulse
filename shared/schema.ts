@@ -37,6 +37,7 @@ export const equipmentLogs = pgTable("equipment_logs", {
   dprId: integer("dpr_id").notNull(),
   machine: text("machine").notNull(),
   operator: text("operator"),
+  vehicleNo: text("vehicle_no"), // Vehicle registration number
   startTime: text("start_time"),
   endTime: text("end_time"),
   // Hour meter fields (optional - user can choose time OR meter OR both)

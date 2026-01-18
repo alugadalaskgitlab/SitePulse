@@ -27,6 +27,7 @@ interface ProgressEntry {
 
 interface EquipmentEntry {
   machine: string;
+  vehicleNo: string;
   operator: string;
   task: string;
   startTime: string;
@@ -123,7 +124,7 @@ export default function SiteEdit() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -159,6 +160,7 @@ export default function SiteEdit() {
       if (dpr.equipment?.length) {
         setEquipment(dpr.equipment.map(e => ({
           machine: e.machine || "",
+          vehicleNo: e.vehicleNo || "",
           operator: e.operator || "",
           task: e.task || "",
           startTime: e.startTime || "",
@@ -256,7 +258,7 @@ export default function SiteEdit() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
@@ -552,7 +554,7 @@ export default function SiteEdit() {
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">Enter time OR hour meter readings (or both). Hour meter takes priority for hours calculation.</p>
           {equipment.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
               <div>
                 <Label className="text-xs">Machine</Label>
                 <Input
@@ -565,6 +567,20 @@ export default function SiteEdit() {
                   }}
                   className="uppercase"
                   data-testid={`input-machine-${idx}`}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Vehicle No</Label>
+                <Input
+                  placeholder="e.g. TS12AB3456"
+                  value={entry.vehicleNo}
+                  onChange={(e) => {
+                    const updated = [...equipment];
+                    updated[idx].vehicleNo = e.target.value;
+                    setEquipment(updated);
+                  }}
+                  className="uppercase"
+                  data-testid={`input-vehicleno-${idx}`}
                 />
               </div>
               <div>

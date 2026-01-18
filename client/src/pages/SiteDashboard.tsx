@@ -1032,6 +1032,7 @@ export default function SiteDashboard() {
                                     <thead>
                                       <tr className="bg-muted/50">
                                         <th className="text-left p-2 border">Machine</th>
+                                        <th className="text-left p-2 border">Vehicle No</th>
                                         <th className="text-left p-2 border">Operator</th>
                                         <th className="text-left p-2 border">Task</th>
                                         <th className="text-left p-2 border">Time/Meter</th>
@@ -1044,7 +1045,17 @@ export default function SiteDashboard() {
                                         const hasMeter = e.openingReading != null && e.closingReading != null;
                                         const hasTime = e.startTime && e.endTime;
                                         const meterHours = hasMeter ? e.closingReading - e.openingReading : null;
-                                        const hours = e.hoursWorked || meterHours;
+                                        // Calculate hours from time if not stored and time entries exist
+                                        let timeHours: number | null = null;
+                                        if (hasTime && !e.hoursWorked && !hasMeter) {
+                                          const [startH, startM] = e.startTime.split(':').map(Number);
+                                          const [endH, endM] = e.endTime.split(':').map(Number);
+                                          const startMins = startH * 60 + startM;
+                                          const endMins = endH * 60 + endM;
+                                          timeHours = (endMins - startMins) / 60;
+                                          if (timeHours < 0) timeHours += 24; // Handle overnight
+                                        }
+                                        const hours = e.hoursWorked || meterHours || timeHours;
                                         const sourceLabel = hasMeter 
                                           ? `Meter: ${e.openingReading} - ${e.closingReading}`
                                           : hasTime
@@ -1053,10 +1064,11 @@ export default function SiteDashboard() {
                                         return (
                                           <tr key={i} className="border-b">
                                             <td className="p-2 border">{e.machine || "-"}</td>
+                                            <td className="p-2 border">{e.vehicleNo || "-"}</td>
                                             <td className="p-2 border">{e.operator || "-"}</td>
                                             <td className="p-2 border">{e.task || "-"}</td>
                                             <td className="p-2 border">{sourceLabel}</td>
-                                            <td className="p-2 border text-right">{hours?.toFixed(1) || "-"}</td>
+                                            <td className="p-2 border text-right">{hours != null ? hours.toFixed(1) : "-"}</td>
                                             <td className="p-2 border text-right">{e.diesel?.toFixed(1) || "-"}</td>
                                           </tr>
                                         );

@@ -29,6 +29,7 @@ interface ProgressEntry {
 
 interface EquipmentEntry {
   machine: string;
+  vehicleNo: string;
   operator: string;
   task: string;
   startTime: string;
@@ -114,7 +115,7 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -218,7 +219,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0 }]);
     } else if (section === 'materials') {
@@ -577,7 +578,7 @@ export default function SiteEntry() {
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
                     <Label className="text-xs">Machine</Label>
                     <Input
@@ -590,6 +591,20 @@ export default function SiteEntry() {
                       }}
                       className="uppercase"
                       data-testid={`input-equipment-machine-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Vehicle No</Label>
+                    <Input
+                      placeholder="e.g. TS12AB3456"
+                      value={entry.vehicleNo}
+                      onChange={(e) => {
+                        const updated = [...equipment];
+                        updated[idx].vehicleNo = e.target.value;
+                        setEquipment(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-equipment-vehicleno-${idx}`}
                     />
                   </div>
                   <div>

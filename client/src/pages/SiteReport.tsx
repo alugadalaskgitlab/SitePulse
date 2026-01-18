@@ -342,6 +342,7 @@ export default function SiteReport() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Machine</TableHead>
+                    <TableHead>Vehicle No</TableHead>
                     <TableHead>Operator</TableHead>
                     <TableHead>Task</TableHead>
                     <TableHead>Time/Meter</TableHead>
@@ -358,8 +359,8 @@ export default function SiteReport() {
                         const [endHour, endMin] = endTime.split(':').map(Number);
                         const startMins = startHour * 60 + startMin;
                         const endMins = endHour * 60 + endMin;
-                        const diff = endMins - startMins;
-                        if (diff < 0) return null;
+                        let diff = endMins - startMins;
+                        if (diff < 0) diff += 24 * 60; // Handle overnight
                         return diff / 60;
                       } catch {
                         return null;
@@ -373,7 +374,7 @@ export default function SiteReport() {
                     
                     const meterHours = calculateMeterHours(item.openingReading, item.closingReading);
                     const timeHours = calculateTimeHours(item.startTime, item.endTime);
-                    const hours = meterHours ?? timeHours;
+                    const hours = item.hoursWorked ?? meterHours ?? timeHours;
                     
                     const hasReading = item.openingReading != null && item.closingReading != null;
                     const hasTime = item.startTime && item.endTime;
@@ -384,6 +385,7 @@ export default function SiteReport() {
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
                         <TableCell className="font-medium">{item.machine}</TableCell>
+                        <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
                         <TableCell className="text-sm">{item.task || '-'}</TableCell>
                         <TableCell className="text-xs">{readingSource}</TableCell>
