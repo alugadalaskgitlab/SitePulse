@@ -202,15 +202,11 @@ export default function SiteDashboard() {
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material;
 
-  // Export action handlers - requires manager or admin PIN
+  // Export action handlers - ALWAYS requires manager or admin PIN
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
-    // Allow if already manager or admin
-    if (access === "manager" || access === "admin") {
-      executeAction(action);
-    } else {
-      setPendingAction(action);
-      setShowPinAuth(true);
-    }
+    // Always require PIN for exports (even if already authenticated)
+    setPendingAction(action);
+    setShowPinAuth(true);
   };
 
   const handlePinSuccess = (role: "manager" | "admin", _pin: string) => {
