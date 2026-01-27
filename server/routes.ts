@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialOpeningStockSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -50,6 +50,64 @@ export async function registerRoutes(
       res.json(materialLogs);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch material summary" });
+    }
+  });
+
+  // ============================================
+  // SITE MATERIAL TRIPS (Quick Entry)
+  // ============================================
+
+  // Get all site material trips (with optional filters)
+  app.get("/api/site-material-trips", async (req, res) => {
+    try {
+      const filters = {
+        site: req.query.site as string | undefined,
+        material: req.query.material as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const trips = await storage.getSiteMaterialTrips(filters);
+      res.json(trips);
+    } catch (err) {
+      console.error("Error fetching site material trips:", err);
+      res.status(500).json({ message: "Failed to fetch site material trips" });
+    }
+  });
+
+  // Create a new site material trip
+  app.post("/api/site-material-trips", async (req, res) => {
+    try {
+      const input = insertSiteMaterialTripSchema.parse(req.body);
+      const trip = await storage.createSiteMaterialTrip(input);
+      res.status(201).json(trip);
+    } catch (err) {
+      console.error("Error creating site material trip:", err);
+      res.status(500).json({ message: "Failed to create site material trip" });
+    }
+  });
+
+  // Update a site material trip
+  app.patch("/api/site-material-trips/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = insertSiteMaterialTripSchema.partial().parse(req.body);
+      const trip = await storage.updateSiteMaterialTrip(id, input);
+      res.json(trip);
+    } catch (err) {
+      console.error("Error updating site material trip:", err);
+      res.status(500).json({ message: "Failed to update site material trip" });
+    }
+  });
+
+  // Delete a site material trip
+  app.delete("/api/site-material-trips/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      await storage.deleteSiteMaterialTrip(id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting site material trip:", err);
+      res.status(500).json({ message: "Failed to delete site material trip" });
     }
   });
 

@@ -234,6 +234,10 @@ export default function PlantStock() {
       totalReceipts: number;
       totalIssues: number;
       balance: number;
+      conversionFactor: number | null;
+      conversionFromUom: string | null;
+      conversionToUom: string | null;
+      convertedBalance: number | null;
     }> = {};
 
     // Filter out legacy equipment_issue entries
@@ -242,6 +246,12 @@ export default function PlantStock() {
     validEntries.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (!summaryMap[key]) {
+        // Get material conversion info
+        const material = materials.find(m => m.id === entry.materialId);
+        const convFactor = material?.conversionFactor || null;
+        const convFromUom = material?.conversionFromUom || null;
+        const convToUom = material?.conversionToUom || null;
+        
         summaryMap[key] = {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
@@ -251,6 +261,10 @@ export default function PlantStock() {
           totalReceipts: 0,
           totalIssues: 0,
           balance: 0,
+          conversionFactor: convFactor,
+          conversionFromUom: convFromUom,
+          conversionToUom: convToUom,
+          convertedBalance: null,
         };
       }
 
@@ -264,9 +278,16 @@ export default function PlantStock() {
       }
     });
 
-    // Calculate balance
+    // Calculate balance and converted balance
     Object.values(summaryMap).forEach((item) => {
       item.balance = item.totalReceipts - item.totalIssues;
+      // Calculate converted balance if conversion factor exists and UOM matches
+      if (item.conversionFactor && item.conversionFromUom && item.conversionToUom) {
+        // Only convert if the current UOM matches the "from" UOM
+        if (item.uom.toUpperCase() === item.conversionFromUom.toUpperCase()) {
+          item.convertedBalance = item.balance * item.conversionFactor;
+        }
+      }
     });
 
     return Object.values(summaryMap);
@@ -836,10 +857,10 @@ export default function PlantStock() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Package className="w-5 h-5" />
-                Current Stock Balances (All-Time)
+                Current Stock Balances
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Showing total receipts and issues from the beginning. Click on a material to view its ledger.
+                All-time stock positions. Click on a card to view ledger details.
               </p>
             </CardHeader>
             <CardContent>
@@ -850,75 +871,72 @@ export default function PlantStock() {
               ) : !filteredBalances?.length ? (
                 <p className="text-muted-foreground text-center py-8">No stock balances found.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="text-left py-3 px-2">Material</th>
-                        <th className="text-left py-3 px-2">Stock Owner</th>
-                        <th className="text-right py-3 px-2">Total Receipts</th>
-                        <th className="text-right py-3 px-2">Total Issues</th>
-                        <th className="text-right py-3 px-2">Balance</th>
-                        <th className="text-left py-3 px-2">UOM</th>
-                        <th className="text-center py-3 px-2">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBalances.map((b, idx) => (
-                        <tr 
-                          key={idx} 
-                          className={`border-b last:border-0 hover:bg-muted/30 cursor-pointer ${
-                            b.balance < 10 ? 'bg-red-50 dark:bg-red-900/20' : ''
-                          }`}
-                          onClick={() => jumpToLedger(b.materialId, b.partyId)}
-                          data-testid={`row-balance-${b.materialId}-${b.partyId}`}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredBalances.map((b, idx) => (
+                    <div 
+                      key={idx}
+                      onClick={() => jumpToLedger(b.materialId, b.partyId)}
+                      className={`p-4 rounded-lg border cursor-pointer transition-all hover-elevate ${
+                        b.balance < 10 
+                          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+                          : 'bg-card border-border hover:border-primary/30'
+                      }`}
+                      data-testid={`card-balance-${b.materialId}-${b.partyId}`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-foreground">{b.materialName}</h3>
+                        {b.balance < 10 && (
+                          <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
+                            LOW
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className={`text-2xl font-bold ${b.convertedBalance !== null ? 'mb-1' : 'mb-3'} ${
+                        b.balance < 0 ? 'text-red-600 dark:text-red-400' : 
+                        b.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
+                      }`}>
+                        {b.balance.toFixed(2)} <span className="text-base font-normal text-muted-foreground">{b.uom}</span>
+                      </div>
+                      {b.convertedBalance !== null && b.conversionToUom && (
+                        <div className="text-sm text-muted-foreground mb-3">
+                          = {b.convertedBalance.toFixed(2)} {b.conversionToUom}
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
+                          <div className="text-xs text-muted-foreground">Total Receipts</div>
+                          <div className="font-semibold text-green-600 dark:text-green-400">+{b.totalReceipts.toFixed(2)}</div>
+                        </div>
+                        <div className="bg-red-50 dark:bg-red-900/20 rounded p-2">
+                          <div className="text-xs text-muted-foreground">Total Issues</div>
+                          <div className="font-semibold text-red-600 dark:text-red-400">-{b.totalIssues.toFixed(2)}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 text-xs rounded ${
+                          b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
+                          'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                        }`}>
+                          {b.partyName}
+                        </span>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            jumpToLedger(b.materialId, b.partyId);
+                          }}
+                          data-testid={`button-view-ledger-${b.materialId}`}
                         >
-                          <td className="py-3 px-2 font-medium text-primary hover:underline">
-                            {b.materialName}
-                          </td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-0.5 text-xs rounded ${
-                              b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
-                              'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
-                            }`}>
-                              {b.partyName}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">
-                            +{b.totalReceipts.toFixed(2)}
-                          </td>
-                          <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">
-                            -{b.totalIssues.toFixed(2)}
-                          </td>
-                          <td className={`py-3 px-2 text-right font-bold ${
-                            b.balance < 0 ? 'text-red-600 dark:text-red-400' : 
-                            b.balance < 10 ? 'text-amber-600 dark:text-amber-400' : ''
-                          }`}>
-                            {b.balance.toFixed(2)}
-                            {b.balance < 10 && (
-                              <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
-                                LOW
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-2">{b.uom}</td>
-                          <td className="py-3 px-2 text-center">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                jumpToLedger(b.materialId, b.partyId);
-                              }}
-                              data-testid={`button-view-ledger-${b.materialId}`}
-                            >
-                              View Ledger
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          View Ledger
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>

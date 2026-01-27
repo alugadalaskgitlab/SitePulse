@@ -348,6 +348,24 @@ export const materialIssues = pgTable("material_issues", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Site Material Trips (quick entry for real-time material receipt logging at site)
+export const siteMaterialTrips = pgTable("site_material_trips", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"), // Time of arrival
+  site: text("site").notNull(), // Site name
+  material: text("material").notNull(), // Material name
+  supplier: text("supplier"), // Supplier name
+  vehicleNumber: text("vehicle_number"), // Vehicle registration
+  quantity: real("quantity").notNull(),
+  uom: text("uom").notNull(),
+  location: text("location"), // Chainage/location where dumped
+  receiptNumber: text("receipt_number"), // Challan/receipt number
+  enteredBy: text("entered_by"), // Supervisor name
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const dprsRelations = relations(dprs, ({ many }) => ({
@@ -465,6 +483,7 @@ export const insertLdoLogSchema = createInsertSchema(ldoLogs).omit({ id: true, c
 export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({ id: true, lastUpdated: true });
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
+export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true });
 
 // Types
 export type Party = typeof parties.$inferSelect;
@@ -497,6 +516,8 @@ export type InsertLdoLog = z.infer<typeof insertLdoLogSchema>;
 export type InsertStockBalance = z.infer<typeof insertStockBalanceSchema>;
 export type InsertStockLedger = z.infer<typeof insertStockLedgerSchema>;
 export type InsertMaterialIssue = z.infer<typeof insertMaterialIssueSchema>;
+export type SiteMaterialTrip = typeof siteMaterialTrips.$inferSelect;
+export type InsertSiteMaterialTrip = z.infer<typeof insertSiteMaterialTripSchema>;
 
 // Constants for UOM options
 export const UOM_OPTIONS = ["Ton", "MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;

@@ -23,6 +23,7 @@ import {
   stockBalances,
   stockLedger,
   materialIssues,
+  siteMaterialTrips,
   adminNotifications,
   type CreateDprRequest,
   type Dpr,
@@ -62,6 +63,8 @@ import {
   materialOpeningStocks,
   type AdminNotification,
   type InsertAdminNotification,
+  type SiteMaterialTrip,
+  type InsertSiteMaterialTrip,
   DEFAULT_LDO_NORM
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, notInArray, sql, asc, isNull } from "drizzle-orm";
@@ -191,6 +194,12 @@ export interface IStorage {
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(): Promise<void>;
   deleteNotification(id: number): Promise<void>;
+  
+  // Site Material Trips (Quick Entry)
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]>;
+  createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
+  updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
+  deleteSiteMaterialTrip(id: number): Promise<void>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -2670,6 +2679,43 @@ export class DatabaseStorage implements IStorage {
       
       return true;
     });
+  }
+
+  // ============================================
+  // Site Material Trips (Quick Entry)
+  // ============================================
+  
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]> {
+    let conditions = [];
+    
+    if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
+    if (filters?.material) conditions.push(eq(siteMaterialTrips.material, filters.material));
+    if (filters?.dateFrom) conditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(siteMaterialTrips.date, filters.dateTo));
+    
+    const trips = await db.select()
+      .from(siteMaterialTrips)
+      .where(and(...conditions))
+      .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
+    
+    return trips;
+  }
+
+  async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
+    const [trip] = await db.insert(siteMaterialTrips).values(data).returning();
+    return trip;
+  }
+
+  async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip> {
+    const [trip] = await db.update(siteMaterialTrips)
+      .set(data)
+      .where(eq(siteMaterialTrips.id, id))
+      .returning();
+    return trip;
+  }
+
+  async deleteSiteMaterialTrip(id: number): Promise<void> {
+    await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
   }
 }
 
