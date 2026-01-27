@@ -23,8 +23,8 @@ export default function PlantStock() {
   const { appendOrigin } = useOrigin();
   const queryClient = useQueryClient();
   const backLink = appendOrigin("/plant/dashboard");
-  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selectedPartyId, setSelectedPartyId] = useState<string>("all");
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>("all");
 
@@ -177,12 +177,21 @@ export default function PlantStock() {
       received: number;
       consumed: number;
       closing: number;
+      conversionFactor: number | null;
+      conversionFromUom: string | null;
+      conversionToUom: string | null;
+      convertedOpening: number | null;
+      convertedReceived: number | null;
+      convertedConsumed: number | null;
+      convertedClosing: number | null;
     }> = {};
 
     // Use processedLedger which excludes equipment_issue entries
     processedLedger.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (!summaryMap[key]) {
+        const material = materials?.find(m => m.id === entry.materialId);
+        const convFactor = material?.conversionFactor || null;
         summaryMap[key] = {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
@@ -193,6 +202,13 @@ export default function PlantStock() {
           received: 0,
           consumed: 0,
           closing: 0,
+          conversionFactor: convFactor,
+          conversionFromUom: material?.conversionFromUom || null,
+          conversionToUom: material?.conversionToUom || null,
+          convertedOpening: null,
+          convertedReceived: null,
+          convertedConsumed: null,
+          convertedClosing: null,
         };
       }
 
@@ -210,9 +226,20 @@ export default function PlantStock() {
       }
     });
 
-    // Calculate closing balance from the ledger transactions (not from stockBalances API)
+    // Calculate closing balance and apply conversion factors
     Object.values(summaryMap).forEach((item) => {
       item.closing = item.openingStock + item.received - item.consumed;
+      
+      // Apply conversion factor if available (e.g., CFT to Tons for aggregates)
+      if (item.conversionFactor && item.conversionFromUom && item.conversionToUom) {
+        // Check if UOM matches the conversion source
+        if (item.uom.toLowerCase() === item.conversionFromUom.toLowerCase()) {
+          item.convertedOpening = item.openingStock * item.conversionFactor;
+          item.convertedReceived = item.received * item.conversionFactor;
+          item.convertedConsumed = item.consumed * item.conversionFactor;
+          item.convertedClosing = item.closing * item.conversionFactor;
+        }
+      }
     });
 
     return Object.values(summaryMap);
@@ -826,24 +853,41 @@ export default function PlantStock() {
                       </tr>
                     </thead>
                     <tbody>
-                      {stockSummary.map((item, idx) => (
-                        <tr key={idx} className="border-b last:border-0">
-                          <td className="py-3 px-2 font-medium">{item.materialName}</td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-0.5 text-xs rounded ${
-                              item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
-                              'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
-                            }`}>
-                              {item.partyName}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-right">{item.openingStock.toFixed(2)}</td>
-                          <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">+{item.received.toFixed(2)}</td>
-                          <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">-{item.consumed.toFixed(2)}</td>
-                          <td className="py-3 px-2 text-right font-bold">{item.closing.toFixed(2)}</td>
-                          <td className="py-3 px-2">{item.uom}</td>
-                        </tr>
-                      ))}
+                      {stockSummary.map((item, idx) => {
+                        const hasConversion = item.conversionFactor && item.convertedClosing !== null;
+                        return (
+                          <tr key={idx} className="border-b last:border-0">
+                            <td className="py-3 px-2 font-medium">{item.materialName}</td>
+                            <td className="py-3 px-2">
+                              <span className={`px-2 py-0.5 text-xs rounded ${
+                                item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
+                                'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                              }`}>
+                                {item.partyName}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-right">
+                              {hasConversion ? (
+                                <span title={`${item.openingStock.toFixed(2)} ${item.uom}`}>
+                                  {item.convertedOpening?.toFixed(2)}
+                                </span>
+                              ) : item.openingStock.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">
+                              +{hasConversion ? item.convertedReceived?.toFixed(2) : item.received.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">
+                              -{hasConversion ? item.convertedConsumed?.toFixed(2) : item.consumed.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-2 text-right font-bold">
+                              {hasConversion ? item.convertedClosing?.toFixed(2) : item.closing.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-2">
+                              {hasConversion ? item.conversionToUom : item.uom}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

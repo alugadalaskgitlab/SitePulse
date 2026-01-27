@@ -323,19 +323,23 @@ export default function PlantEquipmentUsage() {
   };
   
   const meterRuntime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
-  const timeRuntime = calculateTimeHours(startTime, endTime);
+  const timeHours = calculateTimeHours(startTime, endTime);
   const tripTotalKm = numberOfTrips && tripDistance ? parseInt(numberOfTrips) * parseFloat(tripDistance) * 2 : 0;
-  const runtime = meterRuntime > 0 ? meterRuntime : timeRuntime;
   
   // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
   const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
+  const isHourMeter = selectedEquipment?.meterType === "hour_meter";
+  
+  // For odometer equipment using time entry, convert hours to estimated km
+  // For hour_meter equipment, time directly gives hours
+  const timeRuntime = isHourMeter ? timeHours : timeHours * AVERAGE_SPEED_KMPH;
+  const runtime = meterRuntime > 0 ? meterRuntime : timeRuntime;
   
   // Expected diesel calculation:
   // If tripBasedEntry is checked, ALWAYS use trip-based calculation (even if meter/time exists)
   // For trip-based: convert L/hr norm to L/km using average speed
   // L/km = L/hr ÷ km/hr
   const norm = selectedEquipment?.consumptionNorm || 0;
-  const isHourMeter = selectedEquipment?.meterType === "hour_meter";
   
   let expectedDiesel = 0;
   if (tripBasedEntry && tripTotalKm > 0) {
@@ -772,11 +776,11 @@ export default function PlantEquipmentUsage() {
               {(runtime > 0 || (tripBasedEntry && tripTotalKm > 0)) && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
                   {runtime > 0 ? (
-                    <p>Runtime: <strong>{runtime.toFixed(1)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "hrs"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
+                    <p>Runtime: <strong>{runtime.toFixed(2)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "km"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
                   ) : tripTotalKm > 0 ? (
                     <p>Distance: <strong>{tripTotalKm.toFixed(1)} km</strong> (from trips)</p>
                   ) : null}
-                  {!dieselIncluded && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(1)} L</strong></p>}
+                  {!dieselIncluded && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(2)} L</strong></p>}
                 </div>
               )}
 
@@ -1017,7 +1021,7 @@ export default function PlantEquipmentUsage() {
                                   </>
                                 ) : (
                                   <>
-                                    <span className="font-medium">{entry.hoursOrKmRun?.toFixed(1)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                                    <span className="font-medium">{entry.hoursOrKmRun?.toFixed(2)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
                                     {entry.openingReading != null && entry.closingReading != null ? (
                                       <span className="text-xs text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
                                     ) : entry.startTime && entry.endTime ? (
@@ -1038,11 +1042,11 @@ export default function PlantEquipmentUsage() {
                                 <>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Diesel Issued</span>
-                                    <span className="font-medium">{dieselIssuedVal.toFixed(1)} L</span>
+                                    <span className="font-medium">{dieselIssuedVal.toFixed(2)} L</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Consumed</span>
-                                    <span className="font-medium">{consumed.toFixed(1)} L</span>
+                                    <span className="font-medium">{consumed.toFixed(2)} L</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Efficiency</span>
@@ -1069,7 +1073,7 @@ export default function PlantEquipmentUsage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Tank Balance</span>
-                                    <span className="font-medium">{closingDieselVal.toFixed(1)} L</span>
+                                    <span className="font-medium">{closingDieselVal.toFixed(2)} L</span>
                                   </div>
                                 </>
                               )}

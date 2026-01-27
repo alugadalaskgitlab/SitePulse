@@ -1228,11 +1228,15 @@ export class DatabaseStorage implements IStorage {
       // Get equipment to calculate expected diesel
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
       
-      // Calculate hours from meter readings or time entry (meter takes priority)
+      // Calculate hours/km from meter readings or time entry (meter takes priority)
+      // For hour_meter: result is hours; for odometer: result is km
       let hoursOrKmRun = 0;
+      const isHourMeterEquip = equipment?.meterType === "hour_meter";
+      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
       
       if (usage.openingReading !== null && usage.openingReading !== undefined && 
           usage.closingReading !== null && usage.closingReading !== undefined) {
+        // Meter readings: gives hours for hour_meter, km for odometer
         hoursOrKmRun = usage.closingReading - usage.openingReading;
       } else if (usage.startTime && usage.endTime) {
         // Calculate hours from time entry
@@ -1241,7 +1245,15 @@ export class DatabaseStorage implements IStorage {
         const startMins = startHour * 60 + startMin;
         const endMins = endHour * 60 + endMin;
         const diff = endMins - startMins;
-        hoursOrKmRun = diff > 0 ? diff / 60 : 0;
+        const hoursFromTime = diff > 0 ? diff / 60 : 0;
+        
+        // For hour_meter: time gives hours directly
+        // For odometer: convert hours to estimated km using average speed
+        if (isHourMeterEquip) {
+          hoursOrKmRun = hoursFromTime;
+        } else {
+          hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH; // hours × km/hr = km
+        }
       }
       
       // Calculate total km from trip-based entry
@@ -1249,9 +1261,6 @@ export class DatabaseStorage implements IStorage {
       const tripDistance = usage.tripDistance || 0;
       const tripBasedEntry = usage.tripBasedEntry === true;
       const totalKm = numberOfTrips * tripDistance * 2; // Round trip
-      
-      // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
-      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
       
       // Calculate expected diesel:
       // If tripBasedEntry is true, ALWAYS use trip-based calculation (even if meter/time exists)
@@ -1377,11 +1386,17 @@ export class DatabaseStorage implements IStorage {
         : (existing as any).tripBasedEntry === true;
       const totalKm = numberOfTrips * tripDistance * 2; // Round trip
       
-      // Calculate hours from meter readings or time entry (meter takes priority)
+      // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
+      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
+      const isHourMeterEquip = equipment?.meterType === "hour_meter";
+      
+      // Calculate hours/km from meter readings or time entry (meter takes priority)
+      // For hour_meter: result is hours; for odometer: result is km
       let hoursOrKmRun = 0;
       
       if (openingReading !== null && openingReading !== undefined && 
           closingReading !== null && closingReading !== undefined) {
+        // Meter readings: gives hours for hour_meter, km for odometer
         hoursOrKmRun = closingReading - openingReading;
       } else if (startTime && endTime) {
         // Calculate hours from time entry
@@ -1390,11 +1405,16 @@ export class DatabaseStorage implements IStorage {
         const startMins = startHour * 60 + startMin;
         const endMins = endHour * 60 + endMin;
         const diff = endMins - startMins;
-        hoursOrKmRun = diff > 0 ? diff / 60 : 0;
+        const hoursFromTime = diff > 0 ? diff / 60 : 0;
+        
+        // For hour_meter: time gives hours directly
+        // For odometer: convert hours to estimated km using average speed
+        if (isHourMeterEquip) {
+          hoursOrKmRun = hoursFromTime;
+        } else {
+          hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH; // hours × km/hr = km
+        }
       }
-      
-      // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
-      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
       
       // Calculate expected diesel:
       // If tripBasedEntry is true, ALWAYS use trip-based calculation (even if meter/time exists)
