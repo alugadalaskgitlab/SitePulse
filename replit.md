@@ -44,14 +44,23 @@ Preferred communication style: Simple, everyday language.
 
 ### Plant Module (Stock & Production Accounting)
 - **Data Flow**: Manages material receipts, mix templates, truck dispatches, and stock deductions.
-- **Stock Deduction Priority**: Party-specific stock first, then plant common stock.
-- **Diesel Consumption**: Calculated from opening/closing tank levels or hours run × norm.
-- **Material Issues Register**: Tracks materials issued from central plant to sites, deducting from party stock and creating ledger entries.
+- **Stock Deduction Priority**: All stock is party-based with HLC as the primary party for common stock.
+- **Material Issues Register**: Tracks materials issued from central plant to sites, deducting from party stock and creating ledger entries. Used for non-equipment material transfers.
 - **Material Opening Stocks**: Allows entry of initial material balances with party attribution.
 - **Party-Based Stock Management**: All stock is now party-based; "Plant Common" stock concept removed and migrated to HLC party (id=4).
 - **Equipment Master**: Enhanced with ownership status (Owned/Hired), vendor names, registration numbers, and active status.
-- **Equipment Usage**: Primarily for consumption analysis; diesel stock deductions are handled via Material Issues for a single source of truth.
+
+#### Equipment Usage & Diesel Flow
+- **Equipment Usage** is the SINGLE source of truth for equipment diesel:
+  - Records runtime (meter readings OR time entry OR trip-based)
+  - When diesel is issued and "Provided by Contractor" is NOT checked → diesel is deducted from HLC stock and included in consumption analysis
+  - When "Provided by Contractor" IS checked → no stock deduction, excluded from consumption analysis (contractor's scope)
+- **Diesel Consumption Calculation**:
+  - Expected diesel = Runtime × Consumption Norm (L/hr for hour_meter, L/km for odometer)
+  - For trip-based entry: L/hr norms are converted to L/km using 25 km/hr average speed
+  - For odometer equipment using time entry: hours are converted to km using 25 km/hr average speed
 - **Diesel Efficiency**: Plant equipment efficiency (L/hr or L/km) is tracked and compared against norms, with actual vs. expected diesel calculations.
+- **Material Issues for Diesel**: Only used for non-equipment diesel transfers (issuing to sites, generators, etc.). These still deduct from HLC stock but are NOT linked to equipment consumption.
 
 ### UI/UX & Features
 - **UI Enhancements**: shadcn/ui components, responsive design.

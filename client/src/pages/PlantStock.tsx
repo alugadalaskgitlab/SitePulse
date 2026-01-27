@@ -1018,7 +1018,16 @@ export default function PlantStock() {
                       </tr>
                     </thead>
                     <tbody>
-                      {ledgerForDisplay.slice(0, 100).map((entry) => (
+                      {ledgerForDisplay.slice(0, 100).map((entry) => {
+                        const material = materials?.find(m => m.id === entry.materialId);
+                        const convFactor = material?.conversionFactor || null;
+                        const hasConversion = convFactor && material?.conversionFromUom && material?.conversionToUom;
+                        const displayIn = hasConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
+                        const displayOut = hasConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
+                        const displayBalance = hasConversion ? (entry.calculatedBalance ?? 0) * convFactor : (entry.calculatedBalance ?? 0);
+                        const displayUom = hasConversion ? material.conversionToUom : entry.uom;
+                        
+                        return (
                         <tr key={entry.id} className="border-b hover:bg-muted/30">
                           <td className="p-3">{entry.date}</td>
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
@@ -1051,14 +1060,15 @@ export default function PlantStock() {
                               : entry.notes || '-'}
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
-                            {(entry.quantityIn ?? 0) > 0 ? `${entry.quantityIn?.toFixed(2)}` : '-'}
+                            {displayIn > 0 ? `${displayIn.toFixed(2)}` : '-'}
                           </td>
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
-                            {(entry.quantityOut ?? 0) > 0 ? `${entry.quantityOut?.toFixed(2)}` : '-'}
+                            {displayOut > 0 ? `${displayOut.toFixed(2)}` : '-'}
                           </td>
-                          <td className="p-3 text-right font-bold">{entry.calculatedBalance?.toFixed(2)} {entry.uom}</td>
+                          <td className="p-3 text-right font-bold">{displayBalance.toFixed(2)} {displayUom}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                     <tfoot className="bg-muted/70 border-t-2">
                       <tr>
