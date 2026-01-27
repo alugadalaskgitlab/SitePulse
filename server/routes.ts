@@ -1079,6 +1079,21 @@ export async function registerRoutes(
     }
   });
 
+  // All-time Stock Ledger (no date filter) for calculating true balances
+  app.get("/api/plant-module/stock-ledger-all", async (req, res) => {
+    try {
+      const filters = {
+        partyId: req.query.partyId !== undefined ? Number(req.query.partyId) : undefined,
+        materialId: req.query.materialId ? Number(req.query.materialId) : undefined,
+        // No date filters - fetch ALL entries
+      };
+      const ledger = await storage.getStockLedger(filters);
+      res.json(ledger);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch all-time stock ledger" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();

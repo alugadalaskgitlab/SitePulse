@@ -311,6 +311,8 @@ export default function SiteDashboard() {
           Category: l.category || "",
           Gender: l.gender || "",
           Count: l.count || 0,
+          "Task/Work": l.task || "",
+          "Contractor/Gang": l.contractor || "",
         });
       });
     });
@@ -473,11 +475,12 @@ export default function SiteDashboard() {
           l.gender || "",
           l.count || 0,
           l.task || "",
+          l.contractor || "",
         ]);
         
         autoTable(doc, {
           startY: yPos,
-          head: [["Category", "Gender", "Count", "Task/Work"]],
+          head: [["Category", "Gender", "Count", "Task/Work", "Contractor/Gang"]],
           body: labourRows,
           theme: 'grid',
           headStyles: { fillColor: [100, 100, 100], fontSize: 7 },
@@ -631,13 +634,14 @@ export default function SiteDashboard() {
           <div class="section">
             <div class="section-title">Labour Strength</div>
             <table>
-              <tr><th>Category</th><th>Gender</th><th>Count</th><th>Task/Work</th></tr>
+              <tr><th>Category</th><th>Gender</th><th>Count</th><th>Task/Work</th><th>Contractor/Gang</th></tr>
               ${dpr.labour.map((l: any) => `
                 <tr>
                   <td>${l.category || ""}</td>
                   <td>${l.gender || ""}</td>
                   <td>${l.count || 0}</td>
                   <td>${l.task || ""}</td>
+                  <td>${l.contractor || ""}</td>
                 </tr>
               `).join("")}
             </table>
@@ -1091,6 +1095,7 @@ export default function SiteDashboard() {
                                         <th className="text-left p-2 border">Gender</th>
                                         <th className="text-right p-2 border">Count</th>
                                         <th className="text-left p-2 border">Task/Work</th>
+                                        <th className="text-left p-2 border">Contractor/Gang</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1100,6 +1105,7 @@ export default function SiteDashboard() {
                                           <td className="p-2 border">{l.gender || "-"}</td>
                                           <td className="p-2 border text-right">{l.count || 0}</td>
                                           <td className="p-2 border">{l.task || "-"}</td>
+                                          <td className="p-2 border">{l.contractor || "-"}</td>
                                         </tr>
                                       ))}
                                     </tbody>

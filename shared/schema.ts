@@ -58,6 +58,7 @@ export const labourLogs = pgTable("labour_logs", {
   gender: text("gender"), // Male, Female
   count: integer("count").notNull(),
   task: text("task"), // Task/work performed by the labour
+  contractor: text("contractor"), // Labour contractor/gang name
 });
 
 // Materials Log

@@ -63,11 +63,12 @@ export default function PlantStock() {
     },
   });
 
+  const [activeTab, setActiveTab] = useState("summary");
+
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
-  // Note: stock-balances API removed - Current Balances now derives from ledger entries via stockSummary
-  // This ensures consistency between Stock Summary and Current Balances tabs
 
+  // Filtered ledger URL (with date filter) for Stock Summary and Ledger Details tabs
   const buildLedgerUrl = () => {
     const params = new URLSearchParams();
     if (selectedPartyId !== "all") params.set("partyId", selectedPartyId);
@@ -77,8 +78,22 @@ export default function PlantStock() {
     return `/api/plant-module/stock-ledger?${params.toString()}`;
   };
 
+  // All-time ledger URL (NO date filter) for Current Balances - shows true balances from beginning
+  const buildAllTimeLedgerUrl = () => {
+    const params = new URLSearchParams();
+    if (selectedPartyId !== "all") params.set("partyId", selectedPartyId);
+    if (selectedMaterialId !== "all") params.set("materialId", selectedMaterialId);
+    // No date filters - fetch ALL entries from beginning
+    return `/api/plant-module/stock-ledger-all?${params.toString()}`;
+  };
+
   const { data: ledger, isLoading: ledgerLoading } = useQuery<StockLedgerEntry[]>({ 
     queryKey: [buildLedgerUrl()] 
+  });
+
+  // All-time ledger for Current Balances calculation
+  const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<StockLedgerEntry[]>({ 
+    queryKey: [buildAllTimeLedgerUrl()] 
   });
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
@@ -205,25 +220,74 @@ export default function PlantStock() {
 
   const stockSummary = computeStockSummary();
 
-  // Derive current balances from Stock Summary (which is computed from ledger entries, excluding legacy equipment_issue)
-  // This ensures Current Balances and Stock Summary are always consistent
-  const computedBalances = useMemo(() => {
-    return stockSummary.map(item => ({
-      materialId: item.materialId,
-      partyId: item.partyId,
-      balance: item.closing,
-      uom: item.uom,
-      materialName: item.materialName,
-      partyName: item.partyName,
-    }));
-  }, [stockSummary]);
+  // Compute ALL-TIME balances from allTimeLedger (no date filter) for Current Balances tab
+  // This shows Total Receipts, Total Issues, and Balance from the very beginning
+  const allTimeBalances = useMemo(() => {
+    if (!allTimeLedger || !materials) return [];
 
-  const filteredBalances = computedBalances?.filter((b) => {
+    const summaryMap: Record<string, {
+      materialId: number;
+      materialName: string;
+      partyId: number | null;
+      partyName: string;
+      uom: string;
+      totalReceipts: number;
+      totalIssues: number;
+      balance: number;
+    }> = {};
+
+    // Filter out legacy equipment_issue entries
+    const validEntries = allTimeLedger.filter(e => e.transactionType !== 'equipment_issue');
+
+    validEntries.forEach((entry) => {
+      const key = `${entry.materialId}-${entry.partyId ?? 0}`;
+      if (!summaryMap[key]) {
+        summaryMap[key] = {
+          materialId: entry.materialId,
+          materialName: getMaterialName(entry.materialId),
+          partyId: entry.partyId,
+          partyName: getPartyName(entry.partyId),
+          uom: entry.uom || "Ton",
+          totalReceipts: 0,
+          totalIssues: 0,
+          balance: 0,
+        };
+      }
+
+      // Receipts: opening, receipt, adjustment
+      if (entry.transactionType === "opening" || entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
+        summaryMap[key].totalReceipts += entry.quantityIn || 0;
+      }
+      // Issues: dispatch, issue, equipment_usage
+      if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
+        summaryMap[key].totalIssues += Math.abs(entry.quantityOut || 0);
+      }
+    });
+
+    // Calculate balance
+    Object.values(summaryMap).forEach((item) => {
+      item.balance = item.totalReceipts - item.totalIssues;
+    });
+
+    return Object.values(summaryMap);
+  }, [allTimeLedger, materials, parties]);
+
+  // Filter all-time balances based on party/material selection (but NOT date - always all-time)
+  const filteredBalances = allTimeBalances?.filter((b) => {
     if (selectedPartyId !== "all" && String(b.partyId ?? "") !== selectedPartyId && selectedPartyId !== "common") return false;
     if (selectedPartyId === "common" && b.partyId !== null) return false;
     if (selectedMaterialId !== "all" && b.materialId !== Number(selectedMaterialId)) return false;
     return true;
   });
+
+  // Handler to jump to ledger tab with material/party filter
+  const jumpToLedger = (materialId: number, partyId: number | null) => {
+    setSelectedMaterialId(String(materialId));
+    if (partyId !== null) {
+      setSelectedPartyId(String(partyId));
+    }
+    setActiveTab("ledger");
+  };
 
   // Build filename with date range and filters
   const buildFilename = (extension: string) => {
@@ -695,7 +759,7 @@ export default function PlantStock() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="summary" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="summary" className="gap-2">
             <Layers className="w-4 h-4" />
@@ -772,41 +836,89 @@ export default function PlantStock() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Package className="w-5 h-5" />
-                Current Stock Balances
+                Current Stock Balances (All-Time)
               </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Showing total receipts and issues from the beginning. Click on a material to view its ledger.
+              </p>
             </CardHeader>
             <CardContent>
-              {ledgerLoading ? (
+              {allTimeLedgerLoading ? (
                 <div className="flex justify-center p-8">
                   <Loader2 className="w-6 h-6 animate-spin" />
                 </div>
               ) : !filteredBalances?.length ? (
                 <p className="text-muted-foreground text-center py-8">No stock balances found.</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredBalances.map((b, idx) => (
-                    <div key={idx} className={`p-4 rounded-lg border ${
-                      b.balance < 10 ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20' : 'bg-muted/50'
-                    }`}>
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-medium">{b.materialName}</p>
-                        {b.balance < 10 && (
-                          <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
-                            LOW
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-2xl font-bold">{b.balance?.toFixed(2)} {b.uom}</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        <span className={`px-2 py-0.5 text-xs rounded ${
-                          b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
-                          'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
-                        }`}>
-                          {b.partyName}
-                        </span>
-                      </p>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left py-3 px-2">Material</th>
+                        <th className="text-left py-3 px-2">Stock Owner</th>
+                        <th className="text-right py-3 px-2">Total Receipts</th>
+                        <th className="text-right py-3 px-2">Total Issues</th>
+                        <th className="text-right py-3 px-2">Balance</th>
+                        <th className="text-left py-3 px-2">UOM</th>
+                        <th className="text-center py-3 px-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredBalances.map((b, idx) => (
+                        <tr 
+                          key={idx} 
+                          className={`border-b last:border-0 hover:bg-muted/30 cursor-pointer ${
+                            b.balance < 10 ? 'bg-red-50 dark:bg-red-900/20' : ''
+                          }`}
+                          onClick={() => jumpToLedger(b.materialId, b.partyId)}
+                          data-testid={`row-balance-${b.materialId}-${b.partyId}`}
+                        >
+                          <td className="py-3 px-2 font-medium text-primary hover:underline">
+                            {b.materialName}
+                          </td>
+                          <td className="py-3 px-2">
+                            <span className={`px-2 py-0.5 text-xs rounded ${
+                              b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
+                              'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                            }`}>
+                              {b.partyName}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">
+                            +{b.totalReceipts.toFixed(2)}
+                          </td>
+                          <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">
+                            -{b.totalIssues.toFixed(2)}
+                          </td>
+                          <td className={`py-3 px-2 text-right font-bold ${
+                            b.balance < 0 ? 'text-red-600 dark:text-red-400' : 
+                            b.balance < 10 ? 'text-amber-600 dark:text-amber-400' : ''
+                          }`}>
+                            {b.balance.toFixed(2)}
+                            {b.balance < 10 && (
+                              <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
+                                LOW
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-2">{b.uom}</td>
+                          <td className="py-3 px-2 text-center">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                jumpToLedger(b.materialId, b.partyId);
+                              }}
+                              data-testid={`button-view-ledger-${b.materialId}`}
+                            >
+                              View Ledger
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>

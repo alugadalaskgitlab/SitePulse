@@ -44,6 +44,7 @@ interface LabourEntry {
   gender: string;
   count: number;
   task: string;
+  contractor: string;
 }
 
 interface MaterialEntry {
@@ -120,7 +121,7 @@ export default function SiteEntry() {
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0, task: "" }
+    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([
@@ -222,7 +223,7 @@ export default function SiteEntry() {
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "" }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     } else if (section === 'materials') {
       setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "Tons", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }]);
     }
@@ -745,7 +746,7 @@ export default function SiteEntry() {
         </CardHeader>
         <CardContent className="space-y-4">
           {labour.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
               <div>
                 <Label className="text-xs">Category</Label>
                 <Select
@@ -808,6 +809,20 @@ export default function SiteEntry() {
                   }}
                   className="uppercase"
                   data-testid={`input-labour-task-${idx}`}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Contractor/Gang</Label>
+                <Input
+                  placeholder="e.g. Raju Gang"
+                  value={entry.contractor}
+                  onChange={(e) => {
+                    const updated = [...labour];
+                    updated[idx].contractor = e.target.value;
+                    setLabour(updated);
+                  }}
+                  className="uppercase"
+                  data-testid={`input-labour-contractor-${idx}`}
                 />
               </div>
               <div className="flex items-end">
