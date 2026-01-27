@@ -1,10 +1,11 @@
 import { useState, useRef, useMemo } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAccess } from "@/lib/access-context";
 import { PinAuth } from "@/components/PinAuth";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -28,7 +29,10 @@ import {
   Users,
   Package,
   ExternalLink,
+  Truck,
+  Trash2,
 } from "lucide-react";
+import type { SiteMaterialTrip } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,7 +44,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
+
+const MATERIAL_OPTIONS = [
+  "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
+];
+
+const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 // Helper to strip "Edited by..." suffix from site names
 function getBaseSiteName(site: string): string {
@@ -55,6 +66,7 @@ export default function SiteDashboard() {
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingAction, setPendingAction] = useState<"reports-excel" | "reports-pdf" | "reports-print" | null>(null);
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
+  const [activeTab, setActiveTab] = useState("dpr-summary");
   const [filters, setFilters] = useState({
     site: "",
     engineer: "",
@@ -64,6 +76,25 @@ export default function SiteDashboard() {
     equipment: "",
     hasDiesel: false,
     material: "",
+  });
+  
+  // Materials Received tab state
+  const today = format(new Date(), "yyyy-MM-dd");
+  const [materialDateFilter, setMaterialDateFilter] = useState(today);
+  const [materialSiteFilter, setMaterialSiteFilter] = useState("");
+  const [newMaterialEntry, setNewMaterialEntry] = useState({
+    date: today,
+    time: format(new Date(), "HH:mm"),
+    site: "",
+    material: "",
+    supplier: "",
+    vehicleNumber: "",
+    quantity: "",
+    uom: "CFT",
+    location: "",
+    receiptNumber: "",
+    enteredBy: "",
+    notes: "",
   });
   
   const printRef = useRef<HTMLDivElement>(null);
@@ -186,6 +217,93 @@ export default function SiteDashboard() {
     });
     return Array.from(materials).sort();
   }, [dprsWithDetails]);
+
+  // Materials Received tab data
+  const buildMaterialTripsUrl = () => {
+    const params = new URLSearchParams();
+    if (materialDateFilter) {
+      params.set("dateFrom", materialDateFilter);
+      params.set("dateTo", materialDateFilter);
+    }
+    if (materialSiteFilter) params.set("site", materialSiteFilter);
+    const queryString = params.toString();
+    return queryString ? `/api/site-material-trips?${queryString}` : "/api/site-material-trips";
+  };
+
+  const { data: materialTrips, isLoading: isLoadingMaterials } = useQuery<SiteMaterialTrip[]>({
+    queryKey: [buildMaterialTripsUrl()],
+    enabled: activeTab === "materials-received",
+  });
+
+  const createMaterialMutation = useMutation({
+    mutationFn: async (data: typeof newMaterialEntry) => {
+      return apiRequest("POST", "/api/site-material-trips", {
+        ...data,
+        quantity: parseFloat(data.quantity) || 0,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (query) => 
+        typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/site-material-trips')
+      });
+      toast({ title: "Material Logged", description: "Material entry has been recorded successfully." });
+      setNewMaterialEntry({
+        date: today,
+        time: format(new Date(), "HH:mm"),
+        site: newMaterialEntry.site,
+        material: "",
+        supplier: "",
+        vehicleNumber: "",
+        quantity: "",
+        uom: "CFT",
+        location: "",
+        receiptNumber: "",
+        enteredBy: newMaterialEntry.enteredBy,
+        notes: "",
+      });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: "Failed to log material entry.", variant: "destructive" });
+      console.error("Error creating material entry:", error);
+    },
+  });
+
+  const deleteMaterialMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/site-material-trips/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (query) => 
+        typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/site-material-trips')
+      });
+      toast({ title: "Deleted", description: "Material entry has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete material entry.", variant: "destructive" });
+    },
+  });
+
+  const handleMaterialSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMaterialEntry.site || !newMaterialEntry.material || !newMaterialEntry.quantity) {
+      toast({ title: "Required Fields", description: "Please fill in Site, Material, and Quantity.", variant: "destructive" });
+      return;
+    }
+    createMaterialMutation.mutate(newMaterialEntry);
+  };
+
+  const materialTripsByMaterial = useMemo(() => {
+    const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
+    (materialTrips || []).forEach(trip => {
+      const key = trip.material;
+      if (!grouped[key]) {
+        grouped[key] = { count: 0, totalQty: 0, uom: trip.uom };
+      }
+      grouped[key].count++;
+      grouped[key].totalQty += trip.quantity || 0;
+    });
+    return grouped;
+  }, [materialTrips]);
 
   const clearFilters = () => {
     setFilters({
@@ -732,29 +850,43 @@ export default function SiteDashboard() {
             <p className="text-muted-foreground text-sm">View and manage daily progress reports</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
-            <FileSpreadsheet className="w-4 h-4" />
-            Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
-            <FileText className="w-4 h-4" />
-            PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
-            <Printer className="w-4 h-4" />
-            Print
-          </Button>
-          <Link href={appendOrigin("/site/new")}>
-            <Button className="gap-2" data-testid="button-new-report">
-              <Plus className="w-4 h-4" />
-              New Report
+        {activeTab === "dpr-summary" && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
+              <FileSpreadsheet className="w-4 h-4" />
+              Excel
             </Button>
-          </Link>
-        </div>
+            <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
+              <FileText className="w-4 h-4" />
+              PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
+              <Printer className="w-4 h-4" />
+              Print
+            </Button>
+            <Link href={appendOrigin("/site/new")}>
+              <Button className="gap-2" data-testid="button-new-report">
+                <Plus className="w-4 h-4" />
+                New Report
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-6 mt-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="dpr-summary" className="gap-2" data-testid="tab-dpr-summary">
+            <Calendar className="w-4 h-4" />
+            DPR Summary
+          </TabsTrigger>
+          <TabsTrigger value="materials-received" className="gap-2" data-testid="tab-materials-received">
+            <Truck className="w-4 h-4" />
+            Materials Received
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="dpr-summary" className="space-y-6 mt-6">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-4">
@@ -1155,7 +1287,257 @@ export default function SiteDashboard() {
               </div>
             )}
           </div>
-      </div>
+        </TabsContent>
+
+        <TabsContent value="materials-received" className="space-y-6 mt-6">
+          {/* Date and Site Filters */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Filters</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Date</Label>
+                  <Input
+                    type="date"
+                    value={materialDateFilter}
+                    onChange={(e) => setMaterialDateFilter(e.target.value)}
+                    data-testid="input-material-date-filter"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Site</Label>
+                  <Select value={materialSiteFilter || "__all__"} onValueChange={(v) => setMaterialSiteFilter(v === "__all__" ? "" : v)}>
+                    <SelectTrigger data-testid="select-material-site-filter">
+                      <SelectValue placeholder="All Sites" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All Sites</SelectItem>
+                      {uniqueSites.map(site => (
+                        <SelectItem key={site} value={site}>{site}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Summary Cards */}
+          {Object.keys(materialTripsByMaterial).length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(materialTripsByMaterial).map(([material, data]) => (
+                <Card key={material} data-testid={`card-material-summary-${material}`}>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl font-bold">{data.totalQty.toFixed(1)}</div>
+                    <div className="text-xs text-muted-foreground">{data.uom}</div>
+                    <div className="font-medium mt-1">{material}</div>
+                    <div className="text-xs text-muted-foreground">{data.count} trip{data.count !== 1 ? 's' : ''}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Entry Form */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Log Material Received
+              </h3>
+              <form onSubmit={handleMaterialSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Date *</Label>
+                    <Input
+                      type="date"
+                      value={newMaterialEntry.date}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, date: e.target.value }))}
+                      data-testid="input-material-date"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Time</Label>
+                    <Input
+                      type="time"
+                      value={newMaterialEntry.time}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, time: e.target.value }))}
+                      data-testid="input-material-time"
+                    />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <Label className="text-xs">Site *</Label>
+                    <Select value={newMaterialEntry.site} onValueChange={(v) => setNewMaterialEntry(prev => ({ ...prev, site: v }))}>
+                      <SelectTrigger data-testid="select-material-site">
+                        <SelectValue placeholder="Select Site" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {uniqueSites.map(site => (
+                          <SelectItem key={site} value={site}>{site}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Material *</Label>
+                    <Select value={newMaterialEntry.material} onValueChange={(v) => setNewMaterialEntry(prev => ({ ...prev, material: v }))}>
+                      <SelectTrigger data-testid="select-material-material">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MATERIAL_OPTIONS.map(mat => (
+                          <SelectItem key={mat} value={mat}>{mat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Quantity *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      value={newMaterialEntry.quantity}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, quantity: e.target.value }))}
+                      data-testid="input-material-quantity"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">UOM</Label>
+                    <Select value={newMaterialEntry.uom} onValueChange={(v) => setNewMaterialEntry(prev => ({ ...prev, uom: v }))}>
+                      <SelectTrigger data-testid="select-material-uom">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(uom => (
+                          <SelectItem key={uom} value={uom}>{uom}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Vehicle No.</Label>
+                    <Input
+                      placeholder="KA-XX-XXXX"
+                      value={newMaterialEntry.vehicleNumber}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, vehicleNumber: e.target.value.toUpperCase() }))}
+                      data-testid="input-material-vehicle"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Supplier</Label>
+                    <Input
+                      placeholder="Supplier name"
+                      value={newMaterialEntry.supplier}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, supplier: e.target.value }))}
+                      data-testid="input-material-supplier"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Location/Task</Label>
+                    <Input
+                      placeholder="Unloading location"
+                      value={newMaterialEntry.location}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, location: e.target.value }))}
+                      data-testid="input-material-location"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Receipt No.</Label>
+                    <Input
+                      placeholder="Challan/Receipt"
+                      value={newMaterialEntry.receiptNumber}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, receiptNumber: e.target.value }))}
+                      data-testid="input-material-receipt"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Entered By</Label>
+                    <Input
+                      placeholder="Supervisor name"
+                      value={newMaterialEntry.enteredBy}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, enteredBy: e.target.value }))}
+                      data-testid="input-material-enteredby"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={createMaterialMutation.isPending} className="gap-2" data-testid="button-material-submit">
+                    {createMaterialMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    Add Entry
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Material Entries List */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Package className="w-4 h-4" />
+                Material Entries for {format(new Date(materialDateFilter), "dd MMM yyyy")}
+              </h3>
+              {isLoadingMaterials ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+              ) : !materialTrips || materialTrips.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No material entries for this date</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {materialTrips.map(trip => (
+                    <div key={trip.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg" data-testid={`material-entry-${trip.id}`}>
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Truck className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium">{trip.material}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {trip.quantity} {trip.uom}
+                            </span>
+                            {trip.vehicleNumber && (
+                              <span className="text-xs bg-muted px-2 py-0.5 rounded">{trip.vehicleNumber}</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap mt-1">
+                            <span>{trip.site}</span>
+                            {trip.time && <span>at {trip.time}</span>}
+                            {trip.supplier && <span>from {trip.supplier}</span>}
+                            {trip.location && <span>@ {trip.location}</span>}
+                            {trip.receiptNumber && <span>#{trip.receiptNumber}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => deleteMaterialMutation.mutate(trip.id)}
+                        disabled={deleteMaterialMutation.isPending}
+                        data-testid={`button-delete-material-${trip.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* PIN Auth Modal - Manager or Admin can export */}
       {showPinAuth && (
