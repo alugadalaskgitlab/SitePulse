@@ -189,22 +189,27 @@ export default function PlantStock() {
     // Use processedLedger which excludes equipment_issue entries
     processedLedger.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
+      const material = materials?.find(m => m.id === entry.materialId);
+      const convFactor = material?.conversionFactor || null;
+      const convFromUom = material?.conversionFromUom || null;
+      const convToUom = material?.conversionToUom || null;
+      
       if (!summaryMap[key]) {
-        const material = materials?.find(m => m.id === entry.materialId);
-        const convFactor = material?.conversionFactor || null;
+        // Use target UOM if material has conversion, otherwise use entry UOM
+        const targetUom = convToUom || entry.uom || "Ton";
         summaryMap[key] = {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
           partyId: entry.partyId,
           partyName: getPartyName(entry.partyId),
-          uom: entry.uom || "Ton",
+          uom: targetUom,
           openingStock: 0,
           received: 0,
           consumed: 0,
           closing: 0,
           conversionFactor: convFactor,
-          conversionFromUom: material?.conversionFromUom || null,
-          conversionToUom: material?.conversionToUom || null,
+          conversionFromUom: convFromUom,
+          conversionToUom: convToUom,
           convertedOpening: null,
           convertedReceived: null,
           convertedConsumed: null,
@@ -212,34 +217,33 @@ export default function PlantStock() {
         };
       }
 
+      // Check if this entry needs conversion (entry UOM matches source UOM like CFT)
+      const entryNeedsConversion = convFactor && convFromUom && convToUom &&
+        entry.uom?.toUpperCase() === convFromUom.toUpperCase();
+      
+      // Get quantity, converting if needed
+      const getConvertedQty = (qty: number | null) => {
+        if (!qty) return 0;
+        return entryNeedsConversion ? qty * convFactor : qty;
+      };
+
       // Opening stock entries (from Masters -> Opening Stock)
       if (entry.transactionType === "opening") {
-        summaryMap[key].openingStock += entry.quantityIn || 0;
+        summaryMap[key].openingStock += getConvertedQty(entry.quantityIn);
       }
       // Receipts (from Material Receipts) and adjustments
       else if (entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
-        summaryMap[key].received += entry.quantityIn || 0;
+        summaryMap[key].received += getConvertedQty(entry.quantityIn);
       }
       // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
       else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
-        summaryMap[key].consumed += Math.abs(entry.quantityOut || 0);
+        summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
     });
 
-    // Calculate closing balance and apply conversion factors
+    // Calculate closing balance - no additional conversion needed as we've already normalized
     Object.values(summaryMap).forEach((item) => {
       item.closing = item.openingStock + item.received - item.consumed;
-      
-      // Apply conversion factor if available (e.g., CFT to Tons for aggregates)
-      if (item.conversionFactor && item.conversionFromUom && item.conversionToUom) {
-        // Check if UOM matches the conversion source
-        if (item.uom.toLowerCase() === item.conversionFromUom.toLowerCase()) {
-          item.convertedOpening = item.openingStock * item.conversionFactor;
-          item.convertedReceived = item.received * item.conversionFactor;
-          item.convertedConsumed = item.consumed * item.conversionFactor;
-          item.convertedClosing = item.closing * item.conversionFactor;
-        }
-      }
     });
 
     return Object.values(summaryMap);
@@ -272,19 +276,21 @@ export default function PlantStock() {
 
     validEntries.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
+      // Get material conversion info
+      const material = materials.find(m => m.id === entry.materialId);
+      const convFactor = material?.conversionFactor || null;
+      const convFromUom = material?.conversionFromUom || null;
+      const convToUom = material?.conversionToUom || null;
+      
       if (!summaryMap[key]) {
-        // Get material conversion info
-        const material = materials.find(m => m.id === entry.materialId);
-        const convFactor = material?.conversionFactor || null;
-        const convFromUom = material?.conversionFromUom || null;
-        const convToUom = material?.conversionToUom || null;
-        
+        // Use target UOM if material has conversion, otherwise use entry UOM
+        const targetUom = convToUom || entry.uom || "Ton";
         summaryMap[key] = {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
           partyId: entry.partyId,
           partyName: getPartyName(entry.partyId),
-          uom: entry.uom || "Ton",
+          uom: targetUom,
           totalReceipts: 0,
           totalIssues: 0,
           balance: 0,
@@ -295,26 +301,29 @@ export default function PlantStock() {
         };
       }
 
+      // Check if this entry needs conversion (entry UOM matches source UOM like CFT)
+      const entryNeedsConversion = convFactor && convFromUom && convToUom &&
+        entry.uom?.toUpperCase() === convFromUom.toUpperCase();
+      
+      // Get quantity, converting if needed
+      const getConvertedQty = (qty: number | null) => {
+        if (!qty) return 0;
+        return entryNeedsConversion ? qty * convFactor : qty;
+      };
+
       // Receipts: opening, receipt, adjustment
       if (entry.transactionType === "opening" || entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
-        summaryMap[key].totalReceipts += entry.quantityIn || 0;
+        summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
       }
       // Issues: dispatch, issue, equipment_usage
       if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
-        summaryMap[key].totalIssues += Math.abs(entry.quantityOut || 0);
+        summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
     });
 
-    // Calculate balance and converted balance
+    // Calculate balance - no additional conversion needed as we've already normalized
     Object.values(summaryMap).forEach((item) => {
       item.balance = item.totalReceipts - item.totalIssues;
-      // Calculate converted balance if conversion factor exists and UOM matches
-      if (item.conversionFactor && item.conversionFromUom && item.conversionToUom) {
-        // Only convert if the current UOM matches the "from" UOM
-        if (item.uom.toUpperCase() === item.conversionFromUom.toUpperCase()) {
-          item.convertedBalance = item.balance * item.conversionFactor;
-        }
-      }
     });
 
     return Object.values(summaryMap);
