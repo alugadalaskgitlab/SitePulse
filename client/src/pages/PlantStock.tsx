@@ -1021,11 +1021,14 @@ export default function PlantStock() {
                       {ledgerForDisplay.slice(0, 100).map((entry) => {
                         const material = materials?.find(m => m.id === entry.materialId);
                         const convFactor = material?.conversionFactor || null;
-                        const hasConversion = convFactor && material?.conversionFromUom && material?.conversionToUom;
-                        const displayIn = hasConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
-                        const displayOut = hasConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
-                        const displayBalance = hasConversion ? (entry.calculatedBalance ?? 0) * convFactor : (entry.calculatedBalance ?? 0);
-                        const displayUom = hasConversion ? material.conversionToUom : entry.uom;
+                        // Only apply conversion if entry UOM matches the source UOM (e.g., CFT)
+                        // If entry is already in target UOM (e.g., Tons), don't convert again
+                        const needsConversion = convFactor && material?.conversionFromUom && material?.conversionToUom &&
+                          entry.uom?.toUpperCase() === material.conversionFromUom.toUpperCase();
+                        const displayIn = needsConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
+                        const displayOut = needsConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
+                        const displayBalance = needsConversion ? (entry.calculatedBalance ?? 0) * convFactor : (entry.calculatedBalance ?? 0);
+                        const displayUom = needsConversion ? material.conversionToUom : entry.uom;
                         
                         return (
                         <tr key={entry.id} className="border-b hover:bg-muted/30">

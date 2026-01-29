@@ -166,7 +166,12 @@ export default function PlantMaterialReceipts() {
   };
 
   const handleSubmit = () => {
-    if (!materialId || !quantity || !partyId) return;
+    if (!materialId || !quantity || !partyId || !challanNumber.trim()) {
+      if (!challanNumber.trim()) {
+        toast({ title: "Error", description: "Receipt No. is required", variant: "destructive" });
+      }
+      return;
+    }
     
     if (editingReceipt) {
       const updateData = {
@@ -640,12 +645,12 @@ export default function PlantMaterialReceipts() {
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
                 </div>
                 <div>
-                  <Label>Challan No</Label>
-                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Receipt/Challan" data-testid="input-challan" />
+                  <Label>Receipt No. <span className="text-destructive">*</span></Label>
+                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Receipt/Challan No. (Required)" data-testid="input-challan" className={!challanNumber.trim() ? "border-destructive/50" : ""} />
                 </div>
               </div>
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity} data-testid="button-save-receipt">
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
               </Button>
             </div>
