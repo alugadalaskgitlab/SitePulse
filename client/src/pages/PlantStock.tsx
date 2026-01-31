@@ -406,6 +406,27 @@ export default function PlantStock() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
   };
 
+  // Helper to get converted quantities for export/print
+  const getConvertedEntryData = (entry: typeof processedLedger[0]) => {
+    const material = materials?.find(m => m.id === entry.materialId);
+    const convFactor = material?.conversionFactor;
+    const convFromUom = material?.conversionFromUom;
+    const convToUom = material?.conversionToUom;
+    const hasConversion = convFactor && convFromUom && convToUom;
+    const needsConversion = hasConversion && entry.uom?.toUpperCase() === convFromUom.toUpperCase();
+    
+    const displayIn = needsConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
+    const displayOut = needsConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
+    // calculatedBalance is already converted to target UOM
+    const displayBalance = entry.calculatedBalance ?? 0;
+    // Use target UOM for In/Out only when converted, otherwise use entry's original UOM
+    // For balance, always use target UOM if material has conversion (since balance is accumulated in target UOM)
+    const displayUom = needsConversion ? convToUom : entry.uom;
+    const balanceUom = hasConversion ? convToUom : entry.uom;
+    
+    return { displayIn, displayOut, displayBalance, displayUom, balanceUom };
+  };
+
   const exportToExcel = async () => {
     try {
       const summaryData = stockSummary.map(item => ({
@@ -418,21 +439,24 @@ export default function PlantStock() {
         UOM: item.uom,
       }));
       
-      const ledgerData = processedLedger.map(entry => ({
-        Date: entry.date,
-        Material: getMaterialName(entry.materialId),
-        "Stock Owner": getPartyName(entry.partyId),
-        Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType,
-        "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
-          ? entry.notes.replace('Diesel issued to ', '')
-          : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
-          ? entry.notes.replace('Issue to ', '').split(' - ')[0]
-          : entry.notes || '-',
-        In: entry.quantityIn?.toFixed(2) || "-",
-        Out: entry.quantityOut?.toFixed(2) || "-",
-        Balance: entry.calculatedBalance?.toFixed(2) || "-",
-        UOM: entry.uom,
-      }));
+      const ledgerData = processedLedger.map(entry => {
+        const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
+        return {
+          Date: entry.date,
+          Material: getMaterialName(entry.materialId),
+          "Stock Owner": getPartyName(entry.partyId),
+          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType,
+          "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+            ? entry.notes.replace('Diesel issued to ', '')
+            : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+            ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+            : entry.notes || '-',
+          In: displayIn > 0 ? displayIn.toFixed(2) : "-",
+          Out: displayOut > 0 ? displayOut.toFixed(2) : "-",
+          Balance: displayBalance.toFixed(2),
+          UOM: balanceUom,
+        };
+      });
       
       const wb = XLSX.utils.book_new();
       const wsSummary = XLSX.utils.json_to_sheet(summaryData);
@@ -524,21 +548,24 @@ export default function PlantStock() {
         }
       };
       
-      const ledgerTableData = processedLedger.map(entry => [
-        entry.date,
-        getMaterialName(entry.materialId),
-        getPartyName(entry.partyId),
-        getTransactionTypeLabel(entry.transactionType),
-        entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
-          ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
-          : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
-          ? entry.notes.replace('Issue to ', '').split(' - ')[0]
-          : entry.notes || '-',
-        entry.quantityIn?.toFixed(2) || "-",
-        entry.quantityOut?.toFixed(2) || "-",
-        entry.calculatedBalance?.toFixed(2) || "-",
-        entry.uom,
-      ]);
+      const ledgerTableData = processedLedger.map(entry => {
+        const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
+        return [
+          entry.date,
+          getMaterialName(entry.materialId),
+          getPartyName(entry.partyId),
+          getTransactionTypeLabel(entry.transactionType),
+          entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+            ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+            : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+            ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+            : entry.notes || '-',
+          displayIn > 0 ? displayIn.toFixed(2) : "-",
+          displayOut > 0 ? displayOut.toFixed(2) : "-",
+          displayBalance.toFixed(2),
+          balanceUom,
+        ];
+      });
       
       autoTable(doc, {
         startY: 20,
@@ -656,23 +683,26 @@ export default function PlantStock() {
               </tr>
             </thead>
             <tbody>
-              ${processedLedger.map(entry => `
+              ${processedLedger.map(entry => {
+                const convData = getConvertedEntryData(entry);
+                const notes = entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+                  ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+                  : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
+                  ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+                  : entry.notes || '-';
+                return `
                 <tr>
                   <td>${entry.date}</td>
                   <td>${getMaterialName(entry.materialId)}</td>
                   <td>${getPartyName(entry.partyId)}</td>
                   <td>${getTransactionTypeLabel(entry.transactionType)}</td>
-                  <td>${entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
-                    ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
-                    : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
-                    ? entry.notes.replace('Issue to ', '').split(' - ')[0]
-                    : entry.notes || '-'}</td>
-                  <td class="text-right text-green">${entry.quantityIn ? entry.quantityIn.toFixed(2) : '-'}</td>
-                  <td class="text-right text-red">${entry.quantityOut ? entry.quantityOut.toFixed(2) : '-'}</td>
-                  <td class="text-right"><strong>${entry.calculatedBalance?.toFixed(2) || '-'}</strong></td>
-                  <td>${entry.uom}</td>
-                </tr>
-              `).join('')}
+                  <td>${notes}</td>
+                  <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(2) : '-'}</td>
+                  <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(2) : '-'}</td>
+                  <td class="text-right"><strong>${convData.displayBalance.toFixed(2)}</strong></td>
+                  <td>${convData.balanceUom}</td>
+                </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </body>
@@ -1060,19 +1090,8 @@ export default function PlantStock() {
                     </thead>
                     <tbody>
                       {ledgerForDisplay.slice(0, 100).map((entry) => {
-                        const material = materials?.find(m => m.id === entry.materialId);
-                        const convFactor = material?.conversionFactor || null;
-                        const hasConversion = convFactor && material?.conversionFromUom && material?.conversionToUom;
-                        // Only apply conversion to In/Out display if entry UOM matches the source UOM (e.g., CFT)
-                        const needsConversion = hasConversion &&
-                          entry.uom?.toUpperCase() === material?.conversionFromUom?.toUpperCase();
-                        const displayIn = needsConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
-                        const displayOut = needsConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
-                        // calculatedBalance is ALREADY converted to target UOM, so don't convert again
-                        const displayBalance = entry.calculatedBalance ?? 0;
-                        // For In/Out, show the converted UOM; for Balance, always show target UOM if material has conversion
-                        const displayUom = needsConversion ? material.conversionToUom : entry.uom;
-                        const balanceUom = hasConversion ? material.conversionToUom : entry.uom;
+                        // Use the same helper as exports for consistency
+                        const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
                         
                         return (
                         <tr key={entry.id} className="border-b hover:bg-muted/30">
