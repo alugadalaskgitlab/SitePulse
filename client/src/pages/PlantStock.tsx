@@ -136,33 +136,65 @@ export default function PlantStock() {
     // Group by material + party for per-group running balance
     const groupBalances: Record<string, number> = {};
     
+    // Helper to convert quantity based on entry UOM vs material conversion settings
+    const getConvertedQty = (entry: typeof sorted[0], qty: number | null): number => {
+      if (!qty) return 0;
+      const material = materials?.find(m => m.id === entry.materialId);
+      if (!material?.conversionFactor || !material?.conversionFromUom || !material?.conversionToUom) {
+        return qty;
+      }
+      // Only convert if entry UOM matches the source UOM (e.g., CFT)
+      if (entry.uom?.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+        return qty * material.conversionFactor;
+      }
+      return qty;
+    };
+    
     return sorted.map(entry => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (groupBalances[key] === undefined) groupBalances[key] = 0;
       
-      groupBalances[key] += (entry.quantityIn || 0) - (entry.quantityOut || 0);
+      // Convert quantities before accumulating running balance
+      const convertedIn = getConvertedQty(entry, entry.quantityIn);
+      const convertedOut = getConvertedQty(entry, entry.quantityOut);
+      groupBalances[key] += convertedIn - convertedOut;
       
       return {
         ...entry,
         calculatedBalance: groupBalances[key]
       };
     });
-  }, [ledger]);
+  }, [ledger, materials]);
 
   // For display, reverse to show most recent first
   const ledgerForDisplay = useMemo(() => {
     return [...processedLedger].reverse();
   }, [processedLedger]);
 
-  // Calculate totals for filtered ledger data
+  // Calculate totals for filtered ledger data - with UOM conversion
   const ledgerTotals = useMemo(() => {
-    if (!ledgerForDisplay?.length) return { totalIn: 0, totalOut: 0, netChange: 0 };
-    return ledgerForDisplay.reduce((acc, entry) => ({
-      totalIn: acc.totalIn + (entry.quantityIn || 0),
-      totalOut: acc.totalOut + (entry.quantityOut || 0),
-      netChange: acc.netChange + (entry.quantityIn || 0) - (entry.quantityOut || 0)
-    }), { totalIn: 0, totalOut: 0, netChange: 0 });
-  }, [ledgerForDisplay]);
+    if (!ledgerForDisplay?.length || !materials) return { totalIn: 0, totalOut: 0, netChange: 0 };
+    
+    return ledgerForDisplay.reduce((acc, entry) => {
+      const material = materials.find(m => m.id === entry.materialId);
+      const convFactor = material?.conversionFactor;
+      const convFromUom = material?.conversionFromUom;
+      const convToUom = material?.conversionToUom;
+      
+      // Check if this entry needs conversion (entry UOM matches source UOM like CFT)
+      const needsConversion = convFactor && convFromUom && convToUom &&
+        entry.uom?.toUpperCase() === convFromUom.toUpperCase();
+      
+      const qtyIn = needsConversion ? (entry.quantityIn || 0) * convFactor : (entry.quantityIn || 0);
+      const qtyOut = needsConversion ? (entry.quantityOut || 0) * convFactor : (entry.quantityOut || 0);
+      
+      return {
+        totalIn: acc.totalIn + qtyIn,
+        totalOut: acc.totalOut + qtyOut,
+        netChange: acc.netChange + qtyIn - qtyOut
+      };
+    }, { totalIn: 0, totalOut: 0, netChange: 0 });
+  }, [ledgerForDisplay, materials]);
 
   const computeStockSummary = () => {
     if (!ledger || !materials) return [];
@@ -1030,14 +1062,17 @@ export default function PlantStock() {
                       {ledgerForDisplay.slice(0, 100).map((entry) => {
                         const material = materials?.find(m => m.id === entry.materialId);
                         const convFactor = material?.conversionFactor || null;
-                        // Only apply conversion if entry UOM matches the source UOM (e.g., CFT)
-                        // If entry is already in target UOM (e.g., Tons), don't convert again
-                        const needsConversion = convFactor && material?.conversionFromUom && material?.conversionToUom &&
-                          entry.uom?.toUpperCase() === material.conversionFromUom.toUpperCase();
+                        const hasConversion = convFactor && material?.conversionFromUom && material?.conversionToUom;
+                        // Only apply conversion to In/Out display if entry UOM matches the source UOM (e.g., CFT)
+                        const needsConversion = hasConversion &&
+                          entry.uom?.toUpperCase() === material?.conversionFromUom?.toUpperCase();
                         const displayIn = needsConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
                         const displayOut = needsConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
-                        const displayBalance = needsConversion ? (entry.calculatedBalance ?? 0) * convFactor : (entry.calculatedBalance ?? 0);
+                        // calculatedBalance is ALREADY converted to target UOM, so don't convert again
+                        const displayBalance = entry.calculatedBalance ?? 0;
+                        // For In/Out, show the converted UOM; for Balance, always show target UOM if material has conversion
                         const displayUom = needsConversion ? material.conversionToUom : entry.uom;
+                        const balanceUom = hasConversion ? material.conversionToUom : entry.uom;
                         
                         return (
                         <tr key={entry.id} className="border-b hover:bg-muted/30">
@@ -1077,7 +1112,7 @@ export default function PlantStock() {
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
                             {displayOut > 0 ? `${displayOut.toFixed(2)}` : '-'}
                           </td>
-                          <td className="p-3 text-right font-bold">{displayBalance.toFixed(2)} {displayUom}</td>
+                          <td className="p-3 text-right font-bold">{displayBalance.toFixed(2)} {balanceUom}</td>
                         </tr>
                         );
                       })}
