@@ -17,8 +17,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
 import { PinAuth } from "@/components/PinAuth";
-import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType } from "@shared/schema";
-import { EQUIPMENT_TYPES, METER_TYPES, MIX_TYPES } from "@shared/schema";
+import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType } from "@shared/schema";
+import { EQUIPMENT_TYPES, METER_TYPES } from "@shared/schema";
 import { format } from "date-fns";
 
 export default function Plant() {
@@ -770,12 +770,14 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
   const [name, setName] = useState("");
-  const [mixType, setMixType] = useState("BC");
+  const [mixType, setMixType] = useState("");
   const [bitumenPercent, setBitumenPercent] = useState("");
   const [ldoNorm, setLdoNorm] = useState("6");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [newMixTypeDialogOpen, setNewMixTypeDialogOpen] = useState(false);
+  const [newMixTypeName, setNewMixTypeName] = useState("");
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
@@ -789,7 +791,28 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
     queryKey: ["/api/plant-module/mix-template-components"],
   });
 
+  const { data: mixTypes } = useQuery<MixType[]>({
+    queryKey: ["/api/plant-module/mix-types"],
+  });
+
   const aggregateMaterials = materials?.filter(m => m.category === "Aggregate") || [];
+  
+  const createMixTypeMutation = useMutation({
+    mutationFn: async (data: { name: string }) => {
+      const response = await apiRequest("POST", "/api/plant-module/mix-types", data);
+      return response.json() as Promise<MixType>;
+    },
+    onSuccess: (newType: MixType) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-types"] });
+      setMixType(newType.name);
+      setNewMixTypeDialogOpen(false);
+      setNewMixTypeName("");
+      toast({ title: "Mix type created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create mix type", variant: "destructive" });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: { 
@@ -841,7 +864,7 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
   const resetForm = () => {
     setEditingTemplate(null);
     setName("");
-    setMixType("BC");
+    setMixType("");
     setBitumenPercent("");
     setLdoNorm("6");
     setNotes("");
@@ -928,14 +951,26 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
               </div>
               <div>
                 <Label htmlFor="mix-type">Mix Type</Label>
-                <Select value={mixType} onValueChange={setMixType}>
+                <Select 
+                  value={mixType} 
+                  onValueChange={(value) => {
+                    if (value === "__add_new__") {
+                      setNewMixTypeDialogOpen(true);
+                    } else {
+                      setMixType(value);
+                    }
+                  }}
+                >
                   <SelectTrigger data-testid="select-mix-type">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {MIX_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    {mixTypes?.map((type) => (
+                      <SelectItem key={type.id} value={type.name}>{type.name}</SelectItem>
                     ))}
+                    <SelectItem value="__add_new__" className="text-primary font-medium">
+                      <span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Add New Type</span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1027,6 +1062,44 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
             <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add New Mix Type Dialog */}
+      <Dialog open={newMixTypeDialogOpen} onOpenChange={setNewMixTypeDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New Mix Type</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new-mix-type-name">Mix Type Name</Label>
+              <Input
+                id="new-mix-type-name"
+                value={newMixTypeName}
+                onChange={(e) => setNewMixTypeName(e.target.value.toUpperCase())}
+                placeholder="e.g., SDBC, PMC, PMB"
+                data-testid="input-new-mix-type-name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => {
+                setNewMixTypeDialogOpen(false);
+                setNewMixTypeName("");
+              }}>Cancel</Button>
+              <Button 
+                onClick={() => {
+                  if (newMixTypeName.trim()) {
+                    createMixTypeMutation.mutate({ name: newMixTypeName.trim() });
+                  }
+                }}
+                disabled={!newMixTypeName.trim() || createMixTypeMutation.isPending}
+                data-testid="button-save-mix-type"
+              >
+                {createMixTypeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1345,6 +1418,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const { data: equipmentUsage } = useQuery<any[]>({ queryKey: ["/api/plant-module/equipment-usage"] });
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: mixTemplates } = useQuery<MixTemplate[]>({ queryKey: ["/api/plant-module/mix-templates"] });
+  const { data: mixTypes } = useQuery<MixType[]>({ queryKey: ["/api/plant-module/mix-types"] });
 
   // KPI filtered data (only by KPI date range)
   const kpiFilteredDispatches = dispatches?.filter((d) => {
@@ -1918,8 +1992,8 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">ALL</SelectItem>
-                  {MIX_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  {mixTypes?.map((type) => (
+                    <SelectItem key={type.id} value={type.name}>{type.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

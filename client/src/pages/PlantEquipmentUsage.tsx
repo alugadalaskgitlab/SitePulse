@@ -22,6 +22,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
+import { METER_TYPES } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
@@ -46,6 +47,14 @@ export default function PlantEquipmentUsage() {
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [userModifiedOpening, setUserModifiedOpening] = useState(false);
+  
+  const [newEquipmentDialogOpen, setNewEquipmentDialogOpen] = useState(false);
+  const [newEquipmentName, setNewEquipmentName] = useState("");
+  const [newEquipmentRegNo, setNewEquipmentRegNo] = useState("");
+  const [newEquipmentMeterType, setNewEquipmentMeterType] = useState<string>("hour_meter");
+  const [newEquipmentNorm, setNewEquipmentNorm] = useState("");
+  const [newEquipmentOwnership, setNewEquipmentOwnership] = useState<string>("hired");
+  const [newEquipmentVendor, setNewEquipmentVendor] = useState("");
 
   interface EquipmentFormData {
     date: string;
@@ -106,6 +115,32 @@ export default function PlantEquipmentUsage() {
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
   });
+
+  const createEquipmentMutation = useMutation({
+    mutationFn: async (data: { name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number; ownership?: string; vendorName?: string }) => {
+      const response = await apiRequest("POST", "/api/plant-module/equipment", data);
+      return response.json() as Promise<EquipmentMasterType>;
+    },
+    onSuccess: (newEquipment: EquipmentMasterType) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+      setEquipmentId(String(newEquipment.id));
+      setNewEquipmentDialogOpen(false);
+      resetNewEquipmentForm();
+      toast({ title: "Equipment added successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add equipment", variant: "destructive" });
+    },
+  });
+
+  const resetNewEquipmentForm = () => {
+    setNewEquipmentName("");
+    setNewEquipmentRegNo("");
+    setNewEquipmentMeterType("hour_meter");
+    setNewEquipmentNorm("");
+    setNewEquipmentOwnership("hired");
+    setNewEquipmentVendor("");
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
@@ -682,7 +717,16 @@ export default function PlantEquipmentUsage() {
 
               <div>
                 <Label>Equipment</Label>
-                <Select value={equipmentId} onValueChange={handleEquipmentChange}>
+                <Select 
+                  value={equipmentId} 
+                  onValueChange={(value) => {
+                    if (value === "__add_new__") {
+                      setNewEquipmentDialogOpen(true);
+                    } else {
+                      handleEquipmentChange(value);
+                    }
+                  }}
+                >
                   <SelectTrigger data-testid="select-equipment">
                     <SelectValue placeholder="Select equipment" />
                   </SelectTrigger>
@@ -692,6 +736,9 @@ export default function PlantEquipmentUsage() {
                         {equip.name} {(equip as any).registrationNumber ? `(${(equip as any).registrationNumber})` : ""} - {equip.meterType === "hour_meter" ? "hrs" : "km"}
                       </SelectItem>
                     ))}
+                    <SelectItem value="__add_new__" className="text-primary font-medium">
+                      <span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Add New Equipment</span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 {selectedEquipment && (
@@ -928,6 +975,112 @@ export default function PlantEquipmentUsage() {
             <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newEquipmentDialogOpen} onOpenChange={(open) => { if (!open) { setNewEquipmentDialogOpen(false); resetNewEquipmentForm(); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Equipment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Equipment Name *</Label>
+              <Input 
+                value={newEquipmentName} 
+                onChange={(e) => setNewEquipmentName(e.target.value)} 
+                placeholder="e.g., JCB 3DX, Tata Tipper"
+                data-testid="input-new-equipment-name"
+              />
+            </div>
+            <div>
+              <Label>Registration Number</Label>
+              <Input 
+                value={newEquipmentRegNo} 
+                onChange={(e) => setNewEquipmentRegNo(e.target.value)} 
+                placeholder="e.g., MH12AB1234"
+                data-testid="input-new-equipment-regno"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Meter Type *</Label>
+                <Select value={newEquipmentMeterType} onValueChange={setNewEquipmentMeterType}>
+                  <SelectTrigger data-testid="select-new-equipment-meter-type">
+                    <SelectValue placeholder="Select meter type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {METER_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type === "hour_meter" ? "Hour Meter (hrs)" : "Odometer (km)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Consumption Norm</Label>
+                <Input 
+                  type="number" 
+                  step="0.01"
+                  value={newEquipmentNorm} 
+                  onChange={(e) => setNewEquipmentNorm(e.target.value)} 
+                  placeholder={newEquipmentMeterType === "hour_meter" ? "L/hr" : "L/km"}
+                  data-testid="input-new-equipment-norm"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Ownership</Label>
+                <Select value={newEquipmentOwnership} onValueChange={setNewEquipmentOwnership}>
+                  <SelectTrigger data-testid="select-new-equipment-ownership">
+                    <SelectValue placeholder="Select ownership" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owned">Owned</SelectItem>
+                    <SelectItem value="hired">Hired</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {newEquipmentOwnership === "hired" && (
+                <div>
+                  <Label>Vendor Name</Label>
+                  <Input 
+                    value={newEquipmentVendor} 
+                    onChange={(e) => setNewEquipmentVendor(e.target.value)} 
+                    placeholder="Vendor name"
+                    data-testid="input-new-equipment-vendor"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setNewEquipmentDialogOpen(false); resetNewEquipmentForm(); }}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (!newEquipmentName.trim()) {
+                  toast({ title: "Equipment name is required", variant: "destructive" });
+                  return;
+                }
+                createEquipmentMutation.mutate({
+                  name: newEquipmentName.trim(),
+                  registrationNumber: newEquipmentRegNo.trim() || undefined,
+                  meterType: newEquipmentMeterType,
+                  consumptionNorm: newEquipmentNorm ? parseFloat(newEquipmentNorm) : undefined,
+                  ownership: newEquipmentOwnership || undefined,
+                  vendorName: newEquipmentVendor.trim() || undefined,
+                });
+              }}
+              disabled={createEquipmentMutation.isPending}
+              data-testid="button-save-new-equipment"
+            >
+              {createEquipmentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Equipment"}
             </Button>
           </DialogFooter>
         </DialogContent>

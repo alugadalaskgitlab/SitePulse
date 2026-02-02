@@ -19,9 +19,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
-
-const MIX_TYPES = ["BC", "DBM"];
+import type { Party, MixTemplate, TruckDispatch, MixType } from "@shared/schema";
 
 export default function PlantDispatches() {
   const { toast } = useToast();
@@ -96,6 +94,10 @@ export default function PlantDispatches() {
 
   const { data: templates } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
+  });
+
+  const { data: mixTypes } = useQuery<MixType[]>({
+    queryKey: ["/api/plant-module/mix-types"],
   });
 
   const createMutation = useMutation({
@@ -714,8 +716,8 @@ export default function PlantDispatches() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  {MIX_TYPES.map(type => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  {mixTypes?.map(type => (
+                    <SelectItem key={type.id} value={type.name}>{type.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
