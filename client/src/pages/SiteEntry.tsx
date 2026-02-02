@@ -366,8 +366,7 @@ export default function SiteEntry() {
             <Input
               placeholder="Enter site name"
               value={header.site}
-              onChange={(e) => setHeader({ ...header, site: e.target.value })}
-              className="uppercase"
+              onChange={(e) => setHeader({ ...header, site: e.target.value.toUpperCase() })}
               data-testid="input-site"
             />
           </div>
@@ -376,8 +375,7 @@ export default function SiteEntry() {
             <Input
               placeholder="Enter engineer name"
               value={header.engineer}
-              onChange={(e) => setHeader({ ...header, engineer: e.target.value })}
-              className="uppercase"
+              onChange={(e) => setHeader({ ...header, engineer: e.target.value.toUpperCase() })}
               data-testid="input-engineer"
             />
           </div>

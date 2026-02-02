@@ -990,7 +990,7 @@ export default function PlantEquipmentUsage() {
               <Label>Equipment Name *</Label>
               <Input 
                 value={newEquipmentName} 
-                onChange={(e) => setNewEquipmentName(e.target.value)} 
+                onChange={(e) => setNewEquipmentName(e.target.value.toUpperCase())} 
                 placeholder="e.g., JCB 3DX, Tata Tipper"
                 data-testid="input-new-equipment-name"
               />
@@ -999,7 +999,7 @@ export default function PlantEquipmentUsage() {
               <Label>Registration Number</Label>
               <Input 
                 value={newEquipmentRegNo} 
-                onChange={(e) => setNewEquipmentRegNo(e.target.value)} 
+                onChange={(e) => setNewEquipmentRegNo(e.target.value.toUpperCase())} 
                 placeholder="e.g., MH12AB1234"
                 data-testid="input-new-equipment-regno"
               />
@@ -1050,7 +1050,7 @@ export default function PlantEquipmentUsage() {
                   <Label>Vendor Name</Label>
                   <Input 
                     value={newEquipmentVendor} 
-                    onChange={(e) => setNewEquipmentVendor(e.target.value)} 
+                    onChange={(e) => setNewEquipmentVendor(e.target.value.toUpperCase())} 
                     placeholder="Vendor name"
                     data-testid="input-new-equipment-vendor"
                   />

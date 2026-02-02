@@ -360,8 +360,7 @@ export default function SiteEdit() {
             <Input
               placeholder="Site name"
               value={header.site}
-              onChange={(e) => setHeader({ ...header, site: e.target.value })}
-              className="uppercase"
+              onChange={(e) => setHeader({ ...header, site: e.target.value.toUpperCase() })}
               data-testid="input-site"
             />
           </div>
@@ -370,8 +369,7 @@ export default function SiteEdit() {
             <Input
               placeholder="Engineer name"
               value={header.engineer}
-              onChange={(e) => setHeader({ ...header, engineer: e.target.value })}
-              className="uppercase"
+              onChange={(e) => setHeader({ ...header, engineer: e.target.value.toUpperCase() })}
               data-testid="input-engineer"
             />
           </div>

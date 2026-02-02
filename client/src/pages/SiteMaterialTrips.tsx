@@ -271,7 +271,7 @@ export default function SiteMaterialTrips() {
                   <Input
                     placeholder="e.g. 5.200"
                     value={newTrip.location}
-                    onChange={(e) => setNewTrip({ ...newTrip, location: e.target.value })}
+                    onChange={(e) => setNewTrip({ ...newTrip, location: e.target.value.toUpperCase() })}
                     data-testid="input-trip-location"
                   />
                 </div>
@@ -280,7 +280,7 @@ export default function SiteMaterialTrips() {
                   <Input
                     placeholder="e.g. 12345"
                     value={newTrip.receiptNumber}
-                    onChange={(e) => setNewTrip({ ...newTrip, receiptNumber: e.target.value })}
+                    onChange={(e) => setNewTrip({ ...newTrip, receiptNumber: e.target.value.toUpperCase() })}
                     data-testid="input-trip-receipt"
                   />
                 </div>

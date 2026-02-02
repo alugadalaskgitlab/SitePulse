@@ -731,7 +731,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                   <Input
                     id="stock-notes"
                     value={stockNotes}
-                    onChange={(e) => setStockNotes(e.target.value)}
+                    onChange={(e) => setStockNotes(e.target.value.toUpperCase())}
                     placeholder="Opening balance from previous period"
                     data-testid="input-stock-notes"
                   />
@@ -1033,7 +1033,7 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
                 <Textarea
                   id="template-notes"
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => setNotes(e.target.value.toUpperCase())}
                   placeholder="Additional notes..."
                   data-testid="input-template-notes"
                 />

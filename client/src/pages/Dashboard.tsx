@@ -155,7 +155,7 @@ export default function Dashboard() {
             placeholder="Filter by Site..." 
             className="pl-9"
             value={filters.site}
-            onChange={(e) => setFilters(prev => ({ ...prev, site: e.target.value }))}
+            onChange={(e) => setFilters(prev => ({ ...prev, site: e.target.value.toUpperCase() }))}
             data-testid="input-filter-site"
           />
         </div>
@@ -165,7 +165,7 @@ export default function Dashboard() {
             placeholder="Filter by Engineer..." 
             className="pl-9"
             value={filters.engineer}
-            onChange={(e) => setFilters(prev => ({ ...prev, engineer: e.target.value }))}
+            onChange={(e) => setFilters(prev => ({ ...prev, engineer: e.target.value.toUpperCase() }))}
             data-testid="input-filter-engineer"
           />
         </div>

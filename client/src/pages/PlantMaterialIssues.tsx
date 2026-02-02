@@ -486,7 +486,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Purpose</Label>
-                  <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g., Equipment fuel, Site consumption" data-testid="input-purpose" />
+                  <Input value={purpose} onChange={(e) => setPurpose(e.target.value.toUpperCase())} placeholder="e.g., Equipment fuel, Site consumption" data-testid="input-purpose" />
                 </div>
                 
                 <div>
@@ -496,7 +496,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Notes</Label>
-                  <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" data-testid="input-notes" />
+                  <Input value={notes} onChange={(e) => setNotes(e.target.value.toUpperCase())} placeholder="Additional notes" data-testid="input-notes" />
                 </div>
                 
                 <Button 
