@@ -612,6 +612,45 @@ export async function registerRoutes(
     }
   });
 
+  // Mix Types
+  app.get("/api/plant-module/mix-types", async (req, res) => {
+    try {
+      const types = await storage.getMixTypes();
+      res.json(types);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch mix types" });
+    }
+  });
+
+  app.post("/api/plant-module/mix-types", async (req, res) => {
+    try {
+      const result = await storage.createMixType(req.body);
+      res.status(201).json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create mix type" });
+    }
+  });
+
+  app.patch("/api/plant-module/mix-types/:id", async (req, res) => {
+    try {
+      const result = await storage.updateMixType(Number(req.params.id), req.body);
+      if (!result) return res.status(404).json({ message: "Mix type not found" });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update mix type" });
+    }
+  });
+
+  app.delete("/api/plant-module/mix-types/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMixType(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Mix type not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete mix type" });
+    }
+  });
+
   // Mix Templates
   app.get("/api/plant-module/mix-templates", async (req, res) => {
     try {

@@ -12,6 +12,7 @@ import {
   appSettings,
   parties,
   plantMaterials,
+  mixTypes,
   mixTemplates,
   mixTemplateComponents,
   equipmentMaster,
@@ -36,6 +37,8 @@ import {
   type InsertParty,
   type PlantMaterial,
   type InsertPlantMaterial,
+  type MixType,
+  type InsertMixType,
   type MixTemplate,
   type InsertMixTemplate,
   type MixTemplateComponent,
@@ -104,6 +107,11 @@ export interface IStorage {
   createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial>;
   updatePlantMaterial(id: number, material: Partial<InsertPlantMaterial>): Promise<PlantMaterial | undefined>;
   deletePlantMaterial(id: number): Promise<boolean>;
+  
+  getMixTypes(): Promise<MixType[]>;
+  createMixType(mixType: InsertMixType): Promise<MixType>;
+  updateMixType(id: number, mixType: Partial<InsertMixType>): Promise<MixType | undefined>;
+  deleteMixType(id: number): Promise<boolean>;
   
   getMixTemplates(): Promise<MixTemplate[]>;
   getAllMixTemplateComponents(): Promise<MixTemplateComponent[]>;
@@ -811,6 +819,29 @@ export class DatabaseStorage implements IStorage {
 
   async deletePlantMaterial(id: number): Promise<boolean> {
     const [result] = await db.update(plantMaterials).set({ isActive: 0 }).where(eq(plantMaterials.id, id)).returning();
+    return !!result;
+  }
+
+  // Mix Types
+  async getMixTypes(): Promise<MixType[]> {
+    return db.select().from(mixTypes).where(eq(mixTypes.isActive, 1)).orderBy(asc(mixTypes.name));
+  }
+
+  async createMixType(mixType: InsertMixType): Promise<MixType> {
+    const uppercased = { ...mixType, name: mixType.name.toUpperCase() };
+    const [result] = await db.insert(mixTypes).values(uppercased).returning();
+    return result;
+  }
+
+  async updateMixType(id: number, mixType: Partial<InsertMixType>): Promise<MixType | undefined> {
+    const updates = { ...mixType };
+    if (updates.name) updates.name = updates.name.toUpperCase();
+    const [result] = await db.update(mixTypes).set(updates).where(eq(mixTypes.id, id)).returning();
+    return result;
+  }
+
+  async deleteMixType(id: number): Promise<boolean> {
+    const [result] = await db.update(mixTypes).set({ isActive: 0 }).where(eq(mixTypes.id, id)).returning();
     return !!result;
   }
 
