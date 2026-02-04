@@ -1419,6 +1419,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: mixTemplates } = useQuery<MixTemplate[]>({ queryKey: ["/api/plant-module/mix-templates"] });
   const { data: mixTypes } = useQuery<MixType[]>({ queryKey: ["/api/plant-module/mix-types"] });
+  const { data: equipmentMasterList } = useQuery<EquipmentMasterType[]>({ queryKey: ["/api/plant-module/equipment"] });
 
   // KPI filtered data (only by KPI date range)
   const kpiFilteredDispatches = dispatches?.filter((d) => {
@@ -1470,6 +1471,87 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   }, 0);
   const totalHoursRun = kpiFilteredEquipment.reduce((sum, e) => sum + (e.hoursOrKmRun || 0), 0);
   const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(2) : "N/A";
+
+  // Helper: Parse KVA from equipment name (e.g., "GENERATOR 30 KVA" -> 30)
+  const parseKvaFromName = (name: string): number | null => {
+    const match = name?.toUpperCase().match(/(\d+)\s*KVA/);
+    return match ? parseInt(match[1], 10) : null;
+  };
+
+  // Calculate generator efficiency by capacity group and per-generator
+  const generatorEfficiencyData = (() => {
+    // Filter to only generators
+    const generators = kpiFilteredEquipment.filter(e => {
+      const eqItem = equipmentMasterList?.find((eq: EquipmentMasterType) => eq.id === e.equipmentId);
+      const eqName = eqItem?.name || "";
+      return eqName.toUpperCase().includes("GENERATOR") || eqName.toUpperCase().includes("DG SET");
+    });
+
+    // Group by generator with aggregated stats
+    const perGeneratorMap = new Map<number, { 
+      name: string; 
+      kva: number | null;
+      totalDiesel: number; 
+      totalHours: number; 
+      entries: number;
+    }>();
+
+    generators.forEach(e => {
+      const eqItem = equipmentMasterList?.find((eq: EquipmentMasterType) => eq.id === e.equipmentId);
+      const equipmentName = eqItem?.name || `EQUIPMENT ${e.equipmentId}`;
+      const kva = parseKvaFromName(equipmentName);
+      
+      const opening = e.openingDiesel || 0;
+      const issued = e.dieselIssued || 0;
+      const closing = e.closingDiesel;
+      const actualConsumed = closing != null ? (opening + issued - closing) : (e.expectedDiesel || 0);
+      const hours = e.hoursOrKmRun || 0;
+
+      if (perGeneratorMap.has(e.equipmentId)) {
+        const existing = perGeneratorMap.get(e.equipmentId)!;
+        existing.totalDiesel += Math.max(0, actualConsumed);
+        existing.totalHours += hours;
+        existing.entries += 1;
+      } else {
+        perGeneratorMap.set(e.equipmentId, {
+          name: equipmentName.toUpperCase(),
+          kva,
+          totalDiesel: Math.max(0, actualConsumed),
+          totalHours: hours,
+          entries: 1,
+        });
+      }
+    });
+
+    // Convert to array with efficiency calculated
+    const perGenerator = Array.from(perGeneratorMap.values()).map(g => ({
+      ...g,
+      efficiency: g.totalHours > 0 ? g.totalDiesel / g.totalHours : null,
+    }));
+
+    // Group by capacity: Small (≤100 KVA) vs Large (>100 KVA)
+    const smallGenerators = perGenerator.filter(g => g.kva !== null && g.kva <= 100);
+    const largeGenerators = perGenerator.filter(g => g.kva !== null && g.kva > 100);
+    const unknownGenerators = perGenerator.filter(g => g.kva === null);
+
+    const calcGroupStats = (group: typeof perGenerator) => {
+      const totalDiesel = group.reduce((sum, g) => sum + g.totalDiesel, 0);
+      const totalHours = group.reduce((sum, g) => sum + g.totalHours, 0);
+      return {
+        totalDiesel,
+        totalHours,
+        efficiency: totalHours > 0 ? totalDiesel / totalHours : null,
+        generators: group,
+      };
+    };
+
+    return {
+      small: calcGroupStats(smallGenerators),
+      large: calcGroupStats(largeGenerators),
+      unknown: calcGroupStats(unknownGenerators),
+      all: perGenerator,
+    };
+  })();
 
   const theoreticalVsActual = {
     bitumen: { theoretical: 0, actual: 0 },
@@ -1881,9 +1963,51 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">GENERATOR EFFICIENCY</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dieselEfficiency} L/HR</div>
-            <p className="text-xs text-muted-foreground">{totalDieselConsumed.toFixed(0)}L / {totalHoursRun.toFixed(1)} HRS</p>
+          <CardContent className="space-y-3">
+            {/* Small Generators (≤100 KVA) */}
+            {generatorEfficiencyData.small.generators.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1">SMALL (≤100 KVA)</div>
+                <div className="text-lg font-bold">
+                  {generatorEfficiencyData.small.efficiency?.toFixed(2) || "N/A"} L/HR
+                </div>
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                  {generatorEfficiencyData.small.generators.map((g, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="truncate max-w-[120px]">{g.name}</span>
+                      <span className="font-medium">{g.efficiency?.toFixed(2) || "N/A"} L/HR</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Large Generators (>100 KVA) */}
+            {generatorEfficiencyData.large.generators.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1">LARGE (&gt;100 KVA)</div>
+                <div className="text-lg font-bold">
+                  {generatorEfficiencyData.large.efficiency?.toFixed(2) || "N/A"} L/HR
+                </div>
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                  {generatorEfficiencyData.large.generators.map((g, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="truncate max-w-[120px]">{g.name}</span>
+                      <span className="font-medium">{g.efficiency?.toFixed(2) || "N/A"} L/HR</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Fallback if no generators found */}
+            {generatorEfficiencyData.all.length === 0 && (
+              <div className="text-lg font-bold text-muted-foreground">NO DATA</div>
+            )}
+            {/* Summary */}
+            {generatorEfficiencyData.all.length > 0 && (
+              <div className="pt-2 border-t text-xs text-muted-foreground">
+                Total: {(generatorEfficiencyData.small.totalDiesel + generatorEfficiencyData.large.totalDiesel).toFixed(0)}L / {(generatorEfficiencyData.small.totalHours + generatorEfficiencyData.large.totalHours).toFixed(1)} HRS
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1904,8 +2028,8 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             <CardTitle className="text-xs font-medium text-muted-foreground">BITUMEN CONSUMED</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(totalBitumenConsumed / 1000).toFixed(2)} MT</div>
-            <p className="text-xs text-muted-foreground">{totalBitumenConsumed.toFixed(0)} KG</p>
+            <div className="text-2xl font-bold">{totalBitumenConsumed.toFixed(2)} MT</div>
+            <p className="text-xs text-muted-foreground">{(totalBitumenConsumed * 1000).toFixed(0)} KG</p>
           </CardContent>
         </Card>
       </div>
