@@ -61,6 +61,7 @@ Preferred communication style: Simple, everyday language.
   - For odometer equipment using time entry: hours are converted to km using 25 km/hr average speed
 - **Diesel Efficiency**: Plant equipment efficiency (L/hr or L/km) is tracked and compared against norms, with actual vs. expected diesel calculations.
 - **Material Issues for Diesel**: Only used for non-equipment diesel transfers (issuing to sites, generators, etc.). These still deduct from HLC stock but are NOT linked to equipment consumption.
+- **DPR Equipment Log Diesel Tracking**: When DPR equipment logs record `direct_purchase` diesel, a stock_ledger entry is created for procurement reporting (quantityIn=quantityOut, balanceAfter=null, no stock impact). `plant_stock` diesel from DPRs is NOT tracked in the ledger (Plant Equipment Usage is the single source of truth for stock deductions). Uses negative referenceId convention (-equipmentLogId) to distinguish from Plant module entries (positive IDs). Ledger entries are automatically cleaned up on DPR edit/delete.
 
 ### UI/UX & Features
 - **UI Enhancements**: shadcn/ui components, responsive design.
