@@ -50,6 +50,10 @@ export default function PlantDispatches() {
   const [loadWeight, setLoadWeight] = useState("");
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
+  const [actualLdoQty, setActualLdoQty] = useState("");
+  
+  // Tolerance constant (±10%)
+  const TOLERANCE_PERCENT = 10;
 
   interface DispatchFormData {
     date: string;
@@ -60,11 +64,12 @@ export default function PlantDispatches() {
     loadWeight: string;
     deliveryLocation: string;
     actualBitumenPercent: string;
+    actualLdoQty: string;
   }
 
   const formData = useMemo<DispatchFormData>(() => ({
-    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent
-  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent]);
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoQty
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoQty]);
 
   const handleRestoreDraft = useCallback((data: DispatchFormData) => {
     setDate(data.date);
@@ -75,6 +80,7 @@ export default function PlantDispatches() {
     setLoadWeight(data.loadWeight);
     setDeliveryLocation(data.deliveryLocation);
     setActualBitumenPercent(data.actualBitumenPercent);
+    setActualLdoQty(data.actualLdoQty || "");
   }, []);
 
   const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
@@ -149,6 +155,7 @@ export default function PlantDispatches() {
     setLoadWeight("");
     setDeliveryLocation("");
     setActualBitumenPercent("");
+    setActualLdoQty("");
     setEditingDispatch(null);
   };
 
@@ -162,11 +169,79 @@ export default function PlantDispatches() {
     setLoadWeight(String(dispatch.loadWeight));
     setDeliveryLocation(dispatch.deliveryLocation || "");
     setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
+    setActualLdoQty(dispatch.actualLdoQty ? String(dispatch.actualLdoQty) : "");
     setDialogOpen(true);
   };
 
+  // Calculate theoretical values for validation
+  const theoreticalValues = useMemo(() => {
+    const template = templates?.find(t => t.id === parseInt(mixTemplateId));
+    const weight = parseFloat(loadWeight) || 0;
+    if (!template || !weight) return null;
+    
+    const bitumenPercent = template.bitumenPercent || 0;
+    const ldoNorm = template.ldoNorm || 6;
+    const theoreticalBitumenQty = (weight * bitumenPercent) / 100;
+    const theoreticalLdoQty = weight * ldoNorm;
+    
+    return {
+      bitumenPercent,
+      bitumenQty: theoreticalBitumenQty,
+      ldoQty: theoreticalLdoQty,
+      ldoNorm,
+    };
+  }, [templates, mixTemplateId, loadWeight]);
+  
+  // Validate actual values against tolerance
+  const validationStatus = useMemo(() => {
+    if (!theoreticalValues) return { bitumen: "ok", ldo: "ok" };
+    
+    const result = { bitumen: "ok" as "ok" | "warning" | "error", ldo: "ok" as "ok" | "warning" | "error" };
+    
+    // Check bitumen (guard against divide-by-zero)
+    if (actualBitumenPercent && theoreticalValues.bitumenPercent > 0) {
+      const actualPercent = parseFloat(actualBitumenPercent);
+      const variance = ((actualPercent - theoreticalValues.bitumenPercent) / theoreticalValues.bitumenPercent) * 100;
+      if (!isNaN(variance)) {
+        if (Math.abs(variance) > TOLERANCE_PERCENT) {
+          result.bitumen = "error";
+        } else if (Math.abs(variance) > 5) {
+          result.bitumen = "warning";
+        }
+      }
+    }
+    
+    // Check LDO (guard against divide-by-zero)
+    if (actualLdoQty && theoreticalValues.ldoQty > 0) {
+      const actualLdo = parseFloat(actualLdoQty);
+      const variance = ((actualLdo - theoreticalValues.ldoQty) / theoreticalValues.ldoQty) * 100;
+      if (!isNaN(variance)) {
+        if (Math.abs(variance) > TOLERANCE_PERCENT) {
+          result.ldo = "error";
+        } else if (Math.abs(variance) > 5) {
+          result.ldo = "warning";
+        }
+      }
+    }
+    
+    return result;
+  }, [theoreticalValues, actualBitumenPercent, actualLdoQty, TOLERANCE_PERCENT]);
+  
+  // Check if values exceed tolerance (block submission)
+  const hasToleranceError = validationStatus.bitumen === "error" || validationStatus.ldo === "error";
+
   const handleSubmit = () => {
     if (!partyId || !mixTemplateId || !truckNumber || !loadWeight) return;
+    
+    // Block submission if actual values exceed tolerance
+    if (hasToleranceError) {
+      toast({
+        title: "Tolerance Exceeded",
+        description: "Actual consumption values must be within ±10% of theoretical. Please adjust or contact admin.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (editingDispatch) {
       updateMutation.mutate({
@@ -180,6 +255,7 @@ export default function PlantDispatches() {
           loadWeight: parseFloat(loadWeight),
           deliveryLocation: deliveryLocation.toUpperCase(),
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
+          actualLdoQty: actualLdoQty ? parseFloat(actualLdoQty) : null,
         }
       });
     } else {
@@ -192,6 +268,7 @@ export default function PlantDispatches() {
         loadWeight: parseFloat(loadWeight),
         deliveryLocation: deliveryLocation.toUpperCase(),
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
+        actualLdoQty: actualLdoQty ? parseFloat(actualLdoQty) : null,
       });
     }
   };
@@ -639,19 +716,73 @@ export default function PlantDispatches() {
                 <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value.toUpperCase())} placeholder="Site/chainage" data-testid="input-delivery-location" />
               </div>
 
-              {editingDispatch && (
-                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Lock className="w-4 h-4 text-amber-600" />
-                    <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Manager/Admin Only</span>
+              {/* Theoretical Values Display */}
+              {theoreticalValues && (
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <p className="text-sm font-medium mb-2">Theoretical Consumption (from mix formula)</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>Bitumen: <span className="font-mono">{theoreticalValues.bitumenPercent}%</span> = <span className="font-mono">{theoreticalValues.bitumenQty.toFixed(3)} MT</span></div>
+                    <div>LDO: <span className="font-mono">{theoreticalValues.ldoNorm} L/MT</span> = <span className="font-mono">{theoreticalValues.ldoQty.toFixed(1)} L</span></div>
                   </div>
-                  <Label>Actual Bitumen % (for analysis)</Label>
-                  <Input type="number" step="0.1" value={actualBitumenPercent} onChange={(e) => setActualBitumenPercent(e.target.value)} placeholder="Leave blank to use theoretical" data-testid="input-actual-bitumen" />
-                  <p className="text-xs text-muted-foreground mt-1">Stock deduction always uses theoretical values. This is for savings analysis only.</p>
                 </div>
               )}
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight} data-testid="button-save-dispatch">
+              {editingDispatch && (
+                <div className={`p-3 rounded-lg border ${hasToleranceError ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Actual Consumption (Manager/Admin)</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label>Actual Bitumen %</Label>
+                        {validationStatus.bitumen !== "ok" && (
+                          <Badge variant={validationStatus.bitumen === "error" ? "destructive" : "secondary"} className="text-xs">
+                            {validationStatus.bitumen === "error" ? "Exceeds ±10%" : "Variance"}
+                          </Badge>
+                        )}
+                      </div>
+                      <Input 
+                        type="number" 
+                        step="0.1" 
+                        value={actualBitumenPercent} 
+                        onChange={(e) => setActualBitumenPercent(e.target.value)} 
+                        placeholder={theoreticalValues ? `Theoretical: ${theoreticalValues.bitumenPercent}%` : "Leave blank to use theoretical"} 
+                        className={validationStatus.bitumen === "error" ? "border-red-500" : validationStatus.bitumen === "warning" ? "border-amber-500" : ""}
+                        data-testid="input-actual-bitumen" 
+                      />
+                    </div>
+                    
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label>Actual LDO (Liters)</Label>
+                        {validationStatus.ldo !== "ok" && (
+                          <Badge variant={validationStatus.ldo === "error" ? "destructive" : "secondary"} className="text-xs">
+                            {validationStatus.ldo === "error" ? "Exceeds ±10%" : "Variance"}
+                          </Badge>
+                        )}
+                      </div>
+                      <Input 
+                        type="number" 
+                        step="1" 
+                        value={actualLdoQty} 
+                        onChange={(e) => setActualLdoQty(e.target.value)} 
+                        placeholder={theoreticalValues ? `Theoretical: ${theoreticalValues.ldoQty.toFixed(1)} L` : "Leave blank to use theoretical"} 
+                        className={validationStatus.ldo === "error" ? "border-red-500" : validationStatus.ldo === "warning" ? "border-amber-500" : ""}
+                        data-testid="input-actual-ldo" 
+                      />
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Tolerance: ±{TOLERANCE_PERCENT}% from theoretical. Stock deduction uses theoretical values. Adjustments are logged for audit.
+                  </p>
+                </div>
+              )}
+
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight || hasToleranceError} data-testid="button-save-dispatch">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingDispatch ? "Update Dispatch" : "Save Dispatch"}
               </Button>
             </div>

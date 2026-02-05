@@ -68,7 +68,11 @@ import {
   type InsertAdminNotification,
   type SiteMaterialTrip,
   type InsertSiteMaterialTrip,
-  DEFAULT_LDO_NORM
+  consumptionAuditLog,
+  type ConsumptionAuditLog,
+  type InsertConsumptionAuditLog,
+  DEFAULT_LDO_NORM,
+  CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, notInArray, sql, asc, isNull } from "drizzle-orm";
 import { format } from "date-fns";
@@ -133,7 +137,7 @@ export interface IStorage {
   
   getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
   createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch>;
-  updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>): Promise<TruckDispatch | undefined>;
+  updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>, adjustedBy?: string): Promise<TruckDispatch | undefined>;
   deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
@@ -208,6 +212,13 @@ export interface IStorage {
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
+  
+  // Consumption Audit Log
+  getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]>;
+  createConsumptionAuditEntry(data: InsertConsumptionAuditLog): Promise<ConsumptionAuditLog>;
+  
+  // Dispatch Variance Report
+  getDispatchesWithVariance(filters?: { dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -1190,38 +1201,98 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>): Promise<TruckDispatch | undefined> {
-    // Get current dispatch to always recompute theoretical values from latest template data
-    const [currentDispatch] = await db.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
-    if (!currentDispatch) return undefined;
+  async updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>, adjustedBy?: string): Promise<TruckDispatch | undefined> {
+    return db.transaction(async (tx) => {
+      // Get current dispatch to always recompute theoretical values from latest template data
+      const [currentDispatch] = await tx.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
+      if (!currentDispatch) return undefined;
 
-    const uppercased: any = {
-      ...dispatch,
-      truckNumber: dispatch.truckNumber?.toUpperCase(),
-      deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
-    };
+      const uppercased: any = {
+        ...dispatch,
+        truckNumber: dispatch.truckNumber?.toUpperCase(),
+        deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
+      };
 
-    // Always recompute theoretical values from the mix template (use new values if provided, otherwise current)
-    const mixTemplateId = dispatch.mixTemplateId ?? currentDispatch.mixTemplateId;
-    const loadWeight = dispatch.loadWeight ?? currentDispatch.loadWeight;
+      // Always recompute theoretical values from the mix template (use new values if provided, otherwise current)
+      const mixTemplateId = dispatch.mixTemplateId ?? currentDispatch.mixTemplateId;
+      const loadWeight = dispatch.loadWeight ?? currentDispatch.loadWeight;
+      
+      let theoreticalBitumenQty = currentDispatch.theoreticalBitumenQty || 0;
+      let theoreticalLdoQty = currentDispatch.theoreticalLdoQty || 0;
 
-    if (mixTemplateId && loadWeight) {
-      const [template] = await db.select().from(mixTemplates).where(eq(mixTemplates.id, mixTemplateId)).limit(1);
-      if (template) {
-        const bitumenPercent = template.bitumenPercent || 0;
-        const ldoNorm = template.ldoNorm || 6;
-        // Always set these computed values on every update
-        uppercased.theoreticalBitumenPercent = bitumenPercent;
-        uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
-        uppercased.theoreticalLdoQty = loadWeight * ldoNorm;
+      if (mixTemplateId && loadWeight) {
+        const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, mixTemplateId)).limit(1);
+        if (template) {
+          const bitumenPercent = template.bitumenPercent || 0;
+          const ldoNorm = template.ldoNorm || 6;
+          // Always set these computed values on every update
+          uppercased.theoreticalBitumenPercent = bitumenPercent;
+          uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
+          uppercased.theoreticalLdoQty = loadWeight * ldoNorm;
+          theoreticalBitumenQty = uppercased.theoreticalBitumenQty;
+          theoreticalLdoQty = uppercased.theoreticalLdoQty;
+        }
       }
-    }
-    
-    const [result] = await db.update(truckDispatches)
-      .set(uppercased)
-      .where(eq(truckDispatches.id, id))
-      .returning();
-    return result;
+      
+      // Calculate actual values
+      const newActualBitumenQty = dispatch.actualBitumenQty ?? currentDispatch.actualBitumenQty ?? theoreticalBitumenQty;
+      const newActualLdoQty = dispatch.actualLdoQty ?? currentDispatch.actualLdoQty ?? theoreticalLdoQty;
+      
+      // Calculate variance percentages
+      const bitumenVariancePercent = theoreticalBitumenQty > 0 
+        ? ((newActualBitumenQty - theoreticalBitumenQty) / theoreticalBitumenQty) * 100 
+        : 0;
+      const ldoVariancePercent = theoreticalLdoQty > 0 
+        ? ((newActualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100 
+        : 0;
+      
+      // Update variance fields
+      uppercased.bitumenVariancePercent = Math.abs(bitumenVariancePercent) > 0.01 ? bitumenVariancePercent : null;
+      uppercased.ldoVariancePercent = Math.abs(ldoVariancePercent) > 0.01 ? ldoVariancePercent : null;
+      
+      // Check if actual consumption changed from previous values
+      const bitumenChanged = dispatch.actualBitumenQty !== undefined && 
+                            dispatch.actualBitumenQty !== currentDispatch.actualBitumenQty;
+      const ldoChanged = dispatch.actualLdoQty !== undefined && 
+                        dispatch.actualLdoQty !== currentDispatch.actualLdoQty;
+      
+      if (bitumenChanged || ldoChanged) {
+        uppercased.adjustedBy = adjustedBy || "operator";
+        uppercased.adjustedAt = new Date();
+      }
+      
+      const [result] = await tx.update(truckDispatches)
+        .set(uppercased)
+        .where(eq(truckDispatches.id, id))
+        .returning();
+      
+      // Create audit log entries for changed consumption values
+      if (bitumenChanged && Math.abs(bitumenVariancePercent) > 0.01) {
+        await tx.insert(consumptionAuditLog).values({
+          dispatchId: id,
+          adjustmentType: "bitumen",
+          previousValue: currentDispatch.actualBitumenQty || currentDispatch.theoreticalBitumenQty,
+          newValue: newActualBitumenQty,
+          theoreticalValue: theoreticalBitumenQty,
+          variancePercent: bitumenVariancePercent,
+          adjustedBy: adjustedBy || "operator",
+        });
+      }
+      
+      if (ldoChanged && Math.abs(ldoVariancePercent) > 0.01) {
+        await tx.insert(consumptionAuditLog).values({
+          dispatchId: id,
+          adjustmentType: "ldo",
+          previousValue: currentDispatch.actualLdoQty || currentDispatch.theoreticalLdoQty,
+          newValue: newActualLdoQty,
+          theoreticalValue: theoreticalLdoQty,
+          variancePercent: ldoVariancePercent,
+          adjustedBy: adjustedBy || "operator",
+        });
+      }
+      
+      return result;
+    });
   }
 
   async deleteTruckDispatch(id: number): Promise<boolean> {
@@ -1970,7 +2041,25 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Create the dispatch record with actual = theoretical by default
+      // Calculate actual values (use provided or default to theoretical)
+      const actualBitumenPercent = dispatch.actualBitumenPercent ?? theoreticalBitumenPercent;
+      const actualBitumenQty = dispatch.actualBitumenQty ?? theoreticalBitumenQty;
+      const actualLdoQty = dispatch.actualLdoQty ?? theoreticalLdoQty;
+      
+      // Calculate variance percentages (if actual differs from theoretical)
+      const bitumenVariancePercent = theoreticalBitumenQty > 0 
+        ? ((actualBitumenQty - theoreticalBitumenQty) / theoreticalBitumenQty) * 100 
+        : 0;
+      const ldoVariancePercent = theoreticalLdoQty > 0 
+        ? ((actualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100 
+        : 0;
+      
+      // Check if user provided actual values different from theoretical
+      const hasAdjustment = (dispatch.actualBitumenPercent !== undefined && dispatch.actualBitumenPercent !== null) ||
+                           (dispatch.actualBitumenQty !== undefined && dispatch.actualBitumenQty !== null) ||
+                           (dispatch.actualLdoQty !== undefined && dispatch.actualLdoQty !== null);
+      
+      // Create the dispatch record with variance tracking
       const [result] = await tx.insert(truckDispatches).values({
         ...dispatch,
         truckNumber: dispatch.truckNumber.toUpperCase(),
@@ -1979,13 +2068,41 @@ export class DatabaseStorage implements IStorage {
         theoreticalBitumenQty,
         theoreticalLdoQty,
         theoreticalAggregates: JSON.stringify(theoreticalAggregates),
-        // Set actual = theoretical by default (user can override later)
-        actualBitumenPercent: dispatch.actualBitumenPercent ?? theoreticalBitumenPercent,
-        actualBitumenQty: dispatch.actualBitumenQty ?? theoreticalBitumenQty,
-        actualLdoQty: dispatch.actualLdoQty ?? theoreticalLdoQty,
+        actualBitumenPercent,
+        actualBitumenQty,
+        actualLdoQty,
+        bitumenVariancePercent: Math.abs(bitumenVariancePercent) > 0.01 ? bitumenVariancePercent : null,
+        ldoVariancePercent: Math.abs(ldoVariancePercent) > 0.01 ? ldoVariancePercent : null,
+        adjustedBy: hasAdjustment ? "operator" : null,
+        adjustedAt: hasAdjustment ? new Date() : null,
         stockDeducted: 1,
         shortageWarning: shortages.length ? JSON.stringify(shortages) : null,
       }).returning();
+      
+      // Create audit log entries if actual differs from theoretical
+      if (hasAdjustment && Math.abs(bitumenVariancePercent) > 0.01) {
+        await tx.insert(consumptionAuditLog).values({
+          dispatchId: result.id,
+          adjustmentType: "bitumen",
+          previousValue: theoreticalBitumenQty,
+          newValue: actualBitumenQty,
+          theoreticalValue: theoreticalBitumenQty,
+          variancePercent: bitumenVariancePercent,
+          adjustedBy: "operator",
+        });
+      }
+      
+      if (hasAdjustment && Math.abs(ldoVariancePercent) > 0.01) {
+        await tx.insert(consumptionAuditLog).values({
+          dispatchId: result.id,
+          adjustmentType: "ldo",
+          previousValue: theoreticalLdoQty,
+          newValue: actualLdoQty,
+          theoreticalValue: theoreticalLdoQty,
+          variancePercent: ldoVariancePercent,
+          adjustedBy: "operator",
+        });
+      }
       
       return { dispatch: result, shortages };
     });
@@ -2767,6 +2884,37 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSiteMaterialTrip(id: number): Promise<void> {
     await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
+  }
+
+  // Consumption Audit Log
+  async getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]> {
+    let conditions = [];
+    if (filters?.dispatchId) conditions.push(eq(consumptionAuditLog.dispatchId, filters.dispatchId));
+    if (filters?.dateFrom) conditions.push(gte(consumptionAuditLog.createdAt, new Date(filters.dateFrom)));
+    if (filters?.dateTo) conditions.push(lte(consumptionAuditLog.createdAt, new Date(filters.dateTo + "T23:59:59")));
+    
+    return db.select().from(consumptionAuditLog)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(consumptionAuditLog.createdAt));
+  }
+
+  async createConsumptionAuditEntry(data: InsertConsumptionAuditLog): Promise<ConsumptionAuditLog> {
+    const [result] = await db.insert(consumptionAuditLog).values(data).returning();
+    return result;
+  }
+
+  // Get dispatches with actual consumption differing from theoretical (variance report)
+  async getDispatchesWithVariance(filters?: { dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]> {
+    let conditions = [
+      sql`(${truckDispatches.bitumenVariancePercent} IS NOT NULL AND ${truckDispatches.bitumenVariancePercent} != 0)
+          OR (${truckDispatches.ldoVariancePercent} IS NOT NULL AND ${truckDispatches.ldoVariancePercent} != 0)`
+    ];
+    if (filters?.dateFrom) conditions.push(gte(truckDispatches.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(truckDispatches.date, filters.dateTo));
+    
+    return db.select().from(truckDispatches)
+      .where(and(...conditions))
+      .orderBy(desc(truckDispatches.date), desc(truckDispatches.id));
   }
 }
 

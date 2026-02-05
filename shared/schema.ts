@@ -250,6 +250,11 @@ export const truckDispatches = pgTable("truck_dispatches", {
   stockDeducted: integer("stock_deducted").default(0), // 1=deducted, 0=pending
   deductionSource: text("deduction_source"), // "party" or "plant_common" or "mixed"
   shortageWarning: text("shortage_warning"), // JSON array of materials with shortage
+  // Variance tracking for audit
+  bitumenVariancePercent: real("bitumen_variance_percent"), // (actual - theoretical) / theoretical * 100
+  ldoVariancePercent: real("ldo_variance_percent"),
+  adjustedBy: text("adjusted_by"), // "operator" or role who made the adjustment
+  adjustedAt: timestamp("adjusted_at"), // When actual was changed from theoretical
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -555,3 +560,27 @@ export const adminNotifications = pgTable("admin_notifications", {
 export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
 export type AdminNotification = typeof adminNotifications.$inferSelect;
 export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;
+
+// ============================================
+// CONSUMPTION ADJUSTMENT AUDIT LOG
+// ============================================
+
+export const consumptionAuditLog = pgTable("consumption_audit_log", {
+  id: serial("id").primaryKey(),
+  dispatchId: integer("dispatch_id").notNull(), // Reference to truck_dispatches
+  adjustmentType: text("adjustment_type").notNull(), // "bitumen" or "ldo"
+  previousValue: real("previous_value"), // Value before adjustment
+  newValue: real("new_value").notNull(), // Value after adjustment
+  theoreticalValue: real("theoretical_value").notNull(), // Expected value from formula
+  variancePercent: real("variance_percent").notNull(), // Deviation from theoretical
+  adjustedBy: text("adjusted_by").notNull(), // Role who made the change (operator/manager/admin)
+  reason: text("reason"), // Optional reason for adjustment
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertConsumptionAuditLogSchema = createInsertSchema(consumptionAuditLog).omit({ id: true, createdAt: true });
+export type ConsumptionAuditLog = typeof consumptionAuditLog.$inferSelect;
+export type InsertConsumptionAuditLog = z.infer<typeof insertConsumptionAuditLogSchema>;
+
+// Tolerance constant for consumption validation (±10%)
+export const CONSUMPTION_TOLERANCE_PERCENT = 10;

@@ -965,7 +965,46 @@ export async function registerRoutes(
   app.put("/api/plant-module/dispatches/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updated = await storage.updateTruckDispatch(id, req.body);
+      const { adjustedBy, ...dispatchData } = req.body;
+      
+      // Server-side tolerance validation for actual consumption values
+      const TOLERANCE_PERCENT = 10;
+      if (dispatchData.actualBitumenPercent !== undefined || dispatchData.actualLdoQty !== undefined) {
+        // Get current dispatch and mix template to calculate theoretical
+        const dispatches = await storage.getTruckDispatches({});
+        const currentDispatch = dispatches.find(d => d.id === id);
+        if (currentDispatch) {
+          const templates = await storage.getMixTemplates();
+          const template = templates.find(t => t.id === currentDispatch.mixTemplateId);
+          if (template) {
+            const loadWeight = dispatchData.loadWeight ?? currentDispatch.loadWeight;
+            const theoreticalBitumenPercent = template.bitumenPercent || 0;
+            const theoreticalLdoQty = loadWeight * (template.ldoNorm || 6);
+            
+            // Validate bitumen tolerance (guard against divide-by-zero)
+            if (dispatchData.actualBitumenPercent !== undefined && theoreticalBitumenPercent > 0) {
+              const bitumenVariance = ((dispatchData.actualBitumenPercent - theoreticalBitumenPercent) / theoreticalBitumenPercent) * 100;
+              if (Math.abs(bitumenVariance) > TOLERANCE_PERCENT) {
+                return res.status(400).json({ 
+                  message: `Bitumen variance (${bitumenVariance.toFixed(1)}%) exceeds ±${TOLERANCE_PERCENT}% tolerance. Please contact admin.` 
+                });
+              }
+            }
+            
+            // Validate LDO tolerance (guard against divide-by-zero)
+            if (dispatchData.actualLdoQty !== undefined && theoreticalLdoQty > 0) {
+              const ldoVariance = ((dispatchData.actualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100;
+              if (Math.abs(ldoVariance) > TOLERANCE_PERCENT) {
+                return res.status(400).json({ 
+                  message: `LDO variance (${ldoVariance.toFixed(1)}%) exceeds ±${TOLERANCE_PERCENT}% tolerance. Please contact admin.` 
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      const updated = await storage.updateTruckDispatch(id, dispatchData, adjustedBy || "operator");
       if (!updated) {
         return res.status(404).json({ message: "Dispatch not found" });
       }
@@ -998,6 +1037,37 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Recalculate dispatches error:", err);
       res.status(500).json({ message: "Failed to recalculate dispatches" });
+    }
+  });
+  
+  // Variance Report - dispatches where actual differs from theoretical
+  app.get("/api/plant-module/dispatches/variance-report", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const dispatches = await storage.getDispatchesWithVariance(filters);
+      res.json(dispatches);
+    } catch (err) {
+      console.error("Variance report error:", err);
+      res.status(500).json({ message: "Failed to fetch variance report" });
+    }
+  });
+  
+  // Consumption Audit Log
+  app.get("/api/plant-module/consumption-audit-log", async (req, res) => {
+    try {
+      const filters = {
+        dispatchId: req.query.dispatchId ? Number(req.query.dispatchId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const auditLog = await storage.getConsumptionAuditLog(filters);
+      res.json(auditLog);
+    } catch (err) {
+      console.error("Consumption audit log error:", err);
+      res.status(500).json({ message: "Failed to fetch consumption audit log" });
     }
   });
 

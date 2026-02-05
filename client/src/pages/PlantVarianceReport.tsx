@@ -1,0 +1,267 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
+import { ChevronLeft, AlertTriangle, TrendingUp, TrendingDown, FileWarning, Lock } from "lucide-react";
+import { format } from "date-fns";
+import { PinAuth } from "@/components/PinAuth";
+import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
+
+export default function PlantVarianceReport() {
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
+  
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
+  // All hooks must be called before any conditional returns
+  const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
+    queryKey: ["/api/plant-module/dispatches/variance-report", filterDateFrom, filterDateTo],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filterDateFrom) params.append("dateFrom", filterDateFrom);
+      if (filterDateTo) params.append("dateTo", filterDateTo);
+      const res = await fetch(`/api/plant-module/dispatches/variance-report?${params}`);
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  const { data: parties } = useQuery<Party[]>({
+    queryKey: ["/api/plant-module/parties"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: templates } = useQuery<MixTemplate[]>({
+    queryKey: ["/api/plant-module/mix-templates"],
+    enabled: isAuthenticated,
+  });
+  
+  // Require PIN authentication before showing content
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background p-4 flex flex-col items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+            </div>
+            <CardTitle>Variance Report Access</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">Enter Admin PIN to view variance report</p>
+          </CardHeader>
+          <CardContent>
+            <PinAuth
+              targetRole="admin"
+              onSuccess={() => setIsAuthenticated(true)}
+              onClose={() => window.history.back()}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
+  const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
+
+  const formatVariance = (variance: number | null) => {
+    if (variance === null || variance === undefined) return null;
+    const sign = variance > 0 ? "+" : "";
+    return `${sign}${variance.toFixed(1)}%`;
+  };
+
+  const getVarianceBadge = (variance: number | null) => {
+    if (variance === null || variance === undefined) return null;
+    const absVariance = Math.abs(variance);
+    
+    if (absVariance > 10) {
+      return <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" /> {formatVariance(variance)}</Badge>;
+    } else if (absVariance > 5) {
+      return <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">{formatVariance(variance)}</Badge>;
+    } else {
+      return <Badge variant="outline" className="gap-1">{formatVariance(variance)}</Badge>;
+    }
+  };
+
+  const summaryStats = dispatches ? {
+    totalEntries: dispatches.length,
+    bitumenOveruse: dispatches.filter(d => (d.bitumenVariancePercent || 0) > 0).length,
+    bitumenUnderuse: dispatches.filter(d => (d.bitumenVariancePercent || 0) < 0).length,
+    ldoOveruse: dispatches.filter(d => (d.ldoVariancePercent || 0) > 0).length,
+    ldoUnderuse: dispatches.filter(d => (d.ldoVariancePercent || 0) < 0).length,
+    avgBitumenVariance: dispatches.length > 0 
+      ? dispatches.reduce((sum, d) => sum + (d.bitumenVariancePercent || 0), 0) / dispatches.length 
+      : 0,
+    avgLdoVariance: dispatches.length > 0 
+      ? dispatches.reduce((sum, d) => sum + (d.ldoVariancePercent || 0), 0) / dispatches.length 
+      : 0,
+  } : null;
+
+  return (
+    <div className="min-h-screen bg-background p-4 space-y-6">
+      <div className="flex items-center gap-4">
+        <Link href={backLink}>
+          <Button variant="ghost" size="icon" data-testid="button-back">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <FileWarning className="w-6 h-6 text-amber-600" />
+            Consumption Variance Report
+          </h1>
+          <p className="text-muted-foreground">Dispatches where actual consumption differs from theoretical</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                data-testid="input-filter-date-from"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                data-testid="input-filter-date-to"
+              />
+            </div>
+            <div className="col-span-2 flex items-end">
+              <Button variant="outline" onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); }} data-testid="button-clear-filters">
+                Clear Filters
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {summaryStats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">Total Entries</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{summaryStats.totalEntries}</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">Avg Bitumen Variance</CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center gap-2">
+              {summaryStats.avgBitumenVariance > 0 ? (
+                <TrendingUp className="w-4 h-4 text-red-500" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-green-500" />
+              )}
+              <p className="text-2xl font-bold">{formatVariance(summaryStats.avgBitumenVariance)}</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">Avg LDO Variance</CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center gap-2">
+              {summaryStats.avgLdoVariance > 0 ? (
+                <TrendingUp className="w-4 h-4 text-red-500" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-green-500" />
+              )}
+              <p className="text-2xl font-bold">{formatVariance(summaryStats.avgLdoVariance)}</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">Overuse / Underuse</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm">
+                <div className="flex justify-between">
+                  <span>Bitumen:</span>
+                  <span className="text-red-600">+{summaryStats.bitumenOveruse}</span>
+                  <span>/</span>
+                  <span className="text-green-600">-{summaryStats.bitumenUnderuse}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>LDO:</span>
+                  <span className="text-red-600">+{summaryStats.ldoOveruse}</span>
+                  <span>/</span>
+                  <span className="text-green-600">-{summaryStats.ldoUnderuse}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Variance Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-center py-8 text-muted-foreground">Loading variance data...</p>
+          ) : !dispatches?.length ? (
+            <p className="text-center py-8 text-muted-foreground">No variance entries found. All dispatches are using theoretical consumption values.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-left p-2">Truck</th>
+                    <th className="text-left p-2">Mix</th>
+                    <th className="text-right p-2">Load (MT)</th>
+                    <th className="text-right p-2">Bitumen Variance</th>
+                    <th className="text-right p-2">LDO Variance</th>
+                    <th className="text-left p-2">Adjusted By</th>
+                    <th className="text-left p-2">Adjusted At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dispatches.map((dispatch) => (
+                    <tr key={dispatch.id} className="border-b hover:bg-muted/50">
+                      <td className="p-2">{format(new Date(dispatch.date), "dd MMM yyyy")}</td>
+                      <td className="p-2 font-mono">{dispatch.truckNumber}</td>
+                      <td className="p-2">{getTemplateName(dispatch.mixTemplateId)}</td>
+                      <td className="p-2 text-right font-mono">{dispatch.loadWeight}</td>
+                      <td className="p-2 text-right">{getVarianceBadge(dispatch.bitumenVariancePercent)}</td>
+                      <td className="p-2 text-right">{getVarianceBadge(dispatch.ldoVariancePercent)}</td>
+                      <td className="p-2">
+                        {dispatch.adjustedBy ? (
+                          <Badge variant="outline">{dispatch.adjustedBy}</Badge>
+                        ) : "-"}
+                      </td>
+                      <td className="p-2 text-muted-foreground text-xs">
+                        {dispatch.adjustedAt ? format(new Date(dispatch.adjustedAt), "dd/MM HH:mm") : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
