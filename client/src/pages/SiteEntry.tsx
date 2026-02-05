@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
+import type { EquipmentMasterType } from "@shared/schema";
 
 interface ProgressEntry {
   activity: string;
@@ -107,6 +108,14 @@ export default function SiteEntry() {
   const { appendOrigin } = useOrigin();
   const backLink = appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
+
+  // Fetch equipment master for unified equipment tracking
+  const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment-master"],
+  });
+
+  // Filter to only active equipment
+  const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
 
   const [header, setHeader] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
@@ -576,33 +585,35 @@ export default function SiteEntry() {
                 </Button>
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <Label className="text-xs">Machine</Label>
-                    <Input
-                      placeholder="Machine name"
-                      value={entry.machine}
-                      onChange={(e) => {
+                  <div className="col-span-2">
+                    <Label className="text-xs">Equipment (from Master)</Label>
+                    <Select
+                      value={entry.equipmentId ? String(entry.equipmentId) : ""}
+                      onValueChange={(val) => {
                         const updated = [...equipment];
-                        updated[idx].machine = e.target.value;
+                        const selectedEquip = activeEquipment.find(e => e.id === Number(val));
+                        if (selectedEquip) {
+                          updated[idx].equipmentId = selectedEquip.id;
+                          updated[idx].machine = selectedEquip.name;
+                          updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
+                        }
                         setEquipment(updated);
                       }}
-                      className="uppercase"
-                      data-testid={`input-equipment-machine-${idx}`}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Vehicle No</Label>
-                    <Input
-                      placeholder="e.g. TS12AB3456"
-                      value={entry.vehicleNo}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].vehicleNo = e.target.value;
-                        setEquipment(updated);
-                      }}
-                      className="uppercase"
-                      data-testid={`input-equipment-vehicleno-${idx}`}
-                    />
+                    >
+                      <SelectTrigger data-testid={`select-equipment-${idx}`}>
+                        <SelectValue placeholder="Select equipment..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeEquipment.map((eq) => (
+                          <SelectItem key={eq.id} value={String(eq.id)}>
+                            {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} - {eq.equipmentType || "Equipment"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {entry.vehicleNo && (
+                      <p className="text-xs text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">Operator</Label>
