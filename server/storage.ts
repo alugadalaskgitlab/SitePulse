@@ -360,7 +360,7 @@ export class DatabaseStorage implements IStorage {
 
       // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
-        await tx.insert(equipmentLogs).values(
+        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
           dprData.equipment.map(e => ({ 
             ...e, 
             dprId,
@@ -368,7 +368,9 @@ export class DatabaseStorage implements IStorage {
             operator: e.operator?.toUpperCase() || e.operator,
             task: e.task?.toUpperCase() || e.task,
           }))
-        );
+        ).returning();
+
+        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
 
       // 4. Insert Labour Logs
@@ -410,6 +412,9 @@ export class DatabaseStorage implements IStorage {
         .where(eq(dprs.id, id))
         .returning();
 
+      // Clean up old DPR equipment diesel ledger entries before deleting equipment logs
+      await this.cleanupDprEquipmentDieselLedger(tx, id);
+
       // Delete old entries and insert new ones
       await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
@@ -423,9 +428,11 @@ export class DatabaseStorage implements IStorage {
       }
 
       if (dprData.equipment?.length) {
-        await tx.insert(equipmentLogs).values(
+        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
           dprData.equipment.map(e => ({ ...e, dprId: id }))
-        );
+        ).returning();
+
+        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
 
       if (dprData.labour?.length) {
@@ -489,7 +496,7 @@ export class DatabaseStorage implements IStorage {
 
       // Copy equipment logs with uppercase
       if (original.equipment?.length) {
-        await tx.insert(equipmentLogs).values(
+        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
           original.equipment.map(e => ({
             dprId,
             machine: e.machine?.toUpperCase() || e.machine,
@@ -498,8 +505,21 @@ export class DatabaseStorage implements IStorage {
             endTime: e.endTime,
             diesel: e.diesel,
             task: e.task?.toUpperCase() || e.task,
+            equipmentId: e.equipmentId,
+            dieselSource: e.dieselSource,
+            fuelStation: e.fuelStation,
+            billNumber: e.billNumber,
+            amountPaid: e.amountPaid,
+            vehicleNo: e.vehicleNo,
+            openingReading: e.openingReading,
+            closingReading: e.closingReading,
+            hoursWorked: e.hoursWorked,
+            dieselNorm: e.dieselNorm,
+            expectedDiesel: e.expectedDiesel,
           }))
-        );
+        ).returning();
+
+        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, original.date, original.site);
       }
 
       // Copy labour logs
@@ -577,7 +597,7 @@ export class DatabaseStorage implements IStorage {
 
       // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
-        await tx.insert(equipmentLogs).values(
+        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
           dprData.equipment.map(e => ({ 
             ...e, 
             dprId,
@@ -585,7 +605,9 @@ export class DatabaseStorage implements IStorage {
             operator: e.operator?.toUpperCase() || e.operator,
             task: e.task?.toUpperCase() || e.task,
           }))
-        );
+        ).returning();
+
+        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
 
       // Insert edited labour logs
@@ -619,8 +641,72 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  private async processDprEquipmentDieselLedger(
+    tx: any,
+    insertedEquipLogs: any[],
+    dprDate: string,
+    siteName: string
+  ) {
+    const directPurchaseLogs = insertedEquipLogs.filter(
+      e => e.diesel && e.diesel > 0 && e.dieselSource === 'direct_purchase'
+    );
+    if (directPurchaseLogs.length === 0) return;
+
+    const [dieselMaterial] = await tx.select().from(plantMaterials)
+      .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+      .limit(1);
+    if (!dieselMaterial) return;
+
+    const [hlcParty] = await tx.select().from(parties)
+      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
+      .limit(1);
+    const hlcPartyId = hlcParty?.id || null;
+
+    for (const eLog of directPurchaseLogs) {
+      const dieselQty = eLog.diesel;
+      const equipLogRefId = -eLog.id;
+      const fuelStation = eLog.fuelStation || 'Fuel Station';
+      const billNumber = eLog.billNumber || '';
+      const amountPaid = eLog.amountPaid || 0;
+
+      await tx.insert(stockLedger).values({
+        date: dprDate,
+        partyId: hlcPartyId,
+        materialId: dieselMaterial.id,
+        transactionType: "direct_purchase",
+        referenceId: equipLogRefId,
+        quantityIn: dieselQty,
+        quantityOut: dieselQty,
+        balanceAfter: null,
+        uom: dieselMaterial.defaultUom || 'Liters',
+        notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${eLog.machine || 'Equipment'} at ${siteName}`,
+      });
+    }
+  }
+
+  private async cleanupDprEquipmentDieselLedger(tx: any, dprId: number) {
+    const existingLogs = await tx.select().from(equipmentLogs)
+      .where(eq(equipmentLogs.dprId, dprId));
+
+    const dieselLogs = existingLogs.filter(
+      (e: any) => e.diesel && e.diesel > 0 && e.dieselSource === 'direct_purchase'
+    );
+    if (dieselLogs.length === 0) return;
+
+    for (const eLog of dieselLogs) {
+      const equipLogRefId = -eLog.id;
+      await tx.delete(stockLedger).where(
+        and(
+          eq(stockLedger.transactionType, 'direct_purchase'),
+          eq(stockLedger.referenceId, equipLogRefId)
+        )
+      );
+    }
+  }
+
   async deleteDpr(id: number): Promise<boolean> {
     return await db.transaction(async (tx) => {
+      await this.cleanupDprEquipmentDieselLedger(tx, id);
       await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
