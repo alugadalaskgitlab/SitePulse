@@ -111,7 +111,7 @@ export default function SiteEntry() {
 
   // Fetch equipment master for unified equipment tracking
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
-    queryKey: ["/api/plant-module/equipment-master"],
+    queryKey: ["/api/plant-module/equipment"],
   });
 
   // Filter to only active equipment
