@@ -64,13 +64,12 @@ export default function PlantDieselProcurementReport() {
   });
 
   const { data: receipts, isLoading: isLoadingReceipts } = useQuery<MaterialReceipt[]>({
-    queryKey: ["/api/plant-module/receipts", filterDateFrom, filterDateTo, dieselMaterialId],
+    queryKey: ["/api/plant-module/material-receipts", filterDateFrom, filterDateTo, dieselMaterialId],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filterDateFrom) params.append("dateFrom", filterDateFrom);
       if (filterDateTo) params.append("dateTo", filterDateTo);
-      if (dieselMaterialId) params.append("materialId", String(dieselMaterialId));
-      const res = await fetch(`/api/plant-module/receipts?${params}`);
+      const res = await fetch(`/api/plant-module/material-receipts?${params}`);
       return res.json();
     },
     enabled: !!dieselMaterialId,
