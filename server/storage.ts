@@ -1405,9 +1405,14 @@ export class DatabaseStorage implements IStorage {
         variance,
       }).returning();
       
-      // AUTO STOCK DEDUCTION: If diesel was issued AND not contractor-provided, create ledger entry and deduct from HLC stock
+      // DIESEL STOCK MANAGEMENT: Based on dieselSource
+      // - plant_stock: Deduct from HLC stock (existing behavior)
+      // - direct_purchase: Record as procurement (no stock deduction, creates In ledger entry)
+      // - contractor: No stock impact (dieselIncluded=true legacy compatibility)
       const dieselIncluded = usage.dieselIncluded === true;
-      if (dieselIssued > 0 && !dieselIncluded) {
+      const dieselSource = usage.dieselSource || 'plant_stock';
+      
+      if (dieselIssued > 0 && !dieselIncluded && dieselSource !== 'contractor') {
         // Find diesel material (case-insensitive search)
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
@@ -1420,41 +1425,63 @@ export class DatabaseStorage implements IStorage {
         const hlcPartyId = hlcParty?.id || null;
         
         if (dieselMaterial) {
-          // Deduct from HLC stock
-          const [existingBalance] = await tx.select().from(stockBalances)
-            .where(and(
-              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-              eq(stockBalances.materialId, dieselMaterial.id)
-            ))
-            .limit(1);
-          
-          const newBalance = (existingBalance?.balance || 0) - dieselIssued;
-          
-          if (existingBalance) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existingBalance.id));
-          } else {
-            await tx.insert(stockBalances).values({
+          if (dieselSource === 'plant_stock') {
+            // Deduct from HLC stock
+            const [existingBalance] = await tx.select().from(stockBalances)
+              .where(and(
+                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+                eq(stockBalances.materialId, dieselMaterial.id)
+              ))
+              .limit(1);
+            
+            const newBalance = (existingBalance?.balance || 0) - dieselIssued;
+            
+            if (existingBalance) {
+              await tx.update(stockBalances)
+                .set({ balance: newBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, existingBalance.id));
+            } else {
+              await tx.insert(stockBalances).values({
+                partyId: hlcPartyId,
+                materialId: dieselMaterial.id,
+                balance: newBalance,
+                uom: dieselMaterial.defaultUom || 'Liters',
+              });
+            }
+            
+            // Create ledger entry for equipment diesel issue (stock deduction)
+            await tx.insert(stockLedger).values({
+              date: usage.date,
               partyId: hlcPartyId,
               materialId: dieselMaterial.id,
-              balance: newBalance,
+              transactionType: "equipment_usage",
+              referenceId: result.id,
+              quantityOut: dieselIssued,
+              balanceAfter: newBalance,
               uom: dieselMaterial.defaultUom || 'Liters',
+              notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
+            });
+          } else if (dieselSource === 'direct_purchase') {
+            // Direct purchase: Create ledger entry as procurement (quantityIn) for tracking
+            // but DO NOT add to stock balance (fuel goes directly into equipment tank)
+            const siteName = usage.siteName || 'Site';
+            const fuelStation = usage.fuelStation || 'Commercial Pump';
+            const billNumber = usage.billNumber || '';
+            const amountPaid = usage.amountPaid || 0;
+            
+            await tx.insert(stockLedger).values({
+              date: usage.date,
+              partyId: hlcPartyId,
+              materialId: dieselMaterial.id,
+              transactionType: "direct_purchase",
+              referenceId: result.id,
+              quantityIn: dieselIssued, // Record as procurement for reporting
+              quantityOut: dieselIssued, // Also consumed immediately
+              balanceAfter: null, // No balance change (bypasses plant stock)
+              uom: dieselMaterial.defaultUom || 'Liters',
+              notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${equipment?.name || 'Equipment'} at ${siteName}`,
             });
           }
-          
-          // Create ledger entry for equipment diesel issue
-          await tx.insert(stockLedger).values({
-            date: usage.date,
-            partyId: hlcPartyId,
-            materialId: dieselMaterial.id,
-            transactionType: "equipment_usage",
-            referenceId: result.id,
-            quantityOut: dieselIssued,
-            balanceAfter: newBalance,
-            uom: dieselMaterial.defaultUom || 'Liters',
-            notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
-          });
         }
       }
       
@@ -1560,104 +1587,110 @@ export class DatabaseStorage implements IStorage {
         .returning();
       
       // AUTO STOCK ADJUSTMENT: Handle diesel stock and ledger updates
-      // Skip if diesel is provided by contractor (no stock impact)
+      // Track diesel source changes alongside dieselIncluded
       const oldDieselIncluded = (existing as any).dieselIncluded === true;
       const newDieselIncluded = usage.dieselIncluded !== undefined ? usage.dieselIncluded === true : oldDieselIncluded;
+      const oldDieselSource = (existing as any).dieselSource || 'plant_stock';
+      const newDieselSource = usage.dieselSource !== undefined ? usage.dieselSource : oldDieselSource;
+      
+      // Stock is only affected when dieselSource is plant_stock (not contractor or direct_purchase)
+      const oldAffectsStock = !oldDieselIncluded && oldDieselSource === 'plant_stock';
+      const newAffectsStock = !newDieselIncluded && newDieselSource === 'plant_stock';
       
       // Need to update ledger if dieselIssued changes OR if date/equipment changes
       const dieselDiff = newDieselIssued - oldDieselIssued;
       const dateChanged = usage.date !== undefined && usage.date !== existing.date;
       const equipmentChanged = usage.equipmentId !== undefined && usage.equipmentId !== existing.equipmentId;
+      const dieselSourceChanged = newDieselSource !== oldDieselSource;
       const dieselIncludedChanged = usage.dieselIncluded !== undefined && usage.dieselIncluded !== oldDieselIncluded;
       
-      // Skip all stock operations if new state is dieselIncluded
-      if (newDieselIncluded) {
-        // Always clean up any existing ledger entry when dieselIncluded is true (handles legacy data)
-        await tx.delete(stockLedger).where(
-          and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
-        );
-        
-        // If changing FROM non-included TO included, need to restore stock
-        if (!oldDieselIncluded && oldDieselIssued > 0) {
-          const [dieselMaterial] = await tx.select().from(plantMaterials)
-            .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+      // Find diesel material and HLC party for all operations
+      const [dieselMaterial] = await tx.select().from(plantMaterials)
+        .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+        .limit(1);
+      const [hlcParty] = await tx.select().from(parties)
+        .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
+        .limit(1);
+      const hlcPartyId = hlcParty?.id || null;
+      
+      // Delete existing ledger entries (both equipment_usage and direct_purchase types)
+      await tx.delete(stockLedger).where(
+        and(
+          sql`${stockLedger.transactionType} IN ('equipment_usage', 'direct_purchase')`, 
+          eq(stockLedger.referenceId, id)
+        )
+      );
+      
+      if (dieselMaterial) {
+        // Handle stock balance restoration/deduction based on source changes
+        // If old source affected stock but new doesn't, restore the old amount
+        if (oldAffectsStock && !newAffectsStock && oldDieselIssued > 0) {
+          const [existingBalance] = await tx.select().from(stockBalances)
+            .where(and(
+              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ))
             .limit(1);
-          const [hlcParty] = await tx.select().from(parties)
-            .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-            .limit(1);
-          const hlcPartyId = hlcParty?.id || null;
           
-          if (dieselMaterial) {
-            // Restore stock (create balance if it doesn't exist)
-            const [existingBalance] = await tx.select().from(stockBalances)
-              .where(and(
-                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-                eq(stockBalances.materialId, dieselMaterial.id)
-              ))
-              .limit(1);
-            
-            const newBalance = (existingBalance?.balance || 0) + oldDieselIssued;
-            if (existingBalance) {
-              await tx.update(stockBalances)
-                .set({ balance: newBalance, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, existingBalance.id));
-            } else {
-              // Create balance if it doesn't exist
-              await tx.insert(stockBalances).values({
-                partyId: hlcPartyId,
-                materialId: dieselMaterial.id,
-                balance: newBalance,
-                uom: dieselMaterial.defaultUom || 'Liters',
-              });
-            }
+          const newBalance = (existingBalance?.balance || 0) + oldDieselIssued;
+          if (existingBalance) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existingBalance.id));
           }
         }
-        return result;
-      }
-      
-      const needsLedgerUpdate = dieselDiff !== 0 || dieselIncludedChanged || ((dateChanged || equipmentChanged) && (oldDieselIssued > 0 || newDieselIssued > 0));
-      
-      if (needsLedgerUpdate || dieselDiff !== 0) {
-        // Find diesel material
-        const [dieselMaterial] = await tx.select().from(plantMaterials)
-          .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
-          .limit(1);
         
-        // Find HLC party for diesel stock
-        const [hlcParty] = await tx.select().from(parties)
-          .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-          .limit(1);
-        const hlcPartyId = hlcParty?.id || null;
-        
-        if (dieselMaterial) {
-          // Update HLC stock if diesel quantity changed
-          if (dieselDiff !== 0) {
-            const [existingBalance] = await tx.select().from(stockBalances)
-              .where(and(
-                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-                eq(stockBalances.materialId, dieselMaterial.id)
-              ))
-              .limit(1);
-            
-            // dieselDiff > 0 means more diesel issued (deduct more)
-            // dieselDiff < 0 means less diesel issued (restore some)
-            const newBalance = (existingBalance?.balance || 0) - dieselDiff;
-            
-            if (existingBalance) {
-              await tx.update(stockBalances)
-                .set({ balance: newBalance, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, existingBalance.id));
-            } else {
-              await tx.insert(stockBalances).values({
-                partyId: hlcPartyId,
-                materialId: dieselMaterial.id,
-                balance: newBalance,
-                uom: dieselMaterial.defaultUom || 'Liters',
-              });
-            }
-          }
+        // If new source affects stock but old didn't, deduct the new amount
+        if (!oldAffectsStock && newAffectsStock && newDieselIssued > 0) {
+          const [existingBalance] = await tx.select().from(stockBalances)
+            .where(and(
+              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ))
+            .limit(1);
           
-          // Get current balance for ledger entry
+          const newBalance = (existingBalance?.balance || 0) - newDieselIssued;
+          if (existingBalance) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existingBalance.id));
+          } else {
+            await tx.insert(stockBalances).values({
+              partyId: hlcPartyId,
+              materialId: dieselMaterial.id,
+              balance: newBalance,
+              uom: dieselMaterial.defaultUom || 'Liters',
+            });
+          }
+        }
+        
+        // If both old and new affect stock, handle the difference
+        if (oldAffectsStock && newAffectsStock && dieselDiff !== 0) {
+          const [existingBalance] = await tx.select().from(stockBalances)
+            .where(and(
+              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ))
+            .limit(1);
+          
+          const newBalance = (existingBalance?.balance || 0) - dieselDiff;
+          if (existingBalance) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existingBalance.id));
+          } else {
+            await tx.insert(stockBalances).values({
+              partyId: hlcPartyId,
+              materialId: dieselMaterial.id,
+              balance: newBalance,
+              uom: dieselMaterial.defaultUom || 'Liters',
+            });
+          }
+        }
+        
+        // Create new ledger entry based on current source
+        if (newDieselIssued > 0 && !newDieselIncluded && newDieselSource !== 'contractor') {
+          const usageDate = usage.date ?? existing.date;
           const [currentBalance] = await tx.select().from(stockBalances)
             .where(and(
               hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
@@ -1665,14 +1698,7 @@ export class DatabaseStorage implements IStorage {
             ))
             .limit(1);
           
-          // Delete old ledger entry
-          await tx.delete(stockLedger).where(
-            and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
-          );
-          
-          // Create new ledger entry if there's diesel issued
-          if (newDieselIssued > 0) {
-            const usageDate = usage.date ?? existing.date;
+          if (newDieselSource === 'plant_stock') {
             await tx.insert(stockLedger).values({
               date: usageDate,
               partyId: hlcPartyId,
@@ -1683,6 +1709,24 @@ export class DatabaseStorage implements IStorage {
               balanceAfter: currentBalance?.balance || 0,
               uom: dieselMaterial.defaultUom || 'Liters',
               notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
+            });
+          } else if (newDieselSource === 'direct_purchase') {
+            const siteName = usage.siteName ?? ((existing as any).siteName || 'Site');
+            const fuelStation = usage.fuelStation ?? ((existing as any).fuelStation || 'Commercial Pump');
+            const billNumber = usage.billNumber ?? ((existing as any).billNumber || '');
+            const amountPaid = usage.amountPaid ?? ((existing as any).amountPaid || 0);
+            
+            await tx.insert(stockLedger).values({
+              date: usageDate,
+              partyId: hlcPartyId,
+              materialId: dieselMaterial.id,
+              transactionType: "direct_purchase",
+              referenceId: result.id,
+              quantityIn: newDieselIssued,
+              quantityOut: newDieselIssued,
+              balanceAfter: null,
+              uom: dieselMaterial.defaultUom || 'Liters',
+              notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${equipment?.name || 'Equipment'} at ${siteName}`,
             });
           }
         }
@@ -1700,14 +1744,19 @@ export class DatabaseStorage implements IStorage {
       
       const dieselIssued = existing.dieselIssued || 0;
       const dieselIncluded = (existing as any).dieselIncluded === true;
+      const dieselSource = (existing as any).dieselSource || 'plant_stock';
       
-      // Always delete any existing ledger entry (cleanup for any state)
+      // Always delete any existing ledger entries (both equipment_usage and direct_purchase)
       await tx.delete(stockLedger).where(
-        and(eq(stockLedger.transactionType, "equipment_usage"), eq(stockLedger.referenceId, id))
+        and(
+          sql`${stockLedger.transactionType} IN ('equipment_usage', 'direct_purchase')`, 
+          eq(stockLedger.referenceId, id)
+        )
       );
       
-      // AUTO STOCK RESTORATION: If diesel was issued AND not contractor-provided, restore to HLC stock
-      if (dieselIssued > 0 && !dieselIncluded) {
+      // AUTO STOCK RESTORATION: Only restore if diesel was from plant_stock (not direct_purchase or contractor)
+      const affectsStock = !dieselIncluded && dieselSource === 'plant_stock';
+      if (dieselIssued > 0 && affectsStock) {
         // Find diesel material
         const [dieselMaterial] = await tx.select().from(plantMaterials)
           .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)

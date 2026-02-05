@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, AlertTriangle, Shield } from "lucide-react";
+import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, AlertTriangle, Shield, Fuel } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -265,6 +265,21 @@ function StockDetailsTab() {
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Audit Report</h3>
               <p className="text-sm text-muted-foreground">Complete history of consumption adjustments</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+      
+      <Link href={appendOrigin("/plant/diesel-procurement")}>
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <Fuel className="w-7 h-7 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Diesel Procurement</h3>
+              <p className="text-sm text-muted-foreground">Track all diesel: plant receipts + direct purchases</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>

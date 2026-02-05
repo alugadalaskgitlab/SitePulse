@@ -37,6 +37,11 @@ interface EquipmentEntry {
   openingReading: number | null;
   closingReading: number | null;
   diesel: number | null;
+  equipmentId: number | null; // Link to equipment master for unified tracking
+  dieselSource: string; // plant_stock, direct_purchase, contractor
+  fuelStation: string; // For direct_purchase
+  billNumber: string; // For direct_purchase
+  amountPaid: number | null; // For direct_purchase
 }
 
 interface LabourEntry {
@@ -114,7 +119,7 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -217,7 +222,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -715,6 +720,76 @@ export default function SiteEntry() {
                       data-testid={`input-equipment-diesel-${idx}`}
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs">Diesel Source</Label>
+                    <Select 
+                      value={entry.dieselSource || "plant_stock"} 
+                      onValueChange={(value) => {
+                        const updated = [...equipment];
+                        updated[idx].dieselSource = value;
+                        setEquipment(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-diesel-source-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                        <SelectItem value="direct_purchase">Direct Purchase</SelectItem>
+                        <SelectItem value="contractor">Contractor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {entry.dieselSource === "direct_purchase" && (
+                    <>
+                      <div>
+                        <Label className="text-xs">Fuel Station</Label>
+                        <Input
+                          placeholder="HP / BPCL"
+                          value={entry.fuelStation || ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].fuelStation = e.target.value.toUpperCase();
+                            setEquipment(updated);
+                          }}
+                          className="uppercase"
+                          data-testid={`input-fuel-station-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Bill No.</Label>
+                        <Input
+                          placeholder="Receipt #"
+                          value={entry.billNumber || ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].billNumber = e.target.value.toUpperCase();
+                            setEquipment(updated);
+                          }}
+                          className="uppercase"
+                          data-testid={`input-bill-number-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Amount (Rs)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0"
+                          value={entry.amountPaid ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].amountPaid = e.target.value ? parseFloat(e.target.value) : null;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-amount-paid-${idx}`}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             );

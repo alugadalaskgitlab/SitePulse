@@ -40,6 +40,11 @@ export default function PlantEquipmentUsage() {
   const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
   const [dieselIncluded, setDieselIncluded] = useState(false);
+  const [dieselSource, setDieselSource] = useState<string>("plant_stock");
+  const [fuelStation, setFuelStation] = useState("");
+  const [billNumber, setBillNumber] = useState("");
+  const [amountPaid, setAmountPaid] = useState("");
+  const [siteName, setSiteName] = useState("");
   const [numberOfTrips, setNumberOfTrips] = useState("");
   const [tripDistance, setTripDistance] = useState("");
   const [tripBasedEntry, setTripBasedEntry] = useState(false);
@@ -66,6 +71,11 @@ export default function PlantEquipmentUsage() {
     openingDiesel: string;
     dieselIssued: string;
     dieselIncluded: boolean;
+    dieselSource: string;
+    fuelStation: string;
+    billNumber: string;
+    amountPaid: string;
+    siteName: string;
     numberOfTrips: string;
     tripDistance: string;
     tripBasedEntry: boolean;
@@ -73,8 +83,8 @@ export default function PlantEquipmentUsage() {
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, tripBasedEntry, remarks
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, numberOfTrips, tripDistance, tripBasedEntry, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, remarks
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, remarks]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
@@ -86,6 +96,11 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel(data.openingDiesel);
     setDieselIssued(data.dieselIssued);
     setDieselIncluded(data.dieselIncluded || false);
+    setDieselSource(data.dieselSource || "plant_stock");
+    setFuelStation(data.fuelStation || "");
+    setBillNumber(data.billNumber || "");
+    setAmountPaid(data.amountPaid || "");
+    setSiteName(data.siteName || "");
     setNumberOfTrips(data.numberOfTrips || "");
     setTripDistance(data.tripDistance || "");
     setTripBasedEntry(data.tripBasedEntry || false);
@@ -186,6 +201,11 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel("");
     setDieselIssued("");
     setDieselIncluded(false);
+    setDieselSource("plant_stock");
+    setFuelStation("");
+    setBillNumber("");
+    setAmountPaid("");
+    setSiteName("");
     setNumberOfTrips("");
     setTripDistance("");
     setTripBasedEntry(false);
@@ -207,6 +227,11 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setDieselIncluded((entry as any).dieselIncluded || false);
+    setDieselSource((entry as any).dieselSource || "plant_stock");
+    setFuelStation((entry as any).fuelStation || "");
+    setBillNumber((entry as any).billNumber || "");
+    setAmountPaid((entry as any).amountPaid ? String((entry as any).amountPaid) : "");
+    setSiteName((entry as any).siteName || "");
     setNumberOfTrips((entry as any).numberOfTrips ? String((entry as any).numberOfTrips) : "");
     setTripDistance((entry as any).tripDistance ? String((entry as any).tripDistance) : "");
     // Use persisted tripBasedEntry flag from database
@@ -261,6 +286,10 @@ export default function PlantEquipmentUsage() {
       return;
     }
     
+    // Determine effective diesel source
+    // dieselIncluded legacy checkbox maps to "contractor" source
+    const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
+    
     const data = {
       date,
       equipmentId: parseInt(equipmentId),
@@ -271,9 +300,14 @@ export default function PlantEquipmentUsage() {
       numberOfTrips: tripBasedEntry && numberOfTrips ? parseInt(numberOfTrips) : null,
       tripDistance: tripBasedEntry && tripDistance ? parseFloat(tripDistance) : null,
       tripBasedEntry, // Send flag to server
-      openingDiesel: dieselIncluded ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
-      dieselIssued: dieselIncluded ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+      openingDiesel: effectiveDieselSource === "contractor" ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
+      dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
       dieselIncluded,
+      dieselSource: effectiveDieselSource,
+      fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
+      billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
+      amountPaid: effectiveDieselSource === "direct_purchase" && amountPaid ? parseFloat(amountPaid) : null,
+      siteName: effectiveDieselSource === "direct_purchase" ? siteName.toUpperCase() : null,
       remarks: remarks.toUpperCase(),
     };
 
@@ -831,20 +865,83 @@ export default function PlantEquipmentUsage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 py-2 px-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800">
-                <Checkbox 
-                  id="diesel-included" 
-                  checked={dieselIncluded} 
-                  onCheckedChange={(checked) => setDieselIncluded(checked === true)}
-                  data-testid="checkbox-diesel-included"
-                />
-                <Label htmlFor="diesel-included" className="text-sm font-medium cursor-pointer">
-                  Diesel provided by contractor (tracking only - no stock impact)
-                </Label>
+              <div className="space-y-2">
+                <Label>Diesel Source</Label>
+                <Select value={dieselIncluded ? "contractor" : dieselSource} onValueChange={(value) => {
+                  if (value === "contractor") {
+                    setDieselIncluded(true);
+                    setDieselSource("contractor");
+                  } else {
+                    setDieselIncluded(false);
+                    setDieselSource(value);
+                  }
+                }}>
+                  <SelectTrigger data-testid="select-diesel-source">
+                    <SelectValue placeholder="Select diesel source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="plant_stock">Plant Stock (deducts from HLC)</SelectItem>
+                    <SelectItem value="direct_purchase">Direct Purchase (commercial pump)</SelectItem>
+                    <SelectItem value="contractor">Contractor Provided (no stock impact)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {dieselSource === "plant_stock" && !dieselIncluded && "Diesel will be deducted from plant HLC stock"}
+                  {dieselSource === "direct_purchase" && !dieselIncluded && "Track diesel purchased at fuel stations near sites"}
+                  {(dieselSource === "contractor" || dieselIncluded) && "Tracking only - diesel is contractor's responsibility"}
+                </p>
               </div>
 
-              {!dieselIncluded && (
+              {!dieselIncluded && dieselSource !== "contractor" && (
                 <>
+                  {dieselSource === "direct_purchase" && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-3">
+                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Direct Purchase Details</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-sm">Site Name</Label>
+                          <Input 
+                            value={siteName} 
+                            onChange={(e) => setSiteName(e.target.value.toUpperCase())} 
+                            placeholder="Site location" 
+                            data-testid="input-site-name"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm">Fuel Station</Label>
+                          <Input 
+                            value={fuelStation} 
+                            onChange={(e) => setFuelStation(e.target.value.toUpperCase())} 
+                            placeholder="HP / BPCL / etc." 
+                            data-testid="input-fuel-station"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-sm">Bill Number</Label>
+                          <Input 
+                            value={billNumber} 
+                            onChange={(e) => setBillNumber(e.target.value.toUpperCase())} 
+                            placeholder="Receipt number" 
+                            data-testid="input-bill-number"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm">Amount Paid (Rs)</Label>
+                          <Input 
+                            type="number" 
+                            step="0.01" 
+                            value={amountPaid} 
+                            onChange={(e) => setAmountPaid(e.target.value)} 
+                            placeholder="0.00" 
+                            data-testid="input-amount-paid"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Opening Diesel Tank (L)</Label>

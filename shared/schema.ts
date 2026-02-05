@@ -48,6 +48,14 @@ export const equipmentLogs = pgTable("equipment_logs", {
   dieselNorm: real("diesel_norm"), // L/hr norm for efficiency calculation
   expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursWorked * norm
   task: text("task"), // e.g., "Rolling WMM", "Watering shoulders"
+  // Optional link to equipment master for unified reporting
+  equipmentId: integer("equipment_id"), // Links to equipmentMaster for unified tracking
+  // Diesel source tracking
+  dieselSource: text("diesel_source").default("plant_stock"), // plant_stock, direct_purchase, contractor
+  // Direct purchase fields (when dieselSource = direct_purchase)
+  fuelStation: text("fuel_station"), // Commercial pump name/location
+  billNumber: text("bill_number"), // Receipt/bill number
+  amountPaid: real("amount_paid"), // Total amount paid for diesel
 });
 
 // Labour Log
@@ -283,6 +291,17 @@ export const equipmentUsage = pgTable("equipment_usage", {
   variance: real("variance"), // For backwards compatibility
   dieselIncluded: boolean("diesel_included").default(false), // True when diesel is provided by contractor (hired equipment)
   remarks: text("remarks"),
+  // Site/DPR context for site equipment entries
+  dprId: integer("dpr_id"), // Optional link to DPR for site equipment
+  siteName: text("site_name"), // Site name when used for site equipment
+  operator: text("operator"), // Equipment operator name
+  task: text("task"), // Task performed by equipment
+  // Diesel source tracking
+  dieselSource: text("diesel_source").default("plant_stock"), // plant_stock, direct_purchase, contractor
+  // Direct purchase fields (when dieselSource = direct_purchase)
+  fuelStation: text("fuel_station"), // Commercial pump name/location
+  billNumber: text("bill_number"), // Receipt/bill number
+  amountPaid: real("amount_paid"), // Total amount paid for diesel
   createdAt: timestamp("created_at").defaultNow(),
 });
 
