@@ -749,7 +749,7 @@ export default function SiteEntry() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="plant_stock">Plant Stock</SelectItem>
-                        <SelectItem value="direct_purchase">Direct Purchase</SelectItem>
+                        <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                         <SelectItem value="contractor">Contractor</SelectItem>
                       </SelectContent>
                     </Select>

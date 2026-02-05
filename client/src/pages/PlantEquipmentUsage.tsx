@@ -881,13 +881,13 @@ export default function PlantEquipmentUsage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="plant_stock">Plant Stock (deducts from HLC)</SelectItem>
-                    <SelectItem value="direct_purchase">Direct Purchase (commercial pump)</SelectItem>
+                    <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                     <SelectItem value="contractor">Contractor Provided (no stock impact)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   {dieselSource === "plant_stock" && !dieselIncluded && "Diesel will be deducted from plant HLC stock"}
-                  {dieselSource === "direct_purchase" && !dieselIncluded && "Track diesel purchased at fuel stations near sites"}
+                  {dieselSource === "direct_purchase" && !dieselIncluded && "Track diesel purchased directly at site"}
                   {(dieselSource === "contractor" || dieselIncluded) && "Tracking only - diesel is contractor's responsibility"}
                 </p>
               </div>
@@ -896,7 +896,7 @@ export default function PlantEquipmentUsage() {
                 <>
                   {dieselSource === "direct_purchase" && (
                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-3">
-                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Direct Purchase Details</p>
+                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Direct Site Purchase Details</p>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label className="text-sm">Site Name</Label>

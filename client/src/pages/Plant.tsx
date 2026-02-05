@@ -279,7 +279,7 @@ function StockDetailsTab() {
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Diesel Procurement</h3>
-              <p className="text-sm text-muted-foreground">Track all diesel: plant receipts + direct purchases</p>
+              <p className="text-sm text-muted-foreground">Track all diesel: plant receipts + direct site purchases</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>

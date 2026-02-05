@@ -120,16 +120,16 @@ export default function PlantDieselProcurementReport() {
 
     const summarySheet = [{
       "Total Plant Receipts (L)": totalPlantReceipts.toFixed(1),
-      "Total Direct Purchases (L)": totalDirectPurchases.toFixed(1),
+      "Total Direct Site Purchases (L)": totalDirectPurchases.toFixed(1),
       "Total Procured (L)": totalProcured.toFixed(1),
       "Total Issued (L)": totalIssued.toFixed(1),
-      "Direct Purchase Amount (Rs)": totalAmountPaid.toFixed(2)
+      "Direct Site Purchase Amount (Rs)": totalAmountPaid.toFixed(2)
     }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summarySheet), "Summary");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(plantReceiptsSheet), "Plant Receipts");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(directPurchasesSheet), "Direct Purchases");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(directPurchasesSheet), "Direct Site Purchases");
     XLSX.writeFile(wb, `diesel-procurement-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };
 
@@ -150,10 +150,10 @@ export default function PlantDieselProcurementReport() {
       head: [["Metric", "Value"]],
       body: [
         ["Total Plant Receipts", `${totalPlantReceipts.toFixed(1)} L`],
-        ["Total Direct Purchases", `${totalDirectPurchases.toFixed(1)} L`],
+        ["Total Direct Site Purchases", `${totalDirectPurchases.toFixed(1)} L`],
         ["Total Procured", `${totalProcured.toFixed(1)} L`],
         ["Total Issued to Equipment", `${totalIssued.toFixed(1)} L`],
-        ["Direct Purchase Amount", `Rs. ${totalAmountPaid.toFixed(2)}`],
+        ["Direct Site Purchase Amount", `Rs. ${totalAmountPaid.toFixed(2)}`],
       ],
     });
 
@@ -174,7 +174,7 @@ export default function PlantDieselProcurementReport() {
 
     if (directPurchaseEntries.length > 0) {
       doc.addPage();
-      doc.text("Direct Purchases", 14, 20);
+      doc.text("Direct Site Purchases", 14, 20);
       autoTable(doc, {
         startY: 26,
         head: [["Date", "Qty (L)", "Details"]],
@@ -203,7 +203,7 @@ export default function PlantDieselProcurementReport() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold font-display">Diesel Procurement Report</h1>
-          <p className="text-muted-foreground text-sm">Track all diesel sourcing: plant receipts + direct purchases</p>
+          <p className="text-muted-foreground text-sm">Track all diesel sourcing: plant receipts + direct site purchases</p>
         </div>
       </div>
 
@@ -257,7 +257,7 @@ export default function PlantDieselProcurementReport() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-2">
               <MapPin className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Direct Purchases</span>
+              <span className="text-xs text-muted-foreground">Direct Site Purchases</span>
             </div>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalDirectPurchases.toFixed(1)} L</p>
             <p className="text-xs text-muted-foreground">{directPurchaseEntries.length} entries</p>
@@ -278,7 +278,7 @@ export default function PlantDieselProcurementReport() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Direct Purchase Cost</span>
+              <span className="text-xs text-muted-foreground">Direct Site Purchase Cost</span>
             </div>
             <p className="text-2xl font-bold">Rs. {totalAmountPaid.toFixed(0)}</p>
           </CardContent>
@@ -289,7 +289,7 @@ export default function PlantDieselProcurementReport() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Package className="w-4 h-4" />
-            Plant Stock Receipts (Diesel from Suppliers)
+            Plant Stock Receipts
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -321,7 +321,7 @@ export default function PlantDieselProcurementReport() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <MapPin className="w-4 h-4" />
-            Direct Purchases (Commercial Fuel Pumps)
+            Direct Site Purchases
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -330,7 +330,7 @@ export default function PlantDieselProcurementReport() {
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : directPurchaseEntries.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No direct purchases recorded in selected period</p>
+            <p className="text-center text-muted-foreground py-8">No direct site purchases recorded in selected period</p>
           ) : (
             <div className="space-y-2">
               {directPurchaseEntries.map((entry, idx) => {
@@ -344,7 +344,7 @@ export default function PlantDieselProcurementReport() {
                     <div className="flex-1">
                       <p className="font-medium">{format(new Date(entry.date), "dd MMM yyyy")}</p>
                       <p className="text-sm text-muted-foreground">
-                        {fuelStationMatch ? fuelStationMatch[1] : "Commercial Pump"}
+                        {fuelStationMatch ? fuelStationMatch[1] : "Fuel Station"}
                         {billMatch && <span className="ml-2">Bill: {billMatch[1]}</span>}
                         {equipMatch && <span className="ml-2">| {equipMatch[1]}</span>}
                       </p>
