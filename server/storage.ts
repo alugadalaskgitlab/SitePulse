@@ -1465,7 +1465,7 @@ export class DatabaseStorage implements IStorage {
             // Direct purchase: Create ledger entry as procurement (quantityIn) for tracking
             // but DO NOT add to stock balance (fuel goes directly into equipment tank)
             const siteName = usage.siteName || 'Site';
-            const fuelStation = usage.fuelStation || 'Commercial Pump';
+            const fuelStation = usage.fuelStation || 'Fuel Station';
             const billNumber = usage.billNumber || '';
             const amountPaid = usage.amountPaid || 0;
             
@@ -1712,7 +1712,7 @@ export class DatabaseStorage implements IStorage {
             });
           } else if (newDieselSource === 'direct_purchase') {
             const siteName = usage.siteName ?? ((existing as any).siteName || 'Site');
-            const fuelStation = usage.fuelStation ?? ((existing as any).fuelStation || 'Commercial Pump');
+            const fuelStation = usage.fuelStation ?? ((existing as any).fuelStation || 'Fuel Station');
             const billNumber = usage.billNumber ?? ((existing as any).billNumber || '');
             const amountPaid = usage.amountPaid ?? ((existing as any).amountPaid || 0);
             

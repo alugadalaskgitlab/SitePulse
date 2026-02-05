@@ -27,6 +27,7 @@ export default function PlantStock() {
   const [dateTo, setDateTo] = useState("");
   const [selectedPartyId, setSelectedPartyId] = useState<string>("all");
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>("all");
+  const [selectedTransactionType, setSelectedTransactionType] = useState<string>("all");
 
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -112,10 +113,11 @@ export default function PlantStock() {
         case 'opening': return 1;
         case 'receipt': return 2;
         case 'adjustment': return 3;
-        case 'equipment_usage': return 4;
-        case 'issue': return 5;
-        case 'dispatch': return 6;
-        default: return 7;
+        case 'direct_purchase': return 4;
+        case 'equipment_usage': return 5;
+        case 'issue': return 6;
+        case 'dispatch': return 7;
+        default: return 8;
       }
     };
     
@@ -166,10 +168,14 @@ export default function PlantStock() {
     });
   }, [ledger, materials]);
 
-  // For display, reverse to show most recent first
+  // For display, reverse to show most recent first and filter by transaction type
   const ledgerForDisplay = useMemo(() => {
-    return [...processedLedger].reverse();
-  }, [processedLedger]);
+    let entries = [...processedLedger].reverse();
+    if (selectedTransactionType !== "all") {
+      entries = entries.filter(e => e.transactionType === selectedTransactionType);
+    }
+    return entries;
+  }, [processedLedger, selectedTransactionType]);
 
   // Calculate totals for filtered ledger data - with UOM conversion
   const ledgerTotals = useMemo(() => {
@@ -271,6 +277,8 @@ export default function PlantStock() {
       else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
         summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
+      // Direct purchases bypass plant stock - tracked but no balance impact
+      // (quantityIn and quantityOut are equal, net effect is zero)
     });
 
     // Calculate closing balance - no additional conversion needed as we've already normalized
@@ -351,6 +359,8 @@ export default function PlantStock() {
       if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
         summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
+      // Direct purchases bypass plant stock - not counted in balance
+      // (quantityIn and quantityOut are equal, net effect is zero)
     });
 
     // Calculate balance - no additional conversion needed as we've already normalized
@@ -445,9 +455,11 @@ export default function PlantStock() {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType,
+          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
+            : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
+            ? entry.notes.replace('Direct purchase at ', '')
             : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
             ? entry.notes.replace('Issue to ', '').split(' - ')[0]
             : entry.notes || '-',
@@ -544,6 +556,7 @@ export default function PlantStock() {
           case 'opening': return 'Opening';
           case 'adjustment': return 'Adjustment';
           case 'equipment_usage': return 'Equip. Usage';
+          case 'direct_purchase': return 'Direct Site Purchase';
           default: return type;
         }
       };
@@ -557,6 +570,8 @@ export default function PlantStock() {
           getTransactionTypeLabel(entry.transactionType),
           entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+            : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
+            ? entry.notes.replace('Direct purchase at ', '')
             : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
             ? entry.notes.replace('Issue to ', '').split(' - ')[0]
             : entry.notes || '-',
@@ -597,6 +612,7 @@ export default function PlantStock() {
         case 'opening': return 'Opening';
         case 'adjustment': return 'Adjustment';
         case 'equipment_usage': return 'Equip. Usage';
+        case 'direct_purchase': return 'Direct Site Purchase';
         default: return type;
       }
     };
@@ -687,6 +703,8 @@ export default function PlantStock() {
                 const convData = getConvertedEntryData(entry);
                 const notes = entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                   ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+                  : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
+                  ? entry.notes.replace('Direct purchase at ', '')
                   : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
                   ? entry.notes.replace('Issue to ', '').split(' - ')[0]
                   : entry.notes || '-';
@@ -837,7 +855,7 @@ export default function PlantStock() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <Label>Party / Stock Owner</Label>
               <Select value={selectedPartyId} onValueChange={setSelectedPartyId}>
@@ -863,6 +881,24 @@ export default function PlantStock() {
                   {materials?.map((m) => (
                     <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Transaction Type</Label>
+              <Select value={selectedTransactionType} onValueChange={setSelectedTransactionType}>
+                <SelectTrigger data-testid="select-filter-transaction-type">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="opening">Opening</SelectItem>
+                  <SelectItem value="receipt">Receipt</SelectItem>
+                  <SelectItem value="adjustment">Adjustment</SelectItem>
+                  <SelectItem value="equipment_usage">Equip. Usage</SelectItem>
+                  <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                  <SelectItem value="issue">Issue</SelectItem>
+                  <SelectItem value="dispatch">Dispatch</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1113,14 +1149,18 @@ export default function PlantStock() {
                                 ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                                 : entry.transactionType === 'equipment_usage'
                                 ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                                : entry.transactionType === 'direct_purchase'
+                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
                                 : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}>
-                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType}
+                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType}
                             </span>
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
                             {entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                               ? entry.notes.replace('Diesel issued to ', '')
+                              : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
+                              ? entry.notes.replace('Direct purchase at ', '')
                               : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
                               ? entry.notes.replace('Issue to ', '').split(' - ')[0]
                               : entry.notes || '-'}
