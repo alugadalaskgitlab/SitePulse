@@ -39,7 +39,6 @@ interface EquipmentEntry {
   closingReading: number | null;
   diesel: number | null;
   equipmentId: number | null; // Link to equipment master for unified tracking
-  isManualEntry: boolean; // True when user selects "Other (Manual Entry)"
   dieselSource: string; // plant_stock, direct_purchase, contractor
   fuelStation: string; // For direct_purchase
   billNumber: string; // For direct_purchase
@@ -129,7 +128,7 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, isManualEntry: false, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -232,7 +231,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, isManualEntry: false, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -589,22 +588,14 @@ export default function SiteEntry() {
                   <div className="col-span-2">
                     <Label className="text-xs">Equipment</Label>
                     <Select
-                      value={entry.equipmentId ? String(entry.equipmentId) : (entry.isManualEntry ? "other" : "")}
+                      value={entry.equipmentId ? String(entry.equipmentId) : ""}
                       onValueChange={(val) => {
                         const updated = [...equipment];
-                        if (val === "other") {
-                          updated[idx].equipmentId = null;
-                          updated[idx].isManualEntry = true;
-                          updated[idx].machine = "";
-                          updated[idx].vehicleNo = "";
-                        } else {
-                          const selectedEquip = activeEquipment.find(e => e.id === Number(val));
-                          if (selectedEquip) {
-                            updated[idx].equipmentId = selectedEquip.id;
-                            updated[idx].isManualEntry = false;
-                            updated[idx].machine = selectedEquip.name;
-                            updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
-                          }
+                        const selectedEquip = activeEquipment.find(e => e.id === Number(val));
+                        if (selectedEquip) {
+                          updated[idx].equipmentId = selectedEquip.id;
+                          updated[idx].machine = selectedEquip.name;
+                          updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
                         }
                         setEquipment(updated);
                       }}
@@ -618,39 +609,10 @@ export default function SiteEntry() {
                             {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} - {eq.equipmentType || "Equipment"}
                           </SelectItem>
                         ))}
-                        <SelectItem value="other" className="text-amber-600 font-medium">
-                          + Other (Manual Entry)
-                        </SelectItem>
                       </SelectContent>
                     </Select>
                     {entry.equipmentId && entry.vehicleNo && (
                       <p className="text-xs text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
-                    )}
-                    {entry.isManualEntry && (
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <Input
-                          placeholder="Machine name"
-                          value={entry.machine}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].machine = e.target.value;
-                            setEquipment(updated);
-                          }}
-                          className="uppercase text-sm"
-                          data-testid={`input-equipment-machine-manual-${idx}`}
-                        />
-                        <Input
-                          placeholder="Vehicle No"
-                          value={entry.vehicleNo}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].vehicleNo = e.target.value;
-                            setEquipment(updated);
-                          }}
-                          className="uppercase text-sm"
-                          data-testid={`input-equipment-vehicleno-manual-${idx}`}
-                        />
-                      </div>
                     )}
                   </div>
                   <div>
