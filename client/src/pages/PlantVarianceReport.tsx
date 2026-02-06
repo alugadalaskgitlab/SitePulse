@@ -112,6 +112,16 @@ export default function PlantVarianceReport() {
     return actualLdo - theoreticalLdo;
   };
 
+  const getActualLdoPerTon = (dispatch: TruckDispatch) => {
+    if (dispatch.actualLdoQty == null || !dispatch.loadWeight || dispatch.loadWeight === 0) return null;
+    return dispatch.actualLdoQty / dispatch.loadWeight;
+  };
+
+  const getTheoreticalLdoPerTon = (dispatch: TruckDispatch) => {
+    if (dispatch.theoreticalLdoQty == null || !dispatch.loadWeight || dispatch.loadWeight === 0) return null;
+    return dispatch.theoreticalLdoQty / dispatch.loadWeight;
+  };
+
   const formatDiff = (diff: number | null, unit: string) => {
     if (diff === null) return "-";
     const sign = diff > 0 ? "+" : "";
@@ -269,6 +279,7 @@ export default function PlantVarianceReport() {
                     <th className="text-right p-2">Load (MT)</th>
                     <th className="text-right p-2">Bitumen Variance</th>
                     <th className="text-right p-2">Bitumen Diff</th>
+                    <th className="text-right p-2">LDO (L/ton)</th>
                     <th className="text-right p-2">LDO Variance</th>
                     <th className="text-right p-2">LDO Diff</th>
                     <th className="text-left p-2">Adjusted By</th>
@@ -279,6 +290,8 @@ export default function PlantVarianceReport() {
                   {dispatches.map((dispatch) => {
                     const bitumenDiff = getBitumenDiffKg(dispatch);
                     const ldoDiff = getLdoDiffLiters(dispatch);
+                    const actualLpt = getActualLdoPerTon(dispatch);
+                    const theoreticalLpt = getTheoreticalLdoPerTon(dispatch);
                     return (
                       <tr key={dispatch.id} className="border-b hover:bg-muted/50" data-testid={`row-variance-${dispatch.id}`}>
                         <td className="p-2">{format(new Date(dispatch.date), "dd MMM yyyy")}</td>
@@ -288,6 +301,11 @@ export default function PlantVarianceReport() {
                         <td className="p-2 text-right">{getVarianceBadge(dispatch.bitumenVariancePercent)}</td>
                         <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(bitumenDiff)}`}>
                           {formatDiff(bitumenDiff, "Kg")}
+                        </td>
+                        <td className="p-2 text-right font-mono text-xs">
+                          {actualLpt != null ? (
+                            <span>{actualLpt.toFixed(2)}<span className="text-muted-foreground"> / {theoreticalLpt?.toFixed(2)}</span></span>
+                          ) : "-"}
                         </td>
                         <td className="p-2 text-right">{getVarianceBadge(dispatch.ldoVariancePercent)}</td>
                         <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(ldoDiff)}`}>

@@ -51,7 +51,7 @@ export default function PlantDispatches() {
   const [loadWeight, setLoadWeight] = useState("");
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
-  const [actualLdoQty, setActualLdoQty] = useState("");
+  const [actualLdoPerTon, setActualLdoPerTon] = useState("");
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -65,12 +65,12 @@ export default function PlantDispatches() {
     loadWeight: string;
     deliveryLocation: string;
     actualBitumenPercent: string;
-    actualLdoQty: string;
+    actualLdoPerTon: string;
   }
 
   const formData = useMemo<DispatchFormData>(() => ({
-    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoQty
-  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoQty]);
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoPerTon
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoPerTon]);
 
   const handleRestoreDraft = useCallback((data: DispatchFormData) => {
     setDate(data.date);
@@ -81,7 +81,7 @@ export default function PlantDispatches() {
     setLoadWeight(data.loadWeight);
     setDeliveryLocation(data.deliveryLocation);
     setActualBitumenPercent(data.actualBitumenPercent);
-    setActualLdoQty(data.actualLdoQty || "");
+    setActualLdoPerTon(data.actualLdoPerTon || "");
   }, []);
 
   const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
@@ -156,7 +156,7 @@ export default function PlantDispatches() {
     setLoadWeight("");
     setDeliveryLocation("");
     setActualBitumenPercent("");
-    setActualLdoQty("");
+    setActualLdoPerTon("");
     setEditingDispatch(null);
   };
 
@@ -170,7 +170,12 @@ export default function PlantDispatches() {
     setLoadWeight(String(dispatch.loadWeight));
     setDeliveryLocation(dispatch.deliveryLocation || "");
     setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
-    setActualLdoQty(dispatch.actualLdoQty ? String(dispatch.actualLdoQty) : "");
+    const weight = dispatch.loadWeight || 0;
+    if (dispatch.actualLdoQty && weight > 0) {
+      setActualLdoPerTon(String((dispatch.actualLdoQty / weight).toFixed(2)));
+    } else {
+      setActualLdoPerTon("");
+    }
     setDialogOpen(true);
   };
 
@@ -212,10 +217,10 @@ export default function PlantDispatches() {
       }
     }
     
-    // Check LDO (guard against divide-by-zero)
-    if (actualLdoQty && theoreticalValues.ldoQty > 0) {
-      const actualLdo = parseFloat(actualLdoQty);
-      const variance = ((actualLdo - theoreticalValues.ldoQty) / theoreticalValues.ldoQty) * 100;
+    // Check LDO L/ton against theoretical norm (guard against divide-by-zero)
+    if (actualLdoPerTon && theoreticalValues.ldoNorm > 0) {
+      const actualRate = parseFloat(actualLdoPerTon);
+      const variance = ((actualRate - theoreticalValues.ldoNorm) / theoreticalValues.ldoNorm) * 100;
       if (!isNaN(variance)) {
         if (Math.abs(variance) > TOLERANCE_PERCENT) {
           result.ldo = "error";
@@ -226,7 +231,7 @@ export default function PlantDispatches() {
     }
     
     return result;
-  }, [theoreticalValues, actualBitumenPercent, actualLdoQty, TOLERANCE_PERCENT]);
+  }, [theoreticalValues, actualBitumenPercent, actualLdoPerTon, TOLERANCE_PERCENT]);
   
   // Check if values exceed tolerance (block submission)
   const hasToleranceError = validationStatus.bitumen === "error" || validationStatus.ldo === "error";
@@ -244,6 +249,9 @@ export default function PlantDispatches() {
       return;
     }
     
+    const weight = parseFloat(loadWeight) || 0;
+    const computedActualLdoQty = (actualLdoPerTon && weight > 0) ? parseFloat(actualLdoPerTon) * weight : null;
+
     if (editingDispatch) {
       updateMutation.mutate({
         id: editingDispatch.id,
@@ -253,10 +261,10 @@ export default function PlantDispatches() {
           partyId: parseInt(partyId),
           mixTemplateId: parseInt(mixTemplateId),
           truckNumber: truckNumber.toUpperCase(),
-          loadWeight: parseFloat(loadWeight),
+          loadWeight: weight,
           deliveryLocation: deliveryLocation.toUpperCase(),
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
-          actualLdoQty: actualLdoQty ? parseFloat(actualLdoQty) : null,
+          actualLdoQty: computedActualLdoQty,
           adjustedBy: authenticatedRole,
         }
       });
@@ -267,10 +275,10 @@ export default function PlantDispatches() {
         partyId: parseInt(partyId),
         mixTemplateId: parseInt(mixTemplateId),
         truckNumber: truckNumber.toUpperCase(),
-        loadWeight: parseFloat(loadWeight),
+        loadWeight: weight,
         deliveryLocation: deliveryLocation.toUpperCase(),
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
-        actualLdoQty: actualLdoQty ? parseFloat(actualLdoQty) : null,
+        actualLdoQty: computedActualLdoQty,
       });
     }
   };
@@ -760,7 +768,7 @@ export default function PlantDispatches() {
                     
                     <div>
                       <div className="flex items-center justify-between">
-                        <Label>Actual LDO (Liters)</Label>
+                        <Label>Actual LDO (L/ton)</Label>
                         {validationStatus.ldo !== "ok" && (
                           <Badge variant={validationStatus.ldo === "error" ? "destructive" : "secondary"} className="text-xs">
                             {validationStatus.ldo === "error" ? "Exceeds ±10%" : "Variance"}
@@ -769,13 +777,18 @@ export default function PlantDispatches() {
                       </div>
                       <Input 
                         type="number" 
-                        step="1" 
-                        value={actualLdoQty} 
-                        onChange={(e) => setActualLdoQty(e.target.value)} 
-                        placeholder={theoreticalValues ? `Theoretical: ${theoreticalValues.ldoQty.toFixed(1)} L` : "Leave blank to use theoretical"} 
+                        step="0.1" 
+                        value={actualLdoPerTon} 
+                        onChange={(e) => setActualLdoPerTon(e.target.value)} 
+                        placeholder={theoreticalValues ? `Norm: ${theoreticalValues.ldoNorm} L/ton` : "Leave blank to use theoretical"} 
                         className={validationStatus.ldo === "error" ? "border-red-500" : validationStatus.ldo === "warning" ? "border-amber-500" : ""}
                         data-testid="input-actual-ldo" 
                       />
+                      {actualLdoPerTon && parseFloat(loadWeight) > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Total: {(parseFloat(actualLdoPerTon) * parseFloat(loadWeight)).toFixed(1)} L for {loadWeight} MT
+                        </p>
+                      )}
                     </div>
                   </div>
                   
