@@ -47,7 +47,7 @@ Preferred communication style: Simple, everyday language.
 - **Stock Deduction Priority**: All stock is party-based with HLC as the primary party for common stock.
 - **Material Issues Register**: Tracks materials issued from central plant to sites, deducting from party stock and creating ledger entries. Used for non-equipment material transfers.
 - **Material Opening Stocks**: Allows entry of initial material balances with party attribution.
-- **Party-Based Stock Management**: All stock is now party-based; "Plant Common" stock concept removed and migrated to HLC party (id=4).
+- **Party-Based Stock Management**: All stock is party-based. Startup migration automatically reassigns any orphan NULL-party ledger/balance entries to HLC. Dispatch deductions always fall back to HLC party (never null). The `migrateOrphanStockToHLC()` method runs on every server start.
 - **Equipment Master**: Enhanced with ownership status (Owned/Hired), vendor names, registration numbers, and active status.
 
 #### Equipment Usage & Diesel Flow

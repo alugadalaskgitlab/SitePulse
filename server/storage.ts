@@ -2114,9 +2114,9 @@ export class DatabaseStorage implements IStorage {
       };
       
       // Find HLC party for fallback (never create null-party stock)
-      const allPartiesList = await tx.select().from(parties);
-      const hlcParty = allPartiesList.find(p => p.name?.toUpperCase() === 'HLC');
-      const hlcPartyId = hlcParty?.id || null;
+      const allPartiesList = await tx.select().from(parties).orderBy(parties.id);
+      const hlcParty = allPartiesList.find(p => p.name?.toUpperCase() === 'HLC') || allPartiesList[0];
+      const hlcPartyId = hlcParty?.id ?? null;
 
       // Helper to deduct stock with party-first (pooled), HLC fallback
       // Party stock is pooled at plant level - check ALL parties with stock, not just dispatch's party
@@ -2513,54 +2513,41 @@ export class DatabaseStorage implements IStorage {
         .where(sql`${stockLedger.partyId} IS NULL`);
 
       if (orphanLedgerEntries.length === 0) {
-        return { ledgerFixed: 0, balancesMerged: 0, errors: 0 };
-      }
-
-      const allParties = await db.select().from(parties);
-      const hlcParty = allParties.find(p => p.name?.toUpperCase() === 'HLC');
-      if (!hlcParty) {
-        console.error('migrateOrphanStockToHLC: HLC party not found, cannot migrate');
-        return { ledgerFixed: 0, balancesMerged: 0, errors: 1 };
-      }
-      const hlcId = hlcParty.id;
-
-      await db.update(stockLedger)
-        .set({ partyId: hlcId })
-        .where(sql`${stockLedger.partyId} IS NULL`);
-      ledgerFixed = orphanLedgerEntries.length;
-
-      const orphanBalances = await db.select().from(stockBalances)
-        .where(sql`${stockBalances.partyId} IS NULL`);
-
-      for (const orphan of orphanBalances) {
-        try {
-          const [hlcBalance] = await db.select().from(stockBalances)
-            .where(and(
-              eq(stockBalances.partyId, hlcId),
-              eq(stockBalances.materialId, orphan.materialId)
-            ))
-            .limit(1);
-
-          if (hlcBalance) {
-            const mergedBalance = (hlcBalance.balance || 0) + (orphan.balance || 0);
-            await db.update(stockBalances)
-              .set({ balance: mergedBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, hlcBalance.id));
-            await db.delete(stockBalances).where(eq(stockBalances.id, orphan.id));
-          } else {
-            await db.update(stockBalances)
-              .set({ partyId: hlcId, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, orphan.id));
-          }
-          balancesMerged++;
-        } catch (err) {
-          console.error(`migrateOrphanStockToHLC: Error merging balance for material ${orphan.materialId}:`, err);
-          errors++;
+        const orphanBalances = await db.select().from(stockBalances)
+          .where(sql`${stockBalances.partyId} IS NULL`);
+        if (orphanBalances.length === 0) {
+          return { ledgerFixed: 0, balancesMerged: 0, errors: 0 };
         }
       }
 
+      const allParties = await db.select().from(parties).orderBy(parties.id);
+      let hlcParty = allParties.find(p => p.name?.toUpperCase() === 'HLC');
+      if (!hlcParty) {
+        hlcParty = allParties[0];
+      }
+      if (!hlcParty) {
+        console.error('migrateOrphanStockToHLC: No parties exist, cannot migrate');
+        return { ledgerFixed: 0, balancesMerged: 0, errors: 1 };
+      }
+      const hlcId = hlcParty.id;
+      console.log(`migrateOrphanStockToHLC: Using party "${hlcParty.name}" (id=${hlcId}) as target`);
+
+      if (orphanLedgerEntries.length > 0) {
+        await db.update(stockLedger)
+          .set({ partyId: hlcId })
+          .where(sql`${stockLedger.partyId} IS NULL`);
+        ledgerFixed = orphanLedgerEntries.length;
+      }
+
+      const orphanBalances = await db.select().from(stockBalances)
+        .where(sql`${stockBalances.partyId} IS NULL`);
+      for (const orphan of orphanBalances) {
+        await db.delete(stockBalances).where(eq(stockBalances.id, orphan.id));
+        balancesMerged++;
+      }
+
       const recalcResult = await this.reconcileStockBalancesFromLedger();
-      console.log(`migrateOrphanStockToHLC: Reconciled balances after merge - updated: ${recalcResult.updated}, created: ${recalcResult.created}`);
+      console.log(`migrateOrphanStockToHLC: Reconciled balances - updated: ${recalcResult.updated}, created: ${recalcResult.created}`);
 
     } catch (err) {
       console.error('migrateOrphanStockToHLC: Fatal error:', err);
