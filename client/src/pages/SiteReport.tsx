@@ -504,6 +504,41 @@ export default function SiteReport() {
           )}
         </CardContent>
       </Card>
+
+      {/* Site Purchases */}
+      {dpr.sitePurchases && dpr.sitePurchases.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Site Purchases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item Description</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Bill No</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead>UOM</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dpr.sitePurchases.map((item: any, i: number) => (
+                  <TableRow key={i} data-testid={`row-site-purchase-${i}`}>
+                    <TableCell className="font-medium">{item.itemDescription}</TableCell>
+                    <TableCell>{item.vendor || '-'}</TableCell>
+                    <TableCell>{item.billNo || '-'}</TableCell>
+                    <TableCell className="text-right font-semibold">{item.amount ? Number(item.amount).toFixed(2) : '-'}</TableCell>
+                    <TableCell className="text-right">{item.quantity ? Number(item.quantity).toFixed(2) : '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

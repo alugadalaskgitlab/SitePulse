@@ -56,6 +56,15 @@ interface MaterialEntry {
   receiptNumber: string;
 }
 
+interface SitePurchaseEntry {
+  itemDescription: string;
+  vendor: string;
+  billNo: string;
+  amount: number | null;
+  quantity: number | null;
+  uom: string;
+}
+
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
@@ -133,6 +142,8 @@ export default function SiteEdit() {
   // Materials are now managed separately in the Materials Received tab
   const [materials] = useState<MaterialEntry[]>([]);
 
+  const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
+
   useEffect(() => {
     if (dpr) {
       setHeader({
@@ -180,6 +191,17 @@ export default function SiteEdit() {
       }
 
       // Materials are now managed separately in the Materials Received tab
+
+      if (dpr.sitePurchases) {
+        setSitePurchases(dpr.sitePurchases.map((sp: any) => ({
+          itemDescription: sp.itemDescription || "",
+          vendor: sp.vendor || "",
+          billNo: sp.billNo || "",
+          amount: sp.amount != null ? Number(sp.amount) : null,
+          quantity: sp.quantity != null ? Number(sp.quantity) : null,
+          uom: sp.uom || "",
+        })));
+      }
     }
   }, [dpr]);
 
@@ -263,6 +285,18 @@ export default function SiteEdit() {
     }
   };
 
+  const addSitePurchase = () => {
+    setSitePurchases([...sitePurchases, { itemDescription: "", vendor: "", billNo: "", amount: null, quantity: null, uom: "" }]);
+  };
+  const removeSitePurchase = (index: number) => {
+    setSitePurchases(sitePurchases.filter((_, i) => i !== index));
+  };
+  const updateSitePurchase = (index: number, field: keyof SitePurchaseEntry, value: any) => {
+    const updated = [...sitePurchases];
+    (updated[index] as any)[field] = value;
+    setSitePurchases(updated);
+  };
+
   const handleSave = () => {
     if (!header.date || !header.site || !header.engineer) {
       toast({
@@ -295,6 +329,7 @@ export default function SiteEdit() {
         location: m.location || undefined,
         receiptNumber: m.receiptNumber || undefined,
       })),
+      sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
     };
 
     updateMutation.mutate(payload);
@@ -788,6 +823,58 @@ export default function SiteEdit() {
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/* Site Purchases */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="text-teal-600">Site Purchases</CardTitle>
+          <Button size="sm" variant="outline" onClick={addSitePurchase} data-testid="button-add-site-purchase-top">
+            <Plus className="w-4 h-4 mr-1" /> Add
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {sitePurchases.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-4">No site purchases added.</p>
+          ) : (
+            sitePurchases.map((sp, idx) => (
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-7 gap-3 items-end p-4 bg-muted/30 rounded-lg relative">
+                <Button size="icon" variant="ghost" className="absolute right-0 top-0 text-muted-foreground hover:text-destructive" onClick={() => removeSitePurchase(idx)} data-testid={`button-remove-site-purchase-${idx}`}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+                <div className="md:col-span-2">
+                  <Label>Item Description</Label>
+                  <Input placeholder="e.g. Diesel for cleaning" value={sp.itemDescription} onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value)} data-testid={`input-site-purchase-item-${idx}`} />
+                </div>
+                <div>
+                  <Label>Vendor</Label>
+                  <Input placeholder="e.g. Local Fuel Station" value={sp.vendor} onChange={e => updateSitePurchase(idx, 'vendor', e.target.value)} data-testid={`input-site-purchase-vendor-${idx}`} />
+                </div>
+                <div>
+                  <Label>Bill No</Label>
+                  <Input placeholder="e.g. INV-001" value={sp.billNo} onChange={e => updateSitePurchase(idx, 'billNo', e.target.value)} data-testid={`input-site-purchase-bill-${idx}`} />
+                </div>
+                <div>
+                  <Label>Amount</Label>
+                  <Input type="number" step="0.01" placeholder="0.00" value={sp.amount ?? ''} onChange={e => updateSitePurchase(idx, 'amount', e.target.value ? parseFloat(e.target.value) : null)} data-testid={`input-site-purchase-amount-${idx}`} />
+                </div>
+                <div>
+                  <Label>Qty</Label>
+                  <Input type="number" step="0.01" placeholder="0" value={sp.quantity ?? ''} onChange={e => updateSitePurchase(idx, 'quantity', e.target.value ? parseFloat(e.target.value) : null)} data-testid={`input-site-purchase-qty-${idx}`} />
+                </div>
+                <div>
+                  <Label>UOM</Label>
+                  <Input placeholder="Litres/Nos" value={sp.uom} onChange={e => updateSitePurchase(idx, 'uom', e.target.value)} data-testid={`input-site-purchase-uom-${idx}`} />
+                </div>
+              </div>
+            ))
+          )}
+          {sitePurchases.length > 0 && (
+            <Button variant="outline" className="w-full border-dashed" onClick={addSitePurchase} data-testid="button-add-site-purchase-bottom">
+              <Plus className="w-4 h-4 mr-1" /> Add Site Purchase
+            </Button>
+          )}
         </CardContent>
       </Card>
 

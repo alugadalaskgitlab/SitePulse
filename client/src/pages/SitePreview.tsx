@@ -14,6 +14,7 @@ interface PreviewData {
   equipment: any[];
   labour: any[];
   materials: any[];
+  sitePurchases?: any[];
   totalDiesel: number;
   materialsAbstract: { material: string; uom: string; trips: number; total: number }[];
 }
@@ -285,6 +286,41 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Site Purchases */}
+      {data.sitePurchases && data.sitePurchases.some(p => p.itemDescription) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Site Purchases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item Description</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Bill No</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead>UOM</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.sitePurchases.filter(p => p.itemDescription).map((item, i) => (
+                  <TableRow key={i} data-testid={`row-site-purchase-preview-${i}`}>
+                    <TableCell className="font-medium">{item.itemDescription}</TableCell>
+                    <TableCell>{item.vendor || '-'}</TableCell>
+                    <TableCell>{item.billNo || '-'}</TableCell>
+                    <TableCell className="text-right font-semibold">{item.amount ? item.amount.toFixed(2) : '-'}</TableCell>
+                    <TableCell className="text-right">{item.quantity ? item.quantity.toFixed(2) : '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}

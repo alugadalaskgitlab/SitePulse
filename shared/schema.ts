@@ -83,6 +83,18 @@ export const materialLogs = pgTable("material_logs", {
   receiptNumber: text("receipt_number"), // Receipt number for received materials
 });
 
+// Site Purchases (direct purchases at site - diesel for cleaning, small items, etc.)
+export const sitePurchases = pgTable("site_purchases", {
+  id: serial("id").primaryKey(),
+  dprId: integer("dpr_id").notNull(),
+  itemDescription: text("item_description").notNull(),
+  quantity: real("quantity"),
+  uom: text("uom"),
+  vendor: text("vendor"),
+  billNo: text("bill_no"),
+  amount: real("amount"),
+});
+
 // DPR Version History (for manager edits as copies)
 export const dprVersions = pgTable("dpr_versions", {
   id: serial("id").primaryKey(),
@@ -405,6 +417,7 @@ export const dprsRelations = relations(dprs, ({ many }) => ({
   equipment: many(equipmentLogs),
   labour: many(labourLogs),
   materials: many(materialLogs),
+  sitePurchases: many(sitePurchases),
   versions: many(dprVersions),
 }));
 
@@ -443,6 +456,10 @@ export const materialRelations = relations(materialLogs, ({ one }) => ({
   dpr: one(dprs, { fields: [materialLogs.dprId], references: [dprs.id] }),
 }));
 
+export const sitePurchaseRelations = relations(sitePurchases, ({ one }) => ({
+  dpr: one(dprs, { fields: [sitePurchases.dprId], references: [dprs.id] }),
+}));
+
 // === SCHEMAS & TYPES ===
 
 export const insertDprSchema = createInsertSchema(dprs).omit({ id: true, createdAt: true });
@@ -450,6 +467,7 @@ export const insertProgressSchema = createInsertSchema(progressEntries).omit({ i
 export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id: true, dprId: true });
 export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true });
 export const insertMaterialSchema = createInsertSchema(materialLogs).omit({ id: true, dprId: true });
+export const insertSitePurchaseSchema = createInsertSchema(sitePurchases).omit({ id: true, dprId: true });
 export const insertPlantReportSchema = createInsertSchema(plantReports).omit({ id: true, createdAt: true });
 export const insertPlantProductionSchema = createInsertSchema(plantProduction).omit({ id: true, plantReportId: true });
 
@@ -458,6 +476,7 @@ export type ProgressEntry = typeof progressEntries.$inferSelect;
 export type EquipmentLog = typeof equipmentLogs.$inferSelect;
 export type LabourLog = typeof labourLogs.$inferSelect;
 export type MaterialLog = typeof materialLogs.$inferSelect;
+export type SitePurchase = typeof sitePurchases.$inferSelect;
 export type DprVersion = typeof dprVersions.$inferSelect;
 export type PlantReport = typeof plantReports.$inferSelect;
 export type PlantProduction = typeof plantProduction.$inferSelect;
@@ -469,6 +488,7 @@ export const createDprRequestSchema = insertDprSchema.extend({
   equipment: z.array(insertEquipmentSchema).optional(),
   labour: z.array(insertLabourSchema).optional(),
   materials: z.array(insertMaterialSchema).optional(),
+  sitePurchases: z.array(insertSitePurchaseSchema).optional(),
   clientTimestamp: z.string().optional(), // Client's local timestamp for accurate time display
 });
 
@@ -479,6 +499,7 @@ export type DprWithDetails = Dpr & {
   equipment: EquipmentLog[];
   labour: LabourLog[];
   materials: MaterialLog[];
+  sitePurchases: SitePurchase[];
 };
 
 // Composite Request Type for Creating a Plant Report

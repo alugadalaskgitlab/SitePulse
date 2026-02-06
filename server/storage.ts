@@ -24,6 +24,7 @@ import {
   stockBalances,
   stockLedger,
   materialIssues,
+  sitePurchases,
   siteMaterialTrips,
   adminNotifications,
   type CreateDprRequest,
@@ -293,6 +294,7 @@ export class DatabaseStorage implements IStorage {
         equipment: true,
         labour: true,
         materials: true,
+        sitePurchases: true,
       },
       orderBy: desc(dprs.date),
     });
@@ -329,6 +331,7 @@ export class DatabaseStorage implements IStorage {
         equipment: true,
         labour: true,
         materials: true,
+        sitePurchases: true,
       }
     });
     return dpr;
@@ -396,6 +399,19 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
+      // 6. Insert Site Purchases with uppercase text fields
+      if (dprData.sitePurchases?.length) {
+        await tx.insert(sitePurchases).values(
+          dprData.sitePurchases.map(sp => ({
+            ...sp,
+            dprId,
+            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
+            vendor: sp.vendor?.toUpperCase() || sp.vendor,
+            billNo: sp.billNo?.toUpperCase() || sp.billNo,
+          }))
+        );
+      }
+
       return newDpr;
     });
   }
@@ -423,6 +439,7 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
       await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
+      await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
 
       if (dprData.progress?.length) {
         await tx.insert(progressEntries).values(
@@ -447,6 +464,18 @@ export class DatabaseStorage implements IStorage {
       if (dprData.materials?.length) {
         await tx.insert(materialLogs).values(
           dprData.materials.map(m => ({ ...m, dprId: id }))
+        );
+      }
+
+      if (dprData.sitePurchases?.length) {
+        await tx.insert(sitePurchases).values(
+          dprData.sitePurchases.map(sp => ({
+            ...sp,
+            dprId: id,
+            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
+            vendor: sp.vendor?.toUpperCase() || sp.vendor,
+            billNo: sp.billNo?.toUpperCase() || sp.billNo,
+          }))
         );
       }
 
@@ -554,6 +583,21 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
+      // Copy site purchases with uppercase
+      if (original.sitePurchases?.length) {
+        await tx.insert(sitePurchases).values(
+          original.sitePurchases.map(sp => ({
+            dprId,
+            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
+            quantity: sp.quantity,
+            uom: sp.uom,
+            vendor: sp.vendor?.toUpperCase() || sp.vendor,
+            billNo: sp.billNo?.toUpperCase() || sp.billNo,
+            amount: sp.amount,
+          }))
+        );
+      }
+
       // Record version history
       await tx.insert(dprVersions).values({
         originalDprId: id,
@@ -629,6 +673,19 @@ export class DatabaseStorage implements IStorage {
             vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
             supplier: m.supplier?.toUpperCase() || m.supplier,
             location: m.location?.toUpperCase() || m.location,
+          }))
+        );
+      }
+
+      // Insert edited site purchases with uppercase text fields
+      if (dprData.sitePurchases?.length) {
+        await tx.insert(sitePurchases).values(
+          dprData.sitePurchases.map(sp => ({
+            ...sp,
+            dprId,
+            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
+            vendor: sp.vendor?.toUpperCase() || sp.vendor,
+            billNo: sp.billNo?.toUpperCase() || sp.billNo,
           }))
         );
       }
@@ -714,6 +771,7 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
       await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
+      await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
       await tx.delete(dprVersions).where(eq(dprVersions.dprId, id));
       const result = await tx.delete(dprs).where(eq(dprs.id, id));
       return true;

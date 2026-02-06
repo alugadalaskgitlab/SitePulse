@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Trash2, Truck, Users, Package, Activity } from "lucide-react";
+import { Plus, Trash2, Truck, Users, Package, Activity, ShoppingCart } from "lucide-react";
 import { useCreateDpr } from "@/hooks/use-dprs";
 import { useLocation } from "wouter";
 
@@ -25,6 +25,7 @@ export function DprForm() {
       equipment: [],
       labour: [],
       materials: [],
+      sitePurchases: [],
     },
   });
 
@@ -110,6 +111,7 @@ export function DprForm() {
         <EquipmentSection control={form.control} />
         <LabourSection control={form.control} />
         <MaterialSection control={form.control} />
+        <SitePurchasesSection control={form.control} />
 
         <div className="flex justify-end gap-4 sticky bottom-6 bg-background/80 backdrop-blur p-4 border rounded-xl shadow-lg">
           <Button type="button" variant="outline" onClick={() => setLocation("/")}>
@@ -152,6 +154,15 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Activity Progress</h3>
       </div>
       <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed"
+          onClick={() => append({ activity: "", quantity: 0 })}
+          data-testid="button-add-activity-top"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Activity
+        </Button>
         {fields.map((field, index) => {
           const length = control._formValues.progress?.[index]?.length;
           const width = control._formValues.progress?.[index]?.width;
@@ -642,6 +653,15 @@ function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Equipment Log</h3>
       </div>
       <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed"
+          onClick={() => append({ machine: "" })}
+          data-testid="button-add-equipment-top"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Equipment
+        </Button>
         {fields.map((field, index) => (
           <EquipmentRow key={field.id} control={control} index={index} remove={remove} />
         ))}
@@ -681,6 +701,15 @@ function LabourSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Labour Strength</h3>
       </div>
       <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed"
+          onClick={() => append({ category: "Unskilled", count: 0 })}
+          data-testid="button-add-labour-top"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Labour
+        </Button>
         {fields.map((field, index) => (
           <div key={field.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end p-4 bg-muted/30 rounded-lg relative">
              <Button
@@ -777,6 +806,15 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
         <h3>Materials Log</h3>
       </div>
       <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed"
+          onClick={() => append({ type: "Received", material: "", quantity: 0 })}
+          data-testid="button-add-material-top"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Material
+        </Button>
         {fields.map((field, index) => (
           <div key={field.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end p-4 bg-muted/30 rounded-lg relative">
              <Button
@@ -872,6 +910,146 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
           onClick={() => append({ type: "Received", material: "", quantity: 0 })}
         >
           <Plus className="w-4 h-4 mr-2" /> Add Material
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> }) {
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "sitePurchases",
+  });
+
+  const addRow = () => append({ itemDescription: "", vendor: "", billNo: "", amount: undefined as any, quantity: undefined as any, uom: "" });
+
+  return (
+    <div className="form-section">
+      <div className="form-section-title text-teal-600">
+        <ShoppingCart className="w-5 h-5" />
+        <h3>Site Purchases</h3>
+      </div>
+      <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed"
+          onClick={addRow}
+          data-testid="button-add-site-purchase-top"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Site Purchase
+        </Button>
+        {fields.map((field, index) => (
+          <div key={field.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end p-4 bg-muted/30 rounded-lg relative">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0 top-0 text-muted-foreground hover:text-destructive"
+              onClick={() => remove(index)}
+              data-testid={`button-remove-site-purchase-${index}`}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+            <FormField
+              control={control}
+              name={`sitePurchases.${index}.itemDescription`}
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Item Description</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. Diesel for cleaning" {...field} data-testid={`input-site-purchase-item-${index}`} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`sitePurchases.${index}.vendor`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Vendor</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. Local Fuel Station" {...field} value={field.value || ''} data-testid={`input-site-purchase-vendor-${index}`} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`sitePurchases.${index}.billNo`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Bill No</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. INV-001" {...field} value={field.value || ''} data-testid={`input-site-purchase-bill-${index}`} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`sitePurchases.${index}.amount`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Amount</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      {...field}
+                      onChange={e => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                      value={field.value ?? ''}
+                      data-testid={`input-site-purchase-amount-${index}`}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`sitePurchases.${index}.quantity`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Qty</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      {...field}
+                      onChange={e => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                      value={field.value ?? ''}
+                      data-testid={`input-site-purchase-qty-${index}`}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`sitePurchases.${index}.uom`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>UOM</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Litres/Nos" {...field} value={field.value || ''} data-testid={`input-site-purchase-uom-${index}`} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed"
+          onClick={addRow}
+          data-testid="button-add-site-purchase-bottom"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Site Purchase
         </Button>
       </div>
     </div>
