@@ -11,7 +11,7 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -948,34 +948,18 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
-                                  {dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0 && (
-                                    <Badge
-                                      variant="secondary"
-                                      className={`text-[10px] px-1 py-0 font-mono leading-tight ${Number(dispatch.bitumenVariancePercent) > 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}
-                                      data-testid={`text-bitumen-variance-${dispatch.id}`}
-                                    >
-                                      {Number(dispatch.bitumenVariancePercent) > 0 ? "+" : ""}{Number(dispatch.bitumenVariancePercent).toFixed(1)}%
-                                    </Badge>
-                                  )}
-                                </div>
+                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">LDO (L)</span>
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
-                                  {dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0 && (
-                                    <Badge
-                                      variant="secondary"
-                                      className={`text-[10px] px-1 py-0 font-mono leading-tight ${Number(dispatch.ldoVariancePercent) > 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}
-                                      data-testid={`text-ldo-variance-${dispatch.id}`}
-                                    >
-                                      {Number(dispatch.ldoVariancePercent) > 0 ? "+" : ""}{Number(dispatch.ldoVariancePercent).toFixed(1)}%
-                                    </Badge>
-                                  )}
-                                </div>
+                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
                               </div>
+                              {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
+                                (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (
+                                <div className="flex items-center" title="Variance recorded — see Variance Report for details" data-testid={`indicator-variance-${dispatch.id}`}>
+                                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 ml-4">
                               <Button
