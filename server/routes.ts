@@ -1373,6 +1373,15 @@ async function seedDatabase() {
   }
 
   try {
+    const orphanResult = await storage.migrateOrphanStockToHLC();
+    if (orphanResult.ledgerFixed > 0 || orphanResult.balancesMerged > 0) {
+      console.log(`Startup: Migrated orphan stock to HLC - ${orphanResult.ledgerFixed} ledger entries fixed, ${orphanResult.balancesMerged} balances merged, ${orphanResult.errors} errors`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to migrate orphan stock:", err);
+  }
+
+  try {
     const recalcResult = await storage.recalculateAllDispatchConsumption();
     if (recalcResult.varianceFixed > 0) {
       console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);
