@@ -69,20 +69,23 @@ export default function PlantVarianceReport() {
 
   const formatVariance = (variance: number | null) => {
     if (variance === null || variance === undefined) return null;
-    const sign = variance > 0 ? "+" : "";
-    return `${sign}${variance.toFixed(1)}%`;
+    const v = Number(variance);
+    if (isNaN(v)) return null;
+    const sign = v > 0 ? "+" : "";
+    return `${sign}${v.toFixed(1)}%`;
   };
 
   const getVarianceColor = (variance: number | null) => {
     if (variance === null || variance === undefined) return "";
-    if (variance > 0) return "text-red-600 dark:text-red-400";
-    if (variance < 0) return "text-green-600 dark:text-green-400";
+    const v = Number(variance);
+    if (v > 0) return "text-red-600 dark:text-red-400";
+    if (v < 0) return "text-green-600 dark:text-green-400";
     return "";
   };
 
   const getVarianceBadge = (variance: number | null) => {
     if (variance === null || variance === undefined) return null;
-    const absVariance = Math.abs(variance);
+    const absVariance = Math.abs(Number(variance));
     
     if (absVariance > 10) {
       return <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" /> {formatVariance(variance)}</Badge>;
@@ -120,15 +123,15 @@ export default function PlantVarianceReport() {
 
   const summaryStats = dispatches ? {
     totalEntries: dispatches.length,
-    bitumenOveruse: dispatches.filter(d => (d.bitumenVariancePercent || 0) > 0).length,
-    bitumenUnderuse: dispatches.filter(d => (d.bitumenVariancePercent || 0) < 0).length,
-    ldoOveruse: dispatches.filter(d => (d.ldoVariancePercent || 0) > 0).length,
-    ldoUnderuse: dispatches.filter(d => (d.ldoVariancePercent || 0) < 0).length,
+    bitumenOveruse: dispatches.filter(d => Number(d.bitumenVariancePercent || 0) > 0).length,
+    bitumenUnderuse: dispatches.filter(d => Number(d.bitumenVariancePercent || 0) < 0).length,
+    ldoOveruse: dispatches.filter(d => Number(d.ldoVariancePercent || 0) > 0).length,
+    ldoUnderuse: dispatches.filter(d => Number(d.ldoVariancePercent || 0) < 0).length,
     avgBitumenVariance: dispatches.length > 0 
-      ? dispatches.reduce((sum, d) => sum + (d.bitumenVariancePercent || 0), 0) / dispatches.length 
+      ? dispatches.reduce((sum, d) => sum + Number(d.bitumenVariancePercent || 0), 0) / dispatches.length 
       : 0,
     avgLdoVariance: dispatches.length > 0 
-      ? dispatches.reduce((sum, d) => sum + (d.ldoVariancePercent || 0), 0) / dispatches.length 
+      ? dispatches.reduce((sum, d) => sum + Number(d.ldoVariancePercent || 0), 0) / dispatches.length 
       : 0,
   } : null;
 

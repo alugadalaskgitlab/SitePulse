@@ -1371,4 +1371,13 @@ async function seedDatabase() {
       ]
     });
   }
+
+  try {
+    const recalcResult = await storage.recalculateAllDispatchConsumption();
+    if (recalcResult.varianceFixed > 0) {
+      console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to recalculate dispatch variances:", err);
+  }
 }

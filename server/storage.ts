@@ -175,7 +175,7 @@ export interface IStorage {
   createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
   
   // Recalculate all dispatch consumption from mix templates
-  recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }>;
+  recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number; varianceFixed: number }>;
   
   // Create missing ledger entries for equipment usage diesel and clean up orphaned reversals
   reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number; cleaned: number }>;
@@ -2253,14 +2253,12 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number }> {
+  async recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number; varianceFixed: number }> {
     let updated = 0;
     let errors = 0;
+    let varianceFixed = 0;
     
-    // Get all dispatches
     const allDispatches = await db.select().from(truckDispatches);
-    
-    // Get all mix templates for lookup
     const templates = await db.select().from(mixTemplates);
     const templateMap = new Map(templates.map(t => [t.id, t]));
     
@@ -2274,36 +2272,52 @@ export class DatabaseStorage implements IStorage {
         const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
         const theoreticalLdoQty = dispatch.loadWeight * ldoNorm;
         
-        // Only update actual values if they are null/undefined/0 (don't overwrite user-entered data)
         const updateData: any = {
           theoreticalBitumenPercent,
           theoreticalBitumenQty,
           theoreticalLdoQty,
         };
         
-        // Only backfill actual values if missing (null, undefined, or 0)
         if (!dispatch.actualBitumenPercent) {
           updateData.actualBitumenPercent = theoreticalBitumenPercent;
-        }
-        if (!dispatch.actualBitumenQty) {
-          updateData.actualBitumenQty = theoreticalBitumenQty;
         }
         if (!dispatch.actualLdoQty) {
           updateData.actualLdoQty = theoreticalLdoQty;
         }
+        
+        const finalActualBitumenPercent = dispatch.actualBitumenPercent || theoreticalBitumenPercent;
+        const finalActualLdoQty = dispatch.actualLdoQty || theoreticalLdoQty;
+        
+        updateData.actualBitumenQty = (dispatch.loadWeight * finalActualBitumenPercent) / 100;
+        
+        const bitumenVariancePercent = theoreticalBitumenPercent > 0
+          ? ((finalActualBitumenPercent - theoreticalBitumenPercent) / theoreticalBitumenPercent) * 100
+          : 0;
+        const ldoVariancePercent = theoreticalLdoQty > 0
+          ? ((finalActualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100
+          : 0;
+        
+        updateData.bitumenVariancePercent = Math.abs(bitumenVariancePercent) > 0.01 ? bitumenVariancePercent : null;
+        updateData.ldoVariancePercent = Math.abs(ldoVariancePercent) > 0.01 ? ldoVariancePercent : null;
+        
+        const hadMissingVariance = (
+          (dispatch.bitumenVariancePercent === null && updateData.bitumenVariancePercent !== null) ||
+          (dispatch.ldoVariancePercent === null && updateData.ldoVariancePercent !== null)
+        );
         
         await db.update(truckDispatches)
           .set(updateData)
           .where(eq(truckDispatches.id, dispatch.id));
         
         updated++;
+        if (hadMissingVariance) varianceFixed++;
       } catch (err) {
         console.error(`Error updating dispatch ${dispatch.id}:`, err);
         errors++;
       }
     }
     
-    return { updated, errors };
+    return { updated, errors, varianceFixed };
   }
 
   // Create missing ledger entries for equipment usage diesel and clean up orphaned reversals

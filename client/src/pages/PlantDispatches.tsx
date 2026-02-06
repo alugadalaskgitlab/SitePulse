@@ -948,21 +948,33 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>
-                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
-                                {dispatch.bitumenVariancePercent != null && (
-                                  <span className={`text-xs font-mono block ${dispatch.bitumenVariancePercent > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid={`text-bitumen-variance-${dispatch.id}`}>
-                                    {dispatch.bitumenVariancePercent > 0 ? "+" : ""}{dispatch.bitumenVariancePercent.toFixed(1)}%
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
+                                  {dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className={`text-[10px] px-1 py-0 font-mono leading-tight ${Number(dispatch.bitumenVariancePercent) > 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}
+                                      data-testid={`text-bitumen-variance-${dispatch.id}`}
+                                    >
+                                      {Number(dispatch.bitumenVariancePercent) > 0 ? "+" : ""}{Number(dispatch.bitumenVariancePercent).toFixed(1)}%
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">LDO (L)</span>
-                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
-                                {dispatch.ldoVariancePercent != null && (
-                                  <span className={`text-xs font-mono block ${dispatch.ldoVariancePercent > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid={`text-ldo-variance-${dispatch.id}`}>
-                                    {dispatch.ldoVariancePercent > 0 ? "+" : ""}{dispatch.ldoVariancePercent.toFixed(1)}%
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
+                                  {dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className={`text-[10px] px-1 py-0 font-mono leading-tight ${Number(dispatch.ldoVariancePercent) > 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}
+                                      data-testid={`text-ldo-variance-${dispatch.id}`}
+                                    >
+                                      {Number(dispatch.ldoVariancePercent) > 0 ? "+" : ""}{Number(dispatch.ldoVariancePercent).toFixed(1)}%
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 ml-4">
