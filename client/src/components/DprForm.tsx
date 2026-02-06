@@ -371,6 +371,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
           variant="outline"
           className="w-full border-dashed"
           onClick={() => append({ activity: "", quantity: 0 })}
+          data-testid="button-add-activity-bottom"
         >
           <Plus className="w-4 h-4 mr-2" /> Add Activity
         </Button>
@@ -680,6 +681,7 @@ function EquipmentSection({ control }: { control: Control<CreateDprRequest> }) {
           variant="outline"
           className="w-full border-dashed"
           onClick={() => append({ machine: "" })}
+          data-testid="button-add-equipment-bottom"
         >
           <Plus className="w-4 h-4 mr-2" /> Add Equipment
         </Button>
@@ -785,6 +787,7 @@ function LabourSection({ control }: { control: Control<CreateDprRequest> }) {
           variant="outline"
           className="w-full border-dashed"
           onClick={() => append({ category: "Unskilled", count: 0 })}
+          data-testid="button-add-labour-bottom"
         >
           <Plus className="w-4 h-4 mr-2" /> Add Labour
         </Button>
@@ -908,6 +911,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
           variant="outline"
           className="w-full border-dashed"
           onClick={() => append({ type: "Received", material: "", quantity: 0 })}
+          data-testid="button-add-material-bottom"
         >
           <Plus className="w-4 h-4 mr-2" /> Add Material
         </Button>

@@ -559,6 +559,9 @@ export default function SiteEdit() {
               </div>
             </div>
           ))}
+          <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
+            <Plus className="w-4 h-4 mr-1" /> Add Row
+          </Button>
         </CardContent>
       </Card>
 
@@ -719,6 +722,9 @@ export default function SiteEdit() {
             <p className="text-sm text-muted-foreground">Total Diesel</p>
             <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(1)} L</p>
           </div>
+          <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('equipment')} data-testid="button-add-equipment-bottom">
+            <Plus className="w-4 h-4 mr-1" /> Add Row
+          </Button>
         </CardContent>
       </Card>
 
@@ -823,6 +829,9 @@ export default function SiteEdit() {
               </div>
             </div>
           ))}
+          <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">
+            <Plus className="w-4 h-4 mr-1" /> Add Row
+          </Button>
         </CardContent>
       </Card>
 
