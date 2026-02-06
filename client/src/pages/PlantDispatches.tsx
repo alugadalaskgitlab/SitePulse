@@ -40,6 +40,7 @@ export default function PlantDispatches() {
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
   const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; dispatchId?: number } | null>(null);
+  const [authenticatedRole, setAuthenticatedRole] = useState<string>("manager");
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -256,6 +257,7 @@ export default function PlantDispatches() {
           deliveryLocation: deliveryLocation.toUpperCase(),
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
           actualLdoQty: actualLdoQty ? parseFloat(actualLdoQty) : null,
+          adjustedBy: authenticatedRole,
         }
       });
     } else {
@@ -282,6 +284,7 @@ export default function PlantDispatches() {
 
   const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
     setShowPinAuth(false);
+    setAuthenticatedRole(role);
     if (!pendingAction) return;
 
     switch (pendingAction.type) {
@@ -946,10 +949,20 @@ export default function PlantDispatches() {
                               <div>
                                 <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>
                                 <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
+                                {dispatch.bitumenVariancePercent != null && (
+                                  <span className={`text-xs font-mono block ${dispatch.bitumenVariancePercent > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid={`text-bitumen-variance-${dispatch.id}`}>
+                                    {dispatch.bitumenVariancePercent > 0 ? "+" : ""}{dispatch.bitumenVariancePercent.toFixed(1)}%
+                                  </span>
+                                )}
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">LDO (L)</span>
                                 <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
+                                {dispatch.ldoVariancePercent != null && (
+                                  <span className={`text-xs font-mono block ${dispatch.ldoVariancePercent > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid={`text-ldo-variance-${dispatch.id}`}>
+                                    {dispatch.ldoVariancePercent > 0 ? "+" : ""}{dispatch.ldoVariancePercent.toFixed(1)}%
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-1 ml-4">

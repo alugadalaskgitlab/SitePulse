@@ -20,7 +20,6 @@ export default function PlantVarianceReport() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
 
-  // All hooks must be called before any conditional returns
   const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
     queryKey: ["/api/plant-module/dispatches/variance-report", filterDateFrom, filterDateTo],
     queryFn: async () => {
@@ -43,7 +42,6 @@ export default function PlantVarianceReport() {
     enabled: isAuthenticated,
   });
   
-  // Require PIN authentication before showing content
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background p-4 flex flex-col items-center justify-center">
@@ -67,13 +65,19 @@ export default function PlantVarianceReport() {
     );
   }
 
-  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
   const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
 
   const formatVariance = (variance: number | null) => {
     if (variance === null || variance === undefined) return null;
     const sign = variance > 0 ? "+" : "";
     return `${sign}${variance.toFixed(1)}%`;
+  };
+
+  const getVarianceColor = (variance: number | null) => {
+    if (variance === null || variance === undefined) return "";
+    if (variance > 0) return "text-red-600 dark:text-red-400";
+    if (variance < 0) return "text-green-600 dark:text-green-400";
+    return "";
   };
 
   const getVarianceBadge = (variance: number | null) => {
@@ -88,6 +92,31 @@ export default function PlantVarianceReport() {
       return <Badge variant="outline" className="gap-1">{formatVariance(variance)}</Badge>;
     }
   };
+
+  const getBitumenDiffKg = (dispatch: TruckDispatch) => {
+    const actualPercent = dispatch.actualBitumenPercent;
+    const theoreticalPercent = dispatch.theoreticalBitumenPercent;
+    if (actualPercent == null || theoreticalPercent == null || !dispatch.loadWeight) return null;
+    const actualKg = (dispatch.loadWeight * actualPercent / 100) * 1000;
+    const theoreticalKg = (dispatch.loadWeight * theoreticalPercent / 100) * 1000;
+    return actualKg - theoreticalKg;
+  };
+
+  const getLdoDiffLiters = (dispatch: TruckDispatch) => {
+    const actualLdo = dispatch.actualLdoQty;
+    const theoreticalLdo = dispatch.theoreticalLdoQty;
+    if (actualLdo == null || theoreticalLdo == null) return null;
+    return actualLdo - theoreticalLdo;
+  };
+
+  const formatDiff = (diff: number | null, unit: string) => {
+    if (diff === null) return "-";
+    const sign = diff > 0 ? "+" : "";
+    return `${sign}${diff.toFixed(1)} ${unit}`;
+  };
+
+  const totalBitumenDiffKg = dispatches?.reduce((sum, d) => sum + (getBitumenDiffKg(d) || 0), 0) || 0;
+  const totalLdoDiffL = dispatches?.reduce((sum, d) => sum + (getLdoDiffLiters(d) || 0), 0) || 0;
 
   const summaryStats = dispatches ? {
     totalEntries: dispatches.length,
@@ -112,7 +141,7 @@ export default function PlantVarianceReport() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-report-title">
             <FileWarning className="w-6 h-6 text-amber-600" />
             Consumption Variance Report
           </h1>
@@ -151,70 +180,74 @@ export default function PlantVarianceReport() {
       </Card>
 
       {summaryStats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Total Entries</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">Total Entries with Variance</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{summaryStats.totalEntries}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Avg Bitumen Variance</CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-center gap-2">
-              {summaryStats.avgBitumenVariance > 0 ? (
-                <TrendingUp className="w-4 h-4 text-red-500" />
-              ) : (
-                <TrendingDown className="w-4 h-4 text-green-500" />
-              )}
-              <p className="text-2xl font-bold">{formatVariance(summaryStats.avgBitumenVariance)}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Avg LDO Variance</CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-center gap-2">
-              {summaryStats.avgLdoVariance > 0 ? (
-                <TrendingUp className="w-4 h-4 text-red-500" />
-              ) : (
-                <TrendingDown className="w-4 h-4 text-green-500" />
-              )}
-              <p className="text-2xl font-bold">{formatVariance(summaryStats.avgLdoVariance)}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Overuse / Underuse</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm">
-                <div className="flex justify-between">
+              <p className="text-2xl font-bold" data-testid="text-total-entries">{summaryStats.totalEntries}</p>
+              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span>Bitumen:</span>
-                  <span className="text-red-600">+{summaryStats.bitumenOveruse}</span>
+                  <span className="text-red-600 dark:text-red-400">{summaryStats.bitumenOveruse} overuse</span>
                   <span>/</span>
-                  <span className="text-green-600">-{summaryStats.bitumenUnderuse}</span>
+                  <span className="text-green-600 dark:text-green-400">{summaryStats.bitumenUnderuse} underuse</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span>LDO:</span>
-                  <span className="text-red-600">+{summaryStats.ldoOveruse}</span>
+                  <span className="text-red-600 dark:text-red-400">{summaryStats.ldoOveruse} overuse</span>
                   <span>/</span>
-                  <span className="text-green-600">-{summaryStats.ldoUnderuse}</span>
+                  <span className="text-green-600 dark:text-green-400">{summaryStats.ldoUnderuse} underuse</span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">Bitumen Variance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                {summaryStats.avgBitumenVariance > 0 ? (
+                  <TrendingUp className="w-4 h-4 text-red-500" />
+                ) : (
+                  <TrendingDown className="w-4 h-4 text-green-500" />
+                )}
+                <p className="text-2xl font-bold" data-testid="text-avg-bitumen-variance">{formatVariance(summaryStats.avgBitumenVariance)}</p>
+                <span className="text-xs text-muted-foreground">avg</span>
+              </div>
+              <p className={`text-sm font-mono mt-1 ${totalBitumenDiffKg > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-bitumen-diff">
+                {formatDiff(totalBitumenDiffKg, "Kg")} total
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">LDO Variance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                {summaryStats.avgLdoVariance > 0 ? (
+                  <TrendingUp className="w-4 h-4 text-red-500" />
+                ) : (
+                  <TrendingDown className="w-4 h-4 text-green-500" />
+                )}
+                <p className="text-2xl font-bold" data-testid="text-avg-ldo-variance">{formatVariance(summaryStats.avgLdoVariance)}</p>
+                <span className="text-xs text-muted-foreground">avg</span>
+              </div>
+              <p className={`text-sm font-mono mt-1 ${totalLdoDiffL > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-ldo-diff">
+                {formatDiff(totalLdoDiffL, "L")} total
+              </p>
             </CardContent>
           </Card>
         </div>
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Variance Details</CardTitle>
         </CardHeader>
         <CardContent>
@@ -232,30 +265,42 @@ export default function PlantVarianceReport() {
                     <th className="text-left p-2">Mix</th>
                     <th className="text-right p-2">Load (MT)</th>
                     <th className="text-right p-2">Bitumen Variance</th>
+                    <th className="text-right p-2">Bitumen Diff</th>
                     <th className="text-right p-2">LDO Variance</th>
+                    <th className="text-right p-2">LDO Diff</th>
                     <th className="text-left p-2">Adjusted By</th>
                     <th className="text-left p-2">Adjusted At</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {dispatches.map((dispatch) => (
-                    <tr key={dispatch.id} className="border-b hover:bg-muted/50">
-                      <td className="p-2">{format(new Date(dispatch.date), "dd MMM yyyy")}</td>
-                      <td className="p-2 font-mono">{dispatch.truckNumber}</td>
-                      <td className="p-2">{getTemplateName(dispatch.mixTemplateId)}</td>
-                      <td className="p-2 text-right font-mono">{dispatch.loadWeight}</td>
-                      <td className="p-2 text-right">{getVarianceBadge(dispatch.bitumenVariancePercent)}</td>
-                      <td className="p-2 text-right">{getVarianceBadge(dispatch.ldoVariancePercent)}</td>
-                      <td className="p-2">
-                        {dispatch.adjustedBy ? (
-                          <Badge variant="outline">{dispatch.adjustedBy}</Badge>
-                        ) : "-"}
-                      </td>
-                      <td className="p-2 text-muted-foreground text-xs">
-                        {dispatch.adjustedAt ? format(new Date(dispatch.adjustedAt), "dd/MM HH:mm") : "-"}
-                      </td>
-                    </tr>
-                  ))}
+                  {dispatches.map((dispatch) => {
+                    const bitumenDiff = getBitumenDiffKg(dispatch);
+                    const ldoDiff = getLdoDiffLiters(dispatch);
+                    return (
+                      <tr key={dispatch.id} className="border-b hover:bg-muted/50" data-testid={`row-variance-${dispatch.id}`}>
+                        <td className="p-2">{format(new Date(dispatch.date), "dd MMM yyyy")}</td>
+                        <td className="p-2 font-mono">{dispatch.truckNumber}</td>
+                        <td className="p-2">{getTemplateName(dispatch.mixTemplateId)}</td>
+                        <td className="p-2 text-right font-mono">{dispatch.loadWeight}</td>
+                        <td className="p-2 text-right">{getVarianceBadge(dispatch.bitumenVariancePercent)}</td>
+                        <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(bitumenDiff)}`}>
+                          {formatDiff(bitumenDiff, "Kg")}
+                        </td>
+                        <td className="p-2 text-right">{getVarianceBadge(dispatch.ldoVariancePercent)}</td>
+                        <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(ldoDiff)}`}>
+                          {formatDiff(ldoDiff, "L")}
+                        </td>
+                        <td className="p-2">
+                          {dispatch.adjustedBy ? (
+                            <Badge variant="outline">{dispatch.adjustedBy}</Badge>
+                          ) : "-"}
+                        </td>
+                        <td className="p-2 text-muted-foreground text-xs">
+                          {dispatch.adjustedAt ? format(new Date(dispatch.adjustedAt), "dd/MM HH:mm") : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

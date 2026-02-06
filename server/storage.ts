@@ -1320,51 +1320,61 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Calculate actual values
-      const newActualBitumenQty = dispatch.actualBitumenQty ?? currentDispatch.actualBitumenQty ?? theoreticalBitumenQty;
+      const theoreticalBitumenPercent = uppercased.theoreticalBitumenPercent ?? currentDispatch.theoreticalBitumenPercent ?? 0;
+
+      let newActualBitumenPercent: number;
+      let newActualBitumenQty: number;
+      if (dispatch.actualBitumenPercent !== undefined && dispatch.actualBitumenPercent !== null) {
+        newActualBitumenPercent = dispatch.actualBitumenPercent;
+        newActualBitumenQty = (loadWeight * dispatch.actualBitumenPercent) / 100;
+        uppercased.actualBitumenQty = newActualBitumenQty;
+      } else if (currentDispatch.actualBitumenPercent !== null && currentDispatch.actualBitumenPercent !== undefined) {
+        newActualBitumenPercent = currentDispatch.actualBitumenPercent;
+        newActualBitumenQty = currentDispatch.actualBitumenQty ?? theoreticalBitumenQty;
+      } else {
+        newActualBitumenPercent = theoreticalBitumenPercent;
+        newActualBitumenQty = theoreticalBitumenQty;
+      }
+
       const newActualLdoQty = dispatch.actualLdoQty ?? currentDispatch.actualLdoQty ?? theoreticalLdoQty;
-      
-      // Calculate variance percentages
-      const bitumenVariancePercent = theoreticalBitumenQty > 0 
-        ? ((newActualBitumenQty - theoreticalBitumenQty) / theoreticalBitumenQty) * 100 
+
+      const bitumenVariancePercent = theoreticalBitumenPercent > 0
+        ? ((newActualBitumenPercent - theoreticalBitumenPercent) / theoreticalBitumenPercent) * 100
         : 0;
-      const ldoVariancePercent = theoreticalLdoQty > 0 
-        ? ((newActualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100 
+      const ldoVariancePercent = theoreticalLdoQty > 0
+        ? ((newActualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100
         : 0;
-      
-      // Update variance fields
+
       uppercased.bitumenVariancePercent = Math.abs(bitumenVariancePercent) > 0.01 ? bitumenVariancePercent : null;
       uppercased.ldoVariancePercent = Math.abs(ldoVariancePercent) > 0.01 ? ldoVariancePercent : null;
-      
-      // Check if actual consumption changed from previous values
-      const bitumenChanged = dispatch.actualBitumenQty !== undefined && 
-                            dispatch.actualBitumenQty !== currentDispatch.actualBitumenQty;
-      const ldoChanged = dispatch.actualLdoQty !== undefined && 
+
+      const bitumenChanged = dispatch.actualBitumenPercent !== undefined &&
+                            dispatch.actualBitumenPercent !== currentDispatch.actualBitumenPercent;
+      const ldoChanged = dispatch.actualLdoQty !== undefined &&
                         dispatch.actualLdoQty !== currentDispatch.actualLdoQty;
-      
+
       if (bitumenChanged || ldoChanged) {
         uppercased.adjustedBy = adjustedBy || "operator";
         uppercased.adjustedAt = new Date();
       }
-      
+
       const [result] = await tx.update(truckDispatches)
         .set(uppercased)
         .where(eq(truckDispatches.id, id))
         .returning();
-      
-      // Create audit log entries for changed consumption values
+
       if (bitumenChanged && Math.abs(bitumenVariancePercent) > 0.01) {
         await tx.insert(consumptionAuditLog).values({
           dispatchId: id,
           adjustmentType: "bitumen",
-          previousValue: currentDispatch.actualBitumenQty || currentDispatch.theoreticalBitumenQty,
-          newValue: newActualBitumenQty,
-          theoreticalValue: theoreticalBitumenQty,
+          previousValue: currentDispatch.actualBitumenPercent || currentDispatch.theoreticalBitumenPercent,
+          newValue: newActualBitumenPercent,
+          theoreticalValue: theoreticalBitumenPercent,
           variancePercent: bitumenVariancePercent,
           adjustedBy: adjustedBy || "operator",
         });
       }
-      
+
       if (ldoChanged && Math.abs(ldoVariancePercent) > 0.01) {
         await tx.insert(consumptionAuditLog).values({
           dispatchId: id,
