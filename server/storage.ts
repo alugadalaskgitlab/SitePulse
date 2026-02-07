@@ -226,6 +226,7 @@ export interface IStorage {
 
   // Site Purchases Report
   getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
+  updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
   getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]>;
@@ -3268,6 +3269,22 @@ export class DatabaseStorage implements IStorage {
     }
     
     return filtered;
+  }
+
+  async updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any> {
+    const updateData: any = {};
+    if (data.itemDescription !== undefined) updateData.itemDescription = data.itemDescription.toUpperCase();
+    if (data.quantity !== undefined) updateData.quantity = data.quantity;
+    if (data.uom !== undefined) updateData.uom = data.uom?.toUpperCase() || data.uom;
+    if (data.vendor !== undefined) updateData.vendor = data.vendor?.toUpperCase() || data.vendor;
+    if (data.billNo !== undefined) updateData.billNo = data.billNo?.toUpperCase() || data.billNo;
+    if (data.amount !== undefined) updateData.amount = data.amount;
+    
+    const [updated] = await db.update(sitePurchases)
+      .set(updateData)
+      .where(eq(sitePurchases.id, id))
+      .returning();
+    return updated;
   }
 
   async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]> {

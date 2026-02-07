@@ -187,6 +187,46 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/site-purchases/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, data } = req.body;
+      
+      if (!pin || typeof pin !== "string" || pin.length < 4) {
+        return res.status(400).json({ message: "Valid admin PIN is required" });
+      }
+      
+      const isAdmin = await storage.verifyPin("admin", pin);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Invalid admin PIN" });
+      }
+
+      const updateSchema = z.object({
+        itemDescription: z.string().optional(),
+        quantity: z.number().nullable().optional(),
+        uom: z.string().nullable().optional(),
+        vendor: z.string().nullable().optional(),
+        billNo: z.string().nullable().optional(),
+        amount: z.number().nullable().optional(),
+      });
+
+      const validatedData = updateSchema.parse(data);
+      
+      const updated = await storage.updateSitePurchase(id, validatedData);
+      if (!updated) {
+        return res.status(404).json({ message: "Site purchase not found" });
+      }
+      
+      res.json(updated);
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid data format" });
+      }
+      console.error("Error updating site purchase:", err);
+      res.status(500).json({ message: "Failed to update site purchase" });
+    }
+  });
+
   // ============================================
   // ADMIN NOTIFICATIONS
   // ============================================

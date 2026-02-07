@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ShoppingCart, Filter } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface SitePurchaseItem {
   id: number;
@@ -24,9 +27,20 @@ interface SitePurchaseItem {
 }
 
 export default function SitePurchasesReport() {
+  const { toast } = useToast();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
+  const [editingItem, setEditingItem] = useState<SitePurchaseItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    itemDescription: "",
+    quantity: "",
+    uom: "",
+    vendor: "",
+    billNo: "",
+    amount: "",
+  });
+  const [adminPin, setAdminPin] = useState("");
 
   const queryString = new URLSearchParams({
     ...(dateFrom && { dateFrom }),
@@ -51,6 +65,63 @@ export default function SitePurchasesReport() {
 
   const totalAmount = purchases?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
   const totalItems = purchases?.length || 0;
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, pin, data }: { id: number; pin: string; data: any }) => {
+      const res = await apiRequest("PUT", `/api/site-purchases/${id}`, { pin, data });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
+      setEditingItem(null);
+      setAdminPin("");
+      toast({
+        title: "Purchase Updated",
+        description: "The site purchase entry has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      let msg = "Failed to update purchase";
+      try {
+        const parsed = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        msg = parsed.message || msg;
+      } catch { msg = error.message || msg; }
+      toast({
+        title: "Error",
+        description: msg,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openEdit = (item: SitePurchaseItem) => {
+    setEditingItem(item);
+    setEditForm({
+      itemDescription: item.itemDescription || "",
+      quantity: item.quantity?.toString() || "",
+      uom: item.uom || "",
+      vendor: item.vendor || "",
+      billNo: item.billNo || "",
+      amount: item.amount?.toString() || "",
+    });
+    setAdminPin("");
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingItem || !adminPin) return;
+    updateMutation.mutate({
+      id: editingItem.id,
+      pin: adminPin,
+      data: {
+        itemDescription: editForm.itemDescription,
+        quantity: editForm.quantity ? Number(editForm.quantity) : null,
+        uom: editForm.uom || null,
+        vendor: editForm.vendor || null,
+        billNo: editForm.billNo || null,
+        amount: editForm.amount ? Number(editForm.amount) : null,
+      },
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -150,11 +221,12 @@ export default function SitePurchasesReport() {
                       <th className="text-left p-2 font-medium">UOM</th>
                       <th className="text-right p-2 font-medium">Amount</th>
                       <th className="text-left p-2 font-medium">Reported By</th>
+                      <th className="text-center p-2 font-medium">Edit</th>
                     </tr>
                   </thead>
                   <tbody>
                     {purchases.map((p) => (
-                      <tr key={p.id} className="border-b last:border-0">
+                      <tr key={p.id} className="border-b last:border-0" data-testid={`row-purchase-${p.id}`}>
                         <td className="p-2 whitespace-nowrap">{format(new Date(p.date), "dd-MMM-yyyy")}</td>
                         <td className="p-2">{p.site}</td>
                         <td className="p-2">{p.itemDescription}</td>
@@ -164,6 +236,16 @@ export default function SitePurchasesReport() {
                         <td className="p-2">{p.uom || "-"}</td>
                         <td className="p-2 text-right">{p.amount ? p.amount.toLocaleString("en-IN") : "-"}</td>
                         <td className="p-2">{p.engineer}</td>
+                        <td className="p-2 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(p)}
+                            data-testid={`button-edit-purchase-${p.id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -171,7 +253,7 @@ export default function SitePurchasesReport() {
                     <tr className="border-t font-bold">
                       <td colSpan={7} className="p-2 text-right">Total:</td>
                       <td className="p-2 text-right">{totalAmount.toLocaleString("en-IN")}</td>
-                      <td></td>
+                      <td colSpan={2}></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -180,6 +262,100 @@ export default function SitePurchasesReport() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Purchase Entry</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Item Description</Label>
+              <Input
+                value={editForm.itemDescription}
+                onChange={(e) => setEditForm(f => ({ ...f, itemDescription: e.target.value.toUpperCase() }))}
+                data-testid="input-edit-item"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Quantity</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editForm.quantity}
+                  onChange={(e) => setEditForm(f => ({ ...f, quantity: e.target.value }))}
+                  data-testid="input-edit-quantity"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">UOM</Label>
+                <Input
+                  value={editForm.uom}
+                  onChange={(e) => setEditForm(f => ({ ...f, uom: e.target.value.toUpperCase() }))}
+                  data-testid="input-edit-uom"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Vendor</Label>
+              <Input
+                value={editForm.vendor}
+                onChange={(e) => setEditForm(f => ({ ...f, vendor: e.target.value.toUpperCase() }))}
+                data-testid="input-edit-vendor"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Bill No</Label>
+                <Input
+                  value={editForm.billNo}
+                  onChange={(e) => setEditForm(f => ({ ...f, billNo: e.target.value.toUpperCase() }))}
+                  data-testid="input-edit-billno"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))}
+                  data-testid="input-edit-amount"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Admin PIN</Label>
+              <Input
+                type="password"
+                maxLength={4}
+                value={adminPin}
+                onChange={(e) => setAdminPin(e.target.value)}
+                placeholder="Enter admin PIN"
+                data-testid="input-edit-pin"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditingItem(null)} data-testid="button-cancel-edit">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={!adminPin || updateMutation.isPending}
+              data-testid="button-save-edit"
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                  Saving...
+                </>
+              ) : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
