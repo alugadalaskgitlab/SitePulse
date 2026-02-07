@@ -632,6 +632,9 @@ export class DatabaseStorage implements IStorage {
     const newSiteName = `${baseSite.toUpperCase()} – Edited by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
+      // Clean up original DPR's diesel ledger entries before creating new version
+      await this.cleanupDprEquipmentDieselLedger(tx, originalId);
+
       // Create new DPR with edited data and timestamp
       // IMPORTANT: Set submittedAt to ensure proper timestamp comparison for version deduplication
       const [newDpr] = await tx.insert(dprs).values({
