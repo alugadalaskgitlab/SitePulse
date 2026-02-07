@@ -624,3 +624,18 @@ export type InsertConsumptionAuditLog = z.infer<typeof insertConsumptionAuditLog
 
 // Tolerance constant for consumption validation (±10%)
 export const CONSUMPTION_TOLERANCE_PERCENT = 10;
+
+// ============================================
+// SITES MASTER
+// ============================================
+
+export const sites = pgTable("sites", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSiteSchema = createInsertSchema(sites).omit({ id: true, createdAt: true });
+export type Site = typeof sites.$inferSelect;
+export type InsertSite = z.infer<typeof insertSiteSchema>;

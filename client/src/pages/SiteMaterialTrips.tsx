@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { SiteMaterialTrip } from "@shared/schema";
+import type { SiteMaterialTrip, Site } from "@shared/schema";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
 const MATERIAL_OPTIONS = [
@@ -19,10 +19,12 @@ const MATERIAL_OPTIONS = [
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
-const DEFAULT_SITES = ["FDR KK ROAD", "TEST SITE ALPHA", "TEST SITE BETA"];
-
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
+  const { data: sitesList = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
+  const activeSites = sitesList.filter(s => s.isActive);
   const today = format(new Date(), "yyyy-MM-dd");
   const currentTime = format(new Date(), "HH:mm");
 
@@ -191,8 +193,8 @@ export default function SiteMaterialTrips() {
                       <SelectValue placeholder="Select Site" />
                     </SelectTrigger>
                     <SelectContent>
-                      {DEFAULT_SITES.map((site) => (
-                        <SelectItem key={site} value={site}>{site}</SelectItem>
+                      {activeSites.map((s) => (
+                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -354,8 +356,8 @@ export default function SiteMaterialTrips() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All Sites</SelectItem>
-                  {DEFAULT_SITES.map((site) => (
-                    <SelectItem key={site} value={site}>{site}</SelectItem>
+                  {activeSites.map((s) => (
+                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

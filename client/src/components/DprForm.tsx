@@ -9,10 +9,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Trash2, Truck, Users, Package, Activity, ShoppingCart } from "lucide-react";
 import { useCreateDpr } from "@/hooks/use-dprs";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import type { Site } from "@shared/schema";
 
 export function DprForm() {
   const [, setLocation] = useLocation();
   const createDpr = useCreateDpr();
+  const { data: sitesList = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
+  const activeSites = sitesList.filter(s => s.isActive);
 
   const form = useForm<CreateDprRequest>({
     resolver: zodResolver(createDprRequestSchema),
@@ -62,9 +68,18 @@ export function DprForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Site Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g. Highway Project A1" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
-                </FormControl>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger data-testid="input-site">
+                      <SelectValue placeholder="Select Site" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {activeSites.map((s) => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}

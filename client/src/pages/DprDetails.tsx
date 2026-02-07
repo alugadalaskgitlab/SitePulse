@@ -45,6 +45,7 @@ export default function DprDetails() {
     },
     onSuccess: (newDpr) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       toast({
         title: "Report Cloned",
         description: "A copy has been created for editing. Redirecting...",
@@ -66,6 +67,7 @@ export default function DprDetails() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       toast({
         title: "Report Deleted",
         description: "The report has been deleted.",

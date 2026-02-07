@@ -72,6 +72,9 @@ import {
   consumptionAuditLog,
   type ConsumptionAuditLog,
   type InsertConsumptionAuditLog,
+  sites,
+  type Site,
+  type InsertSite,
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
@@ -211,6 +214,13 @@ export interface IStorage {
   markAllNotificationsRead(): Promise<void>;
   deleteNotification(id: number): Promise<void>;
   
+  // Sites Master
+  getSites(): Promise<Site[]>;
+  createSite(site: InsertSite): Promise<Site>;
+  updateSite(id: number, site: Partial<InsertSite>): Promise<Site | undefined>;
+  deleteSite(id: number): Promise<boolean>;
+  seedSitesFromDprs(): Promise<number>;
+
   // Site Purchases Report
   getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
 
@@ -3137,7 +3147,6 @@ export class DatabaseStorage implements IStorage {
   async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]> {
     let conditions: any[] = [];
     
-    if (filters?.site) conditions.push(eq(dprs.site, filters.site));
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
     
@@ -3153,13 +3162,41 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
+      submittedAt: dprs.submittedAt,
     })
     .from(sitePurchases)
     .innerJoin(dprs, eq(sitePurchases.dprId, dprs.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(dprs.date));
     
-    return results;
+    // Deduplicate: only keep purchases from the latest version of each DPR
+    const latestDprByKey = new Map<string, { dprId: number; timestamp: string }>();
+    for (const row of results) {
+      const baseSite = this.getBaseSiteName(row.site);
+      const key = `${baseSite}|${row.date}`;
+      const currentTimestamp = row.submittedAt || '';
+      const existing = latestDprByKey.get(key);
+      if (!existing || currentTimestamp > existing.timestamp) {
+        latestDprByKey.set(key, { dprId: row.dprId, timestamp: currentTimestamp });
+      }
+    }
+    
+    const latestDprIds = new Set(Array.from(latestDprByKey.values()).map(v => v.dprId));
+    
+    let filtered = results
+      .filter(r => latestDprIds.has(r.dprId))
+      .map(({ submittedAt, ...rest }) => ({
+        ...rest,
+        site: this.getBaseSiteName(rest.site),
+      }));
+    
+    // Apply site filter on base site name
+    if (filters?.site) {
+      const filterSite = filters.site.toUpperCase().trim();
+      filtered = filtered.filter(r => r.site.toUpperCase().trim() === filterSite);
+    }
+    
+    return filtered;
   }
 
   async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]> {
@@ -3224,6 +3261,49 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(truckDispatches)
       .where(and(...conditions))
       .orderBy(desc(truckDispatches.date), desc(truckDispatches.id));
+  }
+  // Sites Master
+  async getSites(): Promise<Site[]> {
+    return db.select().from(sites).orderBy(asc(sites.name));
+  }
+
+  async createSite(site: InsertSite): Promise<Site> {
+    const [result] = await db.insert(sites).values({
+      ...site,
+      name: site.name.toUpperCase().trim(),
+    }).returning();
+    return result;
+  }
+
+  async updateSite(id: number, data: Partial<InsertSite>): Promise<Site | undefined> {
+    const updates: any = { ...data };
+    if (updates.name) updates.name = updates.name.toUpperCase().trim();
+    const [result] = await db.update(sites).set(updates).where(eq(sites.id, id)).returning();
+    return result;
+  }
+
+  async deleteSite(id: number): Promise<boolean> {
+    const result = await db.delete(sites).where(eq(sites.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async seedSitesFromDprs(): Promise<number> {
+    const allDprs = await db.select({ site: dprs.site }).from(dprs);
+    const uniqueSites = new Set<string>();
+    for (const dpr of allDprs) {
+      const baseSite = this.getBaseSiteName(dpr.site).toUpperCase().trim();
+      if (baseSite) uniqueSites.add(baseSite);
+    }
+    const existingSites = await db.select({ name: sites.name }).from(sites);
+    const existingNames = new Set(existingSites.map(s => s.name.toUpperCase().trim()));
+    let created = 0;
+    for (const siteName of Array.from(uniqueSites)) {
+      if (!existingNames.has(siteName)) {
+        await db.insert(sites).values({ name: siteName });
+        created++;
+      }
+    }
+    return created;
   }
 }
 

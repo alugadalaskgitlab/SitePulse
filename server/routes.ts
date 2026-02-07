@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -108,6 +108,63 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error deleting site material trip:", err);
       res.status(500).json({ message: "Failed to delete site material trip" });
+    }
+  });
+
+  // ============================================
+  // SITES MASTER
+  // ============================================
+
+  app.get("/api/sites", async (req, res) => {
+    try {
+      const sitesList = await storage.getSites();
+      res.json(sitesList);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch sites" });
+    }
+  });
+
+  app.post("/api/sites", async (req, res) => {
+    try {
+      const input = insertSiteSchema.parse(req.body);
+      const site = await storage.createSite(input);
+      res.status(201).json(site);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create site" });
+    }
+  });
+
+  app.patch("/api/sites/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const site = await storage.updateSite(id, req.body);
+      if (!site) return res.status(404).json({ message: "Site not found" });
+      res.json(site);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update site" });
+    }
+  });
+
+  app.delete("/api/sites/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteSite(id);
+      if (!deleted) return res.status(404).json({ message: "Site not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete site" });
+    }
+  });
+
+  app.post("/api/sites/seed", async (req, res) => {
+    try {
+      const count = await storage.seedSitesFromDprs();
+      res.json({ seeded: count });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to seed sites" });
     }
   });
 
@@ -1389,6 +1446,15 @@ async function seedDatabase() {
         { type: "Issued", material: "Diesel", quantity: 100, uom: "Liters" }
       ]
     });
+  }
+
+  try {
+    const seeded = await storage.seedSitesFromDprs();
+    if (seeded > 0) {
+      console.log(`Startup: Seeded ${seeded} sites from existing DPRs`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to seed sites:", err);
   }
 
   try {

@@ -12,7 +12,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { useDpr } from "@/hooks/use-dprs";
-import type { EquipmentMasterType } from "@shared/schema";
+import type { EquipmentMasterType, Site } from "@shared/schema";
 
 interface ProgressEntry {
   activity: string;
@@ -132,6 +132,11 @@ export default function SiteEdit() {
   });
   const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
 
+  const { data: sitesList = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
+  const activeSites = sitesList.filter(s => s.isActive);
+
   const [header, setHeader] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
     site: "",
@@ -240,6 +245,7 @@ export default function SiteEdit() {
       clearCredentials();
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       toast({
         title: "New Version Created",
         description: "Your edited version has been saved successfully.",
@@ -408,13 +414,16 @@ export default function SiteEdit() {
           </div>
           <div>
             <Label>Site Name</Label>
-            <Input
-              placeholder="Site name"
-              value={header.site}
-              onChange={(e) => setHeader({ ...header, site: e.target.value.toUpperCase() })}
-              className="uppercase"
-              data-testid="input-site"
-            />
+            <Select value={header.site} onValueChange={(val) => setHeader({ ...header, site: val })}>
+              <SelectTrigger data-testid="input-site">
+                <SelectValue placeholder="Select Site" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeSites.map((s) => (
+                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>Engineer</Label>

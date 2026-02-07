@@ -14,7 +14,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
-import type { EquipmentMasterType } from "@shared/schema";
+import type { EquipmentMasterType, Site } from "@shared/schema";
 
 interface ProgressEntry {
   activity: string;
@@ -123,6 +123,12 @@ export default function SiteEntry() {
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
   });
+
+  // Fetch sites master for dropdown
+  const { data: sitesList = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
+  const activeSites = sitesList.filter(s => s.isActive);
 
   // Filter to only active equipment
   const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
@@ -305,6 +311,7 @@ export default function SiteEntry() {
     onSuccess: async (data) => {
       await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       toast({
         title: "Report Saved Successfully",
         description: "Your site report has been submitted.",
@@ -406,13 +413,16 @@ export default function SiteEntry() {
           </div>
           <div>
             <Label>Site Name</Label>
-            <Input
-              placeholder="Enter site name"
-              value={header.site}
-              onChange={(e) => setHeader({ ...header, site: e.target.value.toUpperCase() })}
-              className="uppercase"
-              data-testid="input-site"
-            />
+            <Select value={header.site} onValueChange={(val) => setHeader({ ...header, site: val })}>
+              <SelectTrigger data-testid="input-site">
+                <SelectValue placeholder="Select Site" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeSites.map((s) => (
+                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>Engineer Name</Label>

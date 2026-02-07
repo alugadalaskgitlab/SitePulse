@@ -61,6 +61,7 @@ export function useCreateDpr() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.dprs.list.path] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       toast({
         title: "DPR Created",
         description: "Daily Progress Report has been successfully submitted.",
