@@ -1516,6 +1516,15 @@ async function seedDatabase() {
   }
 
   try {
+    const purchaseRepairResult = await storage.repairMissingSitePurchases();
+    if (purchaseRepairResult.repaired > 0) {
+      console.log(`Startup: Repaired ${purchaseRepairResult.repaired} missing site purchases from previous DPR versions, ${purchaseRepairResult.errors} errors`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to repair missing site purchases:", err);
+  }
+
+  try {
     const recalcResult = await storage.recalculateAllDispatchConsumption();
     if (recalcResult.varianceFixed > 0) {
       console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);

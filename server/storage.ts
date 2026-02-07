@@ -192,6 +192,9 @@ export interface IStorage {
   
   // Clean up duplicate diesel stock ledger entries from superseded/edited DPRs
   cleanupSupersededDprDieselLedger(): Promise<{ removed: number; errors: number }>;
+
+  // Repair site purchases lost during DPR edits - carry forward from previous versions
+  repairMissingSitePurchases(): Promise<{ repaired: number; errors: number }>;
   
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -698,16 +701,38 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Insert edited site purchases with uppercase text fields
-      if (dprData.sitePurchases?.length) {
-        await tx.insert(sitePurchases).values(
-          dprData.sitePurchases.map(sp => ({
-            ...sp,
-            dprId,
-            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
-            vendor: sp.vendor?.toUpperCase() || sp.vendor,
-            billNo: sp.billNo?.toUpperCase() || sp.billNo,
-          }))
-        );
+      // Distinguish: explicit empty array [] = user intentionally cleared purchases
+      // undefined/not present = field wasn't sent, carry forward from original to prevent data loss
+      if (Array.isArray(dprData.sitePurchases)) {
+        if (dprData.sitePurchases.length > 0) {
+          await tx.insert(sitePurchases).values(
+            dprData.sitePurchases.map(sp => ({
+              ...sp,
+              dprId,
+              itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
+              vendor: sp.vendor?.toUpperCase() || sp.vendor,
+              billNo: sp.billNo?.toUpperCase() || sp.billNo,
+            }))
+          );
+        }
+        // else: explicit empty array = user intentionally cleared, don't carry forward
+      } else {
+        // Field not present at all - carry forward from original DPR to prevent accidental data loss
+        const originalPurchases = await tx.select().from(sitePurchases)
+          .where(eq(sitePurchases.dprId, originalId));
+        if (originalPurchases.length > 0) {
+          await tx.insert(sitePurchases).values(
+            originalPurchases.map(sp => ({
+              dprId,
+              itemDescription: sp.itemDescription,
+              quantity: sp.quantity,
+              uom: sp.uom,
+              vendor: sp.vendor,
+              billNo: sp.billNo,
+              amount: sp.amount,
+            }))
+          );
+        }
       }
 
       // Record version history
@@ -2698,6 +2723,73 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { removed, errors };
+  }
+
+  async repairMissingSitePurchases(): Promise<{ repaired: number; errors: number }> {
+    let repaired = 0;
+    let errors = 0;
+
+    try {
+      const allDprs = await db.select({
+        id: dprs.id,
+        date: dprs.date,
+        site: dprs.site,
+      }).from(dprs).orderBy(desc(dprs.id));
+
+      const groupedByKey = new Map<string, number[]>();
+      for (const dpr of allDprs) {
+        const baseSite = this.getBaseSiteName(dpr.site);
+        const key = `${baseSite}|${dpr.date}`;
+        if (!groupedByKey.has(key)) {
+          groupedByKey.set(key, []);
+        }
+        groupedByKey.get(key)!.push(dpr.id);
+      }
+
+      for (const [key, ids] of Array.from(groupedByKey.entries())) {
+        if (ids.length < 2) continue;
+
+        const latestId = ids[0];
+        const olderIds = ids.slice(1);
+
+        const latestPurchases = await db.select().from(sitePurchases)
+          .where(eq(sitePurchases.dprId, latestId));
+
+        if (latestPurchases.length > 0) continue;
+
+        for (const olderId of olderIds) {
+          const olderPurchases = await db.select().from(sitePurchases)
+            .where(eq(sitePurchases.dprId, olderId));
+
+          if (olderPurchases.length > 0) {
+            try {
+              await db.insert(sitePurchases).values(
+                olderPurchases.map(sp => ({
+                  dprId: latestId,
+                  itemDescription: sp.itemDescription,
+                  quantity: sp.quantity,
+                  uom: sp.uom,
+                  vendor: sp.vendor,
+                  billNo: sp.billNo,
+                  amount: sp.amount,
+                }))
+              );
+              repaired += olderPurchases.length;
+              console.log(`repairMissingSitePurchases: Copied ${olderPurchases.length} purchases from DPR ${olderId} to latest DPR ${latestId} (${key})`);
+            } catch (err) {
+              console.error(`repairMissingSitePurchases: Error copying purchases for ${key}:`, err);
+              errors++;
+            }
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('repairMissingSitePurchases: Fatal error:', err);
+      errors++;
+    }
+
+    return { repaired, errors };
   }
 
   async getSiteMaterialLogs(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<{
