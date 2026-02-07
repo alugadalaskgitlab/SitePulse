@@ -883,7 +883,11 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-receipts", async (req, res) => {
     try {
-      const receipt = await storage.createMaterialReceipt(req.body);
+      const body = { ...req.body };
+      if (typeof body.isPlantCommon === 'boolean') {
+        body.isPlantCommon = body.isPlantCommon ? 1 : 0;
+      }
+      const receipt = await storage.createMaterialReceipt(body);
       
       // Notify admin of new material receipt
       await storage.createNotification({
@@ -895,16 +899,22 @@ export async function registerRoutes(
       
       res.status(201).json(receipt);
     } catch (err) {
+      console.error("Error creating material receipt:", err);
       res.status(500).json({ message: "Failed to create material receipt" });
     }
   });
 
   app.put("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
-      const updated = await storage.updateMaterialReceipt(Number(req.params.id), req.body);
+      const body = { ...req.body };
+      if (typeof body.isPlantCommon === 'boolean') {
+        body.isPlantCommon = body.isPlantCommon ? 1 : 0;
+      }
+      const updated = await storage.updateMaterialReceipt(Number(req.params.id), body);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
       res.json(updated);
     } catch (err) {
+      console.error("Error updating material receipt:", err);
       res.status(500).json({ message: "Failed to update material receipt" });
     }
   });
