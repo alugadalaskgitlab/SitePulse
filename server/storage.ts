@@ -211,6 +211,9 @@ export interface IStorage {
   markAllNotificationsRead(): Promise<void>;
   deleteNotification(id: number): Promise<void>;
   
+  // Site Purchases Report
+  getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
+
   // Site Material Trips (Quick Entry)
   getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
@@ -3131,6 +3134,34 @@ export class DatabaseStorage implements IStorage {
   // Site Material Trips (Quick Entry)
   // ============================================
   
+  async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.site) conditions.push(eq(dprs.site, filters.site));
+    if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
+    
+    const results = await db.select({
+      id: sitePurchases.id,
+      dprId: sitePurchases.dprId,
+      itemDescription: sitePurchases.itemDescription,
+      quantity: sitePurchases.quantity,
+      uom: sitePurchases.uom,
+      vendor: sitePurchases.vendor,
+      billNo: sitePurchases.billNo,
+      amount: sitePurchases.amount,
+      date: dprs.date,
+      site: dprs.site,
+      engineer: dprs.engineer,
+    })
+    .from(sitePurchases)
+    .innerJoin(dprs, eq(sitePurchases.dprId, dprs.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(dprs.date));
+    
+    return results;
+  }
+
   async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
     

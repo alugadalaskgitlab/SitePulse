@@ -410,6 +410,7 @@ export default function SiteEntry() {
               placeholder="Enter site name"
               value={header.site}
               onChange={(e) => setHeader({ ...header, site: e.target.value.toUpperCase() })}
+              className="uppercase"
               data-testid="input-site"
             />
           </div>
@@ -419,6 +420,7 @@ export default function SiteEntry() {
               placeholder="Enter engineer name"
               value={header.engineer}
               onChange={(e) => setHeader({ ...header, engineer: e.target.value.toUpperCase() })}
+              className="uppercase"
               data-testid="input-engineer"
             />
           </div>
@@ -443,7 +445,7 @@ export default function SiteEntry() {
                   value={entry.activity}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].activity = e.target.value;
+                    updated[idx].activity = e.target.value.toUpperCase();
                     setProgress(updated);
                   }}
                   className="uppercase"
@@ -475,9 +477,10 @@ export default function SiteEntry() {
                   value={entry.chainageFrom}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].chainageFrom = e.target.value;
+                    updated[idx].chainageFrom = e.target.value.toUpperCase();
                     setProgress(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-progress-from-${idx}`}
                 />
               </div>
@@ -488,9 +491,10 @@ export default function SiteEntry() {
                   value={entry.chainageTo}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].chainageTo = e.target.value;
+                    updated[idx].chainageTo = e.target.value.toUpperCase();
                     setProgress(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-progress-to-${idx}`}
                 />
               </div>
@@ -654,7 +658,7 @@ export default function SiteEntry() {
                       value={entry.operator}
                       onChange={(e) => {
                         const updated = [...equipment];
-                        updated[idx].operator = e.target.value;
+                        updated[idx].operator = e.target.value.toUpperCase();
                         setEquipment(updated);
                       }}
                       className="uppercase"
@@ -668,7 +672,7 @@ export default function SiteEntry() {
                       value={entry.task}
                       onChange={(e) => {
                         const updated = [...equipment];
-                        updated[idx].task = e.target.value;
+                        updated[idx].task = e.target.value.toUpperCase();
                         setEquipment(updated);
                       }}
                       className="uppercase"
@@ -915,7 +919,7 @@ export default function SiteEntry() {
                   value={entry.task}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].task = e.target.value;
+                    updated[idx].task = e.target.value.toUpperCase();
                     setLabour(updated);
                   }}
                   className="uppercase"
@@ -929,7 +933,7 @@ export default function SiteEntry() {
                   value={entry.contractor}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].contractor = e.target.value;
+                    updated[idx].contractor = e.target.value.toUpperCase();
                     setLabour(updated);
                   }}
                   className="uppercase"
@@ -983,7 +987,8 @@ export default function SiteEntry() {
                   <Input
                     placeholder="e.g. Diesel for cleaning"
                     value={sp.itemDescription}
-                    onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value)}
+                    onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value.toUpperCase())}
+                    className="uppercase"
                     data-testid={`input-site-purchase-item-${idx}`}
                   />
                 </div>
@@ -992,7 +997,8 @@ export default function SiteEntry() {
                   <Input
                     placeholder="e.g. Local Fuel Station"
                     value={sp.vendor}
-                    onChange={e => updateSitePurchase(idx, 'vendor', e.target.value)}
+                    onChange={e => updateSitePurchase(idx, 'vendor', e.target.value.toUpperCase())}
+                    className="uppercase"
                     data-testid={`input-site-purchase-vendor-${idx}`}
                   />
                 </div>
@@ -1001,7 +1007,8 @@ export default function SiteEntry() {
                   <Input
                     placeholder="e.g. INV-001"
                     value={sp.billNo}
-                    onChange={e => updateSitePurchase(idx, 'billNo', e.target.value)}
+                    onChange={e => updateSitePurchase(idx, 'billNo', e.target.value.toUpperCase())}
+                    className="uppercase"
                     data-testid={`input-site-purchase-bill-${idx}`}
                   />
                 </div>
@@ -1032,7 +1039,8 @@ export default function SiteEntry() {
                   <Input
                     placeholder="Litres/Nos"
                     value={sp.uom}
-                    onChange={e => updateSitePurchase(idx, 'uom', e.target.value)}
+                    onChange={e => updateSitePurchase(idx, 'uom', e.target.value.toUpperCase())}
+                    className="uppercase"
                     data-testid={`input-site-purchase-uom-${idx}`}
                   />
                 </div>

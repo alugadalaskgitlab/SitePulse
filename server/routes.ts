@@ -112,6 +112,25 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // SITE PURCHASES REPORT
+  // ============================================
+
+  app.get("/api/site-purchases", async (req, res) => {
+    try {
+      const filters = {
+        site: req.query.site as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const purchases = await storage.getAllSitePurchases(filters);
+      res.json(purchases);
+    } catch (err) {
+      console.error("Error fetching site purchases:", err);
+      res.status(500).json({ message: "Failed to fetch site purchases" });
+    }
+  });
+
+  // ============================================
   // ADMIN NOTIFICATIONS
   // ============================================
   

@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { useDpr } from "@/hooks/use-dprs";
+import type { EquipmentMasterType } from "@shared/schema";
 
 interface ProgressEntry {
   activity: string;
@@ -35,6 +36,11 @@ interface EquipmentEntry {
   openingReading: number | null;
   closingReading: number | null;
   diesel: number | null;
+  equipmentId: number | null;
+  dieselSource: string;
+  fuelStation: string;
+  billNumber: string;
+  amountPaid: number | null;
 }
 
 interface LabourEntry {
@@ -121,6 +127,11 @@ export default function SiteEdit() {
 
   const { data: dpr, isLoading } = useDpr(id);
 
+  const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment"],
+  });
+  const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
+
   const [header, setHeader] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
     site: "",
@@ -132,7 +143,7 @@ export default function SiteEdit() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -177,6 +188,11 @@ export default function SiteEdit() {
           openingReading: e.openingReading ?? null,
           closingReading: e.closingReading ?? null,
           diesel: e.diesel,
+          equipmentId: (e as any).equipmentId ?? null,
+          dieselSource: (e as any).dieselSource || "plant_stock",
+          fuelStation: (e as any).fuelStation || "",
+          billNumber: (e as any).billNumber || "",
+          amountPaid: (e as any).amountPaid ?? null,
         })));
       }
 
@@ -223,7 +239,7 @@ export default function SiteEdit() {
       // Clear credentials after successful save
       clearCredentials();
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
       toast({
         title: "New Version Created",
         description: "Your edited version has been saved successfully.",
@@ -269,7 +285,7 @@ export default function SiteEdit() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -396,6 +412,7 @@ export default function SiteEdit() {
               placeholder="Site name"
               value={header.site}
               onChange={(e) => setHeader({ ...header, site: e.target.value.toUpperCase() })}
+              className="uppercase"
               data-testid="input-site"
             />
           </div>
@@ -405,6 +422,7 @@ export default function SiteEdit() {
               placeholder="Engineer name"
               value={header.engineer}
               onChange={(e) => setHeader({ ...header, engineer: e.target.value.toUpperCase() })}
+              className="uppercase"
               data-testid="input-engineer"
             />
           </div>
@@ -428,7 +446,7 @@ export default function SiteEdit() {
                   value={entry.activity}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].activity = e.target.value;
+                    updated[idx].activity = e.target.value.toUpperCase();
                     setProgress(updated);
                   }}
                   className="uppercase"
@@ -460,9 +478,10 @@ export default function SiteEdit() {
                   value={entry.chainageFrom}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].chainageFrom = e.target.value;
+                    updated[idx].chainageFrom = e.target.value.toUpperCase();
                     setProgress(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-chainage-from-${idx}`}
                 />
               </div>
@@ -473,9 +492,10 @@ export default function SiteEdit() {
                   value={entry.chainageTo}
                   onChange={(e) => {
                     const updated = [...progress];
-                    updated[idx].chainageTo = e.target.value;
+                    updated[idx].chainageTo = e.target.value.toUpperCase();
                     setProgress(updated);
                   }}
+                  className="uppercase"
                   data-testid={`input-chainage-to-${idx}`}
                 />
               </div>
@@ -575,34 +595,47 @@ export default function SiteEdit() {
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">Enter time OR hour meter readings (or both). Hour meter takes priority for hours calculation.</p>
           {equipment.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
-              <div>
-                <Label className="text-xs">Machine</Label>
-                <Input
-                  placeholder="Equipment name"
-                  value={entry.machine}
-                  onChange={(e) => {
+            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => removeRow('equipment', idx)}
+                disabled={equipment.length === 1}
+                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+                data-testid={`button-remove-equipment-${idx}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <Label className="text-xs">Equipment</Label>
+                <Select
+                  value={entry.equipmentId ? String(entry.equipmentId) : ""}
+                  onValueChange={(val) => {
                     const updated = [...equipment];
-                    updated[idx].machine = e.target.value;
+                    const selectedEquip = activeEquipment.find(e => e.id === Number(val));
+                    if (selectedEquip) {
+                      updated[idx].equipmentId = selectedEquip.id;
+                      updated[idx].machine = selectedEquip.name;
+                      updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
+                    }
                     setEquipment(updated);
                   }}
-                  className="uppercase"
-                  data-testid={`input-machine-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Vehicle No</Label>
-                <Input
-                  placeholder="e.g. TS12AB3456"
-                  value={entry.vehicleNo}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].vehicleNo = e.target.value;
-                    setEquipment(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-vehicleno-${idx}`}
-                />
+                >
+                  <SelectTrigger data-testid={`select-equipment-${idx}`}>
+                    <SelectValue placeholder="Select equipment..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeEquipment.map((eq) => (
+                      <SelectItem key={eq.id} value={String(eq.id)}>
+                        {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} - {eq.equipmentType || "Equipment"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {entry.equipmentId && entry.vehicleNo && (
+                  <p className="text-xs text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs">Operator</Label>
@@ -611,7 +644,7 @@ export default function SiteEdit() {
                   value={entry.operator}
                   onChange={(e) => {
                     const updated = [...equipment];
-                    updated[idx].operator = e.target.value;
+                    updated[idx].operator = e.target.value.toUpperCase();
                     setEquipment(updated);
                   }}
                   className="uppercase"
@@ -625,13 +658,15 @@ export default function SiteEdit() {
                   value={entry.task}
                   onChange={(e) => {
                     const updated = [...equipment];
-                    updated[idx].task = e.target.value;
+                    updated[idx].task = e.target.value.toUpperCase();
                     setEquipment(updated);
                   }}
                   className="uppercase"
                   data-testid={`input-equipment-task-${idx}`}
                 />
               </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               <div>
                 <Label className="text-xs">Start</Label>
                 <Input
@@ -688,33 +723,21 @@ export default function SiteEdit() {
                   data-testid={`input-equipment-closing-${idx}`}
                 />
               </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label className="text-xs">Diesel (L)</Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    placeholder="0"
-                    value={entry.diesel ?? ""}
-                    onChange={(e) => {
-                      const updated = [...equipment];
-                      updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                      setEquipment(updated);
-                    }}
-                    data-testid={`input-equipment-diesel-${idx}`}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    onClick={() => removeRow('equipment', idx)}
-                    disabled={equipment.length === 1}
-                    data-testid={`button-remove-equipment-${idx}`}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
+              <div>
+                <Label className="text-xs">Diesel (L)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="0"
+                  value={entry.diesel ?? ""}
+                  onChange={(e) => {
+                    const updated = [...equipment];
+                    updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
+                    setEquipment(updated);
+                  }}
+                  data-testid={`input-equipment-diesel-${idx}`}
+                />
+              </div>
               </div>
             </div>
           ))}
@@ -795,7 +818,7 @@ export default function SiteEdit() {
                   value={entry.task}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].task = e.target.value;
+                    updated[idx].task = e.target.value.toUpperCase();
                     setLabour(updated);
                   }}
                   className="uppercase"
@@ -809,7 +832,7 @@ export default function SiteEdit() {
                   value={entry.contractor}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].contractor = e.target.value;
+                    updated[idx].contractor = e.target.value.toUpperCase();
                     setLabour(updated);
                   }}
                   className="uppercase"
@@ -854,15 +877,15 @@ export default function SiteEdit() {
                 </Button>
                 <div className="md:col-span-2">
                   <Label>Item Description</Label>
-                  <Input placeholder="e.g. Diesel for cleaning" value={sp.itemDescription} onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value)} data-testid={`input-site-purchase-item-${idx}`} />
+                  <Input placeholder="e.g. Diesel for cleaning" value={sp.itemDescription} onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-item-${idx}`} />
                 </div>
                 <div>
                   <Label>Vendor</Label>
-                  <Input placeholder="e.g. Local Fuel Station" value={sp.vendor} onChange={e => updateSitePurchase(idx, 'vendor', e.target.value)} data-testid={`input-site-purchase-vendor-${idx}`} />
+                  <Input placeholder="e.g. Local Fuel Station" value={sp.vendor} onChange={e => updateSitePurchase(idx, 'vendor', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-vendor-${idx}`} />
                 </div>
                 <div>
                   <Label>Bill No</Label>
-                  <Input placeholder="e.g. INV-001" value={sp.billNo} onChange={e => updateSitePurchase(idx, 'billNo', e.target.value)} data-testid={`input-site-purchase-bill-${idx}`} />
+                  <Input placeholder="e.g. INV-001" value={sp.billNo} onChange={e => updateSitePurchase(idx, 'billNo', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-bill-${idx}`} />
                 </div>
                 <div>
                   <Label>Amount</Label>
@@ -874,7 +897,7 @@ export default function SiteEdit() {
                 </div>
                 <div>
                   <Label>UOM</Label>
-                  <Input placeholder="Litres/Nos" value={sp.uom} onChange={e => updateSitePurchase(idx, 'uom', e.target.value)} data-testid={`input-site-purchase-uom-${idx}`} />
+                  <Input placeholder="Litres/Nos" value={sp.uom} onChange={e => updateSitePurchase(idx, 'uom', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-uom-${idx}`} />
                 </div>
               </div>
             ))

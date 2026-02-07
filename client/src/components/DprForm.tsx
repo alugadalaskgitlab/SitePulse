@@ -63,7 +63,7 @@ export function DprForm() {
               <FormItem>
                 <FormLabel>Site Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. Highway Project A1" {...field} />
+                  <Input placeholder="e.g. Highway Project A1" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -76,7 +76,7 @@ export function DprForm() {
               <FormItem>
                 <FormLabel>Engineer Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="John Doe" {...field} />
+                  <Input placeholder="John Doe" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -190,7 +190,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                       <FormItem className="col-span-1 md:col-span-2 lg:col-span-1">
                         <FormLabel>Activity Description</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. BC Laying" {...field} />
+                          <Input placeholder="e.g. BC Laying" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -249,7 +249,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                       <FormItem>
                         <FormLabel>Chainage From</FormLabel>
                         <FormControl>
-                          <Input placeholder="0+000" {...field} value={field.value || ''} />
+                          <Input placeholder="0+000" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -261,7 +261,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                       <FormItem>
                         <FormLabel>Chainage To</FormLabel>
                         <FormControl>
-                          <Input placeholder="0+100" {...field} value={field.value || ''} />
+                          <Input placeholder="0+100" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -451,7 +451,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
               <FormItem>
                 <FormLabel>Machine Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. Excavator 01" {...field} />
+                  <Input placeholder="e.g. Excavator 01" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                 </FormControl>
               </FormItem>
             )}
@@ -463,7 +463,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
               <FormItem>
                 <FormLabel>Operator Name (Optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Name" {...field} value={field.value || ''} />
+                  <Input placeholder="Name" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                 </FormControl>
               </FormItem>
             )}
@@ -619,7 +619,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
               <FormItem>
                 <FormLabel>Task Performed</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. Rolling WMM" {...field} value={field.value || ''} />
+                  <Input placeholder="e.g. Rolling WMM" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                 </FormControl>
               </FormItem>
             )}
@@ -857,7 +857,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
                 <FormItem>
                   <FormLabel>Material Name</FormLabel>
                   <FormControl>
-                     <Input placeholder="e.g. Cement" {...field} />
+                     <Input placeholder="e.g. Cement" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                   </FormControl>
                 </FormItem>
               )}
@@ -869,7 +869,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
                 <FormItem>
                   <FormLabel>Supplier</FormLabel>
                   <FormControl>
-                     <Input placeholder="e.g. ABC Corp" {...field} value={field.value || ''} />
+                     <Input placeholder="e.g. ABC Corp" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                   </FormControl>
                 </FormItem>
               )}
@@ -899,7 +899,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
                 <FormItem>
                   <FormLabel>UOM</FormLabel>
                   <FormControl>
-                    <Input placeholder="Kg/Tonne" {...field} value={field.value || ''} />
+                    <Input placeholder="Kg/Tonne" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
                   </FormControl>
                 </FormItem>
               )}
@@ -963,7 +963,7 @@ function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> 
                 <FormItem className="md:col-span-2">
                   <FormLabel>Item Description</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Diesel for cleaning" {...field} data-testid={`input-site-purchase-item-${index}`} />
+                    <Input placeholder="e.g. Diesel for cleaning" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} data-testid={`input-site-purchase-item-${index}`} />
                   </FormControl>
                 </FormItem>
               )}
@@ -975,7 +975,7 @@ function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> 
                 <FormItem>
                   <FormLabel>Vendor</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Local Fuel Station" {...field} value={field.value || ''} data-testid={`input-site-purchase-vendor-${index}`} />
+                    <Input placeholder="e.g. Local Fuel Station" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} data-testid={`input-site-purchase-vendor-${index}`} />
                   </FormControl>
                 </FormItem>
               )}
@@ -987,7 +987,7 @@ function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> 
                 <FormItem>
                   <FormLabel>Bill No</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. INV-001" {...field} value={field.value || ''} data-testid={`input-site-purchase-bill-${index}`} />
+                    <Input placeholder="e.g. INV-001" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} data-testid={`input-site-purchase-bill-${index}`} />
                   </FormControl>
                 </FormItem>
               )}
@@ -1039,7 +1039,7 @@ function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> 
                 <FormItem>
                   <FormLabel>UOM</FormLabel>
                   <FormControl>
-                    <Input placeholder="Litres/Nos" {...field} value={field.value || ''} data-testid={`input-site-purchase-uom-${index}`} />
+                    <Input placeholder="Litres/Nos" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} data-testid={`input-site-purchase-uom-${index}`} />
                   </FormControl>
                 </FormItem>
               )}

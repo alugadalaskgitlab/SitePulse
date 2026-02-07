@@ -11,6 +11,7 @@ import SiteEdit from "@/pages/SiteEdit";
 import SiteSuccess from "@/pages/SiteSuccess";
 import SiteReport from "@/pages/SiteReport";
 import SiteMaterialTrips from "@/pages/SiteMaterialTrips";
+import SitePurchasesReport from "@/pages/SitePurchasesReport";
 import Plant from "@/pages/Plant";
 import PlantHome from "@/pages/PlantHome";
 import PlantNew from "@/pages/PlantNew";
@@ -74,6 +75,7 @@ function Router() {
             <Route path="/site/success/:id" component={SiteSuccess} />
             <Route path="/site/report/:id" component={SiteReport} />
             <Route path="/site/material-trips" component={SiteMaterialTrips} />
+            <Route path="/site/purchases" component={SitePurchasesReport} />
             <Route path="/plant" component={PlantHome} />
             <Route path="/plant/dashboard" component={Plant} />
             <Route path="/plant/new" component={PlantNew} />

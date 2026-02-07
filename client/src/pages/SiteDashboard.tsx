@@ -31,6 +31,7 @@ import {
   ExternalLink,
   Truck,
   Trash2,
+  ShoppingCart,
 } from "lucide-react";
 import type { SiteMaterialTrip } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -874,7 +875,16 @@ export default function SiteDashboard() {
         )}
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+      <div className="flex flex-wrap items-center gap-2 mt-6">
+        <Link href={appendOrigin("/site/purchases")}>
+          <Button variant="outline" size="sm" className="gap-2" data-testid="button-site-purchases">
+            <ShoppingCart className="w-4 h-4" />
+            Site Purchases
+          </Button>
+        </Link>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
         <TabsList className="grid w-full grid-cols-2 max-w-md">
           <TabsTrigger value="dpr-summary" className="gap-2" data-testid="tab-dpr-summary">
             <Calendar className="w-4 h-4" />
