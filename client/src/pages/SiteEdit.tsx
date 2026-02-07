@@ -246,6 +246,8 @@ export default function SiteEdit() {
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       toast({
         title: "New Version Created",
         description: "Your edited version has been saved successfully.",

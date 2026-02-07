@@ -190,6 +190,9 @@ export interface IStorage {
   // Migrate orphan stock (NULL partyId) to HLC party
   migrateOrphanStockToHLC(): Promise<{ ledgerFixed: number; balancesMerged: number; errors: number }>;
   
+  // Clean up duplicate diesel stock ledger entries from superseded/edited DPRs
+  cleanupSupersededDprDieselLedger(): Promise<{ removed: number; errors: number }>;
+  
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
     id: number;
@@ -2629,6 +2632,71 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { ledgerFixed, balancesMerged, errors };
+  }
+
+  async cleanupSupersededDprDieselLedger(): Promise<{ removed: number; errors: number }> {
+    let removed = 0;
+    let errors = 0;
+
+    try {
+      const allDprs = await db.select().from(dprs).orderBy(desc(dprs.date));
+      
+      const latestByKey = new Map<string, number>();
+      const supersededDprIds: number[] = [];
+
+      for (const dpr of allDprs) {
+        const baseSite = this.getBaseSiteName(dpr.site);
+        const key = `${baseSite}|${dpr.date}`;
+        const existingId = latestByKey.get(key);
+        if (!existingId) {
+          latestByKey.set(key, dpr.id);
+        } else if (dpr.id > existingId) {
+          supersededDprIds.push(existingId);
+          latestByKey.set(key, dpr.id);
+        } else {
+          supersededDprIds.push(dpr.id);
+        }
+      }
+
+      if (supersededDprIds.length === 0) {
+        return { removed: 0, errors: 0 };
+      }
+
+      for (const dprId of supersededDprIds) {
+        try {
+          const eqLogs = await db.select().from(equipmentLogs)
+            .where(eq(equipmentLogs.dprId, dprId));
+
+          const dieselLogs = eqLogs.filter(
+            (e: any) => e.diesel && e.diesel > 0 && e.dieselSource === 'direct_purchase'
+          );
+
+          for (const eLog of dieselLogs) {
+            const equipLogRefId = -eLog.id;
+            const deleted = await db.delete(stockLedger).where(
+              and(
+                eq(stockLedger.transactionType, 'direct_purchase'),
+                eq(stockLedger.referenceId, equipLogRefId)
+              )
+            ).returning();
+            removed += deleted.length;
+          }
+        } catch (err) {
+          console.error(`cleanupSupersededDprDieselLedger: Error processing DPR ${dprId}:`, err);
+          errors++;
+        }
+      }
+
+      if (removed > 0) {
+        await this.reconcileStockBalancesFromLedger();
+      }
+
+    } catch (err) {
+      console.error('cleanupSupersededDprDieselLedger: Fatal error:', err);
+      errors++;
+    }
+
+    return { removed, errors };
   }
 
   async getSiteMaterialLogs(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<{

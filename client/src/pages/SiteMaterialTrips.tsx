@@ -52,7 +52,7 @@ export default function SiteMaterialTrips() {
       params.set("dateFrom", dateFilter);
       params.set("dateTo", dateFilter);
     }
-    if (siteFilter) params.set("site", siteFilter);
+    if (siteFilter && siteFilter !== "all") params.set("site", siteFilter);
     const queryString = params.toString();
     return queryString ? `/api/site-material-trips?${queryString}` : "/api/site-material-trips";
   };
@@ -355,7 +355,7 @@ export default function SiteMaterialTrips() {
                   <SelectValue placeholder="All Sites" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Sites</SelectItem>
+                  <SelectItem value="all">All Sites</SelectItem>
                   {activeSites.map((s) => (
                     <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                   ))}

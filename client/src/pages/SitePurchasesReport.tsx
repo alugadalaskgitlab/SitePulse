@@ -47,7 +47,7 @@ export default function SitePurchasesReport() {
     queryKey: ["/api/dprs"],
   });
 
-  const uniqueSites = [...new Set(dprs?.map(d => d.site).filter(Boolean) || [])].sort();
+  const uniqueSites = Array.from(new Set(dprs?.map(d => d.site).filter(Boolean) || [])).sort();
 
   const totalAmount = purchases?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
   const totalItems = purchases?.length || 0;

@@ -1467,6 +1467,15 @@ async function seedDatabase() {
   }
 
   try {
+    const cleanupResult = await storage.cleanupSupersededDprDieselLedger();
+    if (cleanupResult.removed > 0) {
+      console.log(`Startup: Cleaned up ${cleanupResult.removed} duplicate diesel ledger entries from superseded DPRs, ${cleanupResult.errors} errors`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to cleanup superseded DPR diesel ledger:", err);
+  }
+
+  try {
     const recalcResult = await storage.recalculateAllDispatchConsumption();
     if (recalcResult.varianceFixed > 0) {
       console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);
