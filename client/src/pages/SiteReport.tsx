@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Printer, Edit, Trash2, Fuel, Home } from "lucide-react";
+import { ChevronLeft, Loader2, Printer, Edit, Trash2, Fuel, Home, ShoppingCart } from "lucide-react";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -254,7 +254,7 @@ export default function SiteReport() {
       />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-primary">{dpr.progress.length}</p>
@@ -282,6 +282,17 @@ export default function SiteReport() {
             <p className="text-sm text-muted-foreground">Total Diesel</p>
           </CardContent>
         </Card>
+        {dpr.sitePurchases && dpr.sitePurchases.length > 0 && (
+          <Card className="border-teal-500/30 bg-teal-500/5">
+            <CardContent className="p-4 text-center">
+              <div className="flex items-center justify-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-teal-600" />
+                <p className="text-2xl font-bold text-teal-600" data-testid="text-purchases-count">{dpr.sitePurchases.length}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">Purchases</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Activity Progress */}

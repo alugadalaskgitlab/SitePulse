@@ -1,11 +1,19 @@
 import { Link } from "wouter";
-import { HardHat, Truck } from "lucide-react";
+import { HardHat, Truck, Home } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
 export default function SiteHome() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
+      <div className="absolute top-4 left-4">
+        <Link href="/">
+          <Button variant="ghost" size="icon" data-testid="button-home">
+            <Home className="w-5 h-5" />
+          </Button>
+        </Link>
+      </div>
       <div className="text-center mb-12">
         <img src={companyLogo} alt="HLC" className="h-20 w-20 rounded-lg object-cover mx-auto mb-4" />
         <h1 className="text-3xl md:text-4xl font-bold font-display tracking-tight text-foreground mb-3">
