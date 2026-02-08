@@ -193,11 +193,11 @@ export default function SiteEdit() {
           openingReading: e.openingReading ?? null,
           closingReading: e.closingReading ?? null,
           diesel: e.diesel,
-          equipmentId: (e as any).equipmentId ?? null,
-          dieselSource: (e as any).dieselSource || "plant_stock",
-          fuelStation: (e as any).fuelStation || "",
-          billNumber: (e as any).billNumber || "",
-          amountPaid: (e as any).amountPaid ?? null,
+          equipmentId: e.equipmentId ?? null,
+          dieselSource: e.dieselSource ?? "plant_stock",
+          fuelStation: e.fuelStation ?? "",
+          billNumber: e.billNumber ?? "",
+          amountPaid: e.amountPaid ?? null,
         })));
       }
 

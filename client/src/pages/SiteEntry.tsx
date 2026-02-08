@@ -785,7 +785,7 @@ export default function SiteEntry() {
                   <div>
                     <Label className="text-xs">Diesel Source</Label>
                     <Select 
-                      value={entry.dieselSource || "plant_stock"} 
+                      value={entry.dieselSource ?? "plant_stock"} 
                       onValueChange={(value) => {
                         const updated = [...equipment];
                         updated[idx].dieselSource = value;

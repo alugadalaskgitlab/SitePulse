@@ -96,10 +96,10 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel(data.openingDiesel);
     setDieselIssued(data.dieselIssued);
     setDieselIncluded(data.dieselIncluded || false);
-    setDieselSource(data.dieselSource || "plant_stock");
-    setFuelStation(data.fuelStation || "");
-    setBillNumber(data.billNumber || "");
-    setAmountPaid(data.amountPaid || "");
+    setDieselSource(data.dieselSource ?? "plant_stock");
+    setFuelStation(data.fuelStation ?? "");
+    setBillNumber(data.billNumber ?? "");
+    setAmountPaid(data.amountPaid ?? "");
     setSiteName(data.siteName || "");
     setNumberOfTrips(data.numberOfTrips || "");
     setTripDistance(data.tripDistance || "");
@@ -227,9 +227,9 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setDieselIncluded((entry as any).dieselIncluded || false);
-    setDieselSource((entry as any).dieselSource || "plant_stock");
-    setFuelStation((entry as any).fuelStation || "");
-    setBillNumber((entry as any).billNumber || "");
+    setDieselSource((entry as any).dieselSource ?? "plant_stock");
+    setFuelStation((entry as any).fuelStation ?? "");
+    setBillNumber((entry as any).billNumber ?? "");
     setAmountPaid((entry as any).amountPaid ? String((entry as any).amountPaid) : "");
     setSiteName((entry as any).siteName || "");
     setNumberOfTrips((entry as any).numberOfTrips ? String((entry as any).numberOfTrips) : "");

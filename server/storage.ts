@@ -78,7 +78,7 @@ import {
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, notInArray, sql, asc, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, notInArray, sql, asc, isNull } from "drizzle-orm";
 import { format } from "date-fns";
 
 export interface IStorage {
@@ -195,6 +195,9 @@ export interface IStorage {
 
   // Repair site purchases lost during DPR edits - carry forward from previous versions
   repairMissingSitePurchases(): Promise<{ repaired: number; errors: number }>;
+
+  // Repair diesel source lost during DPR edits - carry forward direct_purchase from original versions
+  repairLostDieselSource(): Promise<{ repaired: number; ledgerCreated: number; errors: number }>;
   
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -2790,6 +2793,114 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { repaired, errors };
+  }
+
+  async repairLostDieselSource(): Promise<{ repaired: number; ledgerCreated: number; errors: number }> {
+    let repaired = 0;
+    let ledgerCreated = 0;
+    let errors = 0;
+
+    try {
+      const allVersions = await db.select({
+        originalDprId: dprVersions.originalDprId,
+        versionDprId: dprVersions.dprId,
+      }).from(dprVersions);
+
+      const originalIds = Array.from(new Set(allVersions.map(v => v.originalDprId)));
+
+      for (const originalId of originalIds) {
+        try {
+          const originalEquipLogs = await db.select().from(equipmentLogs)
+            .where(and(
+              eq(equipmentLogs.dprId, originalId),
+              eq(equipmentLogs.dieselSource, 'direct_purchase'),
+              gt(equipmentLogs.diesel, 0)
+            ));
+
+          if (originalEquipLogs.length === 0) continue;
+
+          let latestVersionId = originalId;
+          let foundChild = true;
+          while (foundChild) {
+            const children = allVersions
+              .filter(v => v.originalDprId === latestVersionId)
+              .sort((a, b) => b.versionDprId - a.versionDprId);
+            if (children.length > 0) {
+              latestVersionId = children[0].versionDprId;
+            } else {
+              foundChild = false;
+            }
+          }
+
+          if (latestVersionId === originalId) continue;
+
+          const latestEquipLogs = await db.select().from(equipmentLogs)
+            .where(eq(equipmentLogs.dprId, latestVersionId));
+
+          const matchPairs: Array<{ origLog: typeof originalEquipLogs[0]; latestLog: typeof latestEquipLogs[0] }> = [];
+          const usedLatestIds = new Set<number>();
+
+          for (const origLog of originalEquipLogs) {
+            const matchingLatest = latestEquipLogs.find(
+              l => l.machine === origLog.machine
+                && l.diesel === origLog.diesel
+                && l.dieselSource !== 'direct_purchase'
+                && (l.operator || null) === (origLog.operator || null)
+                && (l.task || null) === (origLog.task || null)
+                && !usedLatestIds.has(l.id)
+            );
+            if (matchingLatest) {
+              matchPairs.push({ origLog, latestLog: matchingLatest });
+              usedLatestIds.add(matchingLatest.id);
+            }
+          }
+
+          if (matchPairs.length === 0) continue;
+
+          const latestDpr = await db.select().from(dprs).where(eq(dprs.id, latestVersionId)).limit(1);
+          if (latestDpr.length === 0) continue;
+
+          await db.transaction(async (tx) => {
+            for (const { origLog, latestLog } of matchPairs) {
+              await tx.update(equipmentLogs)
+                .set({
+                  dieselSource: 'direct_purchase',
+                  fuelStation: origLog.fuelStation,
+                  billNumber: origLog.billNumber,
+                  amountPaid: origLog.amountPaid,
+                })
+                .where(eq(equipmentLogs.id, latestLog.id));
+
+              repaired++;
+              console.log(`repairLostDieselSource: Restored direct_purchase for equipment log ${latestLog.id} (${latestLog.machine}) in DPR ${latestVersionId}, copied from original log ${origLog.id} in DPR ${originalId}`);
+            }
+
+            await this.cleanupDprEquipmentDieselLedger(tx, latestVersionId);
+
+            const updatedLogs = await tx.select().from(equipmentLogs)
+              .where(and(
+                eq(equipmentLogs.dprId, latestVersionId),
+                eq(equipmentLogs.dieselSource, 'direct_purchase'),
+                gt(equipmentLogs.diesel, 0)
+              ));
+
+            if (updatedLogs.length > 0) {
+              await this.processDprEquipmentDieselLedger(tx, updatedLogs, latestDpr[0].date, latestDpr[0].site);
+              ledgerCreated += updatedLogs.length;
+              console.log(`repairLostDieselSource: Created ${updatedLogs.length} stock ledger entries for DPR ${latestVersionId} (date: ${latestDpr[0].date})`);
+            }
+          });
+        } catch (err) {
+          console.error(`repairLostDieselSource: Error processing original DPR ${originalId}:`, err);
+          errors++;
+        }
+      }
+    } catch (err) {
+      console.error('repairLostDieselSource: Fatal error:', err);
+      errors++;
+    }
+
+    return { repaired, ledgerCreated, errors };
   }
 
   async getSiteMaterialLogs(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<{

@@ -1535,6 +1535,15 @@ async function seedDatabase() {
   }
 
   try {
+    const dieselRepairResult = await storage.repairLostDieselSource();
+    if (dieselRepairResult.repaired > 0) {
+      console.log(`Startup: Repaired ${dieselRepairResult.repaired} equipment logs with lost diesel source, created ${dieselRepairResult.ledgerCreated} stock ledger entries, ${dieselRepairResult.errors} errors`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to repair lost diesel source:", err);
+  }
+
+  try {
     const recalcResult = await storage.recalculateAllDispatchConsumption();
     if (recalcResult.varianceFixed > 0) {
       console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);
