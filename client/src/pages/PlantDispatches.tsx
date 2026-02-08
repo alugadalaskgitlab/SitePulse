@@ -35,6 +35,7 @@ export default function PlantDispatches() {
   const [filterPartyId, setFilterPartyId] = useState("all");
   const [filterMixType, setFilterMixType] = useState("all");
   const [filterVehicle, setFilterVehicle] = useState("all");
+  const [filterOwner, setFilterOwner] = useState("all");
   
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -50,6 +51,8 @@ export default function PlantDispatches() {
   const [truckNumber, setTruckNumber] = useState("");
   const [loadWeight, setLoadWeight] = useState("");
   const [deliveryLocation, setDeliveryLocation] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [driverName, setDriverName] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
   const [actualLdoPerTon, setActualLdoPerTon] = useState("");
   
@@ -64,13 +67,15 @@ export default function PlantDispatches() {
     truckNumber: string;
     loadWeight: string;
     deliveryLocation: string;
+    ownerName: string;
+    driverName: string;
     actualBitumenPercent: string;
     actualLdoPerTon: string;
   }
 
   const formData = useMemo<DispatchFormData>(() => ({
-    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoPerTon
-  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, actualBitumenPercent, actualLdoPerTon]);
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon]);
 
   const handleRestoreDraft = useCallback((data: DispatchFormData) => {
     setDate(data.date);
@@ -80,6 +85,8 @@ export default function PlantDispatches() {
     setTruckNumber(data.truckNumber);
     setLoadWeight(data.loadWeight);
     setDeliveryLocation(data.deliveryLocation);
+    setOwnerName(data.ownerName || "");
+    setDriverName(data.driverName || "");
     setActualBitumenPercent(data.actualBitumenPercent);
     setActualLdoPerTon(data.actualLdoPerTon || "");
   }, []);
@@ -155,6 +162,8 @@ export default function PlantDispatches() {
     setTruckNumber("");
     setLoadWeight("");
     setDeliveryLocation("");
+    setOwnerName("");
+    setDriverName("");
     setActualBitumenPercent("");
     setActualLdoPerTon("");
     setEditingDispatch(null);
@@ -169,6 +178,8 @@ export default function PlantDispatches() {
     setTruckNumber(dispatch.truckNumber);
     setLoadWeight(String(dispatch.loadWeight));
     setDeliveryLocation(dispatch.deliveryLocation || "");
+    setOwnerName(dispatch.ownerName || "");
+    setDriverName(dispatch.driverName || "");
     setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
     const weight = dispatch.loadWeight || 0;
     if (dispatch.actualLdoQty && weight > 0) {
@@ -263,6 +274,8 @@ export default function PlantDispatches() {
           truckNumber: truckNumber.toUpperCase(),
           loadWeight: weight,
           deliveryLocation: deliveryLocation.toUpperCase(),
+          ownerName: ownerName.toUpperCase() || null,
+          driverName: driverName.toUpperCase() || null,
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
           actualLdoQty: computedActualLdoQty,
           adjustedBy: authenticatedRole,
@@ -277,6 +290,8 @@ export default function PlantDispatches() {
         truckNumber: truckNumber.toUpperCase(),
         loadWeight: weight,
         deliveryLocation: deliveryLocation.toUpperCase(),
+        ownerName: ownerName.toUpperCase() || null,
+        driverName: driverName.toUpperCase() || null,
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
         actualLdoQty: computedActualLdoQty,
       });
@@ -342,6 +357,7 @@ export default function PlantDispatches() {
 
   const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
   const uniqueVehicles = Array.from(new Set(dispatches?.map(d => d.truckNumber) || [])).sort();
+  const uniqueOwners = Array.from(new Set(dispatches?.map(d => d.ownerName).filter(Boolean) || [])).sort() as string[];
 
   // Filter dispatches
   const filteredDispatches = dispatches?.filter(d => {
@@ -353,8 +369,30 @@ export default function PlantDispatches() {
       if (template?.mixType?.toUpperCase() !== filterMixType) return false;
     }
     if (filterVehicle !== "all" && d.truckNumber !== filterVehicle) return false;
+    if (filterOwner !== "all" && d.ownerName !== filterOwner) return false;
     return true;
   }) || [];
+
+  const isFiltered = filterDateFrom || filterDateTo || filterPartyId !== "all" || filterMixType !== "all" || filterVehicle !== "all" || filterOwner !== "all";
+
+  const allTotals = useMemo(() => {
+    const all = dispatches || [];
+    return {
+      count: all.length,
+      loadWeight: all.reduce((sum, d) => sum + (d.loadWeight || 0), 0),
+      bitumen: all.reduce((sum, d) => sum + (d.theoreticalBitumenQty || 0), 0),
+      ldo: all.reduce((sum, d) => sum + (d.theoreticalLdoQty || 0), 0),
+    };
+  }, [dispatches]);
+
+  const filteredTotals = useMemo(() => {
+    return {
+      count: filteredDispatches.length,
+      loadWeight: filteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0),
+      bitumen: filteredDispatches.reduce((sum, d) => sum + (d.theoreticalBitumenQty || 0), 0),
+      ldo: filteredDispatches.reduce((sum, d) => sum + (d.theoreticalLdoQty || 0), 0),
+    };
+  }, [filteredDispatches]);
 
   // Group filtered dispatches by date
   const groupedDispatches = filteredDispatches.reduce((acc, dispatch) => {
@@ -380,7 +418,8 @@ export default function PlantDispatches() {
       : "";
     const mixTypeFilter = filterMixType !== "all" ? filterMixType : "";
     const vehicleFilter = filterVehicle !== "all" ? filterVehicle.replace(/\s+/g, '') : "";
-    const filters = [partyFilter, mixTypeFilter, vehicleFilter].filter(Boolean).join("_");
+    const ownerFilter = filterOwner !== "all" ? filterOwner.replace(/\s+/g, '') : "";
+    const filters = [partyFilter, mixTypeFilter, vehicleFilter, ownerFilter].filter(Boolean).join("_");
     return `SiteLog_Plant_Dispatches_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
   };
 
@@ -410,6 +449,8 @@ export default function PlantDispatches() {
           "Mix Type": template?.mixType || "",
           "Load (MT)": d.loadWeight,
           Vehicle: d.truckNumber,
+          Owner: d.ownerName || "",
+          Driver: d.driverName || "",
           "Bitumen (MT)": d.theoreticalBitumenQty?.toFixed(2) || "0",
           "LDO (L)": d.theoreticalLdoQty?.toFixed(1) || "0",
         };
@@ -473,6 +514,8 @@ export default function PlantDispatches() {
           template?.mixType || "-",
           `${d.loadWeight}`,
           d.truckNumber,
+          d.ownerName || "-",
+          d.driverName || "-",
           d.theoreticalBitumenQty?.toFixed(2) || "0",
           d.theoreticalLdoQty?.toFixed(1) || "0",
         ];
@@ -480,7 +523,7 @@ export default function PlantDispatches() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Time", "Party", "Site", "Mix", "Load", "Vehicle", "Bitumen", "LDO"]],
+        head: [["Date", "Time", "Party", "Site", "Mix", "Load", "Vehicle", "Owner", "Driver", "Bitumen", "LDO"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
@@ -563,6 +606,8 @@ export default function PlantDispatches() {
                 <th>Mix</th>
                 <th>Load (MT)</th>
                 <th>Vehicle</th>
+                <th>Owner</th>
+                <th>Driver</th>
                 <th>Bitumen</th>
                 <th>LDO</th>
               </tr>
@@ -579,6 +624,8 @@ export default function PlantDispatches() {
                   <td>${template?.mixType || '-'}</td>
                   <td>${d.loadWeight}</td>
                   <td>${d.truckNumber}</td>
+                  <td>${d.ownerName || '-'}</td>
+                  <td>${d.driverName || '-'}</td>
                   <td>${d.theoreticalBitumenQty?.toFixed(2) || '0'}</td>
                   <td>${d.theoreticalLdoQty?.toFixed(1) || '0'}</td>
                 </tr>
@@ -727,6 +774,17 @@ export default function PlantDispatches() {
                 <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value.toUpperCase())} placeholder="Site/chainage" data-testid="input-delivery-location" />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Owner Name (optional)</Label>
+                  <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value.toUpperCase())} placeholder="Vehicle owner" data-testid="input-owner-name" />
+                </div>
+                <div>
+                  <Label>Driver Name (optional)</Label>
+                  <Input value={driverName} onChange={(e) => setDriverName(e.target.value.toUpperCase())} placeholder="Driver name" data-testid="input-driver-name" />
+                </div>
+              </div>
+
               {/* Theoretical Values Display */}
               {theoreticalValues && (
                 <div className="p-3 rounded-lg bg-muted/50 border">
@@ -822,7 +880,7 @@ export default function PlantDispatches() {
       {/* Filter Bar */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
               <Label className="text-xs text-muted-foreground">DATE FROM</Label>
               <Input
@@ -883,9 +941,88 @@ export default function PlantDispatches() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">OWNER</Label>
+              <Select value={filterOwner} onValueChange={setFilterOwner}>
+                <SelectTrigger data-testid="select-filter-owner">
+                  <SelectValue placeholder="All Owners" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Owners</SelectItem>
+                  {uniqueOwners.map(owner => (
+                    <SelectItem key={owner} value={owner}>{owner}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Totals Summary */}
+      {dispatches && dispatches.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {isFiltered ? (
+            <>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">FILTERED DISPATCHES</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-count">{filteredTotals.count}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.count} total</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">FILTERED LOAD (MT)</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-load">{filteredTotals.loadWeight.toFixed(1)}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.loadWeight.toFixed(1)} total</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">FILTERED BITUMEN (MT)</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-bitumen">{filteredTotals.bitumen.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.bitumen.toFixed(2)} total</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">FILTERED LDO (L)</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-ldo">{filteredTotals.ldo.toFixed(1)}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.ldo.toFixed(1)} total</p>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">TOTAL DISPATCHES</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-count">{allTotals.count}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">TOTAL LOAD (MT)</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-load">{allTotals.loadWeight.toFixed(1)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">TOTAL BITUMEN (MT)</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-bitumen">{allTotals.bitumen.toFixed(2)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <p className="text-xs text-muted-foreground mb-1">TOTAL LDO (L)</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-ldo">{allTotals.ldo.toFixed(1)}</p>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
@@ -934,7 +1071,7 @@ export default function PlantDispatches() {
                         const template = templates?.find(t => t.id === dispatch.mixTemplateId);
                         return (
                           <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm">
+                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-2 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-xs block">Time</span>
                                 <span className="font-medium">{dispatch.time || "-"}</span>
@@ -958,6 +1095,14 @@ export default function PlantDispatches() {
                               <div>
                                 <span className="text-muted-foreground text-xs block">Site</span>
                                 <span className="font-medium">{dispatch.deliveryLocation || "-"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Owner</span>
+                                <span className="font-medium" data-testid={`text-owner-${dispatch.id}`}>{dispatch.ownerName || "-"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Driver</span>
+                                <span className="font-medium" data-testid={`text-driver-${dispatch.id}`}>{dispatch.driverName || "-"}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>

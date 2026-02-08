@@ -275,6 +275,8 @@ export const truckDispatches = pgTable("truck_dispatches", {
   ldoVariancePercent: real("ldo_variance_percent"),
   adjustedBy: text("adjusted_by"), // "operator" or role who made the adjustment
   adjustedAt: timestamp("adjusted_at"), // When actual was changed from theoretical
+  ownerName: text("owner_name"),
+  driverName: text("driver_name"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
