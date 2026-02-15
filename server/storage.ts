@@ -783,9 +783,10 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     if (!dieselMaterial) return;
 
-    const [hlcParty] = await tx.select().from(parties)
-      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-      .limit(1);
+    const allPartiesForHlc = await tx.select().from(parties).orderBy(parties.id);
+    let hlcParty = allPartiesForHlc.find((p: any) => p.name?.toUpperCase() === 'HLC');
+    if (!hlcParty) hlcParty = allPartiesForHlc.find((p: any) => p.name?.toUpperCase().includes('HLC') || p.name?.toUpperCase().includes('HIGH LANE'));
+    if (!hlcParty) hlcParty = allPartiesForHlc[0];
     const hlcPartyId = hlcParty?.id || null;
 
     for (const eLog of dieselLogs) {
@@ -871,10 +872,11 @@ export class DatabaseStorage implements IStorage {
           const [dieselMaterial] = await tx.select().from(plantMaterials)
             .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
             .limit(1);
-          const [hlcParty] = await tx.select().from(parties)
-            .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-            .limit(1);
-          const hlcPartyId = hlcParty?.id || null;
+          const allPartiesCleanup = await tx.select().from(parties).orderBy(parties.id);
+          let hlcPartyCleanup = allPartiesCleanup.find((p: any) => p.name?.toUpperCase() === 'HLC');
+          if (!hlcPartyCleanup) hlcPartyCleanup = allPartiesCleanup.find((p: any) => p.name?.toUpperCase().includes('HLC') || p.name?.toUpperCase().includes('HIGH LANE'));
+          if (!hlcPartyCleanup) hlcPartyCleanup = allPartiesCleanup[0];
+          const hlcPartyId = hlcPartyCleanup?.id || null;
 
           if (dieselMaterial) {
             const [existingBalance] = await tx.select().from(stockBalances)
@@ -3016,10 +3018,35 @@ export class DatabaseStorage implements IStorage {
         return { created, skipped, overlapped, errors };
       }
 
-      const [hlcParty] = await db.select().from(parties)
-        .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-        .limit(1);
+      const allPartiesForMigration = await db.select().from(parties).orderBy(parties.id);
+      let hlcParty = allPartiesForMigration.find(p => p.name?.toUpperCase() === 'HLC');
+      if (!hlcParty) hlcParty = allPartiesForMigration.find(p => p.name?.toUpperCase().includes('HLC') || p.name?.toUpperCase().includes('HIGH LANE'));
+      if (!hlcParty) hlcParty = allPartiesForMigration[0];
       const hlcPartyId = hlcParty?.id || null;
+
+      if (hlcPartyId) {
+        const fixedOrphans = await db.update(stockLedger)
+          .set({ partyId: hlcPartyId })
+          .where(and(
+            eq(stockLedger.transactionType, 'dpr_equipment_usage'),
+            sql`${stockLedger.partyId} IS NULL`
+          ))
+          .returning();
+        if (fixedOrphans.length > 0) {
+          console.log(`migrateDprPlantStockDieselToLedger: Fixed ${fixedOrphans.length} orphan dpr_equipment_usage entries (set partyId=${hlcPartyId})`);
+          const orphanBalances = await db.select().from(stockBalances)
+            .where(and(
+              sql`${stockBalances.partyId} IS NULL`,
+              eq(stockBalances.materialId, dieselMaterial.id)
+            ));
+          for (const ob of orphanBalances) {
+            await db.delete(stockBalances).where(eq(stockBalances.id, ob.id));
+            console.log(`migrateDprPlantStockDieselToLedger: Removed orphan NULL-party diesel balance (id=${ob.id}, balance=${ob.balance})`);
+          }
+          await this.reconcileStockBalancesFromLedger();
+          console.log(`migrateDprPlantStockDieselToLedger: Reconciled stock balances after orphan fix`);
+        }
+      }
 
       const allPlantStockLogs = await db.select({
         id: equipmentLogs.id,

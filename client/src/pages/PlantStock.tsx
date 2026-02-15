@@ -115,6 +115,7 @@ export default function PlantStock() {
         case 'adjustment': return 3;
         case 'direct_purchase': return 4;
         case 'equipment_usage': return 5;
+        case 'dpr_equipment_usage': return 5;
         case 'issue': return 6;
         case 'dispatch': return 7;
         default: return 8;
@@ -274,7 +275,7 @@ export default function PlantStock() {
         summaryMap[key].received += getConvertedQty(entry.quantityIn);
       }
       // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
-      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
+      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
         summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Direct purchases bypass plant stock - tracked but no balance impact
@@ -355,8 +356,8 @@ export default function PlantStock() {
       if (entry.transactionType === "opening" || entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
       }
-      // Issues: dispatch, issue, equipment_usage
-      if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage") {
+      // Issues: dispatch, issue, equipment_usage, dpr_equipment_usage
+      if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
         summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Direct purchases bypass plant stock - not counted in balance
@@ -455,9 +456,11 @@ export default function PlantStock() {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
+          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
+            : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
+            ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
             : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
             ? entry.notes.replace('Direct purchase at ', '')
             : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
@@ -556,6 +559,7 @@ export default function PlantStock() {
           case 'opening': return 'Opening';
           case 'adjustment': return 'Adjustment';
           case 'equipment_usage': return 'Equip. Usage';
+          case 'dpr_equipment_usage': return 'DPR Equip. Usage';
           case 'direct_purchase': return 'Direct Site Purchase';
           default: return type;
         }
@@ -570,6 +574,8 @@ export default function PlantStock() {
           getTransactionTypeLabel(entry.transactionType),
           entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+            : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
+            ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
             : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
             ? entry.notes.replace('Direct purchase at ', '')
             : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
@@ -612,6 +618,7 @@ export default function PlantStock() {
         case 'opening': return 'Opening';
         case 'adjustment': return 'Adjustment';
         case 'equipment_usage': return 'Equip. Usage';
+        case 'dpr_equipment_usage': return 'DPR Equip. Usage';
         case 'direct_purchase': return 'Direct Site Purchase';
         default: return type;
       }
@@ -703,6 +710,8 @@ export default function PlantStock() {
                 const convData = getConvertedEntryData(entry);
                 const notes = entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                   ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
+                  : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
+                  ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
                   : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
                   ? entry.notes.replace('Direct purchase at ', '')
                   : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
@@ -896,6 +905,7 @@ export default function PlantStock() {
                   <SelectItem value="receipt">Receipt</SelectItem>
                   <SelectItem value="adjustment">Adjustment</SelectItem>
                   <SelectItem value="equipment_usage">Equip. Usage</SelectItem>
+                  <SelectItem value="dpr_equipment_usage">DPR Equip. Usage</SelectItem>
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
@@ -1147,18 +1157,20 @@ export default function PlantStock() {
                                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
                                 : entry.transactionType === 'issue'
                                 ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
-                                : entry.transactionType === 'equipment_usage'
+                                : entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage'
                                 ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
                                 : entry.transactionType === 'direct_purchase'
                                 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
                                 : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}>
-                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType}
+                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType}
                             </span>
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
                             {entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                               ? entry.notes.replace('Diesel issued to ', '')
+                              : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
+                              ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
                               : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
                               ? entry.notes.replace('Direct purchase at ', '')
                               : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
