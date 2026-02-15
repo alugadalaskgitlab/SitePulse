@@ -14,9 +14,6 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-const MANAGER_PIN = "1234";
-const ADMIN_PIN = "5678";
-
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
   const [, setLocation] = useLocation();
@@ -28,6 +25,9 @@ export default function DprDetails() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");
   const [pendingAction, setPendingAction] = useState<"edit" | "delete" | null>(null);
+  const [authenticatedPin, setAuthenticatedPin] = useState<string | null>(() => {
+    return sessionStorage.getItem(`auth_pin_${id}`);
+  });
   
   const getRoleLabel = (role?: string) => {
     switch(role) {
@@ -88,9 +88,8 @@ export default function DprDetails() {
   });
 
   const handleEditClick = () => {
-    if (canEdit) {
-      const pin = access === "manager" ? MANAGER_PIN : ADMIN_PIN;
-      cloneMutation.mutate({ role: access, pin });
+    if (canEdit && authenticatedPin) {
+      cloneMutation.mutate({ role: access, pin: authenticatedPin });
     } else {
       setPendingAction("edit");
       setTargetRole("manager");
@@ -99,9 +98,9 @@ export default function DprDetails() {
   };
 
   const handleDeleteClick = () => {
-    if (canDelete) {
+    if (canDelete && authenticatedPin) {
       if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
-        deleteMutation.mutate(ADMIN_PIN);
+        deleteMutation.mutate(authenticatedPin);
       }
     } else {
       setPendingAction("delete");
@@ -112,6 +111,8 @@ export default function DprDetails() {
 
   const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
     setShowPinModal(false);
+    setAuthenticatedPin(pin);
+    sessionStorage.setItem(`auth_pin_${id}`, pin);
     
     if (pendingAction === "delete" && role === "admin") {
       if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
