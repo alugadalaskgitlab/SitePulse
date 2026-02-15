@@ -627,6 +627,7 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   time: text("time"),
+  tankNumber: integer("tank_number").notNull().default(1),
   meterReading: real("meter_reading").notNull(),
   readingType: text("reading_type").notNull(),
   quantityLiters: real("quantity_liters"),

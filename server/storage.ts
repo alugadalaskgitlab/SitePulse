@@ -3071,13 +3071,27 @@ export class DatabaseStorage implements IStorage {
       // Determine party ID for stock deduction
       const stockPartyId = issue.isPlantCommon ? null : issue.partyId;
       
+      // Get material info for UOM conversion
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      
+      // Apply UOM conversion if issue UOM differs from stock UOM
+      let stockQuantity = issue.quantity;
+      let stockUom = issue.uom;
+      
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        if (issue.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          stockQuantity = issue.quantity * material.conversionFactor;
+          stockUom = material.conversionToUom;
+        }
+      }
+      
       // Update stock balance (reduce)
       const condition = stockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
         : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, issue.materialId));
       
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance || 0) - issue.quantity;
+      const newBalance = (existing?.balance || 0) - stockQuantity;
       
       if (existing) {
         await tx.update(stockBalances)
@@ -3088,21 +3102,25 @@ export class DatabaseStorage implements IStorage {
           partyId: stockPartyId,
           materialId: issue.materialId,
           balance: newBalance,
-          uom: issue.uom,
+          uom: stockUom,
         });
       }
       
-      // Add ledger entry
+      // Add ledger entry with converted quantity
+      const conversionNote = stockQuantity !== issue.quantity
+        ? `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''} (${issue.quantity} ${issue.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
+        : `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}`;
+      
       await tx.insert(stockLedger).values({
         date: issue.date,
         partyId: stockPartyId,
         materialId: issue.materialId,
         transactionType: "issue",
         referenceId: result.id,
-        quantityOut: issue.quantity,
+        quantityOut: stockQuantity,
         balanceAfter: newBalance,
-        uom: issue.uom,
-        notes: `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}`,
+        uom: stockUom,
+        notes: conversionNote,
       });
       
       return result;
@@ -3111,7 +3129,6 @@ export class DatabaseStorage implements IStorage {
 
   async updateMaterialIssue(id: number, issue: Partial<InsertMaterialIssue>): Promise<MaterialIssue | undefined> {
     return db.transaction(async (tx) => {
-      // Get original issue
       const [original] = await tx.select().from(materialIssues).where(eq(materialIssues.id, id)).limit(1);
       if (!original) return undefined;
       
@@ -3128,7 +3145,18 @@ export class DatabaseStorage implements IStorage {
       if (issue.vehicleNumber !== undefined) updates.vehicleNumber = issue.vehicleNumber?.toUpperCase();
       if (issue.notes !== undefined) updates.notes = issue.notes;
       
-      // Reverse original stock impact
+      // Get material info for UOM conversion (original material)
+      const [origMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      
+      // Calculate original stock quantity with conversion
+      let origStockQuantity = original.quantity;
+      if (origMaterial?.conversionFactor && origMaterial?.conversionFromUom && origMaterial?.conversionToUom) {
+        if (original.uom.toUpperCase() === origMaterial.conversionFromUom.toUpperCase()) {
+          origStockQuantity = original.quantity * origMaterial.conversionFactor;
+        }
+      }
+      
+      // Reverse original stock impact (add back the converted quantity)
       const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
       const origCondition = originalStockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
@@ -3137,25 +3165,40 @@ export class DatabaseStorage implements IStorage {
       const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
       if (origBal) {
         await tx.update(stockBalances)
-          .set({ balance: origBal.balance + original.quantity, lastUpdated: new Date() })
+          .set({ balance: origBal.balance + origStockQuantity, lastUpdated: new Date() })
           .where(eq(stockBalances.id, origBal.id));
       }
       
       // Update the issue record
       const [result] = await tx.update(materialIssues).set(updates).where(eq(materialIssues.id, id)).returning();
       
-      // Apply new stock impact
+      // Apply new stock impact with conversion
       const newStockPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
       const newMaterialId = updates.materialId ?? original.materialId;
       const newQuantity = updates.quantity ?? original.quantity;
       const newUom = updates.uom ?? original.uom;
+      const newIssuedTo = updates.issuedTo ?? original.issuedTo;
+      const newPurpose = updates.purpose ?? original.purpose;
+      const newDate = updates.date ?? original.date;
+      
+      // Get material info for new material (may be different if material changed)
+      const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      
+      let newStockQuantity = newQuantity;
+      let newStockUom = newUom;
+      if (newMaterial?.conversionFactor && newMaterial?.conversionFromUom && newMaterial?.conversionToUom) {
+        if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
+          newStockQuantity = newQuantity * newMaterial.conversionFactor;
+          newStockUom = newMaterial.conversionToUom;
+        }
+      }
       
       const newCondition = newStockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
         : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
       
       const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-      const newBalance = (newBal?.balance || 0) - newQuantity;
+      const newBalance = (newBal?.balance || 0) - newStockQuantity;
       
       if (newBal) {
         await tx.update(stockBalances)
@@ -3166,7 +3209,7 @@ export class DatabaseStorage implements IStorage {
           partyId: newStockPartyId,
           materialId: newMaterialId,
           balance: newBalance,
-          uom: newUom,
+          uom: newStockUom,
         });
       }
       
@@ -3175,9 +3218,9 @@ export class DatabaseStorage implements IStorage {
         and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
       );
       
-      const newDate = updates.date ?? original.date;
-      const newIssuedTo = updates.issuedTo ?? original.issuedTo;
-      const newPurpose = updates.purpose ?? original.purpose;
+      const conversionNote = newStockQuantity !== newQuantity
+        ? `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''} (${newQuantity} ${newUom} = ${newStockQuantity.toFixed(3)} ${newStockUom})`
+        : `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}`;
       
       await tx.insert(stockLedger).values({
         date: newDate,
@@ -3185,10 +3228,10 @@ export class DatabaseStorage implements IStorage {
         materialId: newMaterialId,
         transactionType: "issue",
         referenceId: result.id,
-        quantityOut: newQuantity,
+        quantityOut: newStockQuantity,
         balanceAfter: newBalance,
-        uom: newUom,
-        notes: `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}`,
+        uom: newStockUom,
+        notes: conversionNote,
       });
       
       return result;
@@ -3200,7 +3243,19 @@ export class DatabaseStorage implements IStorage {
       const [issue] = await tx.select().from(materialIssues).where(eq(materialIssues.id, id)).limit(1);
       if (!issue) return false;
       
-      // Reverse stock balance
+      // Get material info for UOM conversion
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      
+      let stockQuantity = issue.quantity;
+      let stockUom = issue.uom;
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        if (issue.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          stockQuantity = issue.quantity * material.conversionFactor;
+          stockUom = material.conversionToUom;
+        }
+      }
+      
+      // Reverse stock balance with converted quantity
       const stockPartyId = issue.isPlantCommon ? null : issue.partyId;
       const condition = stockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
@@ -3208,31 +3263,28 @@ export class DatabaseStorage implements IStorage {
       
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
       if (existing) {
-        const newBalance = existing.balance + issue.quantity;
+        const newBalance = existing.balance + stockQuantity;
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
           .where(eq(stockBalances.id, existing.id));
         
-        // Add reversal ledger entry
         await tx.insert(stockLedger).values({
           date: format(new Date(), "yyyy-MM-dd"),
           partyId: stockPartyId,
           materialId: issue.materialId,
           transactionType: "adjustment",
           referenceId: id,
-          quantityIn: issue.quantity,
+          quantityIn: stockQuantity,
           balanceAfter: newBalance,
-          uom: issue.uom,
+          uom: stockUom,
           notes: `Deleted issue #${id} reversal`,
         });
       }
       
-      // Delete ledger entries for this issue
       await tx.delete(stockLedger).where(
         and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
       );
       
-      // Delete the issue
       await tx.delete(materialIssues).where(eq(materialIssues.id, id));
       
       return true;
@@ -3285,6 +3337,18 @@ export class DatabaseStorage implements IStorage {
 
       const [result] = await tx.insert(materialReturns).values(uppercased).returning();
 
+      // Get material info for UOM conversion
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      
+      let stockQuantity = ret.quantity;
+      let stockUom = ret.uom;
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        if (ret.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          stockQuantity = ret.quantity * material.conversionFactor;
+          stockUom = material.conversionToUom;
+        }
+      }
+
       const stockPartyId = ret.isPlantCommon ? null : ret.partyId;
 
       const condition = stockPartyId === null
@@ -3292,7 +3356,7 @@ export class DatabaseStorage implements IStorage {
         : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, ret.materialId));
 
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance || 0) + ret.quantity;
+      const newBalance = (existing?.balance || 0) + stockQuantity;
 
       if (existing) {
         await tx.update(stockBalances)
@@ -3303,9 +3367,13 @@ export class DatabaseStorage implements IStorage {
           partyId: stockPartyId,
           materialId: ret.materialId,
           balance: newBalance,
-          uom: ret.uom,
+          uom: stockUom,
         });
       }
+
+      const conversionNote = stockQuantity !== ret.quantity
+        ? `Return from issue #${ret.originalIssueId}${ret.returnedBy ? ` by ${ret.returnedBy}` : ''} (${ret.quantity} ${ret.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
+        : `Return from issue #${ret.originalIssueId}${ret.returnedBy ? ` by ${ret.returnedBy}` : ''}`;
 
       await tx.insert(stockLedger).values({
         date: ret.date,
@@ -3313,10 +3381,10 @@ export class DatabaseStorage implements IStorage {
         materialId: ret.materialId,
         transactionType: "return",
         referenceId: result.id,
-        quantityIn: ret.quantity,
+        quantityIn: stockQuantity,
         balanceAfter: newBalance,
-        uom: ret.uom,
-        notes: `Return from issue #${ret.originalIssueId}${ret.returnedBy ? ` by ${ret.returnedBy}` : ''}`,
+        uom: stockUom,
+        notes: conversionNote,
       });
 
       return result;
@@ -3328,6 +3396,18 @@ export class DatabaseStorage implements IStorage {
       const [ret] = await tx.select().from(materialReturns).where(eq(materialReturns.id, id)).limit(1);
       if (!ret) return false;
 
+      // Get material info for UOM conversion
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      
+      let stockQuantity = ret.quantity;
+      let stockUom = ret.uom;
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        if (ret.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          stockQuantity = ret.quantity * material.conversionFactor;
+          stockUom = material.conversionToUom;
+        }
+      }
+
       const stockPartyId = ret.isPlantCommon ? null : ret.partyId;
       const condition = stockPartyId === null
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ret.materialId))
@@ -3335,7 +3415,7 @@ export class DatabaseStorage implements IStorage {
 
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
       if (existing) {
-        const newBalance = existing.balance - ret.quantity;
+        const newBalance = existing.balance - stockQuantity;
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
           .where(eq(stockBalances.id, existing.id));
@@ -3346,9 +3426,9 @@ export class DatabaseStorage implements IStorage {
           materialId: ret.materialId,
           transactionType: "adjustment",
           referenceId: id,
-          quantityOut: ret.quantity,
+          quantityOut: stockQuantity,
           balanceAfter: newBalance,
-          uom: ret.uom,
+          uom: stockUom,
           notes: `Deleted return #${id} reversal`,
         });
       }
@@ -3761,6 +3841,24 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async updateBitumenDipReading(id: number, updates: Partial<InsertBitumenDipReading>): Promise<BitumenDipReading | undefined> {
+    const cleanUpdates: any = {};
+    if (updates.date !== undefined) cleanUpdates.date = updates.date;
+    if (updates.time !== undefined) cleanUpdates.time = updates.time;
+    if (updates.tankNumber !== undefined) cleanUpdates.tankNumber = updates.tankNumber;
+    if (updates.depthCm !== undefined) cleanUpdates.depthCm = updates.depthCm;
+    if (updates.volumeLiters !== undefined) cleanUpdates.volumeLiters = updates.volumeLiters;
+    if (updates.weightKg !== undefined) cleanUpdates.weightKg = updates.weightKg;
+    if (updates.readingType !== undefined) cleanUpdates.readingType = updates.readingType;
+    if (updates.notes !== undefined) cleanUpdates.notes = updates.notes?.toUpperCase();
+    
+    const [result] = await db.update(bitumenDipReadings)
+      .set(cleanUpdates)
+      .where(eq(bitumenDipReadings.id, id))
+      .returning();
+    return result;
+  }
+
   async deleteBitumenDipReading(id: number): Promise<boolean> {
     const [deleted] = await db.delete(bitumenDipReadings).where(eq(bitumenDipReadings.id, id)).returning();
     return !!deleted;
@@ -3770,8 +3868,9 @@ export class DatabaseStorage implements IStorage {
   // LDO FLOW METER READINGS
   // ============================================
 
-  async getLdoFlowReadings(filters?: { dateFrom?: string; dateTo?: string; readingType?: string }): Promise<LdoFlowReading[]> {
+  async getLdoFlowReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string }): Promise<LdoFlowReading[]> {
     let conditions = [];
+    if (filters?.tankNumber) conditions.push(eq(ldoFlowReadings.tankNumber, filters.tankNumber));
     if (filters?.readingType) conditions.push(eq(ldoFlowReadings.readingType, filters.readingType));
     if (filters?.dateFrom) conditions.push(gte(ldoFlowReadings.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(ldoFlowReadings.date, filters.dateTo));
@@ -3787,6 +3886,23 @@ export class DatabaseStorage implements IStorage {
       notes: reading.notes?.toUpperCase(),
     };
     const [result] = await db.insert(ldoFlowReadings).values(uppercased).returning();
+    return result;
+  }
+
+  async updateLdoFlowReading(id: number, updates: Partial<InsertLdoFlowReading>): Promise<LdoFlowReading | undefined> {
+    const cleanUpdates: any = {};
+    if (updates.date !== undefined) cleanUpdates.date = updates.date;
+    if (updates.time !== undefined) cleanUpdates.time = updates.time;
+    if (updates.tankNumber !== undefined) cleanUpdates.tankNumber = updates.tankNumber;
+    if (updates.meterReading !== undefined) cleanUpdates.meterReading = updates.meterReading;
+    if (updates.readingType !== undefined) cleanUpdates.readingType = updates.readingType;
+    if (updates.quantityLiters !== undefined) cleanUpdates.quantityLiters = updates.quantityLiters;
+    if (updates.notes !== undefined) cleanUpdates.notes = updates.notes?.toUpperCase();
+    
+    const [result] = await db.update(ldoFlowReadings)
+      .set(cleanUpdates)
+      .where(eq(ldoFlowReadings.id, id))
+      .returning();
     return result;
   }
 

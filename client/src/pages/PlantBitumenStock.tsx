@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, Download, Printer, Droplets } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Droplets, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -34,6 +34,7 @@ export default function PlantBitumenStock() {
   const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [editingReading, setEditingReading] = useState<BitumenDipReading | null>(null);
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -41,7 +42,7 @@ export default function PlantBitumenStock() {
 
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
 
   const [tankNumber, setTankNumber] = useState("1");
   const [depthCm, setDepthCm] = useState("");
@@ -52,6 +53,10 @@ export default function PlantBitumenStock() {
 
   const { data: readings, isLoading } = useQuery<BitumenDipReading[]>({
     queryKey: ["/api/plant-module/bitumen-dip-readings"],
+  });
+
+  const { data: dispatches } = useQuery<{ date: string; loadWeight: number; theoreticalBitumenQty: number | null; theoreticalLdoQty: number | null }[]>({
+    queryKey: ["/api/plant-module/dispatches"],
   });
 
   const filteredReadings = useMemo(() => {
@@ -145,6 +150,33 @@ export default function PlantBitumenStock() {
       });
   }, [readings]);
 
+  const varianceData = useMemo(() => {
+    if (!dispatches || !dailySummary.length) return [];
+    const dispatchByDate: Record<string, { production: number; theoretical: number }> = {};
+    for (const d of dispatches) {
+      if (!dispatchByDate[d.date]) dispatchByDate[d.date] = { production: 0, theoretical: 0 };
+      dispatchByDate[d.date].production += d.loadWeight || 0;
+      dispatchByDate[d.date].theoretical += d.theoreticalBitumenQty || 0;
+    }
+    return dailySummary
+      .filter(day => dispatchByDate[day.date] && day.totalConsumption > 0)
+      .map(day => {
+        const dd = dispatchByDate[day.date];
+        const actualKg = day.totalConsumption * BITUMEN_DENSITY_KG_PER_LITER;
+        const theoreticalKg = dd.theoretical;
+        const varianceKg = actualKg - theoreticalKg;
+        const variancePercent = theoreticalKg !== 0 ? (varianceKg / theoreticalKg) * 100 : 0;
+        return {
+          date: day.date,
+          productionMT: dd.production,
+          theoreticalKg,
+          actualKg,
+          varianceKg,
+          variancePercent,
+        };
+      });
+  }, [dispatches, dailySummary]);
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("POST", "/api/plant-module/bitumen-dip-readings", data);
@@ -154,6 +186,23 @@ export default function PlantBitumenStock() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       toast({ title: "Dip reading recorded" });
       resetForm();
+      setDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/plant-module/bitumen-dip-readings/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
+      toast({ title: "Dip reading updated" });
+      resetForm();
+      setEditingReading(null);
       setDialogOpen(false);
     },
     onError: (err: any) => {
@@ -184,6 +233,17 @@ export default function PlantBitumenStock() {
     setNotes("");
   }
 
+  function handleTankClick(tankNum: number) {
+    setEditingReading(null);
+    setTankNumber(String(tankNum));
+    setDepthCm("");
+    setReadingType("adhoc");
+    setReadingDate(format(new Date(), "yyyy-MM-dd"));
+    setReadingTime(format(new Date(), "HH:mm"));
+    setNotes("");
+    setDialogOpen(true);
+  }
+
   function handleSubmit() {
     const depth = parseFloat(depthCm);
     if (!depth || depth < 0 || depth > 250) {
@@ -197,7 +257,7 @@ export default function PlantBitumenStock() {
     const vol = getVolumeAtDepth(depth);
     const wt = vol * BITUMEN_DENSITY_KG_PER_LITER;
 
-    createMutation.mutate({
+    const payload = {
       date: readingDate,
       time: readingTime,
       tankNumber: parseInt(tankNumber),
@@ -206,7 +266,13 @@ export default function PlantBitumenStock() {
       weightKg: Math.round(wt),
       readingType,
       notes: notes || null,
-    });
+    };
+
+    if (editingReading) {
+      updateMutation.mutate({ id: editingReading.id, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   }
 
   function handlePinAction(type: string, readingId?: number) {
@@ -221,6 +287,18 @@ export default function PlantBitumenStock() {
 
     if (pendingAction.type === "delete" && pendingAction.readingId) {
       deleteMutation.mutate(pendingAction.readingId);
+    } else if (pendingAction.type === "edit" && pendingAction.readingId) {
+      const reading = readings?.find(r => r.id === pendingAction.readingId);
+      if (reading) {
+        setEditingReading(reading);
+        setReadingDate(reading.date);
+        setReadingTime(reading.time || "");
+        setTankNumber(String(reading.tankNumber));
+        setDepthCm(String(reading.depthCm));
+        setReadingType(reading.readingType);
+        setNotes(reading.notes || "");
+        setDialogOpen(true);
+      }
     } else if (pendingAction.type === "export-excel") {
       exportExcel();
     } else if (pendingAction.type === "export-pdf") {
@@ -292,48 +370,54 @@ export default function PlantBitumenStock() {
     const fill = Math.min(100, (depth / 250) * 100);
 
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">{label}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4 items-end">
-            <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`tank-visual-${tankNum}`}>
-              <div
-                className="absolute bottom-0 w-full bg-amber-800/70 dark:bg-amber-600/50 transition-all duration-500"
-                style={{ height: `${fill}%` }}
-              />
-              <div
-                className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
-                style={{ height: `${deadStockPercent}%` }}
-              />
+      <div
+        className="cursor-pointer hover-elevate"
+        onClick={() => handleTankClick(tankNum)}
+        data-testid={`tank-card-${tankNum}`}
+      >
+        <Card className="overflow-visible">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">{label}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4 items-end">
+              <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`tank-visual-${tankNum}`}>
+                <div
+                  className="absolute bottom-0 w-full bg-amber-800/70 dark:bg-amber-600/50 transition-all duration-500"
+                  style={{ height: `${fill}%` }}
+                />
+                <div
+                  className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
+                  style={{ height: `${deadStockPercent}%` }}
+                />
+              </div>
+              <div className="flex-1 space-y-1 text-sm">
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-muted-foreground">Depth:</span>
+                  <span className="font-medium">{depth} cm</span>
+                </div>
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-muted-foreground">Total:</span>
+                  <span className="font-medium">{vol.toLocaleString()} L / {Math.round(vol * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+                </div>
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-muted-foreground">Usable:</span>
+                  <span className="font-medium text-green-600 dark:text-green-400">{usable.toLocaleString()} L / {Math.round(usable * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+                </div>
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-muted-foreground">Dead:</span>
+                  <span className="text-xs text-red-500">{Math.round(deadStockVolume).toLocaleString()} L</span>
+                </div>
+                {reading && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Last: {reading.date} {reading.time || ""}
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="flex-1 space-y-1 text-sm">
-              <div className="flex justify-between gap-1 flex-wrap">
-                <span className="text-muted-foreground">Depth:</span>
-                <span className="font-medium">{depth} cm</span>
-              </div>
-              <div className="flex justify-between gap-1 flex-wrap">
-                <span className="text-muted-foreground">Total:</span>
-                <span className="font-medium">{vol.toLocaleString()} L / {Math.round(vol * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
-              </div>
-              <div className="flex justify-between gap-1 flex-wrap">
-                <span className="text-muted-foreground">Usable:</span>
-                <span className="font-medium text-green-600 dark:text-green-400">{usable.toLocaleString()} L / {Math.round(usable * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
-              </div>
-              <div className="flex justify-between gap-1 flex-wrap">
-                <span className="text-muted-foreground">Dead:</span>
-                <span className="text-xs text-red-500">{Math.round(deadStockVolume).toLocaleString()} L</span>
-              </div>
-              {reading && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Last: {reading.date} {reading.time || ""}
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -347,6 +431,8 @@ export default function PlantBitumenStock() {
     );
   }
 
+  const isMutating = createMutation.isPending || updateMutation.isPending;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 flex-wrap">
@@ -357,9 +443,6 @@ export default function PlantBitumenStock() {
         </Link>
         <Droplets className="w-6 h-6 text-amber-700 dark:text-amber-500" />
         <h1 className="text-2xl font-bold flex-1">Bitumen Stock Tracker</h1>
-        <Button onClick={() => { resetForm(); setDialogOpen(true); }} data-testid="button-new-reading">
-          <Plus className="w-4 h-4 mr-2" /> New Dip Reading
-        </Button>
       </div>
 
       <div className="text-sm text-muted-foreground">
@@ -437,6 +520,84 @@ export default function PlantBitumenStock() {
                       <td className="p-2 text-right font-bold">{day.totalConsumption ? Math.round(day.totalConsumption * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {varianceData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Consumption Variance Analysis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-right p-2">Production (MT)</th>
+                    <th className="text-right p-2">Theoretical (kg)</th>
+                    <th className="text-right p-2">Actual (kg)</th>
+                    <th className="text-right p-2">Variance (kg)</th>
+                    <th className="text-right p-2">Variance %</th>
+                    <th className="text-center p-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {varianceData.map(row => (
+                    <tr key={row.date} className="border-b" data-testid={`row-variance-${row.date}`}>
+                      <td className="p-2">{row.date}</td>
+                      <td className="p-2 text-right">{row.productionMT.toFixed(2)}</td>
+                      <td className="p-2 text-right">{Math.round(row.theoreticalKg).toLocaleString()}</td>
+                      <td className="p-2 text-right">{Math.round(row.actualKg).toLocaleString()}</td>
+                      <td className="p-2 text-right">{Math.round(row.varianceKg).toLocaleString()}</td>
+                      <td className="p-2 text-right">{row.theoreticalKg !== 0 ? row.variancePercent.toFixed(1) : "-"}%</td>
+                      <td className="p-2 text-center" data-testid={`text-variance-status-${row.date}`}>
+                        {row.theoreticalKg === 0 ? (
+                          <Badge variant="secondary" className="text-xs">OK</Badge>
+                        ) : row.varianceKg < 0 ? (
+                          <Badge className="text-xs bg-green-600 dark:bg-green-700">SAVING</Badge>
+                        ) : row.varianceKg > 0 ? (
+                          <Badge variant="destructive" className="text-xs">LOSS</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">OK</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {varianceData.length > 1 && (() => {
+                    const totals = varianceData.reduce((acc, r) => ({
+                      productionMT: acc.productionMT + r.productionMT,
+                      theoreticalKg: acc.theoreticalKg + r.theoreticalKg,
+                      actualKg: acc.actualKg + r.actualKg,
+                      varianceKg: acc.varianceKg + r.varianceKg,
+                    }), { productionMT: 0, theoreticalKg: 0, actualKg: 0, varianceKg: 0 });
+                    const totalVariancePercent = totals.theoreticalKg !== 0 ? (totals.varianceKg / totals.theoreticalKg) * 100 : 0;
+                    return (
+                      <tr className="border-t-2 font-bold">
+                        <td className="p-2">Total</td>
+                        <td className="p-2 text-right">{totals.productionMT.toFixed(2)}</td>
+                        <td className="p-2 text-right">{Math.round(totals.theoreticalKg).toLocaleString()}</td>
+                        <td className="p-2 text-right">{Math.round(totals.actualKg).toLocaleString()}</td>
+                        <td className="p-2 text-right">{Math.round(totals.varianceKg).toLocaleString()}</td>
+                        <td className="p-2 text-right">{totals.theoreticalKg !== 0 ? totalVariancePercent.toFixed(1) : "-"}%</td>
+                        <td className="p-2 text-center">
+                          {totals.theoreticalKg === 0 ? (
+                            <Badge variant="secondary" className="text-xs">OK</Badge>
+                          ) : totals.varianceKg < 0 ? (
+                            <Badge className="text-xs bg-green-600 dark:bg-green-700">SAVING</Badge>
+                          ) : totals.varianceKg > 0 ? (
+                            <Badge variant="destructive" className="text-xs">LOSS</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">OK</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -525,9 +686,14 @@ export default function PlantBitumenStock() {
                             </Button>
                           </div>
                         ) : (
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-1 justify-center">
+                            <Button size="icon" variant="ghost" onClick={() => handlePinAction("edit", r.id)} data-testid={`button-edit-${r.id}`}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -539,10 +705,12 @@ export default function PlantBitumenStock() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingReading(null); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Record Bitumen Dip Reading</DialogTitle>
+            <DialogTitle data-testid="text-dialog-title">
+              {editingReading ? "Edit Bitumen Dip Reading" : `Record Bitumen Dip Reading - Tank ${tankNumber}`}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -634,9 +802,9 @@ export default function PlantBitumenStock() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending || !depthCm} data-testid="button-submit-reading">
-              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Record Reading
+            <Button onClick={handleSubmit} disabled={isMutating || !depthCm} data-testid="button-submit-reading">
+              {isMutating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {editingReading ? "Update Reading" : "Record Reading"}
             </Button>
           </DialogFooter>
         </DialogContent>

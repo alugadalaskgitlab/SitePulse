@@ -1478,6 +1478,17 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/plant-module/bitumen-dip-readings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const result = await storage.updateBitumenDipReading(id, req.body);
+      if (!result) return res.status(404).json({ message: "Reading not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update bitumen dip reading" });
+    }
+  });
+
   app.delete("/api/plant-module/bitumen-dip-readings/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -1496,6 +1507,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/ldo-flow-readings", async (req, res) => {
     try {
       const filters = {
+        tankNumber: req.query.tankNumber ? parseInt(req.query.tankNumber as string) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         readingType: req.query.readingType as string | undefined,
@@ -1514,6 +1526,17 @@ export async function registerRoutes(
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create LDO flow reading" });
+    }
+  });
+
+  app.patch("/api/plant-module/ldo-flow-readings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const result = await storage.updateLdoFlowReading(id, req.body);
+      if (!result) return res.status(404).json({ message: "Reading not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update LDO flow reading" });
     }
   });
 

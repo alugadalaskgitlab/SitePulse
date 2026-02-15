@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, Download, Printer, Gauge } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -20,20 +20,25 @@ import { format } from "date-fns";
 import type { LdoFlowReading } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
+const TANK_LABELS: Record<number, string> = { 1: "Boiler", 2: "Dryer" };
+
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
   const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [editingReading, setEditingReading] = useState<LdoFlowReading | null>(null);
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterTank, setFilterTank] = useState("all");
 
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
 
+  const [tankNumber, setTankNumber] = useState("1");
   const [meterReading, setMeterReading] = useState("");
   const [readingType, setReadingType] = useState("opening");
   const [readingDate, setReadingDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -45,14 +50,41 @@ export default function PlantLdoFlowMeter() {
     queryKey: ["/api/plant-module/ldo-flow-readings"],
   });
 
+  const { data: dispatches } = useQuery<{ date: string; loadWeight: number; theoreticalBitumenQty: number | null; theoreticalLdoQty: number | null }[]>({
+    queryKey: ["/api/plant-module/dispatches"],
+  });
+
   const filteredReadings = useMemo(() => {
     if (!readings) return [];
     return readings.filter(r => {
       if (filterDateFrom && r.date < filterDateFrom) return false;
       if (filterDateTo && r.date > filterDateTo) return false;
+      if (filterTank !== "all" && r.tankNumber !== parseInt(filterTank)) return false;
       return true;
     });
-  }, [readings, filterDateFrom, filterDateTo]);
+  }, [readings, filterDateFrom, filterDateTo, filterTank]);
+
+  const latestTank1 = useMemo(() => {
+    if (!readings) return null;
+    const tank1 = readings.filter(r => r.tankNumber === 1);
+    if (tank1.length === 0) return null;
+    return tank1.sort((a, b) => {
+      const dateComp = b.date.localeCompare(a.date);
+      if (dateComp !== 0) return dateComp;
+      return (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [readings]);
+
+  const latestTank2 = useMemo(() => {
+    if (!readings) return null;
+    const tank2 = readings.filter(r => r.tankNumber === 2);
+    if (tank2.length === 0) return null;
+    return tank2.sort((a, b) => {
+      const dateComp = b.date.localeCompare(a.date);
+      if (dateComp !== 0) return dateComp;
+      return (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [readings]);
 
   const dailySummary = useMemo(() => {
     if (!readings) return [];
@@ -65,35 +97,82 @@ export default function PlantLdoFlowMeter() {
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 15)
       .map(day => {
-        const openings = day.entries.filter(e => e.readingType === "opening").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-        const closings = day.entries.filter(e => e.readingType === "closing").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-        const receipts = day.entries.filter(e => e.readingType === "receipt");
+        const t1Entries = day.entries.filter(e => e.tankNumber === 1);
+        const t2Entries = day.entries.filter(e => e.tankNumber === 2);
 
-        const opening = openings[0] || null;
-        const closing = closings[closings.length - 1] || null;
-        const totalReceipts = receipts.reduce((s, r) => s + (r.quantityLiters || 0), 0);
+        const t1Openings = t1Entries.filter(e => e.readingType === "opening").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+        const t1Closings = t1Entries.filter(e => e.readingType === "closing").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+        const t2Openings = t2Entries.filter(e => e.readingType === "opening").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+        const t2Closings = t2Entries.filter(e => e.readingType === "closing").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
 
-        let consumption = null as number | null;
-        if (opening && closing) {
-          consumption = closing.meterReading - opening.meterReading;
+        const t1Opening = t1Openings[0] || null;
+        const t1Closing = t1Closings[t1Closings.length - 1] || null;
+        const t2Opening = t2Openings[0] || null;
+        const t2Closing = t2Closings[t2Closings.length - 1] || null;
+
+        let t1Consumption = null as number | null;
+        let t2Consumption = null as number | null;
+
+        if (t1Opening && t1Closing) {
+          t1Consumption = t1Closing.meterReading - t1Opening.meterReading;
         }
+        if (t2Opening && t2Closing) {
+          t2Consumption = t2Closing.meterReading - t2Opening.meterReading;
+        }
+
+        const totalL = (t1Consumption || 0) + (t2Consumption || 0);
 
         return {
           date: day.date,
-          opening,
-          closing,
-          totalReceipts,
-          consumption,
-          consumptionKg: consumption !== null ? Math.round(consumption * LDO_DENSITY_KG_PER_LITER) : null,
+          t1Opening, t1Closing, t2Opening, t2Closing,
+          t1Consumption, t2Consumption,
+          totalConsumption: totalL,
+          totalConsumptionKg: totalL > 0 ? Math.round(totalL * LDO_DENSITY_KG_PER_LITER) : null,
         };
       });
   }, [readings]);
 
-  const latestReading = readings && readings.length > 0 ? readings[0] : null;
-  const totalConsumptionLast30 = dailySummary.reduce((s, d) => s + (d.consumption || 0), 0);
-  const totalReceiptsLast30 = dailySummary.reduce((s, d) => s + d.totalReceipts, 0);
-  const avgDailyConsumption = dailySummary.filter(d => d.consumption !== null).length > 0
-    ? totalConsumptionLast30 / dailySummary.filter(d => d.consumption !== null).length : 0;
+  const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
+
+  const varianceData = useMemo(() => {
+    if (!dispatches || dailySummary.length === 0) return [];
+    const dispatchByDate: Record<string, { production: number; theoreticalLdo: number }> = {};
+    for (const d of dispatches) {
+      if (!dispatchByDate[d.date]) dispatchByDate[d.date] = { production: 0, theoreticalLdo: 0 };
+      dispatchByDate[d.date].production += d.loadWeight || 0;
+      dispatchByDate[d.date].theoreticalLdo += d.theoreticalLdoQty || 0;
+    }
+    const result: {
+      date: string;
+      production: number;
+      theoretical: number;
+      actualT1: number | null;
+      actualT2: number | null;
+      actualTotal: number;
+      variance: number;
+      variancePercent: number | null;
+      status: "SAVING" | "LOSS" | "OK";
+    }[] = [];
+    for (const day of dailySummary) {
+      const dd = dispatchByDate[day.date];
+      if (!dd || day.totalConsumption === 0) continue;
+      const variance = day.totalConsumption - dd.theoreticalLdo;
+      const variancePercent = dd.theoreticalLdo > 0 ? Math.round((variance / dd.theoreticalLdo) * 1000) / 10 : null;
+      const status: "SAVING" | "LOSS" | "OK" = dd.theoreticalLdo === 0 ? "OK" : variance < 0 ? "SAVING" : variance > 0 ? "LOSS" : "OK";
+      result.push({
+        date: day.date,
+        production: dd.production,
+        theoretical: dd.theoreticalLdo,
+        actualT1: day.t1Consumption,
+        actualT2: day.t2Consumption,
+        actualTotal: day.totalConsumption,
+        variance,
+        variancePercent,
+        status,
+      });
+    }
+    return result.slice(0, 10);
+  }, [dispatches, dailySummary]);
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -104,6 +183,23 @@ export default function PlantLdoFlowMeter() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
       toast({ title: "LDO flow reading recorded" });
       resetForm();
+      setDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/plant-module/ldo-flow-readings/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
+      toast({ title: "LDO flow reading updated" });
+      resetForm();
+      setEditingReading(null);
       setDialogOpen(false);
     },
     onError: (err: any) => {
@@ -126,12 +222,25 @@ export default function PlantLdoFlowMeter() {
   });
 
   function resetForm() {
+    setTankNumber("1");
     setMeterReading("");
     setReadingType("opening");
     setReadingDate(format(new Date(), "yyyy-MM-dd"));
     setReadingTime(format(new Date(), "HH:mm"));
     setQuantityLiters("");
     setNotes("");
+  }
+
+  function handleTankClick(tankNum: number) {
+    setEditingReading(null);
+    setTankNumber(String(tankNum));
+    setMeterReading("");
+    setReadingType("opening");
+    setReadingDate(format(new Date(), "yyyy-MM-dd"));
+    setReadingTime(format(new Date(), "HH:mm"));
+    setQuantityLiters("");
+    setNotes("");
+    setDialogOpen(true);
   }
 
   function handleSubmit() {
@@ -149,14 +258,21 @@ export default function PlantLdoFlowMeter() {
       return;
     }
 
-    createMutation.mutate({
+    const payload = {
       date: readingDate,
       time: readingTime,
+      tankNumber: parseInt(tankNumber),
       meterReading: meter,
       readingType,
       quantityLiters: readingType === "receipt" ? parseFloat(quantityLiters) : null,
       notes: notes || null,
-    });
+    };
+
+    if (editingReading) {
+      updateMutation.mutate({ id: editingReading.id, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   }
 
   function handlePinAction(type: string, readingId?: number) {
@@ -168,8 +284,22 @@ export default function PlantLdoFlowMeter() {
   function handlePinSuccess(_role: string, _pin: string) {
     setShowPinAuth(false);
     if (!pendingAction) return;
+
     if (pendingAction.type === "delete" && pendingAction.readingId) {
       deleteMutation.mutate(pendingAction.readingId);
+    } else if (pendingAction.type === "edit" && pendingAction.readingId) {
+      const reading = readings?.find(r => r.id === pendingAction.readingId);
+      if (reading) {
+        setEditingReading(reading);
+        setReadingDate(reading.date);
+        setReadingTime(reading.time || "");
+        setTankNumber(String(reading.tankNumber));
+        setMeterReading(String(reading.meterReading));
+        setReadingType(reading.readingType);
+        setQuantityLiters(reading.quantityLiters ? String(reading.quantityLiters) : "");
+        setNotes(reading.notes || "");
+        setDialogOpen(true);
+      }
     } else if (pendingAction.type === "export-excel") {
       exportExcel();
     } else if (pendingAction.type === "export-pdf") {
@@ -184,6 +314,7 @@ export default function PlantLdoFlowMeter() {
     const data = filteredReadings.map(r => ({
       Date: r.date,
       Time: r.time || "",
+      Tank: `Tank ${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})`,
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
@@ -195,11 +326,14 @@ export default function PlantLdoFlowMeter() {
 
     const summaryData = dailySummary.map(d => ({
       Date: d.date,
-      "Opening (L)": d.opening?.meterReading ?? "",
-      "Closing (L)": d.closing?.meterReading ?? "",
-      "Receipts (L)": d.totalReceipts || "",
-      "Consumption (L)": d.consumption ?? "",
-      "Consumption (kg)": d.consumptionKg ?? "",
+      "T1 Opening (L)": d.t1Opening?.meterReading ?? "",
+      "T1 Closing (L)": d.t1Closing?.meterReading ?? "",
+      "T1 Consumption (L)": d.t1Consumption ?? "",
+      "T2 Opening (L)": d.t2Opening?.meterReading ?? "",
+      "T2 Closing (L)": d.t2Closing?.meterReading ?? "",
+      "T2 Consumption (L)": d.t2Consumption ?? "",
+      "Total (L)": d.totalConsumption || "",
+      "Total (kg)": d.totalConsumptionKg ?? "",
     }));
     const ws2 = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, ws2, "Daily Summary");
@@ -215,13 +349,15 @@ export default function PlantLdoFlowMeter() {
     doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | LDO: ${LDO_DENSITY_KG_PER_LITER} kg/L`, 14, 22);
 
     const tableData = filteredReadings.map(r => [
-      r.date, r.time || "", r.meterReading.toLocaleString(),
+      r.date, r.time || "",
+      `T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})`,
+      r.meterReading.toLocaleString(),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toLocaleString() : "",
       r.notes || "",
     ]);
     autoTable(doc, {
-      head: [["Date", "Time", "Meter (L)", "Type", "Receipt Qty (L)", "Notes"]],
+      head: [["Date", "Time", "Tank", "Meter (L)", "Type", "Receipt Qty (L)", "Notes"]],
       body: tableData,
       startY: 28,
       styles: { fontSize: 9 },
@@ -234,12 +370,18 @@ export default function PlantLdoFlowMeter() {
       <html><head><title>LDO Flow Meter Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | LDO: ${LDO_DENSITY_KG_PER_LITER} kg/L</p></div>
-      <table><tr><th>Date</th><th>Time</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${r.meterReading.toLocaleString()}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toLocaleString() : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Notes</th></tr>
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})</td><td>${r.meterReading.toLocaleString()}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toLocaleString() : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
   }
+
+  const dialogTitle = editingReading
+    ? "Edit LDO Reading"
+    : `Record LDO Reading - Tank ${tankNumber} (${TANK_LABELS[parseInt(tankNumber)] || ""})`;
+
+  const isMutating = createMutation.isPending || updateMutation.isPending;
 
   if (showPinAuth) {
     return (
@@ -261,58 +403,77 @@ export default function PlantLdoFlowMeter() {
         </Link>
         <Gauge className="w-6 h-6 text-blue-600 dark:text-blue-400" />
         <h1 className="text-2xl font-bold flex-1">LDO Flow Meter Tracker</h1>
-        <Button onClick={() => { resetForm(); setDialogOpen(true); }} data-testid="button-new-reading">
-          <Plus className="w-4 h-4 mr-2" /> New Reading
-        </Button>
       </div>
 
       <div className="text-sm text-muted-foreground">
-        LDO density: {LDO_DENSITY_KG_PER_LITER} kg/L | Record flow meter readings to track LDO consumption
+        LDO density: {LDO_DENSITY_KG_PER_LITER} kg/L | Tank 1 = Boiler (heats bitumen) | Tank 2 = Dryer (heats aggregates)
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Latest Meter Reading</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {latestReading ? (
-              <div className="space-y-1 text-sm">
-                <div className="text-2xl font-bold" data-testid="text-latest-meter">{latestReading.meterReading.toLocaleString()} L</div>
-                <div className="text-muted-foreground">
-                  {latestReading.date} {latestReading.time || ""} ({latestReading.readingType})
+        <div
+          className="cursor-pointer hover-elevate"
+          onClick={() => handleTankClick(1)}
+          data-testid="tank-card-1"
+        >
+          <Card className="overflow-visible">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Tank 1 (Boiler)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {latestTank1 ? (
+                <div className="space-y-1 text-sm">
+                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t1">{latestTank1.meterReading.toLocaleString()} L</div>
+                  <div className="text-muted-foreground">
+                    {latestTank1.date} {latestTank1.time || ""} ({latestTank1.readingType})
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No readings yet</div>
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                <div className="text-muted-foreground text-sm">No readings yet</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Avg Daily Consumption</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-avg-consumption">
-              {avgDailyConsumption > 0 ? `${Math.round(avgDailyConsumption).toLocaleString()} L` : "-"}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {avgDailyConsumption > 0 ? `${Math.round(avgDailyConsumption * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg/day` : "Record opening & closing to track"}
-            </div>
-          </CardContent>
-        </Card>
+        <div
+          className="cursor-pointer hover-elevate"
+          onClick={() => handleTankClick(2)}
+          data-testid="tank-card-2"
+        >
+          <Card className="overflow-visible">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Tank 2 (Dryer)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {latestTank2 ? (
+                <div className="space-y-1 text-sm">
+                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t2">{latestTank2.meterReading.toLocaleString()} L</div>
+                  <div className="text-muted-foreground">
+                    {latestTank2.date} {latestTank2.time || ""} ({latestTank2.readingType})
+                  </div>
+                </div>
+              ) : (
+                <div className="text-muted-foreground text-sm">No readings yet</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card>
+        <Card className="overflow-visible">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Receipts (Recent)</CardTitle>
+            <CardTitle className="text-sm font-medium">Combined Consumption</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-receipts">
-              {totalReceiptsLast30 > 0 ? `${totalReceiptsLast30.toLocaleString()} L` : "-"}
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Total (Recent):</span>
+              <span className="font-bold" data-testid="text-combined-consumption">
+                {totalConsumptionBothTanks > 0 ? `${totalConsumptionBothTanks.toLocaleString()} L` : "-"}
+              </span>
             </div>
-            <div className="text-sm text-muted-foreground">
-              {totalReceiptsLast30 > 0 ? `${Math.round(totalReceiptsLast30 * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg` : "No receipts recorded"}
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Weight:</span>
+              <span className="font-bold">
+                {totalConsumptionBothTanks > 0 ? `${Math.round(totalConsumptionBothTanks * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg` : "-"}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -329,24 +490,111 @@ export default function PlantLdoFlowMeter() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-2">Date</th>
-                    <th className="text-right p-2">Opening (L)</th>
-                    <th className="text-right p-2">Closing (L)</th>
-                    <th className="text-right p-2">Receipts (L)</th>
-                    <th className="text-right p-2 font-bold">Consumption (L)</th>
-                    <th className="text-right p-2 font-bold">Consumption (kg)</th>
+                    <th className="text-right p-2">T1 Opening</th>
+                    <th className="text-right p-2">T1 Closing</th>
+                    <th className="text-right p-2">T1 Consumption</th>
+                    <th className="text-right p-2">T2 Opening</th>
+                    <th className="text-right p-2">T2 Closing</th>
+                    <th className="text-right p-2">T2 Consumption</th>
+                    <th className="text-right p-2 font-bold">Total (L)</th>
+                    <th className="text-right p-2 font-bold">Total (kg)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dailySummary.map(day => (
                     <tr key={day.date} className="border-b" data-testid={`row-daily-${day.date}`}>
                       <td className="p-2">{day.date}</td>
-                      <td className="p-2 text-right">{day.opening?.meterReading?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.closing?.meterReading?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.totalReceipts ? day.totalReceipts.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.consumption !== null ? day.consumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.consumptionKg !== null ? day.consumptionKg.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1Opening?.meterReading?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t1Closing?.meterReading?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t1Consumption !== null ? day.t1Consumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Opening?.meterReading?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t2Closing?.meterReading?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right font-bold">{day.totalConsumptionKg !== null ? day.totalConsumptionKg.toLocaleString() : "-"}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {varianceData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">LDO Consumption Variance Analysis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-right p-2">Production (MT)</th>
+                    <th className="text-right p-2">Theoretical (L)</th>
+                    <th className="text-right p-2">Actual T1 (L)</th>
+                    <th className="text-right p-2">Actual T2 (L)</th>
+                    <th className="text-right p-2">Actual Total (L)</th>
+                    <th className="text-right p-2">Variance (L)</th>
+                    <th className="text-right p-2">Variance %</th>
+                    <th className="text-center p-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {varianceData.map(row => (
+                    <tr key={row.date} className="border-b" data-testid={`row-ldo-variance-${row.date}`}>
+                      <td className="p-2">{row.date}</td>
+                      <td className="p-2 text-right">{row.production.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="p-2 text-right">{row.theoretical.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="p-2 text-right">{row.actualT1 !== null ? row.actualT1.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{row.actualT2 !== null ? row.actualT2.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right font-bold">{row.actualTotal.toLocaleString()}</td>
+                      <td className={`p-2 text-right font-bold ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                        {row.variance.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                      </td>
+                      <td className={`p-2 text-right ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                        {row.variancePercent !== null ? `${row.variancePercent}%` : "-"}
+                      </td>
+                      <td className="p-2 text-center" data-testid={`text-ldo-variance-status-${row.date}`}>
+                        {row.status === "SAVING" && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 no-default-hover-elevate no-default-active-elevate">SAVING</Badge>}
+                        {row.status === "LOSS" && <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 no-default-hover-elevate no-default-active-elevate">LOSS</Badge>}
+                        {row.status === "OK" && <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">OK</Badge>}
+                      </td>
+                    </tr>
+                  ))}
+                  {(() => {
+                    const totProd = varianceData.reduce((s, r) => s + r.production, 0);
+                    const totTheo = varianceData.reduce((s, r) => s + r.theoretical, 0);
+                    const totT1 = varianceData.reduce((s, r) => s + (r.actualT1 || 0), 0);
+                    const totT2 = varianceData.reduce((s, r) => s + (r.actualT2 || 0), 0);
+                    const totActual = varianceData.reduce((s, r) => s + r.actualTotal, 0);
+                    const totVar = totActual - totTheo;
+                    const totVarPct = totTheo > 0 ? Math.round((totVar / totTheo) * 1000) / 10 : null;
+                    const totStatus: "SAVING" | "LOSS" | "OK" = totTheo === 0 ? "OK" : totVar < 0 ? "SAVING" : totVar > 0 ? "LOSS" : "OK";
+                    return (
+                      <tr className="border-t-2 font-bold">
+                        <td className="p-2">Total</td>
+                        <td className="p-2 text-right">{totProd.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="p-2 text-right">{totTheo.toLocaleString(undefined, { maximumFractionDigits: 1 })} ({Math.round(totTheo * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg)</td>
+                        <td className="p-2 text-right">{totT1.toLocaleString()}</td>
+                        <td className="p-2 text-right">{totT2.toLocaleString()}</td>
+                        <td className="p-2 text-right">{totActual.toLocaleString()} ({Math.round(totActual * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg)</td>
+                        <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                          {totVar.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                        </td>
+                        <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                          {totVarPct !== null ? `${totVarPct}%` : "-"}
+                        </td>
+                        <td className="p-2 text-center">
+                          {totStatus === "SAVING" && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 no-default-hover-elevate no-default-active-elevate">SAVING</Badge>}
+                          {totStatus === "LOSS" && <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 no-default-hover-elevate no-default-active-elevate">LOSS</Badge>}
+                          {totStatus === "OK" && <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">OK</Badge>}
+                        </td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -375,6 +623,16 @@ export default function PlantLdoFlowMeter() {
           <div className="flex gap-2 mb-4 flex-wrap">
             <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-40" data-testid="input-filter-date-from" />
             <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
+            <Select value={filterTank} onValueChange={setFilterTank}>
+              <SelectTrigger className="w-44" data-testid="select-filter-tank">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tanks</SelectItem>
+                <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
+                <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {isLoading ? (
@@ -388,6 +646,7 @@ export default function PlantLdoFlowMeter() {
                   <tr className="border-b">
                     <th className="text-left p-2">Date</th>
                     <th className="text-left p-2">Time</th>
+                    <th className="text-left p-2">Tank</th>
                     <th className="text-right p-2">Meter Reading (L)</th>
                     <th className="text-left p-2">Type</th>
                     <th className="text-right p-2">Receipt Qty (L)</th>
@@ -400,6 +659,11 @@ export default function PlantLdoFlowMeter() {
                     <tr key={r.id} className="border-b" data-testid={`row-reading-${r.id}`}>
                       <td className="p-2">{r.date}</td>
                       <td className="p-2">{r.time || "-"}</td>
+                      <td className="p-2">
+                        <Badge variant={r.tankNumber === 1 ? "default" : "secondary"} data-testid={`badge-tank-${r.id}`}>
+                          T{r.tankNumber} ({TANK_LABELS[r.tankNumber]})
+                        </Badge>
+                      </td>
                       <td className="p-2 text-right font-medium">{r.meterReading.toLocaleString()}</td>
                       <td className="p-2">
                         <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : "outline"}>
@@ -409,20 +673,25 @@ export default function PlantLdoFlowMeter() {
                       <td className="p-2 text-right">{r.quantityLiters ? r.quantityLiters.toLocaleString() : "-"}</td>
                       <td className="p-2 text-muted-foreground text-xs">{r.notes || "-"}</td>
                       <td className="p-2 text-center">
-                        {deleteConfirmId === r.id ? (
-                          <div className="flex gap-1 justify-center">
-                            <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
-                              Confirm
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>
-                              Cancel
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
-                            <Trash2 className="w-4 h-4" />
+                        <div className="flex gap-1 justify-center">
+                          <Button size="icon" variant="ghost" onClick={() => handlePinAction("edit", r.id)} data-testid={`button-edit-${r.id}`}>
+                            <Pencil className="w-4 h-4" />
                           </Button>
-                        )}
+                          {deleteConfirmId === r.id ? (
+                            <>
+                              <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
+                                Confirm
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -436,7 +705,7 @@ export default function PlantLdoFlowMeter() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Record LDO Flow Meter Reading</DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -448,6 +717,19 @@ export default function PlantLdoFlowMeter() {
                 <Label>Time</Label>
                 <Input type="time" value={readingTime} onChange={e => setReadingTime(e.target.value)} data-testid="input-reading-time" />
               </div>
+            </div>
+
+            <div>
+              <Label>Tank</Label>
+              <Select value={tankNumber} onValueChange={setTankNumber}>
+                <SelectTrigger data-testid="select-tank-number">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
+                  <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -508,10 +790,10 @@ export default function PlantLdoFlowMeter() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending || !meterReading} data-testid="button-submit-reading">
-              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Record Reading
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingReading(null); }}>Cancel</Button>
+            <Button onClick={handleSubmit} disabled={isMutating || !meterReading} data-testid="button-submit-reading">
+              {isMutating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {editingReading ? "Update Reading" : "Record Reading"}
             </Button>
           </DialogFooter>
         </DialogContent>
