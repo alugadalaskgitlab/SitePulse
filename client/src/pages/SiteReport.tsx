@@ -365,6 +365,7 @@ export default function SiteReport() {
                     <TableHead>Time/Meter</TableHead>
                     <TableHead className="text-right">Hours</TableHead>
                     <TableHead className="text-right">Diesel (L)</TableHead>
+                    <TableHead>Diesel Source</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -377,7 +378,7 @@ export default function SiteReport() {
                         const startMins = startHour * 60 + startMin;
                         const endMins = endHour * 60 + endMin;
                         let diff = endMins - startMins;
-                        if (diff < 0) diff += 24 * 60; // Handle overnight
+                        if (diff < 0) diff += 24 * 60;
                         return diff / 60;
                       } catch {
                         return null;
@@ -398,6 +399,10 @@ export default function SiteReport() {
                     const readingSource = hasReading 
                       ? `Meter: ${item.openingReading} - ${item.closingReading}`
                       : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
+
+                    const dieselSourceLabel = item.dieselSource === 'direct_purchase' ? 'Direct Purchase'
+                      : item.dieselSource === 'contractor' ? 'Contractor'
+                      : item.dieselSource === 'plant_stock' ? 'Plant Stock' : '-';
                     
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
@@ -408,6 +413,16 @@ export default function SiteReport() {
                         <TableCell className="text-xs">{readingSource}</TableCell>
                         <TableCell className="text-right">{hours != null ? hours.toFixed(2) : '-'}</TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
+                        <TableCell>
+                          <span className="text-xs">{dieselSourceLabel}</span>
+                          {item.dieselSource === 'direct_purchase' && (
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {item.fuelStation && <span>{item.fuelStation}</span>}
+                              {item.billNumber && <span> | Bill: {item.billNumber}</span>}
+                              {item.amountPaid && <span> | Rs. {item.amountPaid}</span>}
+                            </div>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}

@@ -750,6 +750,76 @@ export default function SiteEdit() {
                 />
               </div>
               </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <Label className="text-xs">Diesel Source</Label>
+                  <Select
+                    value={entry.dieselSource ?? "plant_stock"}
+                    onValueChange={(value) => {
+                      const updated = [...equipment];
+                      updated[idx].dieselSource = value;
+                      setEquipment(updated);
+                    }}
+                  >
+                    <SelectTrigger data-testid={`select-diesel-source-${idx}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                      <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                      <SelectItem value="contractor">Contractor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {entry.dieselSource === "direct_purchase" && (
+                  <>
+                    <div>
+                      <Label className="text-xs">Fuel Station</Label>
+                      <Input
+                        placeholder="HP / BPCL"
+                        value={entry.fuelStation ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].fuelStation = e.target.value.toUpperCase();
+                          setEquipment(updated);
+                        }}
+                        className="uppercase"
+                        data-testid={`input-fuel-station-${idx}`}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Bill No.</Label>
+                      <Input
+                        placeholder="Receipt #"
+                        value={entry.billNumber ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].billNumber = e.target.value.toUpperCase();
+                          setEquipment(updated);
+                        }}
+                        className="uppercase"
+                        data-testid={`input-bill-number-${idx}`}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Amount (Rs)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0"
+                        value={entry.amountPaid ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].amountPaid = e.target.value ? parseFloat(e.target.value) : null;
+                          setEquipment(updated);
+                        }}
+                        data-testid={`input-amount-paid-${idx}`}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           ))}
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
