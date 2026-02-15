@@ -54,7 +54,7 @@ Preferred communication style: Simple, everyday language.
 - **Diesel Stock Deduction Sources**: Both Plant Equipment Usage AND DPR equipment logs can deduct diesel from stock:
   - **Plant Equipment Usage**: Records runtime (meter readings OR time entry OR trip-based). When diesel is issued with `plant_stock` source → deducts from HLC stock and included in consumption/efficiency analysis.
   - **DPR Equipment Logs**: When diesel source is `plant_stock` → also deducts from HLC stock via `dpr_equipment_usage` ledger entries. No need to re-enter equipment in Plant module for diesel tracking.
-  - **Overlap Detection**: Historical migration checks for matching entries (same equipment name + date + diesel amount) between both sources to prevent double-counting.
+  - **Overlap Detection**: Historical migration checks for matching entries (substring name matching + date + diesel amount within 0.5L) between both sources to prevent double-counting.
   - When "Provided by Contractor" IS checked → no stock deduction, excluded from consumption analysis (contractor's scope)
 - **Diesel Consumption Calculation**:
   - Expected diesel = Runtime × Consumption Norm (L/hr for hour_meter, L/km for odometer)

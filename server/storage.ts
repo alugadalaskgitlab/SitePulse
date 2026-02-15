@@ -3024,27 +3024,20 @@ export class DatabaseStorage implements IStorage {
       if (!hlcParty) hlcParty = allPartiesForMigration[0];
       const hlcPartyId = hlcParty?.id || null;
 
-      if (hlcPartyId) {
-        const fixedOrphans = await db.update(stockLedger)
-          .set({ partyId: hlcPartyId })
+      const existingDprUsageEntries = await db.select({ id: stockLedger.id })
+        .from(stockLedger)
+        .where(eq(stockLedger.transactionType, 'dpr_equipment_usage'));
+
+      if (existingDprUsageEntries.length > 0) {
+        await db.delete(stockLedger).where(eq(stockLedger.transactionType, 'dpr_equipment_usage'));
+        console.log(`migrateDprPlantStockDieselToLedger: Cleaned up ${existingDprUsageEntries.length} old dpr_equipment_usage entries for fresh re-migration`);
+        const orphanBalances = await db.select().from(stockBalances)
           .where(and(
-            eq(stockLedger.transactionType, 'dpr_equipment_usage'),
-            sql`${stockLedger.partyId} IS NULL`
-          ))
-          .returning();
-        if (fixedOrphans.length > 0) {
-          console.log(`migrateDprPlantStockDieselToLedger: Fixed ${fixedOrphans.length} orphan dpr_equipment_usage entries (set partyId=${hlcPartyId})`);
-          const orphanBalances = await db.select().from(stockBalances)
-            .where(and(
-              sql`${stockBalances.partyId} IS NULL`,
-              eq(stockBalances.materialId, dieselMaterial.id)
-            ));
-          for (const ob of orphanBalances) {
-            await db.delete(stockBalances).where(eq(stockBalances.id, ob.id));
-            console.log(`migrateDprPlantStockDieselToLedger: Removed orphan NULL-party diesel balance (id=${ob.id}, balance=${ob.balance})`);
-          }
-          await this.reconcileStockBalancesFromLedger();
-          console.log(`migrateDprPlantStockDieselToLedger: Reconciled stock balances after orphan fix`);
+            sql`${stockBalances.partyId} IS NULL`,
+            eq(stockBalances.materialId, dieselMaterial.id)
+          ));
+        for (const ob of orphanBalances) {
+          await db.delete(stockBalances).where(eq(stockBalances.id, ob.id));
         }
       }
 
@@ -3067,6 +3060,7 @@ export class DatabaseStorage implements IStorage {
 
       if (allPlantStockLogs.length === 0) {
         console.log('migrateDprPlantStockDieselToLedger: No plant_stock DPR equipment logs found');
+        await this.reconcileStockBalancesFromLedger();
         return { created, skipped, overlapped, errors };
       }
 
@@ -3075,7 +3069,44 @@ export class DatabaseStorage implements IStorage {
         dprId: dprVersions.dprId,
       }).from(dprVersions);
 
-      const supersededDprIds = new Set(allVersions.map(v => v.originalDprId));
+      const allVersionedIds = new Set<number>();
+      const childToParent = new Map<number, number>();
+      for (const v of allVersions) {
+        allVersionedIds.add(v.originalDprId);
+        allVersionedIds.add(v.dprId);
+        childToParent.set(v.dprId, v.originalDprId);
+      }
+
+      const findRoot = (dprId: number): number => {
+        let current = dprId;
+        const visited = new Set<number>();
+        while (childToParent.has(current) && !visited.has(current)) {
+          visited.add(current);
+          current = childToParent.get(current)!;
+        }
+        return current;
+      };
+
+      const rootToLeaves = new Map<number, number[]>();
+      const originals = new Set(allVersions.map(v => v.originalDprId));
+      for (const id of Array.from(allVersionedIds)) {
+        if (!originals.has(id)) {
+          const root = findRoot(id);
+          if (!rootToLeaves.has(root)) {
+            rootToLeaves.set(root, []);
+          }
+          rootToLeaves.get(root)!.push(id);
+        }
+      }
+
+      const supersededDprIds = new Set<number>();
+      for (const id of Array.from(allVersionedIds)) {
+        supersededDprIds.add(id);
+      }
+      for (const leaves of Array.from(rootToLeaves.values())) {
+        const latestLeaf = Math.max(...leaves);
+        supersededDprIds.delete(latestLeaf);
+      }
 
       const allEquipUsage = await db.select({
         date: equipmentUsage.date,
@@ -3094,33 +3125,19 @@ export class DatabaseStorage implements IStorage {
         equipNameMap.set(em.id, (em.name || '').toUpperCase().trim());
       }
 
-      const plantUsageIndex = new Map<string, number[]>();
+      interface PlantUsageEntry { equipName: string; diesel: number; }
+      const plantUsageByDate = new Map<string, PlantUsageEntry[]>();
       for (const eu of allEquipUsage) {
         const equipName = equipNameMap.get(eu.equipmentId) || '';
-        const key = `${eu.date}|${equipName}`;
-        if (!plantUsageIndex.has(key)) {
-          plantUsageIndex.set(key, []);
+        const dateKey = eu.date;
+        if (!plantUsageByDate.has(dateKey)) {
+          plantUsageByDate.set(dateKey, []);
         }
-        plantUsageIndex.get(key)!.push(eu.dieselIssued || 0);
-      }
-
-      const existingLedgerRefIds = new Set<number>();
-      const existingEntries = await db.select({ referenceId: stockLedger.referenceId })
-        .from(stockLedger)
-        .where(eq(stockLedger.transactionType, 'dpr_equipment_usage'));
-      for (const e of existingEntries) {
-        if (e.referenceId !== null) existingLedgerRefIds.add(e.referenceId);
+        plantUsageByDate.get(dateKey)!.push({ equipName, diesel: eu.dieselIssued || 0 });
       }
 
       for (const log of allPlantStockLogs) {
         try {
-          const equipLogRefId = -log.id;
-
-          if (existingLedgerRefIds.has(equipLogRefId)) {
-            skipped++;
-            continue;
-          }
-
           if (supersededDprIds.has(log.dprId)) {
             skipped++;
             continue;
@@ -3128,61 +3145,41 @@ export class DatabaseStorage implements IStorage {
 
           const machineName = (log.machine || '').toUpperCase().trim();
           const dieselAmt = log.diesel || 0;
-          const lookupKey = `${log.date}|${machineName}`;
-          const plantUsageDiesels = plantUsageIndex.get(lookupKey) || [];
+          const dateEntries = plantUsageByDate.get(log.date) || [];
 
           let isOverlap = false;
-          for (let i = 0; i < plantUsageDiesels.length; i++) {
-            if (Math.abs(plantUsageDiesels[i] - dieselAmt) < 0.01) {
+          for (let i = 0; i < dateEntries.length; i++) {
+            const plantName = dateEntries[i].equipName;
+            const nameMatches = plantName === machineName ||
+              plantName.includes(machineName) ||
+              machineName.includes(plantName);
+            if (nameMatches && Math.abs(dateEntries[i].diesel - dieselAmt) < 0.5) {
               isOverlap = true;
-              plantUsageDiesels.splice(i, 1);
+              dateEntries.splice(i, 1);
+              console.log(`migrateDprPlantStockDieselToLedger: OVERLAP - DPR "${machineName}" ${dieselAmt}L matches Plant "${plantName}" on ${log.date}, skipping`);
               break;
             }
           }
 
           if (isOverlap) {
             overlapped++;
-            console.log(`migrateDprPlantStockDieselToLedger: OVERLAP detected - DPR equip log ${log.id} (${machineName}, ${dieselAmt}L on ${log.date}) matches Plant Equipment Usage, skipping`);
             continue;
           }
 
-          await db.transaction(async (tx) => {
-            const [existingBalance] = await tx.select().from(stockBalances)
-              .where(and(
-                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-                eq(stockBalances.materialId, dieselMaterial.id)
-              ))
-              .limit(1);
+          const siteName = (log.site || '').replace(/ – Edited by .*$/, '');
 
-            const newBalance = (existingBalance?.balance || 0) - dieselAmt;
-
-            if (existingBalance) {
-              await tx.update(stockBalances)
-                .set({ balance: newBalance, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, existingBalance.id));
-            } else {
-              await tx.insert(stockBalances).values({
-                partyId: hlcPartyId,
-                materialId: dieselMaterial.id,
-                balance: newBalance,
-                uom: dieselMaterial.defaultUom || 'Liters',
-              });
-            }
-
-            await tx.insert(stockLedger).values({
-              date: log.date,
-              partyId: hlcPartyId,
-              materialId: dieselMaterial.id,
-              transactionType: "dpr_equipment_usage",
-              referenceId: equipLogRefId,
-              quantityOut: dieselAmt,
-              balanceAfter: newBalance,
-              uom: dieselMaterial.defaultUom || 'Liters',
-              notes: `DPR diesel issued to ${log.machine || 'Equipment'} at ${log.site} (historical migration)`,
-            });
+          await db.insert(stockLedger).values({
+            date: log.date,
+            partyId: hlcPartyId,
+            materialId: dieselMaterial.id,
+            transactionType: "dpr_equipment_usage",
+            referenceId: -log.id,
+            quantityOut: dieselAmt,
+            balanceAfter: null,
+            uom: dieselMaterial.defaultUom || 'Liters',
+            notes: `DPR diesel issued to ${log.machine || 'Equipment'} at ${siteName}`,
           });
 
-          existingLedgerRefIds.add(equipLogRefId);
           created++;
         } catch (err) {
           console.error(`migrateDprPlantStockDieselToLedger: Error processing equip log ${log.id}:`, err);
@@ -3190,7 +3187,8 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      console.log(`migrateDprPlantStockDieselToLedger: Summary - created: ${created}, skipped: ${skipped} (already processed or superseded), overlapped: ${overlapped} (matched Plant Equipment Usage), errors: ${errors}`);
+      await this.reconcileStockBalancesFromLedger();
+      console.log(`migrateDprPlantStockDieselToLedger: Summary - created: ${created}, skipped: ${skipped} (superseded versions), overlapped: ${overlapped} (matched Plant Equipment Usage), errors: ${errors}`);
     } catch (err) {
       console.error('migrateDprPlantStockDieselToLedger: Fatal error:', err);
       errors++;
