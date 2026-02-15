@@ -168,6 +168,55 @@ export default function PlantLdoFlowMeter() {
 
   const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
 
+  const tankStock = useMemo(() => {
+    if (!readings) return { tank1: null as { stockL: number; date: string; time?: string } | null, tank2: null as { stockL: number; date: string; time?: string } | null };
+
+    const computeStock = (tankNum: number) => {
+      const tankReadings = readings.filter(r => r.tankNumber === tankNum);
+      const stockEntries = tankReadings.filter(r => r.readingType === "stock").sort((a, b) => {
+        const dc = b.date.localeCompare(a.date);
+        return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+      });
+      if (stockEntries.length === 0) return null;
+
+      const latestStock = stockEntries[0];
+      const stockL = latestStock.quantityLiters || 0;
+      const stockDateTime = `${latestStock.date}T${latestStock.time || "00:00"}`;
+
+      const receiptsSince = tankReadings
+        .filter(r => r.readingType === "receipt" && `${r.date}T${r.time || "00:00"}` > stockDateTime)
+        .reduce((s, r) => s + (r.quantityLiters || 0), 0);
+
+      const dateGroups: Record<string, { openings: typeof tankReadings; closings: typeof tankReadings }> = {};
+      for (const r of tankReadings) {
+        if (r.readingType !== "opening" && r.readingType !== "closing") continue;
+        if (r.date < latestStock.date) continue;
+        if (r.date === latestStock.date && `${r.date}T${r.time || "00:00"}` <= stockDateTime) continue;
+        if (!dateGroups[r.date]) dateGroups[r.date] = { openings: [], closings: [] };
+        if (r.readingType === "opening") dateGroups[r.date].openings.push(r);
+        else dateGroups[r.date].closings.push(r);
+      }
+
+      let consumptionSince = 0;
+      for (const [, group] of Object.entries(dateGroups)) {
+        if (group.openings.length > 0 && group.closings.length > 0) {
+          const openVal = group.openings.sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0].meterReading;
+          const closeVal = group.closings.sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0].meterReading;
+          const diff = closeVal - openVal;
+          if (diff > 0) consumptionSince += diff;
+        }
+      }
+
+      return {
+        stockL: stockL + receiptsSince - consumptionSince,
+        date: latestStock.date,
+        time: latestStock.time || undefined,
+      };
+    };
+
+    return { tank1: computeStock(1), tank2: computeStock(2) };
+  }, [readings]);
+
   const varianceData = useMemo(() => {
     if (!dispatches || dailySummary.length === 0) return [];
     const dispatchByDate: Record<string, { production: number; theoreticalLdo: number }> = {};
@@ -278,6 +327,28 @@ export default function PlantLdoFlowMeter() {
   }
 
   function handleSubmit() {
+    if (readingType === "stock") {
+      if (!quantityLiters || parseFloat(quantityLiters) < 0) {
+        toast({ title: "Invalid stock quantity", description: "Enter the current stock in liters", variant: "destructive" });
+        return;
+      }
+      const payload = {
+        date: readingDate,
+        time: readingTime,
+        tankNumber: parseInt(tankNumber),
+        meterReading: 0,
+        readingType: "stock",
+        quantityLiters: parseFloat(quantityLiters),
+        notes: notes || null,
+      };
+      if (editingReading) {
+        updateMutation.mutate({ id: editingReading.id, data: payload });
+      } else {
+        createMutation.mutate(payload);
+      }
+      return;
+    }
+
     const meter = parseFloat(meterReading);
     if (isNaN(meter) || meter < 0) {
       toast({ title: "Invalid meter reading", description: "Enter a valid meter reading in liters", variant: "destructive" });
@@ -475,20 +546,29 @@ export default function PlantLdoFlowMeter() {
           onClick={pageRole ? () => handleTankClick(1) : undefined}
           data-testid="tank-card-1"
         >
-          <Card className="overflow-visible">
+          <Card className="overflow-visible border-l-4 border-l-blue-400 dark:border-l-blue-600" style={{borderRadius: 0}}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Tank 1 (Boiler)</CardTitle>
             </CardHeader>
-            <CardContent>
-              {latestTank1 ? (
+            <CardContent className="space-y-2">
+              {tankStock.tank1 ? (
                 <div className="space-y-1 text-sm">
-                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t1">{latestTank1.meterReading.toFixed(3)} L</div>
-                  <div className="text-muted-foreground">
-                    {latestTank1.date} {latestTank1.time || ""} ({latestTank1.readingType})
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-stock-t1">
+                    {tankStock.tank1.stockL.toFixed(3)} L
+                  </div>
+                  <div className="text-sm font-medium">{(tankStock.tank1.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                  <div className="text-xs text-muted-foreground">
+                    Stock as of {tankStock.tank1.date} {tankStock.tank1.time || ""}
                   </div>
                 </div>
               ) : (
-                <div className="text-muted-foreground text-sm">No readings yet</div>
+                <div className="text-muted-foreground text-sm">No stock recorded</div>
+              )}
+              {latestTank1 && (
+                <div className="pt-2 border-t text-xs text-muted-foreground">
+                  <span>Meter: {latestTank1.meterReading.toFixed(3)} L</span>
+                  <span className="ml-2">({latestTank1.date} {latestTank1.time || ""} - {latestTank1.readingType})</span>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -499,20 +579,29 @@ export default function PlantLdoFlowMeter() {
           onClick={pageRole ? () => handleTankClick(2) : undefined}
           data-testid="tank-card-2"
         >
-          <Card className="overflow-visible">
+          <Card className="overflow-visible border-l-4 border-l-amber-400 dark:border-l-amber-600" style={{borderRadius: 0}}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Tank 2 (Dryer)</CardTitle>
             </CardHeader>
-            <CardContent>
-              {latestTank2 ? (
+            <CardContent className="space-y-2">
+              {tankStock.tank2 ? (
                 <div className="space-y-1 text-sm">
-                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t2">{latestTank2.meterReading.toFixed(3)} L</div>
-                  <div className="text-muted-foreground">
-                    {latestTank2.date} {latestTank2.time || ""} ({latestTank2.readingType})
+                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-stock-t2">
+                    {tankStock.tank2.stockL.toFixed(3)} L
+                  </div>
+                  <div className="text-sm font-medium">{(tankStock.tank2.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                  <div className="text-xs text-muted-foreground">
+                    Stock as of {tankStock.tank2.date} {tankStock.tank2.time || ""}
                   </div>
                 </div>
               ) : (
-                <div className="text-muted-foreground text-sm">No readings yet</div>
+                <div className="text-muted-foreground text-sm">No stock recorded</div>
+              )}
+              {latestTank2 && (
+                <div className="pt-2 border-t text-xs text-muted-foreground">
+                  <span>Meter: {latestTank2.meterReading.toFixed(3)} L</span>
+                  <span className="ml-2">({latestTank2.date} {latestTank2.time || ""} - {latestTank2.readingType})</span>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -520,11 +609,23 @@ export default function PlantLdoFlowMeter() {
 
         <Card className="overflow-visible">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Combined Consumption</CardTitle>
+            <CardTitle className="text-sm font-medium">Combined Stock & Consumption</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
+            {(tankStock.tank1 || tankStock.tank2) && (
+              <>
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-muted-foreground">Total Stock:</span>
+                  <span className="font-bold text-green-600 dark:text-green-400" data-testid="text-combined-stock">
+                    {((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(3)} L
+                    ({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)
+                  </span>
+                </div>
+                <div className="border-b my-1" />
+              </>
+            )}
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Total (Recent):</span>
+              <span className="text-muted-foreground">Total Consumption (Recent):</span>
               <span className="font-bold" data-testid="text-combined-consumption">
                 {totalConsumptionBothTanks > 0 ? `${totalConsumptionBothTanks.toFixed(3)} L` : "-"}
               </span>
@@ -546,32 +647,36 @@ export default function PlantLdoFlowMeter() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-right p-2">T1 Opening</th>
-                    <th className="text-right p-2">T1 Closing</th>
-                    <th className="text-right p-2">T1 Consumption (L)</th>
-                    <th className="text-right p-2">T2 Opening</th>
-                    <th className="text-right p-2">T2 Closing</th>
-                    <th className="text-right p-2">T2 Consumption (L)</th>
-                    <th className="text-right p-2">Mat. Received (L)</th>
-                    <th className="text-right p-2 font-bold">Total (L)</th>
+                  <tr>
+                    <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
+                    <th colSpan={3} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Tank 1 (Boiler)</th>
+                    <th colSpan={3} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Tank 2 (Dryer)</th>
+                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (L)</th>
+                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total (L)</th>
+                  </tr>
+                  <tr>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Opening</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Closing</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50 font-semibold">Consumed</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Opening</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Closing</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50 font-semibold">Consumed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dailySummary.map(day => (
-                    <tr key={day.date} className="border-b" data-testid={`row-daily-${day.date}`}>
-                      <td className="p-2">{day.date}</td>
-                      <td className="p-2 text-right">{day.t1Opening?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t1Closing?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t1Consumption !== null ? day.t1Consumption.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Opening?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t2Closing?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.materialReceiptL ? day.materialReceiptL.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toFixed(3) : "-"}</td>
+                    <tr key={day.date} data-testid={`row-daily-${day.date}`}>
+                      <td className="p-2 border border-border">{day.date}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Opening?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Closing?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30 font-medium">{day.t1Consumption !== null ? day.t1Consumption.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Opening?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Closing?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30 font-medium">{day.t2Consumption !== null ? day.t2Consumption.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border text-muted-foreground">{day.materialReceiptL ? day.materialReceiptL.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border font-bold">{day.totalConsumption ? day.totalConsumption.toFixed(3) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -711,7 +816,7 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Tank</th>
                     <th className="text-right p-2">Meter Reading (L)</th>
                     <th className="text-left p-2">Type</th>
-                    <th className="text-right p-2">Receipt Qty (L)</th>
+                    <th className="text-right p-2">Qty (L)</th>
                     <th className="text-left p-2">Notes</th>
                     {isAdmin && <th className="text-center p-2">Actions</th>}
                   </tr>
@@ -726,9 +831,10 @@ export default function PlantLdoFlowMeter() {
                           T{r.tankNumber} ({TANK_LABELS[r.tankNumber]})
                         </Badge>
                       </td>
-                      <td className="p-2 text-right font-medium">{r.meterReading.toFixed(3)}</td>
+                      <td className="p-2 text-right font-medium">{r.readingType === "stock" ? "-" : r.meterReading.toFixed(3)}</td>
                       <td className="p-2">
-                        <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : "outline"}>
+                        <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : r.readingType === "stock" ? "default" : "outline"}
+                          className={r.readingType === "stock" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 no-default-hover-elevate no-default-active-elevate" : ""}>
                           {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
                         </Badge>
                       </td>
@@ -800,27 +906,30 @@ export default function PlantLdoFlowMeter() {
                   <SelectItem value="opening">Opening</SelectItem>
                   <SelectItem value="closing">Closing</SelectItem>
                   <SelectItem value="receipt">Receipt (New LDO delivery)</SelectItem>
+                  <SelectItem value="stock">Stock Entry (Current quantity in tank)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div>
-              <Label>Flow Meter Reading (Liters)</Label>
-              <Input
-                type="number"
-                min="0"
-                step="1"
-                value={meterReading}
-                onChange={e => setMeterReading(e.target.value)}
-                placeholder="e.g. 15000"
-                data-testid="input-meter-reading"
-              />
-              {meterReading && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  = {(parseFloat(meterReading) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
-                </p>
-              )}
-            </div>
+            {readingType !== "stock" && (
+              <div>
+                <Label>Flow Meter Reading (Liters)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={meterReading}
+                  onChange={e => setMeterReading(e.target.value)}
+                  placeholder="e.g. 15000"
+                  data-testid="input-meter-reading"
+                />
+                {meterReading && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    = {(parseFloat(meterReading) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
+                  </p>
+                )}
+              </div>
+            )}
 
             {readingType === "receipt" && (
               <div>
@@ -842,6 +951,27 @@ export default function PlantLdoFlowMeter() {
               </div>
             )}
 
+            {readingType === "stock" && (
+              <div>
+                <Label>Current Stock Quantity (Liters) <span className="text-xs text-muted-foreground">- Physical stock in tank</span></Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={quantityLiters}
+                  onChange={e => setQuantityLiters(e.target.value)}
+                  placeholder="e.g. 8000"
+                  data-testid="input-stock-quantity"
+                />
+                {quantityLiters && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
+                    = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
               <Label>Notes (optional)</Label>
               <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any observations" data-testid="input-notes" />
@@ -849,7 +979,7 @@ export default function PlantLdoFlowMeter() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingReading(null); }}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={isMutating || !meterReading} data-testid="button-submit-reading">
+            <Button onClick={handleSubmit} disabled={isMutating || (readingType === "stock" ? !quantityLiters : !meterReading)} data-testid="button-submit-reading">
               {isMutating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               {editingReading ? "Update Reading" : "Record Reading"}
             </Button>

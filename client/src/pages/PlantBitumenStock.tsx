@@ -860,34 +860,34 @@ export default function PlantBitumenStock() {
                 <thead>
                   <tr>
                     <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
-                    <th colSpan={4} className="text-center p-2 border border-border bg-blue-50 dark:bg-blue-950 font-semibold">Tank 1 (Boiler)</th>
-                    <th colSpan={4} className="text-center p-2 border border-border bg-amber-50 dark:bg-amber-950 font-semibold">Tank 2 (Dryer)</th>
+                    <th colSpan={4} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Tank 1</th>
+                    <th colSpan={4} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Tank 2</th>
                     <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (MT)</th>
                     <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total Consumed (MT)</th>
                   </tr>
                   <tr>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950">Opening</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950">Closing</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950">Dip Rcpt</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950 font-semibold">Consumed</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950">Opening</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950">Closing</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950">Dip Rcpt</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950 font-semibold">Consumed</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Opening</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Closing</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Dip Rcpt</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50 font-semibold">Consumed</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Opening</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Closing</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Dip Rcpt</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50 font-semibold">Consumed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dailySummary.map(day => (
                     <tr key={day.date} data-testid={`row-daily-${day.date}`}>
                       <td className="p-2 border border-border">{day.date}</td>
-                      <td className="p-2 text-right border border-border">{day.t1Opening ? (day.t1Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border">{day.t1Closing ? (day.t1Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border">{day.t1ReceiptVol ? (day.t1ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border font-medium">{day.t1Consumption !== null ? (day.t1Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border">{day.t2Opening ? (day.t2Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border">{day.t2Closing ? (day.t2Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border">{day.t2ReceiptVol ? (day.t2ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border font-medium">{day.t2Consumption !== null ? (day.t2Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Opening ? (day.t1Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Closing ? (day.t1Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1ReceiptVol ? (day.t1ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30 font-medium">{day.t1Consumption !== null ? (day.t1Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Opening ? (day.t2Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Closing ? (day.t2Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2ReceiptVol ? (day.t2ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30 font-medium">{day.t2Consumption !== null ? (day.t2Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
                       <td className="p-2 text-right border border-border text-muted-foreground">{day.materialReceiptKg ? (day.materialReceiptKg / 1000).toFixed(3) : "-"}</td>
                       <td className="p-2 text-right border border-border font-bold">{day.totalConsumptionKg ? (day.totalConsumptionKg / 1000).toFixed(3) : "-"}</td>
                     </tr>
