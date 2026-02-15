@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,10 +23,11 @@ import { EQUIPMENT_TYPES, METER_TYPES } from "@shared/schema";
 import { format } from "date-fns";
 
 export default function Plant() {
-  const [activeTab, setActiveTab] = useState("operations");
+  const searchString = useSearch();
+  const tabParam = new URLSearchParams(searchString || window.location.search).get("tab");
+  const [activeTab, setActiveTab] = useState(tabParam || "operations");
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-  // Track which tabs are unlocked and by which role (manager or admin)
   const [unlockedTabs, setUnlockedTabs] = useState<Map<string, "manager" | "admin">>(new Map());
   const { toast } = useToast();
   const { setAccess } = useAccess();
@@ -33,9 +35,14 @@ export default function Plant() {
   const { getBackLink, appendOrigin } = useOrigin();
   const backLink = getBackLink("/plant");
 
+  useEffect(() => {
+    if (tabParam && ["operations", "stock", "masters", "dashboard"].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
   const handleTabChange = (tab: string) => {
-    // Masters and Dashboard tabs require PIN (manager or admin)
-    if ((tab === "masters" || tab === "dashboard") && !unlockedTabs.has(tab)) {
+    if ((tab === "masters" || tab === "dashboard" || tab === "stock") && !unlockedTabs.has(tab)) {
       setPendingTab(tab);
       setShowPinAuth(true);
       return;
@@ -45,7 +52,6 @@ export default function Plant() {
 
   const handlePinSuccess = (role: "manager" | "admin") => {
     if (pendingTab) {
-      // Set global access based on role
       setAccess(role);
       setUnlockedTabs(prev => {
         const newMap = new Map(prev);
@@ -53,8 +59,8 @@ export default function Plant() {
         return newMap;
       });
       setActiveTab(pendingTab);
-      const tabName = pendingTab === "masters" ? "Masters" : "Dashboard";
-      toast({ title: `${tabName} unlocked`, description: role === "manager" ? "View and add only" : "Full access" });
+      const tabNames: Record<string, string> = { masters: "Masters", dashboard: "Dashboard", stock: "Stock Details" };
+      toast({ title: `${tabNames[pendingTab] || pendingTab} unlocked`, description: role === "manager" ? "View and add only" : "Full access" });
     }
     setShowPinAuth(false);
     setPendingTab(null);
@@ -114,7 +120,20 @@ export default function Plant() {
         </TabsContent>
 
         <TabsContent value="stock" className="mt-6">
-          <StockDetailsTab />
+          {unlockedTabs.has("stock") ? (
+            <StockDetailsTab unlockedRole={unlockedTabs.get("stock")!} />
+          ) : (
+            <Card className="py-12">
+              <CardContent className="text-center">
+                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
+                <p className="text-muted-foreground mb-4">Enter Manager or Admin PIN to access Stock Details</p>
+                <Button onClick={() => handleTabChange("stock")} data-testid="button-unlock-stock">
+                  <Lock className="w-4 h-4 mr-2" /> Unlock Stock Details
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="masters" className="mt-6">
@@ -237,11 +256,25 @@ function OperationsTab() {
   );
 }
 
-function StockDetailsTab() {
+function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const { appendOrigin } = useOrigin();
+  const isManager = unlockedRole === "manager";
+
+  const appendRoleAndTab = (path: string) => {
+    const base = appendOrigin(path);
+    const sep = base.includes("?") ? "&" : "?";
+    return `${base}${sep}tab=stock&role=${unlockedRole}`;
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <Link href={appendOrigin("/plant/stock")}>
+    <div className="space-y-4">
+      {isManager && (
+        <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
+          Manager access: You can view and add new readings. Editing, deleting, and exports require Admin PIN.
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Link href={appendRoleAndTab("/plant/stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
@@ -256,7 +289,7 @@ function StockDetailsTab() {
         </Card>
       </Link>
       
-      <Link href={appendOrigin("/plant/variance-report")}>
+      <Link href={appendRoleAndTab("/plant/variance-report")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
@@ -271,7 +304,7 @@ function StockDetailsTab() {
         </Card>
       </Link>
       
-      <Link href={appendOrigin("/plant/audit-report")}>
+      <Link href={appendRoleAndTab("/plant/audit-report")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -286,7 +319,7 @@ function StockDetailsTab() {
         </Card>
       </Link>
       
-      <Link href={appendOrigin("/plant/diesel-procurement")}>
+      <Link href={appendRoleAndTab("/plant/diesel-procurement")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -301,7 +334,7 @@ function StockDetailsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/bitumen-stock")}>
+      <Link href={appendRoleAndTab("/plant/bitumen-stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
@@ -316,7 +349,7 @@ function StockDetailsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/ldo-flow-meter")}>
+      <Link href={appendRoleAndTab("/plant/ldo-flow-meter")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -330,6 +363,7 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
+      </div>
     </div>
   );
 }

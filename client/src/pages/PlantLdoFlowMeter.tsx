@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -25,7 +25,11 @@ const TANK_LABELS: Record<number, string> = { 1: "Boiler", 2: "Dryer" };
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
+  const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
+  const isAdmin = pageRole === "admin";
+  const backLink = appendOrigin("/plant?tab=stock");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<LdoFlowReading | null>(null);
@@ -383,6 +387,32 @@ export default function PlantLdoFlowMeter() {
 
   const isMutating = createMutation.isPending || updateMutation.isPending;
 
+  if (!pageRole) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link href={appendOrigin("/plant?tab=stock")}>
+            <Button variant="ghost" size="icon" data-testid="button-back">
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+          </Link>
+          <Gauge className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          <h1 className="text-2xl font-bold flex-1">LDO Flow Meter Tracker</h1>
+        </div>
+        <Card className="py-12">
+          <CardContent className="text-center">
+            <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
+            <p className="text-muted-foreground mb-4">Please access this page through the Stock Details tab in the Plant Module</p>
+            <Link href={appendOrigin("/plant?tab=stock")}>
+              <Button data-testid="button-go-to-plant">Go to Plant Module</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (showPinAuth) {
     return (
       <PinAuth
@@ -411,8 +441,8 @@ export default function PlantLdoFlowMeter() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div
-          className="cursor-pointer hover-elevate"
-          onClick={() => handleTankClick(1)}
+          className={pageRole ? "cursor-pointer hover-elevate" : ""}
+          onClick={pageRole ? () => handleTankClick(1) : undefined}
           data-testid="tank-card-1"
         >
           <Card className="overflow-visible">
@@ -435,8 +465,8 @@ export default function PlantLdoFlowMeter() {
         </div>
 
         <div
-          className="cursor-pointer hover-elevate"
-          onClick={() => handleTankClick(2)}
+          className={pageRole ? "cursor-pointer hover-elevate" : ""}
+          onClick={pageRole ? () => handleTankClick(2) : undefined}
           data-testid="tank-card-2"
         >
           <Card className="overflow-visible">
@@ -606,17 +636,19 @@ export default function PlantLdoFlowMeter() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-medium">All Flow Readings</CardTitle>
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => handlePinAction("export-excel")} data-testid="button-export-excel">
-                <Download className="w-4 h-4 mr-1" /> Excel
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePinAction("export-pdf")} data-testid="button-export-pdf">
-                <Download className="w-4 h-4 mr-1" /> PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePinAction("print")} data-testid="button-print">
-                <Printer className="w-4 h-4 mr-1" /> Print
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="outline" size="sm" onClick={() => handlePinAction("export-excel")} data-testid="button-export-excel">
+                  <Download className="w-4 h-4 mr-1" /> Excel
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handlePinAction("export-pdf")} data-testid="button-export-pdf">
+                  <Download className="w-4 h-4 mr-1" /> PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handlePinAction("print")} data-testid="button-print">
+                  <Printer className="w-4 h-4 mr-1" /> Print
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -651,7 +683,7 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Type</th>
                     <th className="text-right p-2">Receipt Qty (L)</th>
                     <th className="text-left p-2">Notes</th>
-                    <th className="text-center p-2">Actions</th>
+                    {isAdmin && <th className="text-center p-2">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -672,27 +704,29 @@ export default function PlantLdoFlowMeter() {
                       </td>
                       <td className="p-2 text-right">{r.quantityLiters ? r.quantityLiters.toLocaleString() : "-"}</td>
                       <td className="p-2 text-muted-foreground text-xs">{r.notes || "-"}</td>
-                      <td className="p-2 text-center">
-                        <div className="flex gap-1 justify-center">
-                          <Button size="icon" variant="ghost" onClick={() => handlePinAction("edit", r.id)} data-testid={`button-edit-${r.id}`}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          {deleteConfirmId === r.id ? (
-                            <>
-                              <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
-                                Confirm
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>
-                                Cancel
-                              </Button>
-                            </>
-                          ) : (
-                            <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
-                              <Trash2 className="w-4 h-4" />
+                      {isAdmin && (
+                        <td className="p-2 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <Button size="icon" variant="ghost" onClick={() => handlePinAction("edit", r.id)} data-testid={`button-edit-${r.id}`}>
+                              <Pencil className="w-4 h-4" />
                             </Button>
-                          )}
-                        </div>
-                      </td>
+                            {deleteConfirmId === r.id ? (
+                              <>
+                                <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
+                                  Confirm
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                                  Cancel
+                                </Button>
+                              </>
+                            ) : (
+                              <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -721,15 +755,9 @@ export default function PlantLdoFlowMeter() {
 
             <div>
               <Label>Tank</Label>
-              <Select value={tankNumber} onValueChange={setTankNumber}>
-                <SelectTrigger data-testid="select-tank-number">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
-                  <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm font-medium" data-testid="text-tank-number">
+                Tank {tankNumber} ({TANK_LABELS[parseInt(tankNumber)] || ""})
+              </div>
             </div>
 
             <div>
