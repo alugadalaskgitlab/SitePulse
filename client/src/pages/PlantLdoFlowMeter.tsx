@@ -58,6 +58,34 @@ export default function PlantLdoFlowMeter() {
     queryKey: ["/api/plant-module/dispatches"],
   });
 
+  const { data: materials } = useQuery<{ id: number; name: string; defaultUom: string }[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
+
+  const ldoMaterialId = useMemo(() => {
+    if (!materials) return null;
+    const m = materials.find(m => m.name.toUpperCase() === 'LDO');
+    return m?.id ?? null;
+  }, [materials]);
+
+  const { data: allReceipts } = useQuery<{ id: number; date: string; materialId: number; quantity: number; uom: string }[]>({
+    queryKey: ["/api/plant-module/material-receipts"],
+  });
+
+  const ldoReceipts = useMemo(() => {
+    if (!allReceipts || !ldoMaterialId) return [];
+    return allReceipts.filter(r => r.materialId === ldoMaterialId);
+  }, [allReceipts, ldoMaterialId]);
+
+  const ldoReceiptsByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of ldoReceipts) {
+      const qtyL = r.uom === 'Liters' || r.uom === 'L' ? r.quantity : r.uom === 'kg' ? r.quantity / LDO_DENSITY_KG_PER_LITER : r.quantity;
+      map[r.date] = (map[r.date] || 0) + qtyL;
+    }
+    return map;
+  }, [ldoReceipts]);
+
   const filteredReadings = useMemo(() => {
     if (!readings) return [];
     return readings.filter(r => {
@@ -124,17 +152,19 @@ export default function PlantLdoFlowMeter() {
           t2Consumption = t2Closing.meterReading - t2Opening.meterReading;
         }
 
+        const materialReceiptL = ldoReceiptsByDate[day.date] || 0;
         const totalL = (t1Consumption || 0) + (t2Consumption || 0);
 
         return {
           date: day.date,
           t1Opening, t1Closing, t2Opening, t2Closing,
           t1Consumption, t2Consumption,
+          materialReceiptL,
           totalConsumption: totalL,
           totalConsumptionKg: totalL > 0 ? Math.round(totalL * LDO_DENSITY_KG_PER_LITER) : null,
         };
       });
-  }, [readings]);
+  }, [readings, ldoReceiptsByDate]);
 
   const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
 
@@ -522,12 +552,12 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Date</th>
                     <th className="text-right p-2">T1 Opening</th>
                     <th className="text-right p-2">T1 Closing</th>
-                    <th className="text-right p-2">T1 Consumption</th>
+                    <th className="text-right p-2">T1 Consumption (L)</th>
                     <th className="text-right p-2">T2 Opening</th>
                     <th className="text-right p-2">T2 Closing</th>
-                    <th className="text-right p-2">T2 Consumption</th>
+                    <th className="text-right p-2">T2 Consumption (L)</th>
+                    <th className="text-right p-2">Mat. Received (L)</th>
                     <th className="text-right p-2 font-bold">Total (L)</th>
-                    <th className="text-right p-2 font-bold">Total (kg)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -540,8 +570,8 @@ export default function PlantLdoFlowMeter() {
                       <td className="p-2 text-right">{day.t2Opening?.meterReading?.toLocaleString() ?? "-"}</td>
                       <td className="p-2 text-right">{day.t2Closing?.meterReading?.toLocaleString() ?? "-"}</td>
                       <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.materialReceiptL ? Math.round(day.materialReceiptL).toLocaleString() : "-"}</td>
                       <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.totalConsumptionKg !== null ? day.totalConsumptionKg.toLocaleString() : "-"}</td>
                     </tr>
                   ))}
                 </tbody>

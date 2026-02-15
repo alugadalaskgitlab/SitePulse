@@ -63,6 +63,25 @@ export default function PlantBitumenStock() {
     queryKey: ["/api/plant-module/dispatches"],
   });
 
+  const { data: materials } = useQuery<{ id: number; name: string; defaultUom: string }[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
+
+  const bitumenMaterialId = useMemo(() => {
+    if (!materials) return null;
+    const m = materials.find(m => m.name.toUpperCase() === 'BITUMEN');
+    return m?.id ?? null;
+  }, [materials]);
+
+  const { data: allReceipts } = useQuery<{ id: number; date: string; materialId: number; quantity: number; uom: string }[]>({
+    queryKey: ["/api/plant-module/material-receipts"],
+  });
+
+  const bitumenReceipts = useMemo(() => {
+    if (!allReceipts || !bitumenMaterialId) return [];
+    return allReceipts.filter(r => r.materialId === bitumenMaterialId);
+  }, [allReceipts, bitumenMaterialId]);
+
   const filteredReadings = useMemo(() => {
     if (!readings) return [];
     return readings.filter(r => {
@@ -113,6 +132,15 @@ export default function PlantBitumenStock() {
   const combinedUsable = tank1Usable + tank2Usable;
   const combinedDead = deadStockVolume * 2;
 
+  const receiptsByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of bitumenReceipts) {
+      const qtyKg = r.uom === 'MT' ? r.quantity * 1000 : r.uom === 'kg' ? r.quantity : r.quantity * BITUMEN_DENSITY_KG_PER_LITER;
+      map[r.date] = (map[r.date] || 0) + qtyKg;
+    }
+    return map;
+  }, [bitumenReceipts]);
+
   const dailySummary = useMemo(() => {
     if (!readings) return [];
     const grouped: Record<string, { date: string; entries: BitumenDipReading[] }> = {};
@@ -134,6 +162,8 @@ export default function PlantBitumenStock() {
         const t1ReceiptVol = t1Receipts.reduce((s, r) => s + r.volumeLiters, 0);
         const t2ReceiptVol = t2Receipts.reduce((s, r) => s + r.volumeLiters, 0);
 
+        const materialReceiptKg = receiptsByDate[day.date] || 0;
+
         let t1Consumption = null as number | null;
         let t2Consumption = null as number | null;
 
@@ -144,15 +174,20 @@ export default function PlantBitumenStock() {
           t2Consumption = t2Opening.volumeLiters - t2Closing.volumeLiters + t2ReceiptVol;
         }
 
+        const totalConsumptionL = (t1Consumption || 0) + (t2Consumption || 0);
+        const totalConsumptionKg = Math.round(totalConsumptionL * BITUMEN_DENSITY_KG_PER_LITER);
+
         return {
           date: day.date,
           t1Opening, t1Closing, t2Opening, t2Closing,
           t1ReceiptVol, t2ReceiptVol,
+          materialReceiptKg,
           t1Consumption, t2Consumption,
-          totalConsumption: (t1Consumption || 0) + (t2Consumption || 0),
+          totalConsumption: totalConsumptionL,
+          totalConsumptionKg,
         };
       });
-  }, [readings]);
+  }, [readings, receiptsByDate]);
 
   const varianceData = useMemo(() => {
     if (!dispatches || !dailySummary.length) return [];
@@ -522,32 +557,32 @@ export default function PlantBitumenStock() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-2">Date</th>
-                    <th className="text-right p-2">T1 Opening (L)</th>
-                    <th className="text-right p-2">T1 Closing (L)</th>
-                    <th className="text-right p-2">T1 Receipts (L)</th>
-                    <th className="text-right p-2">T1 Consumed (L)</th>
-                    <th className="text-right p-2">T2 Opening (L)</th>
-                    <th className="text-right p-2">T2 Closing (L)</th>
-                    <th className="text-right p-2">T2 Receipts (L)</th>
-                    <th className="text-right p-2">T2 Consumed (L)</th>
-                    <th className="text-right p-2 font-bold">Total (L)</th>
-                    <th className="text-right p-2 font-bold">Total (kg)</th>
+                    <th className="text-right p-2">T1 Opening (kg)</th>
+                    <th className="text-right p-2">T1 Closing (kg)</th>
+                    <th className="text-right p-2">T1 Dip Rcpt (kg)</th>
+                    <th className="text-right p-2">T1 Consumed (kg)</th>
+                    <th className="text-right p-2">T2 Opening (kg)</th>
+                    <th className="text-right p-2">T2 Closing (kg)</th>
+                    <th className="text-right p-2">T2 Dip Rcpt (kg)</th>
+                    <th className="text-right p-2">T2 Consumed (kg)</th>
+                    <th className="text-right p-2">Mat. Received (kg)</th>
+                    <th className="text-right p-2 font-bold">Total Consumed (kg)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dailySummary.map(day => (
                     <tr key={day.date} className="border-b" data-testid={`row-daily-${day.date}`}>
                       <td className="p-2">{day.date}</td>
-                      <td className="p-2 text-right">{day.t1Opening?.volumeLiters?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t1Closing?.volumeLiters?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t1ReceiptVol ? day.t1ReceiptVol.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right">{day.t1Consumption !== null ? day.t1Consumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Opening?.volumeLiters?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t2Closing?.volumeLiters?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t2ReceiptVol ? day.t2ReceiptVol.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.totalConsumption ? Math.round(day.totalConsumption * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1Opening ? Math.round(day.t1Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1Closing ? Math.round(day.t1Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1ReceiptVol ? Math.round(day.t1ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1Consumption !== null ? Math.round(day.t1Consumption * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Opening ? Math.round(day.t2Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Closing ? Math.round(day.t2Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2ReceiptVol ? Math.round(day.t2ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Consumption !== null ? Math.round(day.t2Consumption * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right text-muted-foreground">{day.materialReceiptKg ? Math.round(day.materialReceiptKg).toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right font-bold">{day.totalConsumptionKg ? day.totalConsumptionKg.toLocaleString() : "-"}</td>
                     </tr>
                   ))}
                 </tbody>

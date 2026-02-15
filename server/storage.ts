@@ -773,6 +773,9 @@ export class DatabaseStorage implements IStorage {
     dprDate: string,
     siteName: string
   ) {
+    const DPR_DIESEL_CUTOFF_DATE = '2026-02-01';
+    if (dprDate < DPR_DIESEL_CUTOFF_DATE) return;
+
     const dieselLogs = insertedEquipLogs.filter(
       e => e.diesel && e.diesel > 0 && (e.dieselSource === 'direct_purchase' || e.dieselSource === 'plant_stock')
     );
@@ -3004,6 +3007,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async migrateDprPlantStockDieselToLedger(): Promise<{ created: number; skipped: number; overlapped: number; errors: number }> {
+    const DPR_DIESEL_CUTOFF_DATE = '2026-02-01';
     let created = 0;
     let skipped = 0;
     let overlapped = 0;
@@ -3054,12 +3058,13 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
         .where(and(
           gt(equipmentLogs.diesel, 0),
-          sql`(${equipmentLogs.dieselSource} = 'plant_stock' OR ${equipmentLogs.dieselSource} IS NULL)`
+          sql`(${equipmentLogs.dieselSource} = 'plant_stock' OR ${equipmentLogs.dieselSource} IS NULL)`,
+          sql`${dprs.date} >= ${DPR_DIESEL_CUTOFF_DATE}`
         ))
         .orderBy(dprs.date);
 
       if (allPlantStockLogs.length === 0) {
-        console.log('migrateDprPlantStockDieselToLedger: No plant_stock DPR equipment logs found');
+        console.log(`migrateDprPlantStockDieselToLedger: No plant_stock DPR equipment logs found on or after ${DPR_DIESEL_CUTOFF_DATE}`);
         await this.reconcileStockBalancesFromLedger();
         return { created, skipped, overlapped, errors };
       }
@@ -3108,34 +3113,6 @@ export class DatabaseStorage implements IStorage {
         supersededDprIds.delete(latestLeaf);
       }
 
-      const allEquipUsage = await db.select({
-        date: equipmentUsage.date,
-        equipmentId: equipmentUsage.equipmentId,
-        dieselIssued: equipmentUsage.dieselIssued,
-      }).from(equipmentUsage)
-        .where(gt(equipmentUsage.dieselIssued, 0));
-
-      const allEquipMaster = await db.select({
-        id: equipmentMaster.id,
-        name: equipmentMaster.name,
-      }).from(equipmentMaster);
-
-      const equipNameMap = new Map<number, string>();
-      for (const em of allEquipMaster) {
-        equipNameMap.set(em.id, (em.name || '').toUpperCase().trim());
-      }
-
-      interface PlantUsageEntry { equipName: string; diesel: number; }
-      const plantUsageByDate = new Map<string, PlantUsageEntry[]>();
-      for (const eu of allEquipUsage) {
-        const equipName = equipNameMap.get(eu.equipmentId) || '';
-        const dateKey = eu.date;
-        if (!plantUsageByDate.has(dateKey)) {
-          plantUsageByDate.set(dateKey, []);
-        }
-        plantUsageByDate.get(dateKey)!.push({ equipName, diesel: eu.dieselIssued || 0 });
-      }
-
       for (const log of allPlantStockLogs) {
         try {
           if (supersededDprIds.has(log.dprId)) {
@@ -3143,29 +3120,7 @@ export class DatabaseStorage implements IStorage {
             continue;
           }
 
-          const machineName = (log.machine || '').toUpperCase().trim();
           const dieselAmt = log.diesel || 0;
-          const dateEntries = plantUsageByDate.get(log.date) || [];
-
-          let isOverlap = false;
-          for (let i = 0; i < dateEntries.length; i++) {
-            const plantName = dateEntries[i].equipName;
-            const nameMatches = plantName === machineName ||
-              plantName.includes(machineName) ||
-              machineName.includes(plantName);
-            if (nameMatches && Math.abs(dateEntries[i].diesel - dieselAmt) < 0.5) {
-              isOverlap = true;
-              dateEntries.splice(i, 1);
-              console.log(`migrateDprPlantStockDieselToLedger: OVERLAP - DPR "${machineName}" ${dieselAmt}L matches Plant "${plantName}" on ${log.date}, skipping`);
-              break;
-            }
-          }
-
-          if (isOverlap) {
-            overlapped++;
-            continue;
-          }
-
           const siteName = (log.site || '').replace(/ – Edited by .*$/, '');
 
           await db.insert(stockLedger).values({
@@ -3188,7 +3143,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       await this.reconcileStockBalancesFromLedger();
-      console.log(`migrateDprPlantStockDieselToLedger: Summary - created: ${created}, skipped: ${skipped} (superseded versions), overlapped: ${overlapped} (matched Plant Equipment Usage), errors: ${errors}`);
+      console.log(`migrateDprPlantStockDieselToLedger: Summary (cutoff: ${DPR_DIESEL_CUTOFF_DATE}) - created: ${created}, skipped: ${skipped} (superseded versions), errors: ${errors}`);
     } catch (err) {
       console.error('migrateDprPlantStockDieselToLedger: Fatal error:', err);
       errors++;

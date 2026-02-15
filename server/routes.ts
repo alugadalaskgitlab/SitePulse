@@ -1709,8 +1709,8 @@ async function seedDatabase() {
 
   try {
     const dprDieselResult = await storage.migrateDprPlantStockDieselToLedger();
-    if (dprDieselResult.created > 0 || dprDieselResult.overlapped > 0) {
-      console.log(`Startup: Migrated DPR plant_stock diesel to ledger - created: ${dprDieselResult.created}, skipped: ${dprDieselResult.skipped}, overlapped (avoided double-count): ${dprDieselResult.overlapped}, errors: ${dprDieselResult.errors}`);
+    if (dprDieselResult.created > 0) {
+      console.log(`Startup: Migrated DPR plant_stock diesel to ledger (cutoff: Feb 1, 2026) - created: ${dprDieselResult.created}, skipped: ${dprDieselResult.skipped}, errors: ${dprDieselResult.errors}`);
     }
   } catch (err) {
     console.error("Startup: Failed to migrate DPR plant_stock diesel:", err);
