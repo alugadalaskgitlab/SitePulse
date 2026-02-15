@@ -24,6 +24,7 @@ import {
   stockBalances,
   stockLedger,
   materialIssues,
+  materialReturns,
   sitePurchases,
   siteMaterialTrips,
   adminNotifications,
@@ -62,6 +63,8 @@ import {
   type InsertStockLedger,
   type MaterialIssue,
   type InsertMaterialIssue,
+  type MaterialReturn,
+  type InsertMaterialReturn,
   type MaterialOpeningStock,
   type InsertMaterialOpeningStock,
   materialOpeningStocks,
@@ -167,6 +170,12 @@ export interface IStorage {
   createMaterialIssue(issue: InsertMaterialIssue): Promise<MaterialIssue>;
   updateMaterialIssue(id: number, issue: Partial<InsertMaterialIssue>): Promise<MaterialIssue | undefined>;
   deleteMaterialIssue(id: number): Promise<boolean>;
+  
+  // Material Returns (returns of issued materials back to stock)
+  getMaterialReturns(filters?: { materialId?: number; originalIssueId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReturn[]>;
+  getReturnedQtyForIssue(issueId: number): Promise<number>;
+  createMaterialReturn(ret: InsertMaterialReturn): Promise<MaterialReturn>;
+  deleteMaterialReturn(id: number): Promise<boolean>;
   
   // Material Opening Stocks
   getMaterialOpeningStocks(filters?: { materialId?: number; partyId?: number }): Promise<MaterialOpeningStock[]>;
@@ -3220,6 +3229,130 @@ export class DatabaseStorage implements IStorage {
       // Delete the issue
       await tx.delete(materialIssues).where(eq(materialIssues.id, id));
       
+      return true;
+    });
+  }
+
+  // ============================================
+  // MATERIAL RETURNS
+  // ============================================
+
+  async getMaterialReturns(filters?: { materialId?: number; originalIssueId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReturn[]> {
+    let conditions = [];
+    if (filters?.materialId !== undefined) conditions.push(eq(materialReturns.materialId, filters.materialId));
+    if (filters?.originalIssueId !== undefined) conditions.push(eq(materialReturns.originalIssueId, filters.originalIssueId));
+    if (filters?.dateFrom) conditions.push(gte(materialReturns.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(materialReturns.date, filters.dateTo));
+
+    return db.select().from(materialReturns)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(materialReturns.date));
+  }
+
+  async getReturnedQtyForIssue(issueId: number): Promise<number> {
+    const returns = await db.select().from(materialReturns)
+      .where(eq(materialReturns.originalIssueId, issueId));
+    return returns.reduce((sum, r) => sum + r.quantity, 0);
+  }
+
+  async createMaterialReturn(ret: InsertMaterialReturn): Promise<MaterialReturn> {
+    return db.transaction(async (tx) => {
+      const [originalIssue] = await tx.select().from(materialIssues)
+        .where(eq(materialIssues.id, ret.originalIssueId)).limit(1);
+      if (!originalIssue) throw new Error("Original issue not found");
+
+      const existingReturns = await tx.select().from(materialReturns)
+        .where(eq(materialReturns.originalIssueId, ret.originalIssueId));
+      const totalReturned = existingReturns.reduce((sum, r) => sum + r.quantity, 0);
+      const remaining = originalIssue.quantity - totalReturned;
+
+      if (ret.quantity > remaining) {
+        throw new Error(`Return quantity (${ret.quantity}) exceeds remaining issuable amount (${remaining.toFixed(2)})`);
+      }
+
+      const uppercased = {
+        ...ret,
+        returnedBy: ret.returnedBy?.toUpperCase(),
+        vehicleNumber: ret.vehicleNumber?.toUpperCase(),
+        notes: ret.notes?.toUpperCase(),
+      };
+
+      const [result] = await tx.insert(materialReturns).values(uppercased).returning();
+
+      const stockPartyId = ret.isPlantCommon ? null : ret.partyId;
+
+      const condition = stockPartyId === null
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ret.materialId))
+        : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, ret.materialId));
+
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      const newBalance = (existing?.balance || 0) + ret.quantity;
+
+      if (existing) {
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: stockPartyId,
+          materialId: ret.materialId,
+          balance: newBalance,
+          uom: ret.uom,
+        });
+      }
+
+      await tx.insert(stockLedger).values({
+        date: ret.date,
+        partyId: stockPartyId,
+        materialId: ret.materialId,
+        transactionType: "return",
+        referenceId: result.id,
+        quantityIn: ret.quantity,
+        balanceAfter: newBalance,
+        uom: ret.uom,
+        notes: `Return from issue #${ret.originalIssueId}${ret.returnedBy ? ` by ${ret.returnedBy}` : ''}`,
+      });
+
+      return result;
+    });
+  }
+
+  async deleteMaterialReturn(id: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [ret] = await tx.select().from(materialReturns).where(eq(materialReturns.id, id)).limit(1);
+      if (!ret) return false;
+
+      const stockPartyId = ret.isPlantCommon ? null : ret.partyId;
+      const condition = stockPartyId === null
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ret.materialId))
+        : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, ret.materialId));
+
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      if (existing) {
+        const newBalance = existing.balance - ret.quantity;
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+
+        await tx.insert(stockLedger).values({
+          date: format(new Date(), "yyyy-MM-dd"),
+          partyId: stockPartyId,
+          materialId: ret.materialId,
+          transactionType: "adjustment",
+          referenceId: id,
+          quantityOut: ret.quantity,
+          balanceAfter: newBalance,
+          uom: ret.uom,
+          notes: `Deleted return #${id} reversal`,
+        });
+      }
+
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, "return"), eq(stockLedger.referenceId, id))
+      );
+
+      await tx.delete(materialReturns).where(eq(materialReturns.id, id));
+
       return true;
     });
   }

@@ -47,6 +47,7 @@ export default function PlantMaterialIssues() {
   const [uom, setUom] = useState("Liters");
   const [issuedTo, setIssuedTo] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -59,13 +60,14 @@ export default function PlantMaterialIssues() {
     uom: string;
     issuedTo: string;
     purpose: string;
+    receivedBy: string;
     vehicleNumber: string;
     notes: string;
   }
 
   const formData = useMemo<IssueFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, issuedTo, purpose, vehicleNumber, notes
-  }), [date, time, partyId, materialId, quantity, uom, issuedTo, purpose, vehicleNumber, notes]);
+    date, time, partyId, materialId, quantity, uom, issuedTo, purpose, receivedBy, vehicleNumber, notes
+  }), [date, time, partyId, materialId, quantity, uom, issuedTo, purpose, receivedBy, vehicleNumber, notes]);
 
   const handleRestoreDraft = useCallback((data: IssueFormData) => {
     setDate(data.date);
@@ -76,6 +78,7 @@ export default function PlantMaterialIssues() {
     setUom(data.uom);
     setIssuedTo(data.issuedTo);
     setPurpose(data.purpose);
+    setReceivedBy(data.receivedBy || "");
     setVehicleNumber(data.vehicleNumber);
     setNotes(data.notes);
   }, []);
@@ -155,6 +158,7 @@ export default function PlantMaterialIssues() {
     setUom("Liters");
     setIssuedTo("");
     setPurpose("");
+    setReceivedBy("");
     setVehicleNumber("");
     setNotes("");
   };
@@ -169,6 +173,7 @@ export default function PlantMaterialIssues() {
     setUom(issue.uom);
     setIssuedTo(issue.issuedTo || "");
     setPurpose(issue.purpose || "");
+    setReceivedBy((issue as any).receivedBy || "");
     setVehicleNumber(issue.vehicleNumber || "");
     setNotes(issue.notes || "");
     setDialogOpen(true);
@@ -187,6 +192,7 @@ export default function PlantMaterialIssues() {
       uom,
       issuedTo,
       purpose: purpose || null,
+      receivedBy: receivedBy || null,
       vehicleNumber: vehicleNumber || null,
       notes: notes || null,
     };
@@ -273,6 +279,7 @@ export default function PlantMaterialIssues() {
       UOM: issue.uom,
       "Issued To": issue.issuedTo,
       Purpose: issue.purpose || "",
+      "Received By": (issue as any).receivedBy || "",
       "Vehicle No.": issue.vehicleNumber || "",
       Notes: issue.notes || "",
     }));
@@ -298,11 +305,12 @@ export default function PlantMaterialIssues() {
       `${issue.quantity} ${issue.uom}`,
       issue.issuedTo,
       issue.purpose || "",
+      (issue as any).receivedBy || "",
     ]);
 
     autoTable(doc, {
       startY: 28,
-      head: [["Date", "Stock Owner", "Material", "Qty", "Issued To", "Purpose"]],
+      head: [["Date", "Stock Owner", "Material", "Qty", "Issued To", "Purpose", "Received By"]],
       body: tableData,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [245, 158, 11] },
@@ -327,6 +335,7 @@ export default function PlantMaterialIssues() {
         <td>${issue.quantity} ${issue.uom}</td>
         <td>${issue.issuedTo}</td>
         <td>${issue.purpose || ""}</td>
+        <td>${(issue as any).receivedBy || ""}</td>
       </tr>
     `).join('');
 
@@ -356,6 +365,7 @@ export default function PlantMaterialIssues() {
                 <th>Quantity</th>
                 <th>Issued To</th>
                 <th>Purpose</th>
+                <th>Received By</th>
               </tr>
             </thead>
             <tbody>
@@ -490,6 +500,11 @@ export default function PlantMaterialIssues() {
                 </div>
                 
                 <div>
+                  <Label>Received By</Label>
+                  <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value.toUpperCase())} placeholder="Person receiving the material" data-testid="input-received-by" />
+                </div>
+                
+                <div>
                   <Label>Vehicle Number</Label>
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
                 </div>
@@ -612,6 +627,12 @@ export default function PlantMaterialIssues() {
                         <span className="font-medium">{issue.issuedTo}</span>
                         {issue.purpose && <span className="text-muted-foreground"> - {issue.purpose}</span>}
                       </div>
+                      {(issue as any).receivedBy && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Received By: </span>
+                          <span className="font-medium">{(issue as any).receivedBy}</span>
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground">
                         From: {getPartyName(issue.partyId)}
                       </div>

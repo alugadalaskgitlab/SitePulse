@@ -389,6 +389,24 @@ export const materialIssues = pgTable("material_issues", {
   uom: text("uom").notNull(),
   issuedTo: text("issued_to").notNull(), // Site name or party name
   purpose: text("purpose"), // Purpose/remarks
+  receivedBy: text("received_by"), // Person receiving the material
+  vehicleNumber: text("vehicle_number"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Material Returns (returns of issued materials back to plant stock)
+export const materialReturns = pgTable("material_returns", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  originalIssueId: integer("original_issue_id").notNull(), // Mandatory link to material_issues.id
+  materialId: integer("material_id").notNull(),
+  quantity: real("quantity").notNull(),
+  uom: text("uom").notNull(),
+  returnedBy: text("returned_by"), // Person returning the material
+  partyId: integer("party_id"), // Stock owner (copied from original issue)
+  isPlantCommon: integer("is_plant_common").default(0),
   vehicleNumber: text("vehicle_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -539,6 +557,7 @@ export const insertLdoLogSchema = createInsertSchema(ldoLogs).omit({ id: true, c
 export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({ id: true, lastUpdated: true });
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
+export const insertMaterialReturnSchema = createInsertSchema(materialReturns).omit({ id: true, createdAt: true });
 export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true });
 
 // Types
@@ -557,6 +576,7 @@ export type LdoLog = typeof ldoLogs.$inferSelect;
 export type StockBalance = typeof stockBalances.$inferSelect;
 export type StockLedgerEntry = typeof stockLedger.$inferSelect;
 export type MaterialIssue = typeof materialIssues.$inferSelect;
+export type MaterialReturn = typeof materialReturns.$inferSelect;
 
 // Insert Types
 export type InsertParty = z.infer<typeof insertPartySchema>;
@@ -574,6 +594,7 @@ export type InsertLdoLog = z.infer<typeof insertLdoLogSchema>;
 export type InsertStockBalance = z.infer<typeof insertStockBalanceSchema>;
 export type InsertStockLedger = z.infer<typeof insertStockLedgerSchema>;
 export type InsertMaterialIssue = z.infer<typeof insertMaterialIssueSchema>;
+export type InsertMaterialReturn = z.infer<typeof insertMaterialReturnSchema>;
 export type SiteMaterialTrip = typeof siteMaterialTrips.$inferSelect;
 export type InsertSiteMaterialTrip = z.infer<typeof insertSiteMaterialTripSchema>;
 

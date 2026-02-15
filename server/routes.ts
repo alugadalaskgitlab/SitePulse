@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -987,6 +987,68 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material issue" });
+    }
+  });
+
+  // Material Returns
+  app.get("/api/plant-module/material-returns", async (req, res) => {
+    try {
+      const filters = {
+        materialId: req.query.materialId ? Number(req.query.materialId) : undefined,
+        originalIssueId: req.query.originalIssueId ? Number(req.query.originalIssueId) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const returns = await storage.getMaterialReturns(filters);
+      res.json(returns);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch material returns" });
+    }
+  });
+
+  app.get("/api/plant-module/material-returns/returned-qty/:issueId", async (req, res) => {
+    try {
+      const qty = await storage.getReturnedQtyForIssue(Number(req.params.issueId));
+      res.json({ returnedQty: qty });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to get returned quantity" });
+    }
+  });
+
+  app.post("/api/plant-module/material-returns", async (req, res) => {
+    try {
+      const input = insertMaterialReturnSchema.parse(req.body);
+      const result = await storage.createMaterialReturn(input);
+
+      await storage.createNotification({
+        type: "info",
+        title: "Material Returned",
+        message: `Material returned: ${result.quantity} ${result.uom} from issue #${result.originalIssueId} on ${result.date}`,
+        isRead: 0,
+      });
+
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      if (err.message?.includes("exceeds remaining")) {
+        return res.status(400).json({ message: err.message });
+      }
+      if (err.message?.includes("not found")) {
+        return res.status(404).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Failed to create material return" });
+    }
+  });
+
+  app.delete("/api/plant-module/material-returns/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMaterialReturn(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Return not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete material return" });
     }
   });
 
