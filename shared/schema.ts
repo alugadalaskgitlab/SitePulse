@@ -577,7 +577,6 @@ export type StockBalance = typeof stockBalances.$inferSelect;
 export type StockLedgerEntry = typeof stockLedger.$inferSelect;
 export type MaterialIssue = typeof materialIssues.$inferSelect;
 export type MaterialReturn = typeof materialReturns.$inferSelect;
-
 // Insert Types
 export type InsertParty = z.infer<typeof insertPartySchema>;
 export type InsertPlantMaterial = z.infer<typeof insertPlantMaterialSchema>;
@@ -606,6 +605,41 @@ export const MIX_TYPES = ["BC", "DBM"] as const;
 
 // Default LDO norm (liters per ton)
 export const DEFAULT_LDO_NORM = 6;
+
+// ============================================
+// FUEL STOCK TRACKING - BITUMEN & LDO
+// ============================================
+
+export const bitumenDipReadings = pgTable("bitumen_dip_readings", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  tankNumber: integer("tank_number").notNull(),
+  depthCm: real("depth_cm").notNull(),
+  volumeLiters: real("volume_liters").notNull(),
+  weightKg: real("weight_kg").notNull(),
+  readingType: text("reading_type").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const ldoFlowReadings = pgTable("ldo_flow_readings", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  meterReading: real("meter_reading").notNull(),
+  readingType: text("reading_type").notNull(),
+  quantityLiters: real("quantity_liters"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBitumenDipReadingSchema = createInsertSchema(bitumenDipReadings).omit({ id: true, createdAt: true });
+export const insertLdoFlowReadingSchema = createInsertSchema(ldoFlowReadings).omit({ id: true, createdAt: true });
+export type BitumenDipReading = typeof bitumenDipReadings.$inferSelect;
+export type LdoFlowReading = typeof ldoFlowReadings.$inferSelect;
+export type InsertBitumenDipReading = z.infer<typeof insertBitumenDipReadingSchema>;
+export type InsertLdoFlowReading = z.infer<typeof insertLdoFlowReadingSchema>;
 
 // ============================================
 // ADMIN NOTIFICATIONS

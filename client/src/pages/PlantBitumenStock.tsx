@@ -1,0 +1,646 @@
+import { useState, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
+import { useOrigin } from "@/hooks/use-origin";
+import { ChevronLeft, Plus, Loader2, Trash2, Download, Printer, Droplets } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { PinAuth } from "@/components/PinAuth";
+import { format } from "date-fns";
+import type { BitumenDipReading } from "@shared/schema";
+import {
+  BITUMEN_DIP_CHART,
+  BITUMEN_DENSITY_KG_PER_LITER,
+  DEFAULT_DEAD_STOCK_DEPTH,
+  TANK_CAPACITY_LITERS,
+  getVolumeAtDepth,
+  getDeadStockVolume,
+  getUsableVolume,
+} from "@shared/bitumen-dip-chart";
+
+export default function PlantBitumenStock() {
+  const { toast } = useToast();
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/plant/dashboard");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterTank, setFilterTank] = useState("all");
+
+  const [showPinAuth, setShowPinAuth] = useState(false);
+  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
+  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
+
+  const [tankNumber, setTankNumber] = useState("1");
+  const [depthCm, setDepthCm] = useState("");
+  const [readingType, setReadingType] = useState("adhoc");
+  const [readingDate, setReadingDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [readingTime, setReadingTime] = useState(format(new Date(), "HH:mm"));
+  const [notes, setNotes] = useState("");
+
+  const { data: readings, isLoading } = useQuery<BitumenDipReading[]>({
+    queryKey: ["/api/plant-module/bitumen-dip-readings"],
+  });
+
+  const filteredReadings = useMemo(() => {
+    if (!readings) return [];
+    return readings.filter(r => {
+      if (filterDateFrom && r.date < filterDateFrom) return false;
+      if (filterDateTo && r.date > filterDateTo) return false;
+      if (filterTank !== "all" && r.tankNumber !== parseInt(filterTank)) return false;
+      return true;
+    });
+  }, [readings, filterDateFrom, filterDateTo, filterTank]);
+
+  const depthNum = parseFloat(depthCm) || 0;
+  const computedVolume = getVolumeAtDepth(depthNum);
+  const computedWeight = computedVolume * BITUMEN_DENSITY_KG_PER_LITER;
+  const deadStockVolume = getDeadStockVolume();
+  const deadStockWeight = deadStockVolume * BITUMEN_DENSITY_KG_PER_LITER;
+  const usableVolume = getUsableVolume(depthNum);
+  const usableWeight = usableVolume * BITUMEN_DENSITY_KG_PER_LITER;
+  const fillPercent = Math.min(100, (depthNum / 250) * 100);
+  const deadStockPercent = (DEFAULT_DEAD_STOCK_DEPTH / 250) * 100;
+
+  const latestTank1 = useMemo(() => {
+    if (!readings) return null;
+    const tank1 = readings.filter(r => r.tankNumber === 1);
+    if (tank1.length === 0) return null;
+    return tank1.sort((a, b) => {
+      const dateComp = b.date.localeCompare(a.date);
+      if (dateComp !== 0) return dateComp;
+      return (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [readings]);
+
+  const latestTank2 = useMemo(() => {
+    if (!readings) return null;
+    const tank2 = readings.filter(r => r.tankNumber === 2);
+    if (tank2.length === 0) return null;
+    return tank2.sort((a, b) => {
+      const dateComp = b.date.localeCompare(a.date);
+      if (dateComp !== 0) return dateComp;
+      return (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [readings]);
+
+  const tank1Volume = latestTank1 ? latestTank1.volumeLiters : 0;
+  const tank2Volume = latestTank2 ? latestTank2.volumeLiters : 0;
+  const tank1Usable = getUsableVolume(latestTank1?.depthCm || 0);
+  const tank2Usable = getUsableVolume(latestTank2?.depthCm || 0);
+  const combinedTotal = tank1Volume + tank2Volume;
+  const combinedUsable = tank1Usable + tank2Usable;
+  const combinedDead = deadStockVolume * 2;
+
+  const dailySummary = useMemo(() => {
+    if (!readings) return [];
+    const grouped: Record<string, { date: string; entries: BitumenDipReading[] }> = {};
+    for (const r of readings) {
+      if (!grouped[r.date]) grouped[r.date] = { date: r.date, entries: [] };
+      grouped[r.date].entries.push(r);
+    }
+    return Object.values(grouped)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 10)
+      .map(day => {
+        const t1Opening = day.entries.find(e => e.tankNumber === 1 && e.readingType === "opening");
+        const t1Closing = day.entries.find(e => e.tankNumber === 1 && e.readingType === "closing");
+        const t2Opening = day.entries.find(e => e.tankNumber === 2 && e.readingType === "opening");
+        const t2Closing = day.entries.find(e => e.tankNumber === 2 && e.readingType === "closing");
+        const t1Receipts = day.entries.filter(e => e.tankNumber === 1 && e.readingType === "receipt");
+        const t2Receipts = day.entries.filter(e => e.tankNumber === 2 && e.readingType === "receipt");
+
+        const t1ReceiptVol = t1Receipts.reduce((s, r) => s + r.volumeLiters, 0);
+        const t2ReceiptVol = t2Receipts.reduce((s, r) => s + r.volumeLiters, 0);
+
+        let t1Consumption = null as number | null;
+        let t2Consumption = null as number | null;
+
+        if (t1Opening && t1Closing) {
+          t1Consumption = t1Opening.volumeLiters - t1Closing.volumeLiters + t1ReceiptVol;
+        }
+        if (t2Opening && t2Closing) {
+          t2Consumption = t2Opening.volumeLiters - t2Closing.volumeLiters + t2ReceiptVol;
+        }
+
+        return {
+          date: day.date,
+          t1Opening, t1Closing, t2Opening, t2Closing,
+          t1ReceiptVol, t2ReceiptVol,
+          t1Consumption, t2Consumption,
+          totalConsumption: (t1Consumption || 0) + (t2Consumption || 0),
+        };
+      });
+  }, [readings]);
+
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/plant-module/bitumen-dip-readings", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
+      toast({ title: "Dip reading recorded" });
+      resetForm();
+      setDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/plant-module/bitumen-dip-readings/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
+      toast({ title: "Reading deleted" });
+      setDeleteConfirmId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function resetForm() {
+    setTankNumber("1");
+    setDepthCm("");
+    setReadingType("adhoc");
+    setReadingDate(format(new Date(), "yyyy-MM-dd"));
+    setReadingTime(format(new Date(), "HH:mm"));
+    setNotes("");
+  }
+
+  function handleSubmit() {
+    const depth = parseFloat(depthCm);
+    if (!depth || depth < 0 || depth > 250) {
+      toast({ title: "Invalid depth", description: "Enter depth between 0 and 250 cm", variant: "destructive" });
+      return;
+    }
+    if ((readingType === "opening" || readingType === "closing") && !readingTime) {
+      toast({ title: "Time required", description: "Please enter time for opening/closing readings", variant: "destructive" });
+      return;
+    }
+    const vol = getVolumeAtDepth(depth);
+    const wt = vol * BITUMEN_DENSITY_KG_PER_LITER;
+
+    createMutation.mutate({
+      date: readingDate,
+      time: readingTime,
+      tankNumber: parseInt(tankNumber),
+      depthCm: depth,
+      volumeLiters: Math.round(vol),
+      weightKg: Math.round(wt),
+      readingType,
+      notes: notes || null,
+    });
+  }
+
+  function handlePinAction(type: string, readingId?: number) {
+    setPendingAction({ type: type as any, readingId });
+    setPinAuthTarget("admin");
+    setShowPinAuth(true);
+  }
+
+  function handlePinSuccess(_role: string, _pin: string) {
+    setShowPinAuth(false);
+    if (!pendingAction) return;
+
+    if (pendingAction.type === "delete" && pendingAction.readingId) {
+      deleteMutation.mutate(pendingAction.readingId);
+    } else if (pendingAction.type === "export-excel") {
+      exportExcel();
+    } else if (pendingAction.type === "export-pdf") {
+      exportPdf();
+    } else if (pendingAction.type === "print") {
+      printData();
+    }
+    setPendingAction(null);
+  }
+
+  function exportExcel() {
+    const data = filteredReadings.map(r => ({
+      Date: r.date,
+      Time: r.time || "",
+      Tank: `Tank ${r.tankNumber}`,
+      "Depth (cm)": r.depthCm,
+      "Volume (L)": r.volumeLiters,
+      "Weight (kg)": r.weightKg,
+      "Usable (L)": getUsableVolume(r.depthCm),
+      "Usable (kg)": Math.round(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER),
+      Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
+      Notes: r.notes || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Bitumen Dip Readings");
+    XLSX.writeFile(wb, `bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.xlsx`);
+  }
+
+  function exportPdf() {
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text("Bitumen Dip Readings - HLC Plant", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 22);
+
+    const tableData = filteredReadings.map(r => [
+      r.date, r.time || "", `Tank ${r.tankNumber}`, r.depthCm.toString(),
+      r.volumeLiters.toLocaleString(), r.weightKg.toLocaleString(),
+      getUsableVolume(r.depthCm).toLocaleString(),
+      r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
+      r.notes || "",
+    ]);
+    autoTable(doc, {
+      head: [["Date", "Time", "Tank", "Depth(cm)", "Volume(L)", "Weight(kg)", "Usable(L)", "Type", "Notes"]],
+      body: tableData,
+      startY: 28,
+      styles: { fontSize: 8 },
+    });
+    doc.save(`bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.pdf`);
+  }
+
+  function printData() {
+    const printContent = `
+      <html><head><title>Bitumen Dip Readings</title>
+      <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
+      <body><div class="header"><h2>Bitumen Dip Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
+      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(kg)</th><th>Usable(L)</th><th>Type</th><th>Notes</th></tr>
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toLocaleString()}</td><td>${r.weightKg.toLocaleString()}</td><td>${getUsableVolume(r.depthCm).toLocaleString()}</td><td>${r.readingType}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      </table></body></html>`;
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(printContent); w.document.close(); w.print(); }
+  }
+
+  function TankIndicator({ label, reading, tankNum }: { label: string; reading: BitumenDipReading | null; tankNum: number }) {
+    const depth = reading?.depthCm || 0;
+    const vol = reading?.volumeLiters || 0;
+    const usable = getUsableVolume(depth);
+    const fill = Math.min(100, (depth / 250) * 100);
+
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">{label}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 items-end">
+            <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`tank-visual-${tankNum}`}>
+              <div
+                className="absolute bottom-0 w-full bg-amber-800/70 dark:bg-amber-600/50 transition-all duration-500"
+                style={{ height: `${fill}%` }}
+              />
+              <div
+                className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
+                style={{ height: `${deadStockPercent}%` }}
+              />
+            </div>
+            <div className="flex-1 space-y-1 text-sm">
+              <div className="flex justify-between gap-1 flex-wrap">
+                <span className="text-muted-foreground">Depth:</span>
+                <span className="font-medium">{depth} cm</span>
+              </div>
+              <div className="flex justify-between gap-1 flex-wrap">
+                <span className="text-muted-foreground">Total:</span>
+                <span className="font-medium">{vol.toLocaleString()} L / {Math.round(vol * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+              </div>
+              <div className="flex justify-between gap-1 flex-wrap">
+                <span className="text-muted-foreground">Usable:</span>
+                <span className="font-medium text-green-600 dark:text-green-400">{usable.toLocaleString()} L / {Math.round(usable * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+              </div>
+              <div className="flex justify-between gap-1 flex-wrap">
+                <span className="text-muted-foreground">Dead:</span>
+                <span className="text-xs text-red-500">{Math.round(deadStockVolume).toLocaleString()} L</span>
+              </div>
+              {reading && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Last: {reading.date} {reading.time || ""}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (showPinAuth) {
+    return (
+      <PinAuth
+        targetRole={pinAuthTarget}
+        onSuccess={handlePinSuccess}
+        onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link href={backLink}>
+          <Button variant="ghost" size="icon" data-testid="button-back">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+        </Link>
+        <Droplets className="w-6 h-6 text-amber-700 dark:text-amber-500" />
+        <h1 className="text-2xl font-bold flex-1">Bitumen Stock Tracker</h1>
+        <Button onClick={() => { resetForm(); setDialogOpen(true); }} data-testid="button-new-reading">
+          <Plus className="w-4 h-4 mr-2" /> New Dip Reading
+        </Button>
+      </div>
+
+      <div className="text-sm text-muted-foreground">
+        Tank: 250cm dia x 1060cm length | Capacity: {TANK_CAPACITY_LITERS.toLocaleString()} L | Dead stock at {DEFAULT_DEAD_STOCK_DEPTH} cm = ~{Math.round(deadStockVolume).toLocaleString()} L/tank | Bitumen: {BITUMEN_DENSITY_KG_PER_LITER} kg/L
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <TankIndicator label="Tank 1" reading={latestTank1} tankNum={1} />
+        <TankIndicator label="Tank 2" reading={latestTank2} tankNum={2} />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Combined Stock</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Total Volume:</span>
+              <span className="font-bold">{combinedTotal.toLocaleString()} L</span>
+            </div>
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Total Weight:</span>
+              <span className="font-bold">{Math.round(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+            </div>
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Usable Volume:</span>
+              <span className="font-bold text-green-600 dark:text-green-400">{combinedUsable.toLocaleString()} L</span>
+            </div>
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Usable Weight:</span>
+              <span className="font-bold text-green-600 dark:text-green-400">{Math.round(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+            </div>
+            <div className="flex justify-between gap-1 flex-wrap">
+              <span className="text-muted-foreground">Dead Stock (2 tanks):</span>
+              <span className="text-xs text-red-500">{Math.round(combinedDead).toLocaleString()} L / {Math.round(combinedDead * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {dailySummary.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Daily Consumption Summary (Last 10 days)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-right p-2">T1 Opening (L)</th>
+                    <th className="text-right p-2">T1 Closing (L)</th>
+                    <th className="text-right p-2">T1 Receipts (L)</th>
+                    <th className="text-right p-2">T1 Consumed (L)</th>
+                    <th className="text-right p-2">T2 Opening (L)</th>
+                    <th className="text-right p-2">T2 Closing (L)</th>
+                    <th className="text-right p-2">T2 Receipts (L)</th>
+                    <th className="text-right p-2">T2 Consumed (L)</th>
+                    <th className="text-right p-2 font-bold">Total (L)</th>
+                    <th className="text-right p-2 font-bold">Total (kg)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailySummary.map(day => (
+                    <tr key={day.date} className="border-b" data-testid={`row-daily-${day.date}`}>
+                      <td className="p-2">{day.date}</td>
+                      <td className="p-2 text-right">{day.t1Opening?.volumeLiters?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t1Closing?.volumeLiters?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t1ReceiptVol ? day.t1ReceiptVol.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1Consumption !== null ? day.t1Consumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Opening?.volumeLiters?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t2Closing?.volumeLiters?.toLocaleString() ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t2ReceiptVol ? day.t2ReceiptVol.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right font-bold">{day.totalConsumption ? Math.round(day.totalConsumption * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString() : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="text-sm font-medium">All Dip Readings</CardTitle>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => handlePinAction("export-excel")} data-testid="button-export-excel">
+                <Download className="w-4 h-4 mr-1" /> Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePinAction("export-pdf")} data-testid="button-export-pdf">
+                <Download className="w-4 h-4 mr-1" /> PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePinAction("print")} data-testid="button-print">
+                <Printer className="w-4 h-4 mr-1" /> Print
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-40" data-testid="input-filter-date-from" />
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
+            <Select value={filterTank} onValueChange={setFilterTank}>
+              <SelectTrigger className="w-36" data-testid="select-filter-tank">
+                <SelectValue placeholder="All Tanks" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tanks</SelectItem>
+                <SelectItem value="1">Tank 1</SelectItem>
+                <SelectItem value="2">Tank 2</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
+          ) : filteredReadings.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">No dip readings recorded yet</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-left p-2">Time</th>
+                    <th className="text-left p-2">Tank</th>
+                    <th className="text-right p-2">Depth (cm)</th>
+                    <th className="text-right p-2">Volume (L)</th>
+                    <th className="text-right p-2">Weight (kg)</th>
+                    <th className="text-right p-2">Usable (L)</th>
+                    <th className="text-left p-2">Type</th>
+                    <th className="text-left p-2">Notes</th>
+                    <th className="text-center p-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredReadings.map(r => (
+                    <tr key={r.id} className="border-b" data-testid={`row-reading-${r.id}`}>
+                      <td className="p-2">{r.date}</td>
+                      <td className="p-2">{r.time || "-"}</td>
+                      <td className="p-2"><Badge variant="outline">Tank {r.tankNumber}</Badge></td>
+                      <td className="p-2 text-right font-medium">{r.depthCm}</td>
+                      <td className="p-2 text-right">{r.volumeLiters.toLocaleString()}</td>
+                      <td className="p-2 text-right">{r.weightKg.toLocaleString()}</td>
+                      <td className="p-2 text-right text-green-600 dark:text-green-400">{getUsableVolume(r.depthCm).toLocaleString()}</td>
+                      <td className="p-2">
+                        <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : r.readingType === "receipt" ? "outline" : "secondary"}>
+                          {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
+                        </Badge>
+                      </td>
+                      <td className="p-2 text-muted-foreground text-xs">{r.notes || "-"}</td>
+                      <td className="p-2 text-center">
+                        {deleteConfirmId === r.id ? (
+                          <div className="flex gap-1 justify-center">
+                            <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
+                              Confirm
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Record Bitumen Dip Reading</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Date</Label>
+                <Input type="date" value={readingDate} onChange={e => setReadingDate(e.target.value)} data-testid="input-reading-date" />
+              </div>
+              <div>
+                <Label>Time</Label>
+                <Input type="time" value={readingTime} onChange={e => setReadingTime(e.target.value)} data-testid="input-reading-time" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Tank</Label>
+                <Select value={tankNumber} onValueChange={setTankNumber}>
+                  <SelectTrigger data-testid="select-tank">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Tank 1</SelectItem>
+                    <SelectItem value="2">Tank 2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Reading Type</Label>
+                <Select value={readingType} onValueChange={setReadingType}>
+                  <SelectTrigger data-testid="select-reading-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="opening">Opening</SelectItem>
+                    <SelectItem value="closing">Closing</SelectItem>
+                    <SelectItem value="receipt">Receipt</SelectItem>
+                    <SelectItem value="adhoc">Ad-hoc</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label>Dip Depth (cm) <span className="text-muted-foreground text-xs">- Enter bitumen depth reading from gauge rod</span></Label>
+              <Input
+                type="number"
+                min="0"
+                max="250"
+                step="0.5"
+                value={depthCm}
+                onChange={e => setDepthCm(e.target.value)}
+                placeholder="e.g. 125"
+                data-testid="input-depth"
+              />
+            </div>
+
+            {depthNum > 0 && (
+              <Card className="bg-muted/50">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-10 h-24 rounded border-2 border-muted-foreground/30 overflow-hidden">
+                      <div className="absolute bottom-0 w-full bg-amber-800/70 dark:bg-amber-600/50 transition-all" style={{ height: `${fillPercent}%` }} />
+                      <div className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60" style={{ height: `${deadStockPercent}%` }} />
+                    </div>
+                    <div className="flex-1 space-y-1 text-sm">
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Total Volume:</span>
+                        <span className="font-bold">{Math.round(computedVolume).toLocaleString()} L ({Math.round(computedWeight).toLocaleString()} kg)</span>
+                      </div>
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Dead Stock:</span>
+                        <span className="text-red-500 text-xs">{Math.round(deadStockVolume).toLocaleString()} L ({Math.round(deadStockWeight).toLocaleString()} kg)</span>
+                      </div>
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Usable Stock:</span>
+                        <span className="font-bold text-green-600 dark:text-green-400">{Math.round(usableVolume).toLocaleString()} L ({Math.round(usableWeight).toLocaleString()} kg)</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">Fill: {fillPercent.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div>
+              <Label>Notes (optional)</Label>
+              <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any observations" data-testid="input-notes" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || !depthCm} data-testid="button-submit-reading">
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Record Reading
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

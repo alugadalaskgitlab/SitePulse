@@ -28,6 +28,8 @@ import {
   sitePurchases,
   siteMaterialTrips,
   adminNotifications,
+  bitumenDipReadings,
+  ldoFlowReadings,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -78,6 +80,10 @@ import {
   sites,
   type Site,
   type InsertSite,
+  type BitumenDipReading,
+  type InsertBitumenDipReading,
+  type LdoFlowReading,
+  type InsertLdoFlowReading,
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
@@ -3728,6 +3734,65 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return created;
+  }
+
+  // ============================================
+  // BITUMEN DIP READINGS
+  // ============================================
+
+  async getBitumenDipReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string }): Promise<BitumenDipReading[]> {
+    let conditions = [];
+    if (filters?.tankNumber !== undefined) conditions.push(eq(bitumenDipReadings.tankNumber, filters.tankNumber));
+    if (filters?.readingType) conditions.push(eq(bitumenDipReadings.readingType, filters.readingType));
+    if (filters?.dateFrom) conditions.push(gte(bitumenDipReadings.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(bitumenDipReadings.date, filters.dateTo));
+
+    return db.select().from(bitumenDipReadings)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(bitumenDipReadings.date), desc(bitumenDipReadings.time));
+  }
+
+  async createBitumenDipReading(reading: InsertBitumenDipReading): Promise<BitumenDipReading> {
+    const uppercased = {
+      ...reading,
+      notes: reading.notes?.toUpperCase(),
+    };
+    const [result] = await db.insert(bitumenDipReadings).values(uppercased).returning();
+    return result;
+  }
+
+  async deleteBitumenDipReading(id: number): Promise<boolean> {
+    const [deleted] = await db.delete(bitumenDipReadings).where(eq(bitumenDipReadings.id, id)).returning();
+    return !!deleted;
+  }
+
+  // ============================================
+  // LDO FLOW METER READINGS
+  // ============================================
+
+  async getLdoFlowReadings(filters?: { dateFrom?: string; dateTo?: string; readingType?: string }): Promise<LdoFlowReading[]> {
+    let conditions = [];
+    if (filters?.readingType) conditions.push(eq(ldoFlowReadings.readingType, filters.readingType));
+    if (filters?.dateFrom) conditions.push(gte(ldoFlowReadings.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(ldoFlowReadings.date, filters.dateTo));
+
+    return db.select().from(ldoFlowReadings)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(ldoFlowReadings.date), desc(ldoFlowReadings.time));
+  }
+
+  async createLdoFlowReading(reading: InsertLdoFlowReading): Promise<LdoFlowReading> {
+    const uppercased = {
+      ...reading,
+      notes: reading.notes?.toUpperCase(),
+    };
+    const [result] = await db.insert(ldoFlowReadings).values(uppercased).returning();
+    return result;
+  }
+
+  async deleteLdoFlowReading(id: number): Promise<boolean> {
+    const [deleted] = await db.delete(ldoFlowReadings).where(eq(ldoFlowReadings.id, id)).returning();
+    return !!deleted;
   }
 }
 

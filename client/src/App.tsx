@@ -27,6 +27,8 @@ import PlantStock from "@/pages/PlantStock";
 import PlantVarianceReport from "@/pages/PlantVarianceReport";
 import PlantAuditReport from "@/pages/PlantAuditReport";
 import PlantDieselProcurementReport from "@/pages/PlantDieselProcurementReport";
+import PlantBitumenStock from "@/pages/PlantBitumenStock";
+import PlantLdoFlowMeter from "@/pages/PlantLdoFlowMeter";
 import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
 import NotFound from "@/pages/not-found";
@@ -91,6 +93,8 @@ function Router() {
             <Route path="/plant/variance-report" component={PlantVarianceReport} />
             <Route path="/plant/audit-report" component={PlantAuditReport} />
             <Route path="/plant/diesel-procurement" component={PlantDieselProcurementReport} />
+            <Route path="/plant/bitumen-stock" component={PlantBitumenStock} />
+            <Route path="/plant/ldo-flow-meter" component={PlantLdoFlowMeter} />
             <Route path="/plant/:id" component={PlantDetails} />
             <Route path="/admin/settings" component={AdminSettings} />
             <Route path="/admin/reports" component={AdminReports} />

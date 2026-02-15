@@ -300,6 +300,36 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
+
+      <Link href={appendOrigin("/plant/bitumen-stock")}>
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Droplets className="w-7 h-7 text-amber-700 dark:text-amber-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Bitumen Stock Tracker</h3>
+              <p className="text-sm text-muted-foreground">Track bitumen tank dip readings & actual stock (2 tanks)</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href={appendOrigin("/plant/ldo-flow-meter")}>
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Gauge className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">LDO Flow Meter Tracker</h3>
+              <p className="text-sm text-muted-foreground">Track LDO consumption via flow meter readings</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1446,6 +1446,85 @@ export async function registerRoutes(
       res.json(ledger);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch all-time stock ledger" });
+    }
+  });
+
+  // ============================================
+  // BITUMEN DIP READINGS
+  // ============================================
+
+  app.get("/api/plant-module/bitumen-dip-readings", async (req, res) => {
+    try {
+      const filters = {
+        tankNumber: req.query.tankNumber ? parseInt(req.query.tankNumber as string) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        readingType: req.query.readingType as string | undefined,
+      };
+      const readings = await storage.getBitumenDipReadings(filters);
+      res.json(readings);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch bitumen dip readings" });
+    }
+  });
+
+  app.post("/api/plant-module/bitumen-dip-readings", async (req, res) => {
+    try {
+      const parsed = insertBitumenDipReadingSchema.parse(req.body);
+      const reading = await storage.createBitumenDipReading(parsed);
+      res.status(201).json(reading);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create bitumen dip reading" });
+    }
+  });
+
+  app.delete("/api/plant-module/bitumen-dip-readings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteBitumenDipReading(id);
+      if (!deleted) return res.status(404).json({ message: "Reading not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete bitumen dip reading" });
+    }
+  });
+
+  // ============================================
+  // LDO FLOW METER READINGS
+  // ============================================
+
+  app.get("/api/plant-module/ldo-flow-readings", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        readingType: req.query.readingType as string | undefined,
+      };
+      const readings = await storage.getLdoFlowReadings(filters);
+      res.json(readings);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch LDO flow readings" });
+    }
+  });
+
+  app.post("/api/plant-module/ldo-flow-readings", async (req, res) => {
+    try {
+      const parsed = insertLdoFlowReadingSchema.parse(req.body);
+      const reading = await storage.createLdoFlowReading(parsed);
+      res.status(201).json(reading);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create LDO flow reading" });
+    }
+  });
+
+  app.delete("/api/plant-module/ldo-flow-readings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteLdoFlowReading(id);
+      if (!deleted) return res.status(404).json({ message: "Reading not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete LDO flow reading" });
     }
   });
 

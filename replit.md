@@ -65,6 +65,11 @@ Preferred communication style: Simple, everyday language.
 - **Diesel Source Preservation**: CRITICAL - when loading equipment data for editing, use `??` (nullish coalescing) instead of `||` (logical OR) for dieselSource, fuelStation, billNumber, amountPaid fields. Using `||` would silently overwrite valid values like empty strings to defaults, potentially changing `direct_purchase` to `plant_stock` and losing fuel station details.
 - **Startup Repair - repairLostDieselSource**: Scans DPR version chains for cases where original had `direct_purchase` diesel but later edits changed it to `plant_stock`. Restores the diesel source and related fields, and recreates stock ledger entries. Matches by machine name + diesel amount + operator + task. Idempotent via cleanup-before-insert pattern.
 
+#### Fuel Stock Tracking
+- **Bitumen Stock Tracker** (`/plant/bitumen-stock`): Uses a pre-calibrated horizontal cylindrical tank dip chart (250cm diameter x 1060cm length, 52,032L capacity) to track actual bitumen stock across 2 tanks. User enters dip depth (cm) and system looks up volume from the chart with linear interpolation for fractional depths. Shows total/dead/usable stock in both liters and kg (1.02 kg/L). Dead stock depth = 12.5cm (outlet pipe at 125mm). Includes daily consumption summary (Opening - Closing + Receipts = Consumption), visual tank level indicators, and per-tank + combined stock views. Chart data in `shared/bitumen-dip-chart.ts`.
+- **LDO Flow Meter Tracker** (`/plant/ldo-flow-meter`): Records flow meter readings (opening/closing/receipt) to track LDO consumption. Daily consumption = closing reading - opening reading. LDO density: 0.84 kg/L. Shows latest meter reading, average daily consumption, receipt totals, and daily summary table.
+- **Material Returns** (`/plant/material-returns`): Returns issued materials back to plant stock with mandatory linking to original issue (originalIssueId). Cascading dropdowns (material → issue entries), validation prevents over-returning, stock ledger uses "return" transaction type.
+
 ### UI/UX & Features
 - **UI Enhancements**: shadcn/ui components, responsive design.
 - **Site Reports**: Enhanced filtering (date range, site, engineer, activity, equipment, diesel usage, material) and Admin-only export features (Excel, PDF, Print) with multi-sheet Excel export.
