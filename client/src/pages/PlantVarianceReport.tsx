@@ -125,7 +125,7 @@ export default function PlantVarianceReport() {
   const formatDiff = (diff: number | null, unit: string) => {
     if (diff === null) return "-";
     const sign = diff > 0 ? "+" : "";
-    return `${sign}${diff.toFixed(1)} ${unit}`;
+    return `${sign}${diff.toFixed(3)} ${unit}`;
   };
 
   const totalBitumenDiffKg = dispatches?.reduce((sum, d) => sum + (getBitumenDiffKg(d) || 0), 0) || 0;
@@ -304,7 +304,7 @@ export default function PlantVarianceReport() {
                         </td>
                         <td className="p-2 text-right font-mono text-xs">
                           {actualLpt != null ? (
-                            <span>{actualLpt.toFixed(2)}<span className="text-muted-foreground"> / {theoreticalLpt?.toFixed(2)}</span></span>
+                            <span>{actualLpt.toFixed(3)}<span className="text-muted-foreground"> / {theoreticalLpt?.toFixed(3)}</span></span>
                           ) : "-"}
                         </td>
                         <td className="p-2 text-right">{getVarianceBadge(dispatch.ldoVariancePercent)}</td>

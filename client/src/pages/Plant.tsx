@@ -1594,7 +1594,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
     return sum + Math.max(0, actualConsumed);
   }, 0);
   const totalHoursRun = kpiFilteredEquipment.reduce((sum, e) => sum + (e.hoursOrKmRun || 0), 0);
-  const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(2) : "N/A";
+  const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(3) : "N/A";
 
   // Helper: Parse KVA from equipment name (e.g., "GENERATOR 30 KVA" -> 30)
   const parseKvaFromName = (name: string): number | null => {
@@ -1749,15 +1749,15 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
         getPartyName(d.partyId),
         (d.deliveryLocation || "").toUpperCase(),
         getMixType(d.mixTemplateId),
-        d.loadWeight?.toFixed(2) || "0.00",
+        d.loadWeight?.toFixed(3) || "0.000",
         (d.truckNumber || "").toUpperCase(),
         (d.actualBitumenQty || 0).toFixed(3),
-        (d.actualLdoQty || 0).toFixed(1)
+        (d.actualLdoQty || 0).toFixed(3)
       ]);
 
       const totalRows = [
         [],
-        ["TOTALS", "", "", "", subtotalTons.toFixed(2), `${subtotalTrips} TRIPS`, subtotalBitumen.toFixed(3), subtotalLdo.toFixed(1)]
+        ["TOTALS", "", "", "", subtotalTons.toFixed(3), `${subtotalTrips} TRIPS`, subtotalBitumen.toFixed(3), subtotalLdo.toFixed(3)]
       ];
 
       const ws = XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows, ...totalRows]);
@@ -1812,10 +1812,10 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
         getPartyName(d.partyId),
         (d.deliveryLocation || ""),
         getMixType(d.mixTemplateId),
-        d.loadWeight?.toFixed(2) || "0.00",
+        d.loadWeight?.toFixed(3) || "0.000",
         (d.truckNumber || ""),
         (d.actualBitumenQty || 0).toFixed(3),
-        (d.actualLdoQty || 0).toFixed(1)
+        (d.actualLdoQty || 0).toFixed(3)
       ]);
 
       let currentPage = 1;
@@ -1857,7 +1857,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       const subtotalY = Math.min(finalY + 10, pageHeight - 30);
-      doc.text(`TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(2)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(1)} L`, 14, subtotalY);
+      doc.text(`TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(3)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(3)} L`, 14, subtotalY);
 
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
@@ -1951,16 +1951,16 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
                   <td>${getPartyName(d.partyId)}</td>
                   <td>${d.deliveryLocation || '-'}</td>
                   <td>${getMixType(d.mixTemplateId)}</td>
-                  <td>${d.loadWeight?.toFixed(2) || '0.00'}</td>
+                  <td>${d.loadWeight?.toFixed(3) || '0.000'}</td>
                   <td>${d.truckNumber || '-'}</td>
                   <td>${(d.actualBitumenQty || 0).toFixed(3)}</td>
-                  <td>${(d.actualLdoQty || 0).toFixed(1)}</td>
+                  <td>${(d.actualLdoQty || 0).toFixed(3)}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
           <div class="totals">
-            TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(2)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(1)} L
+            TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(3)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(3)} L
           </div>
         </body>
       </html>
@@ -2070,7 +2070,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             <CardTitle className="text-xs font-medium text-muted-foreground">TOTAL PRODUCTION</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalTons.toFixed(1)} MT</div>
+            <div className="text-2xl font-bold">{totalTons.toFixed(3)} MT</div>
           </CardContent>
         </Card>
 
@@ -2093,13 +2093,13 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
               <div>
                 <div className="text-xs font-semibold text-muted-foreground mb-1">SMALL (≤100 KVA)</div>
                 <div className="text-lg font-bold">
-                  {generatorEfficiencyData.small.efficiency?.toFixed(2) || "N/A"} L/HR
+                  {generatorEfficiencyData.small.efficiency?.toFixed(3) || "N/A"} L/HR
                 </div>
                 <div className="text-xs text-muted-foreground space-y-0.5">
                   {generatorEfficiencyData.small.generators.map((g, i) => (
                     <div key={i} className="flex justify-between">
                       <span className="truncate max-w-[120px]">{g.name}</span>
-                      <span className="font-medium">{g.efficiency?.toFixed(2) || "N/A"} L/HR</span>
+                      <span className="font-medium">{g.efficiency?.toFixed(3) || "N/A"} L/HR</span>
                     </div>
                   ))}
                 </div>
@@ -2110,13 +2110,13 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
               <div>
                 <div className="text-xs font-semibold text-muted-foreground mb-1">LARGE (&gt;100 KVA)</div>
                 <div className="text-lg font-bold">
-                  {generatorEfficiencyData.large.efficiency?.toFixed(2) || "N/A"} L/HR
+                  {generatorEfficiencyData.large.efficiency?.toFixed(3) || "N/A"} L/HR
                 </div>
                 <div className="text-xs text-muted-foreground space-y-0.5">
                   {generatorEfficiencyData.large.generators.map((g, i) => (
                     <div key={i} className="flex justify-between">
                       <span className="truncate max-w-[120px]">{g.name}</span>
-                      <span className="font-medium">{g.efficiency?.toFixed(2) || "N/A"} L/HR</span>
+                      <span className="font-medium">{g.efficiency?.toFixed(3) || "N/A"} L/HR</span>
                     </div>
                   ))}
                 </div>
@@ -2129,7 +2129,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             {/* Summary */}
             {generatorEfficiencyData.all.length > 0 && (
               <div className="pt-2 border-t text-xs text-muted-foreground">
-                Total: {(generatorEfficiencyData.small.totalDiesel + generatorEfficiencyData.large.totalDiesel).toFixed(0)}L / {(generatorEfficiencyData.small.totalHours + generatorEfficiencyData.large.totalHours).toFixed(1)} HRS
+                Total: {(generatorEfficiencyData.small.totalDiesel + generatorEfficiencyData.large.totalDiesel).toFixed(0)}L / {(generatorEfficiencyData.small.totalHours + generatorEfficiencyData.large.totalHours).toFixed(3)} HRS
               </div>
             )}
           </CardContent>
@@ -2141,7 +2141,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${actualLdoPerTon <= LDO_NORM ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {totalTons > 0 ? actualLdoPerTon.toFixed(2) : "N/A"} L/TON
+              {totalTons > 0 ? actualLdoPerTon.toFixed(3) : "N/A"} L/TON
             </div>
             <p className="text-xs text-muted-foreground">TARGET: {LDO_NORM} L/TON</p>
           </CardContent>
@@ -2152,7 +2152,7 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             <CardTitle className="text-xs font-medium text-muted-foreground">BITUMEN CONSUMED</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalBitumenConsumed.toFixed(2)} MT</div>
+            <div className="text-2xl font-bold">{totalBitumenConsumed.toFixed(3)} MT</div>
             <p className="text-xs text-muted-foreground">{(totalBitumenConsumed * 1000).toFixed(0)} KG</p>
           </CardContent>
         </Card>
@@ -2290,10 +2290,10 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
                         <td className="py-2 px-3 whitespace-nowrap">{getPartyName(d.partyId)}</td>
                         <td className="py-2 px-3 whitespace-nowrap">{(d.deliveryLocation || "").toUpperCase()}</td>
                         <td className="py-2 px-3 whitespace-nowrap">{getMixType(d.mixTemplateId)}</td>
-                        <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{d.loadWeight?.toFixed(2) || "0.00"}</td>
+                        <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{d.loadWeight?.toFixed(3) || "0.000"}</td>
                         <td className="py-2 px-3 whitespace-nowrap">{(d.truckNumber || "").toUpperCase()}</td>
                         <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualBitumenQty || 0).toFixed(3)}</td>
-                        <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualLdoQty || 0).toFixed(1)}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualLdoQty || 0).toFixed(3)}</td>
                       </tr>
                     ))
                   )}
@@ -2304,10 +2304,10 @@ function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
                     <td className="py-3 px-3 whitespace-nowrap"></td>
                     <td className="py-3 px-3 whitespace-nowrap"></td>
                     <td className="py-3 px-3 whitespace-nowrap">{subtotalTrips} TRIPS</td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalTons.toFixed(2)}</td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalTons.toFixed(3)}</td>
                     <td className="py-3 px-3 whitespace-nowrap"></td>
                     <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalBitumen.toFixed(3)}</td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalLdo.toFixed(1)}</td>
+                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalLdo.toFixed(3)}</td>
                   </tr>
                 </tfoot>
               </table>

@@ -183,7 +183,7 @@ export default function PlantDispatches() {
     setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
     const weight = dispatch.loadWeight || 0;
     if (dispatch.actualLdoQty && weight > 0) {
-      setActualLdoPerTon(String((dispatch.actualLdoQty / weight).toFixed(2)));
+      setActualLdoPerTon(String((dispatch.actualLdoQty / weight).toFixed(3)));
     } else {
       setActualLdoPerTon("");
     }
@@ -451,8 +451,8 @@ export default function PlantDispatches() {
           Vehicle: d.truckNumber,
           Owner: d.ownerName || "",
           Driver: d.driverName || "",
-          "Bitumen (MT)": d.theoreticalBitumenQty?.toFixed(2) || "0",
-          "LDO (L)": d.theoreticalLdoQty?.toFixed(1) || "0",
+          "Bitumen (MT)": d.theoreticalBitumenQty?.toFixed(3) || "0",
+          "LDO (L)": d.theoreticalLdoQty?.toFixed(3) || "0",
         };
       });
       const ws = XLSX.utils.json_to_sheet(data);
@@ -516,8 +516,8 @@ export default function PlantDispatches() {
           d.truckNumber,
           d.ownerName || "-",
           d.driverName || "-",
-          d.theoreticalBitumenQty?.toFixed(2) || "0",
-          d.theoreticalLdoQty?.toFixed(1) || "0",
+          d.theoreticalBitumenQty?.toFixed(3) || "0",
+          d.theoreticalLdoQty?.toFixed(3) || "0",
         ];
       });
       
@@ -626,8 +626,8 @@ export default function PlantDispatches() {
                   <td>${d.truckNumber}</td>
                   <td>${d.ownerName || '-'}</td>
                   <td>${d.driverName || '-'}</td>
-                  <td>${d.theoreticalBitumenQty?.toFixed(2) || '0'}</td>
-                  <td>${d.theoreticalLdoQty?.toFixed(1) || '0'}</td>
+                  <td>${d.theoreticalBitumenQty?.toFixed(3) || '0'}</td>
+                  <td>${d.theoreticalLdoQty?.toFixed(3) || '0'}</td>
                 </tr>
               `}).join('')}
             </tbody>
@@ -791,7 +791,7 @@ export default function PlantDispatches() {
                   <p className="text-sm font-medium mb-2">Theoretical Consumption (from mix formula)</p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>Bitumen: <span className="font-mono">{theoreticalValues.bitumenPercent}%</span> = <span className="font-mono">{theoreticalValues.bitumenQty.toFixed(3)} MT</span></div>
-                    <div>LDO: <span className="font-mono">{theoreticalValues.ldoNorm} L/MT</span> = <span className="font-mono">{theoreticalValues.ldoQty.toFixed(1)} L</span></div>
+                    <div>LDO: <span className="font-mono">{theoreticalValues.ldoNorm} L/MT</span> = <span className="font-mono">{theoreticalValues.ldoQty.toFixed(3)} L</span></div>
                   </div>
                 </div>
               )}
@@ -844,7 +844,7 @@ export default function PlantDispatches() {
                       />
                       {actualLdoPerTon && parseFloat(loadWeight) > 0 && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Total: {(parseFloat(actualLdoPerTon) * parseFloat(loadWeight)).toFixed(1)} L for {loadWeight} MT
+                          Total: {(parseFloat(actualLdoPerTon) * parseFloat(loadWeight)).toFixed(3)} L for {loadWeight} MT
                         </p>
                       )}
                     </div>
@@ -974,22 +974,22 @@ export default function PlantDispatches() {
               <Card>
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">FILTERED LOAD (MT)</p>
-                  <p className="text-2xl font-bold" data-testid="text-filtered-load">{filteredTotals.loadWeight.toFixed(1)}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.loadWeight.toFixed(1)} total</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-load">{filteredTotals.loadWeight.toFixed(3)}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.loadWeight.toFixed(3)} total</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">FILTERED BITUMEN (MT)</p>
-                  <p className="text-2xl font-bold" data-testid="text-filtered-bitumen">{filteredTotals.bitumen.toFixed(2)}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.bitumen.toFixed(2)} total</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-bitumen">{filteredTotals.bitumen.toFixed(3)}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.bitumen.toFixed(3)} total</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">FILTERED LDO (L)</p>
-                  <p className="text-2xl font-bold" data-testid="text-filtered-ldo">{filteredTotals.ldo.toFixed(1)}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.ldo.toFixed(1)} total</p>
+                  <p className="text-2xl font-bold" data-testid="text-filtered-ldo">{filteredTotals.ldo.toFixed(3)}</p>
+                  <p className="text-xs text-muted-foreground">of {allTotals.ldo.toFixed(3)} total</p>
                 </CardContent>
               </Card>
             </>
@@ -1004,19 +1004,19 @@ export default function PlantDispatches() {
               <Card>
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">TOTAL LOAD (MT)</p>
-                  <p className="text-2xl font-bold" data-testid="text-total-load">{allTotals.loadWeight.toFixed(1)}</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-load">{allTotals.loadWeight.toFixed(3)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">TOTAL BITUMEN (MT)</p>
-                  <p className="text-2xl font-bold" data-testid="text-total-bitumen">{allTotals.bitumen.toFixed(2)}</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-bitumen">{allTotals.bitumen.toFixed(3)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">TOTAL LDO (L)</p>
-                  <p className="text-2xl font-bold" data-testid="text-total-ldo">{allTotals.ldo.toFixed(1)}</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-ldo">{allTotals.ldo.toFixed(3)}</p>
                 </CardContent>
               </Card>
             </>
@@ -1106,11 +1106,11 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>
-                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(2) || "0"}</span>
+                                <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(3) || "0"}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-xs block">LDO (L)</span>
-                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(1) || "0"}</span>
+                                <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(3) || "0"}</span>
                               </div>
                               {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
                                 (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (

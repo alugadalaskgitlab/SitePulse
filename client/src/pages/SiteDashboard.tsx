@@ -410,7 +410,7 @@ export default function SiteDashboard() {
           "End Time": e.endTime || "",
           "Opening Reading": e.openingReading ?? "",
           "Closing Reading": e.closingReading ?? "",
-          "Hours Worked": hours?.toFixed(1) || "",
+          "Hours Worked": hours?.toFixed(3) || "",
           "Diesel (L)": e.diesel || 0,
         });
       });
@@ -563,7 +563,7 @@ export default function SiteDashboard() {
             e.machine || "",
             e.operator || "",
             readingSource,
-            hours?.toFixed(1) || "-",
+            hours?.toFixed(3) || "-",
             `${e.diesel || 0} L`,
           ];
         });
@@ -736,7 +736,7 @@ export default function SiteDashboard() {
                     <td>${e.machine || ""}</td>
                     <td>${e.operator || ""}</td>
                     <td>${readingSource}</td>
-                    <td>${hours?.toFixed(1) || "-"}</td>
+                    <td>${hours?.toFixed(3) || "-"}</td>
                     <td>${e.diesel || 0} L</td>
                   </tr>
                 `;
@@ -1155,7 +1155,7 @@ export default function SiteDashboard() {
                                           <td className="p-2 border">{p.side || "-"}</td>
                                           <td className="p-2 border">{p.chainageFrom} - {p.chainageTo}</td>
                                           <td className="p-2 border text-right">{p.length || 0}×{p.width || 0}×{p.thickness || 0}</td>
-                                          <td className="p-2 border text-right">{p.quantity?.toFixed(2) || "-"}</td>
+                                          <td className="p-2 border text-right">{p.quantity?.toFixed(3) || "-"}</td>
                                           <td className="p-2 border">{p.uom || "-"}</td>
                                         </tr>
                                       ))}
@@ -1212,8 +1212,8 @@ export default function SiteDashboard() {
                                             <td className="p-2 border">{e.operator || "-"}</td>
                                             <td className="p-2 border">{e.task || "-"}</td>
                                             <td className="p-2 border">{sourceLabel}</td>
-                                            <td className="p-2 border text-right">{hours != null ? hours.toFixed(1) : "-"}</td>
-                                            <td className="p-2 border text-right">{e.diesel?.toFixed(1) || "-"}</td>
+                                            <td className="p-2 border text-right">{hours != null ? hours.toFixed(3) : "-"}</td>
+                                            <td className="p-2 border text-right">{e.diesel?.toFixed(3) || "-"}</td>
                                           </tr>
                                         );
                                       })}
@@ -1278,7 +1278,7 @@ export default function SiteDashboard() {
                                         <tr key={i} className="border-b">
                                           <td className="p-2 border">{m.type || "-"}</td>
                                           <td className="p-2 border">{m.material || "-"}</td>
-                                          <td className="p-2 border text-right">{m.quantity?.toFixed(2) || "-"}</td>
+                                          <td className="p-2 border text-right">{m.quantity?.toFixed(3) || "-"}</td>
                                           <td className="p-2 border">{m.uom || "-"}</td>
                                           <td className="p-2 border">{m.vehicleNumber || "-"}</td>
                                         </tr>
@@ -1341,7 +1341,7 @@ export default function SiteDashboard() {
               {Object.entries(materialTripsByMaterial).map(([material, data]) => (
                 <Card key={material} data-testid={`card-material-summary-${material}`}>
                   <CardContent className="p-4 text-center">
-                    <div className="text-2xl font-bold">{data.totalQty.toFixed(1)}</div>
+                    <div className="text-2xl font-bold">{data.totalQty.toFixed(3)}</div>
                     <div className="text-xs text-muted-foreground">{data.uom}</div>
                     <div className="font-medium mt-1">{material}</div>
                     <div className="text-xs text-muted-foreground">{data.count} trip{data.count !== 1 ? 's' : ''}</div>

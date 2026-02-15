@@ -443,10 +443,10 @@ export default function PlantStock() {
       const summaryData = stockSummary.map(item => ({
         Material: item.materialName,
         "Stock Owner": item.partyName,
-        Opening: item.openingStock.toFixed(2),
-        Received: item.received.toFixed(2),
-        Consumed: item.consumed.toFixed(2),
-        Closing: item.closing.toFixed(2),
+        Opening: item.openingStock.toFixed(3),
+        Received: item.received.toFixed(3),
+        Consumed: item.consumed.toFixed(3),
+        Closing: item.closing.toFixed(3),
         UOM: item.uom,
       }));
       
@@ -466,9 +466,9 @@ export default function PlantStock() {
             : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
             ? entry.notes.replace('Issue to ', '').split(' - ')[0]
             : entry.notes || '-',
-          In: displayIn > 0 ? displayIn.toFixed(2) : "-",
-          Out: displayOut > 0 ? displayOut.toFixed(2) : "-",
-          Balance: displayBalance.toFixed(2),
+          In: displayIn > 0 ? displayIn.toFixed(3) : "-",
+          Out: displayOut > 0 ? displayOut.toFixed(3) : "-",
+          Balance: displayBalance.toFixed(3),
           UOM: balanceUom,
         };
       });
@@ -529,10 +529,10 @@ export default function PlantStock() {
       const summaryTableData = stockSummary.map(item => [
         item.materialName,
         item.partyName,
-        item.openingStock.toFixed(2),
-        item.received.toFixed(2),
-        item.consumed.toFixed(2),
-        item.closing.toFixed(2),
+        item.openingStock.toFixed(3),
+        item.received.toFixed(3),
+        item.consumed.toFixed(3),
+        item.closing.toFixed(3),
         item.uom,
       ]);
       
@@ -581,9 +581,9 @@ export default function PlantStock() {
             : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
             ? entry.notes.replace('Issue to ', '').split(' - ')[0]
             : entry.notes || '-',
-          displayIn > 0 ? displayIn.toFixed(2) : "-",
-          displayOut > 0 ? displayOut.toFixed(2) : "-",
-          displayBalance.toFixed(2),
+          displayIn > 0 ? displayIn.toFixed(3) : "-",
+          displayOut > 0 ? displayOut.toFixed(3) : "-",
+          displayBalance.toFixed(3),
           balanceUom,
         ];
       });
@@ -680,10 +680,10 @@ export default function PlantStock() {
                 <tr>
                   <td>${item.materialName}</td>
                   <td>${item.partyName}</td>
-                  <td class="text-right">${item.openingStock.toFixed(2)}</td>
-                  <td class="text-right text-green">+${item.received.toFixed(2)}</td>
-                  <td class="text-right text-red">-${item.consumed.toFixed(2)}</td>
-                  <td class="text-right"><strong>${item.closing.toFixed(2)}</strong></td>
+                  <td class="text-right">${item.openingStock.toFixed(3)}</td>
+                  <td class="text-right text-green">+${item.received.toFixed(3)}</td>
+                  <td class="text-right text-red">-${item.consumed.toFixed(3)}</td>
+                  <td class="text-right"><strong>${item.closing.toFixed(3)}</strong></td>
                   <td>${item.uom}</td>
                 </tr>
               `).join('')}
@@ -724,9 +724,9 @@ export default function PlantStock() {
                   <td>${getPartyName(entry.partyId)}</td>
                   <td>${getTransactionTypeLabel(entry.transactionType)}</td>
                   <td>${notes}</td>
-                  <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(2) : '-'}</td>
-                  <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(2) : '-'}</td>
-                  <td class="text-right"><strong>${convData.displayBalance.toFixed(2)}</strong></td>
+                  <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(3) : '-'}</td>
+                  <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(3) : '-'}</td>
+                  <td class="text-right"><strong>${convData.displayBalance.toFixed(3)}</strong></td>
                   <td>${convData.balanceUom}</td>
                 </tr>`;
               }).join('')}
@@ -985,19 +985,19 @@ export default function PlantStock() {
                             </td>
                             <td className="py-3 px-2 text-right">
                               {hasConversion ? (
-                                <span title={`${item.openingStock.toFixed(2)} ${item.uom}`}>
-                                  {item.convertedOpening?.toFixed(2)}
+                                <span title={`${item.openingStock.toFixed(3)} ${item.uom}`}>
+                                  {item.convertedOpening?.toFixed(3)}
                                 </span>
-                              ) : item.openingStock.toFixed(2)}
+                              ) : item.openingStock.toFixed(3)}
                             </td>
                             <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">
-                              +{hasConversion ? item.convertedReceived?.toFixed(2) : item.received.toFixed(2)}
+                              +{hasConversion ? item.convertedReceived?.toFixed(3) : item.received.toFixed(3)}
                             </td>
                             <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">
-                              -{hasConversion ? item.convertedConsumed?.toFixed(2) : item.consumed.toFixed(2)}
+                              -{hasConversion ? item.convertedConsumed?.toFixed(3) : item.consumed.toFixed(3)}
                             </td>
                             <td className="py-3 px-2 text-right font-bold">
-                              {hasConversion ? item.convertedClosing?.toFixed(2) : item.closing.toFixed(2)}
+                              {hasConversion ? item.convertedClosing?.toFixed(3) : item.closing.toFixed(3)}
                             </td>
                             <td className="py-3 px-2">
                               {hasConversion ? item.conversionToUom : item.uom}
@@ -1057,22 +1057,22 @@ export default function PlantStock() {
                         b.balance < 0 ? 'text-red-600 dark:text-red-400' : 
                         b.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
                       }`}>
-                        {b.balance.toFixed(2)} <span className="text-base font-normal text-muted-foreground">{b.uom}</span>
+                        {b.balance.toFixed(3)} <span className="text-base font-normal text-muted-foreground">{b.uom}</span>
                       </div>
                       {b.convertedBalance !== null && b.conversionToUom && (
                         <div className="text-sm text-muted-foreground mb-3">
-                          = {b.convertedBalance.toFixed(2)} {b.conversionToUom}
+                          = {b.convertedBalance.toFixed(3)} {b.conversionToUom}
                         </div>
                       )}
                       
                       <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                         <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
                           <div className="text-xs text-muted-foreground">Total Receipts</div>
-                          <div className="font-semibold text-green-600 dark:text-green-400">+{b.totalReceipts.toFixed(2)}</div>
+                          <div className="font-semibold text-green-600 dark:text-green-400">+{b.totalReceipts.toFixed(3)}</div>
                         </div>
                         <div className="bg-red-50 dark:bg-red-900/20 rounded p-2">
                           <div className="text-xs text-muted-foreground">Total Issues</div>
-                          <div className="font-semibold text-red-600 dark:text-red-400">-{b.totalIssues.toFixed(2)}</div>
+                          <div className="font-semibold text-red-600 dark:text-red-400">-{b.totalIssues.toFixed(3)}</div>
                         </div>
                       </div>
                       
@@ -1178,12 +1178,12 @@ export default function PlantStock() {
                               : entry.notes || '-'}
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
-                            {displayIn > 0 ? `${displayIn.toFixed(2)}` : '-'}
+                            {displayIn > 0 ? `${displayIn.toFixed(3)}` : '-'}
                           </td>
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
-                            {displayOut > 0 ? `${displayOut.toFixed(2)}` : '-'}
+                            {displayOut > 0 ? `${displayOut.toFixed(3)}` : '-'}
                           </td>
-                          <td className="p-3 text-right font-bold">{displayBalance.toFixed(2)} {balanceUom}</td>
+                          <td className="p-3 text-right font-bold">{displayBalance.toFixed(3)} {balanceUom}</td>
                         </tr>
                         );
                       })}
@@ -1192,13 +1192,13 @@ export default function PlantStock() {
                       <tr>
                         <td colSpan={5} className="p-3 font-bold text-right">Filtered Totals:</td>
                         <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">
-                          {ledgerTotals.totalIn.toFixed(2)}
+                          {ledgerTotals.totalIn.toFixed(3)}
                         </td>
                         <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">
-                          {ledgerTotals.totalOut.toFixed(2)}
+                          {ledgerTotals.totalOut.toFixed(3)}
                         </td>
                         <td className="p-3 text-right font-bold">
-                          Net: {ledgerTotals.netChange >= 0 ? '+' : ''}{ledgerTotals.netChange.toFixed(2)}
+                          Net: {ledgerTotals.netChange >= 0 ? '+' : ''}{ledgerTotals.netChange.toFixed(3)}
                         </td>
                       </tr>
                     </tfoot>

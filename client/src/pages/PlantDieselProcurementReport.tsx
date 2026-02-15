@@ -119,11 +119,11 @@ export default function PlantDieselProcurementReport() {
     }));
 
     const summarySheet = [{
-      "Total Plant Receipts (L)": totalPlantReceipts.toFixed(1),
-      "Total Direct Site Purchases (L)": totalDirectPurchases.toFixed(1),
-      "Total Procured (L)": totalProcured.toFixed(1),
-      "Total Issued (L)": totalIssued.toFixed(1),
-      "Direct Site Purchase Amount (Rs)": totalAmountPaid.toFixed(2)
+      "Total Plant Receipts (L)": totalPlantReceipts.toFixed(3),
+      "Total Direct Site Purchases (L)": totalDirectPurchases.toFixed(3),
+      "Total Procured (L)": totalProcured.toFixed(3),
+      "Total Issued (L)": totalIssued.toFixed(3),
+      "Direct Site Purchase Amount (Rs)": totalAmountPaid.toFixed(3)
     }];
 
     const wb = XLSX.utils.book_new();
@@ -149,11 +149,11 @@ export default function PlantDieselProcurementReport() {
       startY: 52,
       head: [["Metric", "Value"]],
       body: [
-        ["Total Plant Receipts", `${totalPlantReceipts.toFixed(1)} L`],
-        ["Total Direct Site Purchases", `${totalDirectPurchases.toFixed(1)} L`],
-        ["Total Procured", `${totalProcured.toFixed(1)} L`],
-        ["Total Issued to Equipment", `${totalIssued.toFixed(1)} L`],
-        ["Direct Site Purchase Amount", `Rs. ${totalAmountPaid.toFixed(2)}`],
+        ["Total Plant Receipts", `${totalPlantReceipts.toFixed(3)} L`],
+        ["Total Direct Site Purchases", `${totalDirectPurchases.toFixed(3)} L`],
+        ["Total Procured", `${totalProcured.toFixed(3)} L`],
+        ["Total Issued to Equipment", `${totalIssued.toFixed(3)} L`],
+        ["Direct Site Purchase Amount", `Rs. ${totalAmountPaid.toFixed(3)}`],
       ],
     });
 
@@ -165,7 +165,7 @@ export default function PlantDieselProcurementReport() {
         head: [["Date", "Qty (L)", "Party", "Supplier"]],
         body: plantStockReceipts.map(r => [
           r.date,
-          r.quantity?.toFixed(1) || "0",
+          r.quantity?.toFixed(3) || "0",
           getPartyName(r.partyId),
           r.supplier || "-"
         ]),
@@ -180,7 +180,7 @@ export default function PlantDieselProcurementReport() {
         head: [["Date", "Qty (L)", "Details"]],
         body: directPurchaseEntries.map(e => [
           e.date,
-          e.quantityIn?.toFixed(1) || "0",
+          e.quantityIn?.toFixed(3) || "0",
           e.notes || "-"
         ]),
       });
@@ -248,7 +248,7 @@ export default function PlantDieselProcurementReport() {
               <Package className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Plant Receipts</span>
             </div>
-            <p className="text-2xl font-bold text-primary">{totalPlantReceipts.toFixed(1)} L</p>
+            <p className="text-2xl font-bold text-primary">{totalPlantReceipts.toFixed(3)} L</p>
             <p className="text-xs text-muted-foreground">{plantStockReceipts.length} entries</p>
           </CardContent>
         </Card>
@@ -259,7 +259,7 @@ export default function PlantDieselProcurementReport() {
               <MapPin className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Direct Site Purchases</span>
             </div>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalDirectPurchases.toFixed(1)} L</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalDirectPurchases.toFixed(3)} L</p>
             <p className="text-xs text-muted-foreground">{directPurchaseEntries.length} entries</p>
           </CardContent>
         </Card>
@@ -270,7 +270,7 @@ export default function PlantDieselProcurementReport() {
               <Fuel className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Total Procured</span>
             </div>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalProcured.toFixed(1)} L</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalProcured.toFixed(3)} L</p>
           </CardContent>
         </Card>
 
@@ -309,7 +309,7 @@ export default function PlantDieselProcurementReport() {
                       {receipt.supplier || "Unknown Supplier"} | {getPartyName(receipt.partyId)}
                     </p>
                   </div>
-                  <Badge variant="outline" className="font-bold">{(receipt.quantity || 0).toFixed(1)} L</Badge>
+                  <Badge variant="outline" className="font-bold">{(receipt.quantity || 0).toFixed(3)} L</Badge>
                 </div>
               ))}
             </div>
@@ -350,7 +350,7 @@ export default function PlantDieselProcurementReport() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <Badge variant="secondary" className="font-bold">{(entry.quantityIn || 0).toFixed(1)} L</Badge>
+                      <Badge variant="secondary" className="font-bold">{(entry.quantityIn || 0).toFixed(3)} L</Badge>
                       {amountMatch && (
                         <p className="text-xs text-muted-foreground mt-1">Rs. {parseFloat(amountMatch[1]).toFixed(0)}</p>
                       )}

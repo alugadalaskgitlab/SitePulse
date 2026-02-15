@@ -385,9 +385,9 @@ export default function PlantLdoFlowMeter() {
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "",
       `T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})`,
-      r.meterReading.toLocaleString(),
+      r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
-      r.quantityLiters ? r.quantityLiters.toLocaleString() : "",
+      r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
       r.notes || "",
     ]);
     autoTable(doc, {
@@ -405,7 +405,7 @@ export default function PlantLdoFlowMeter() {
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | LDO: ${LDO_DENSITY_KG_PER_LITER} kg/L</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})</td><td>${r.meterReading.toLocaleString()}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toLocaleString() : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -482,7 +482,7 @@ export default function PlantLdoFlowMeter() {
             <CardContent>
               {latestTank1 ? (
                 <div className="space-y-1 text-sm">
-                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t1">{latestTank1.meterReading.toLocaleString()} L</div>
+                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t1">{latestTank1.meterReading.toFixed(3)} L</div>
                   <div className="text-muted-foreground">
                     {latestTank1.date} {latestTank1.time || ""} ({latestTank1.readingType})
                   </div>
@@ -506,7 +506,7 @@ export default function PlantLdoFlowMeter() {
             <CardContent>
               {latestTank2 ? (
                 <div className="space-y-1 text-sm">
-                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t2">{latestTank2.meterReading.toLocaleString()} L</div>
+                  <div className="text-2xl font-bold" data-testid="text-latest-meter-t2">{latestTank2.meterReading.toFixed(3)} L</div>
                   <div className="text-muted-foreground">
                     {latestTank2.date} {latestTank2.time || ""} ({latestTank2.readingType})
                   </div>
@@ -526,13 +526,13 @@ export default function PlantLdoFlowMeter() {
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Total (Recent):</span>
               <span className="font-bold" data-testid="text-combined-consumption">
-                {totalConsumptionBothTanks > 0 ? `${totalConsumptionBothTanks.toLocaleString()} L` : "-"}
+                {totalConsumptionBothTanks > 0 ? `${totalConsumptionBothTanks.toFixed(3)} L` : "-"}
               </span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Weight:</span>
               <span className="font-bold">
-                {totalConsumptionBothTanks > 0 ? `${Math.round(totalConsumptionBothTanks * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg` : "-"}
+                {totalConsumptionBothTanks > 0 ? `${(totalConsumptionBothTanks * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg` : "-"}
               </span>
             </div>
           </CardContent>
@@ -564,14 +564,14 @@ export default function PlantLdoFlowMeter() {
                   {dailySummary.map(day => (
                     <tr key={day.date} className="border-b" data-testid={`row-daily-${day.date}`}>
                       <td className="p-2">{day.date}</td>
-                      <td className="p-2 text-right">{day.t1Opening?.meterReading?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t1Closing?.meterReading?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t1Consumption !== null ? day.t1Consumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Opening?.meterReading?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t2Closing?.meterReading?.toLocaleString() ?? "-"}</td>
-                      <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right">{day.materialReceiptL ? Math.round(day.materialReceiptL).toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{day.t1Opening?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t1Closing?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t1Consumption !== null ? day.t1Consumption.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right">{day.t2Opening?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t2Closing?.meterReading?.toFixed(3) ?? "-"}</td>
+                      <td className="p-2 text-right">{day.t2Consumption !== null ? day.t2Consumption.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right">{day.materialReceiptL ? day.materialReceiptL.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right font-bold">{day.totalConsumption ? day.totalConsumption.toFixed(3) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -606,13 +606,13 @@ export default function PlantLdoFlowMeter() {
                   {varianceData.map(row => (
                     <tr key={row.date} className="border-b" data-testid={`row-ldo-variance-${row.date}`}>
                       <td className="p-2">{row.date}</td>
-                      <td className="p-2 text-right">{row.production.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                      <td className="p-2 text-right">{row.theoretical.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                      <td className="p-2 text-right">{row.actualT1 !== null ? row.actualT1.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right">{row.actualT2 !== null ? row.actualT2.toLocaleString() : "-"}</td>
-                      <td className="p-2 text-right font-bold">{row.actualTotal.toLocaleString()}</td>
+                      <td className="p-2 text-right">{row.production.toFixed(3)}</td>
+                      <td className="p-2 text-right">{row.theoretical.toFixed(3)}</td>
+                      <td className="p-2 text-right">{row.actualT1 !== null ? row.actualT1.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right">{row.actualT2 !== null ? row.actualT2.toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right font-bold">{row.actualTotal.toFixed(3)}</td>
                       <td className={`p-2 text-right font-bold ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {row.variance.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                        {row.variance.toFixed(3)}
                       </td>
                       <td className={`p-2 text-right ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                         {row.variancePercent !== null ? `${row.variancePercent}%` : "-"}
@@ -636,13 +636,13 @@ export default function PlantLdoFlowMeter() {
                     return (
                       <tr className="border-t-2 font-bold">
                         <td className="p-2">Total</td>
-                        <td className="p-2 text-right">{totProd.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                        <td className="p-2 text-right">{totTheo.toLocaleString(undefined, { maximumFractionDigits: 1 })} ({Math.round(totTheo * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg)</td>
-                        <td className="p-2 text-right">{totT1.toLocaleString()}</td>
-                        <td className="p-2 text-right">{totT2.toLocaleString()}</td>
-                        <td className="p-2 text-right">{totActual.toLocaleString()} ({Math.round(totActual * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg)</td>
+                        <td className="p-2 text-right">{totProd.toFixed(3)}</td>
+                        <td className="p-2 text-right">{totTheo.toFixed(3)} ({(totTheo * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg)</td>
+                        <td className="p-2 text-right">{totT1.toFixed(3)}</td>
+                        <td className="p-2 text-right">{totT2.toFixed(3)}</td>
+                        <td className="p-2 text-right">{totActual.toFixed(3)} ({(totActual * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg)</td>
                         <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {totVar.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                          {totVar.toFixed(3)}
                         </td>
                         <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                           {totVarPct !== null ? `${totVarPct}%` : "-"}
@@ -726,13 +726,13 @@ export default function PlantLdoFlowMeter() {
                           T{r.tankNumber} ({TANK_LABELS[r.tankNumber]})
                         </Badge>
                       </td>
-                      <td className="p-2 text-right font-medium">{r.meterReading.toLocaleString()}</td>
+                      <td className="p-2 text-right font-medium">{r.meterReading.toFixed(3)}</td>
                       <td className="p-2">
                         <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : "outline"}>
                           {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
                         </Badge>
                       </td>
-                      <td className="p-2 text-right">{r.quantityLiters ? r.quantityLiters.toLocaleString() : "-"}</td>
+                      <td className="p-2 text-right">{r.quantityLiters ? r.quantityLiters.toFixed(3) : "-"}</td>
                       <td className="p-2 text-muted-foreground text-xs">{r.notes || "-"}</td>
                       {isAdmin && (
                         <td className="p-2 text-center">
@@ -817,7 +817,7 @@ export default function PlantLdoFlowMeter() {
               />
               {meterReading && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  = {Math.round(parseFloat(meterReading) * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg
+                  = {(parseFloat(meterReading) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
                 </p>
               )}
             </div>
@@ -836,7 +836,7 @@ export default function PlantLdoFlowMeter() {
                 />
                 {quantityLiters && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    = {Math.round(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER).toLocaleString()} kg
+                    = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
                   </p>
                 )}
               </div>

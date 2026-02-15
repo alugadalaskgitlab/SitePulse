@@ -256,10 +256,10 @@ export default function DprDetails() {
                   const calculateQty = (length?: number, width?: number, thickness?: number, uom?: string) => {
                     if (!length || !width || !uom) return null;
                     if (uom.toLowerCase() === 'sqm') {
-                      return (length * width).toFixed(2);
+                      return (length * width).toFixed(3);
                     } else if (uom.toLowerCase() === 'cum') {
                       if (!thickness) return null;
-                      return (length * width * thickness).toFixed(2);
+                      return (length * width * thickness).toFixed(3);
                     }
                     return null;
                   };
@@ -327,7 +327,7 @@ export default function DprDetails() {
                           const endMins = endHour * 60 + endMin;
                           const diff = endMins - startMins;
                           if (diff < 0) return '-';
-                          return (diff / 60).toFixed(2);
+                          return (diff / 60).toFixed(3);
                         } catch {
                           return '-';
                         }
@@ -351,7 +351,7 @@ export default function DprDetails() {
                 <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
                   <p className="text-sm text-muted-foreground">Total Diesel Issued</p>
                   <p className="text-2xl font-bold text-primary">
-                    {dpr.equipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0).toFixed(1)} L
+                    {dpr.equipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0).toFixed(3)} L
                   </p>
                 </div>
               </>
@@ -419,7 +419,7 @@ export default function DprDetails() {
                         <Badge variant="outline">{item.uom}</Badge>
                       </TableCell>
                       <TableCell className="text-sm">{item.supplier}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.totalQty.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.totalQty.toFixed(3)}</TableCell>
                       <TableCell className="text-right">{item.trips}</TableCell>
                     </TableRow>
                   ))}
@@ -435,7 +435,7 @@ export default function DprDetails() {
                     data-testid={`card-material-summary-${i}`}
                   >
                     <p className="text-sm font-medium">{item.material}</p>
-                    <p className="text-2xl font-bold">{item.totalQty.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">{item.uom}</span></p>
+                    <p className="text-2xl font-bold">{item.totalQty.toFixed(3)} <span className="text-sm font-normal text-muted-foreground">{item.uom}</span></p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {item.trips} trip{item.trips > 1 ? 's' : ''}
                     </p>

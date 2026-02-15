@@ -485,14 +485,14 @@ export default function PlantEquipmentUsage() {
         Equipment: equip?.name || "Unknown",
         "Opening Reading": entry.openingReading,
         "Closing Reading": entry.closingReading,
-        "Hours/KM Run": entry.hoursOrKmRun?.toFixed(1) || (isTripBased ? "-" : "0"),
+        "Hours/KM Run": entry.hoursOrKmRun?.toFixed(3) || (isTripBased ? "-" : "0"),
         "Trips": (entry as any).numberOfTrips || "-",
         "Trip Dist (km)": (entry as any).tripDistance || "-",
-        "Total KM": (entry as any).totalKm?.toFixed(1) || "-",
-        "Opening Diesel": openingDieselVal.toFixed(1),
-        "Diesel Issued": dieselIssuedVal.toFixed(1),
-        "Closing Diesel": closingDieselVal.toFixed(1),
-        "Expected Diesel": consumed.toFixed(1),
+        "Total KM": (entry as any).totalKm?.toFixed(3) || "-",
+        "Opening Diesel": openingDieselVal.toFixed(3),
+        "Diesel Issued": dieselIssuedVal.toFixed(3),
+        "Closing Diesel": closingDieselVal.toFixed(3),
+        "Expected Diesel": consumed.toFixed(3),
       };
     });
   };
@@ -848,7 +848,7 @@ export default function PlantEquipmentUsage() {
                   </div>
                   {numberOfTrips && tripDistance && (
                     <p className="text-xs text-muted-foreground">
-                      Total: {(parseInt(numberOfTrips) * parseFloat(tripDistance) * 2).toFixed(1)} km ({numberOfTrips} trips × {tripDistance} km × 2)
+                      Total: {(parseInt(numberOfTrips) * parseFloat(tripDistance) * 2).toFixed(3)} km ({numberOfTrips} trips × {tripDistance} km × 2)
                     </p>
                   )}
                 </div>
@@ -857,11 +857,11 @@ export default function PlantEquipmentUsage() {
               {(runtime > 0 || (tripBasedEntry && tripTotalKm > 0)) && selectedEquipment && (
                 <div className="p-3 bg-muted rounded-md text-sm">
                   {runtime > 0 ? (
-                    <p>Runtime: <strong>{runtime.toFixed(2)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "km"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
+                    <p>Runtime: <strong>{runtime.toFixed(3)} {selectedEquipment.meterType === "hour_meter" ? "hrs" : "km"}</strong> {meterRuntime > 0 ? "(from meter)" : "(from time)"}</p>
                   ) : tripTotalKm > 0 ? (
-                    <p>Distance: <strong>{tripTotalKm.toFixed(1)} km</strong> (from trips)</p>
+                    <p>Distance: <strong>{tripTotalKm.toFixed(3)} km</strong> (from trips)</p>
                   ) : null}
-                  {!dieselIncluded && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(2)} L</strong></p>}
+                  {!dieselIncluded && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(3)} L</strong></p>}
                 </div>
               )}
 
@@ -960,7 +960,7 @@ export default function PlantEquipmentUsage() {
                         )}
                       </div>
                       {previousDieselBalance !== null && !editingUsage && (
-                        <p className="text-xs text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(1)} L</p>
+                        <p className="text-xs text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(3)} L</p>
                       )}
                     </div>
                     <div>
@@ -971,7 +971,7 @@ export default function PlantEquipmentUsage() {
 
                   {openingDiesel && dieselIssued !== undefined && expectedDiesel > 0 && (
                     <div className="p-3 bg-primary/10 rounded-md text-sm">
-                      <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(1)} L</strong></p>
+                      <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(3)} L</strong></p>
                     </div>
                   )}
                 </>
@@ -1196,22 +1196,22 @@ export default function PlantEquipmentUsage() {
             <div className="flex flex-wrap gap-4 mt-2 text-sm" data-testid="diesel-totals-container">
               <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-900/20" data-testid="diesel-total-issued">
                 <span className="text-blue-600 dark:text-blue-400 font-medium">Total Diesel Issued:</span>
-                <span className="font-bold text-blue-700 dark:text-blue-300">{dieselTotals.totalIssued.toFixed(1)} L</span>
+                <span className="font-bold text-blue-700 dark:text-blue-300">{dieselTotals.totalIssued.toFixed(3)} L</span>
               </div>
               <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-orange-50 dark:bg-orange-900/20" data-testid="diesel-total-expected">
                 <span className="text-orange-600 dark:text-orange-400 font-medium">Expected Consumption:</span>
-                <span className="font-bold text-orange-700 dark:text-orange-300">{dieselTotals.totalExpected.toFixed(1)} L</span>
+                <span className="font-bold text-orange-700 dark:text-orange-300">{dieselTotals.totalExpected.toFixed(3)} L</span>
               </div>
               {dieselTotals.totalIssued >= dieselTotals.totalExpected && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-green-50 dark:bg-green-900/20" data-testid="diesel-total-surplus">
                   <span className="text-green-600 dark:text-green-400 font-medium">Balance in Tanks:</span>
-                  <span className="font-bold text-green-700 dark:text-green-300">{(dieselTotals.totalIssued - dieselTotals.totalExpected).toFixed(1)} L</span>
+                  <span className="font-bold text-green-700 dark:text-green-300">{(dieselTotals.totalIssued - dieselTotals.totalExpected).toFixed(3)} L</span>
                 </div>
               )}
               {dieselTotals.totalExpected > dieselTotals.totalIssued && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20" data-testid="diesel-total-deficit">
                   <span className="text-red-600 dark:text-red-400 font-medium">Over-Consumed:</span>
-                  <span className="font-bold text-red-700 dark:text-red-300">{(dieselTotals.totalExpected - dieselTotals.totalIssued).toFixed(1)} L</span>
+                  <span className="font-bold text-red-700 dark:text-red-300">{(dieselTotals.totalExpected - dieselTotals.totalIssued).toFixed(3)} L</span>
                 </div>
               )}
             </div>
@@ -1264,14 +1264,14 @@ export default function PlantEquipmentUsage() {
                                 </span>
                                 {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
                                   <>
-                                    <span className="font-medium">{((entry as any).totalKm || 0).toFixed(1)} km</span>
+                                    <span className="font-medium">{((entry as any).totalKm || 0).toFixed(3)} km</span>
                                     <span className="text-xs text-muted-foreground block">
                                       {(entry as any).numberOfTrips} trips × {(entry as any).tripDistance} km × 2
                                     </span>
                                   </>
                                 ) : (
                                   <>
-                                    <span className="font-medium">{entry.hoursOrKmRun?.toFixed(2)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
+                                    <span className="font-medium">{entry.hoursOrKmRun?.toFixed(3)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
                                     {entry.openingReading != null && entry.closingReading != null ? (
                                       <span className="text-xs text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
                                     ) : entry.startTime && entry.endTime ? (
@@ -1292,11 +1292,11 @@ export default function PlantEquipmentUsage() {
                                 <>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Diesel Issued</span>
-                                    <span className="font-medium">{dieselIssuedVal.toFixed(2)} L</span>
+                                    <span className="font-medium">{dieselIssuedVal.toFixed(3)} L</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Consumed</span>
-                                    <span className="font-medium">{consumed.toFixed(2)} L</span>
+                                    <span className="font-medium">{consumed.toFixed(3)} L</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Efficiency</span>
@@ -1313,7 +1313,7 @@ export default function PlantEquipmentUsage() {
                                       const unit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
                                       return (
                                         <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                          {efficiencyValue.toFixed(2)} {unit}
+                                          {efficiencyValue.toFixed(3)} {unit}
                                         </span>
                                       );
                                     })()}
@@ -1323,7 +1323,7 @@ export default function PlantEquipmentUsage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Tank Balance</span>
-                                    <span className="font-medium">{closingDieselVal.toFixed(2)} L</span>
+                                    <span className="font-medium">{closingDieselVal.toFixed(3)} L</span>
                                   </div>
                                 </>
                               )}

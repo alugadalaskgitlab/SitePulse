@@ -139,9 +139,9 @@ export default function PlantLdoLogs() {
         "LDO Consumed (L)": log.ldoConsumed || 0,
         "Closing Stock (L)": log.closingStock || 0,
         "Tons Produced (MT)": log.tonsProduced || 0,
-        "Expected LDO (L)": log.expectedLdo?.toFixed(1) || 0,
-        "Efficiency (L/ton)": log.efficiency?.toFixed(2) || 0,
-        "Variance (L)": log.variance?.toFixed(1) || 0,
+        "Expected LDO (L)": log.expectedLdo?.toFixed(3) || 0,
+        "Efficiency (L/ton)": log.efficiency?.toFixed(3) || 0,
+        "Variance (L)": log.variance?.toFixed(3) || 0,
       }));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -196,10 +196,10 @@ export default function PlantLdoLogs() {
         log.ldoReceived?.toString() || "-",
         log.ldoConsumed?.toString() || "-",
         log.closingStock?.toString() || "-",
-        log.tonsProduced?.toFixed(1) || "-",
-        log.expectedLdo?.toFixed(1) || "-",
-        log.efficiency?.toFixed(2) || "-",
-        log.variance?.toFixed(1) || "-",
+        log.tonsProduced?.toFixed(3) || "-",
+        log.expectedLdo?.toFixed(3) || "-",
+        log.efficiency?.toFixed(3) || "-",
+        log.variance?.toFixed(3) || "-",
       ]);
       
       autoTable(doc, {
@@ -300,10 +300,10 @@ export default function PlantLdoLogs() {
                   <td>${log.ldoReceived || '-'}</td>
                   <td>${log.ldoConsumed || '-'}</td>
                   <td>${log.closingStock || '-'}</td>
-                  <td>${log.tonsProduced?.toFixed(1) || '-'}</td>
-                  <td>${log.expectedLdo?.toFixed(1) || '-'}</td>
-                  <td>${log.efficiency?.toFixed(2) || '-'}</td>
-                  <td>${log.variance?.toFixed(1) || '-'}</td>
+                  <td>${log.tonsProduced?.toFixed(3) || '-'}</td>
+                  <td>${log.expectedLdo?.toFixed(3) || '-'}</td>
+                  <td>${log.efficiency?.toFixed(3) || '-'}</td>
+                  <td>${log.variance?.toFixed(3) || '-'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -405,10 +405,10 @@ export default function PlantLdoLogs() {
 
               {tonsProduced && (
                 <div className="p-3 bg-muted rounded-md text-sm">
-                  <p>Expected LDO (@ {DEFAULT_LDO_NORM} L/ton): <strong>{expectedLdo.toFixed(1)} L</strong></p>
+                  <p>Expected LDO (@ {DEFAULT_LDO_NORM} L/ton): <strong>{expectedLdo.toFixed(3)} L</strong></p>
                   {ldoConsumed && (
                     <p>Variance: <strong className={parseFloat(ldoConsumed) > expectedLdo ? "text-destructive" : "text-green-600"}>
-                      {(expectedLdo - parseFloat(ldoConsumed)).toFixed(1)} L
+                      {(expectedLdo - parseFloat(ldoConsumed)).toFixed(3)} L
                     </strong></p>
                   )}
                 </div>
@@ -471,20 +471,20 @@ export default function PlantLdoLogs() {
                     <div>
                       <p className="font-medium">{log.date}</p>
                       <p className="text-sm text-muted-foreground">
-                        Production: {log.tonsProduced?.toFixed(1)} MT | Consumed: {log.ldoConsumed?.toFixed(1)} L
+                        Production: {log.tonsProduced?.toFixed(3)} MT | Consumed: {log.ldoConsumed?.toFixed(3)} L
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Opening: {log.openingStock} L + Received: {log.ldoReceived} L | Closing: {log.closingStock} L
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Expected: {log.expectedLdo?.toFixed(1)} L (@ {DEFAULT_LDO_NORM} L/ton)
+                        Expected: {log.expectedLdo?.toFixed(3)} L (@ {DEFAULT_LDO_NORM} L/ton)
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(2)} L/ton</p>
+                      <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/ton</p>
                       <Badge variant={isExcess ? "destructive" : "secondary"} className="gap-1 mt-1">
                         {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {Math.abs(variance).toFixed(1)} L {isExcess ? "excess" : "saved"}
+                        {Math.abs(variance).toFixed(3)} L {isExcess ? "excess" : "saved"}
                       </Badge>
                     </div>
                   </div>

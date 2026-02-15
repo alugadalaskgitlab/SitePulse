@@ -71,7 +71,7 @@ export default function PlantGeneratorLogs() {
       const startMins = sh * 60 + sm;
       const endMins = eh * 60 + em;
       const diffMins = endMins >= startMins ? endMins - startMins : (24 * 60 - startMins) + endMins;
-      return (diffMins / 60).toFixed(1);
+      return (diffMins / 60).toFixed(3);
     }
     return "";
   };
@@ -157,12 +157,12 @@ export default function PlantGeneratorLogs() {
         Generator: log.generatorName,
         "Start Time": log.startTime || "",
         "End Time": log.endTime || "",
-        "Hours Run": log.hoursRun?.toFixed(1) || "",
+        "Hours Run": log.hoursRun?.toFixed(3) || "",
         "Opening Diesel (L)": log.openingDiesel || 0,
         "Diesel Issued (L)": log.dieselIssued || 0,
-        "Diesel Consumed (L)": log.dieselConsumed?.toFixed(1) || 0,
+        "Diesel Consumed (L)": log.dieselConsumed?.toFixed(3) || 0,
         "Closing Diesel (L)": log.closingDiesel || 0,
-        "Efficiency (L/hr)": log.efficiency?.toFixed(2) || "",
+        "Efficiency (L/hr)": log.efficiency?.toFixed(3) || "",
       }));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -216,12 +216,12 @@ export default function PlantGeneratorLogs() {
         log.generatorName,
         log.startTime || "-",
         log.endTime || "-",
-        log.hoursRun?.toFixed(1) || "-",
+        log.hoursRun?.toFixed(3) || "-",
         log.openingDiesel || 0,
         log.dieselIssued || 0,
-        log.dieselConsumed?.toFixed(1) || 0,
+        log.dieselConsumed?.toFixed(3) || 0,
         log.closingDiesel || 0,
-        log.efficiency?.toFixed(2) || "-",
+        log.efficiency?.toFixed(3) || "-",
       ]);
       
       autoTable(doc, {
@@ -322,12 +322,12 @@ export default function PlantGeneratorLogs() {
                   <td>${log.generatorName}</td>
                   <td>${log.startTime || '-'}</td>
                   <td>${log.endTime || '-'}</td>
-                  <td>${log.hoursRun?.toFixed(1) || '-'}</td>
+                  <td>${log.hoursRun?.toFixed(3) || '-'}</td>
                   <td>${log.openingDiesel || 0}</td>
                   <td>${log.dieselIssued || 0}</td>
-                  <td>${log.dieselConsumed?.toFixed(1) || 0}</td>
+                  <td>${log.dieselConsumed?.toFixed(3) || 0}</td>
                   <td>${log.closingDiesel || 0}</td>
-                  <td>${log.efficiency?.toFixed(2) || '-'}</td>
+                  <td>${log.efficiency?.toFixed(3) || '-'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -501,7 +501,7 @@ export default function PlantGeneratorLogs() {
                   <div>
                     <p className="font-medium">{log.generatorName}</p>
                     <p className="text-sm text-muted-foreground">
-                      {log.startTime} - {log.endTime} ({log.hoursRun?.toFixed(1)} hrs)
+                      {log.startTime} - {log.endTime} ({log.hoursRun?.toFixed(3)} hrs)
                     </p>
                     <div className="flex flex-wrap gap-3 text-xs mt-1">
                       <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
@@ -511,16 +511,16 @@ export default function PlantGeneratorLogs() {
                         Issued: {log.dieselIssued || 0} L
                       </span>
                       <span className="px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
-                        Consumed: {log.dieselConsumed?.toFixed(1) || 0} L
+                        Consumed: {log.dieselConsumed?.toFixed(3) || 0} L
                       </span>
                       <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                        Closing: {log.closingDiesel || ((log.openingDiesel || 0) + (log.dieselIssued || 0) - (log.dieselConsumed || 0)).toFixed(1)} L
+                        Closing: {log.closingDiesel || ((log.openingDiesel || 0) + (log.dieselIssued || 0) - (log.dieselConsumed || 0)).toFixed(3)} L
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">{log.date}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(2)} L/hr</p>
+                    <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/hr</p>
                     <p className="text-xs text-muted-foreground">Efficiency</p>
                   </div>
                 </div>

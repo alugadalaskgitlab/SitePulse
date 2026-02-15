@@ -824,7 +824,7 @@ export default function SiteEdit() {
           ))}
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
             <p className="text-sm text-muted-foreground">Total Diesel</p>
-            <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(1)} L</p>
+            <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(3)} L</p>
           </div>
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('equipment')} data-testid="button-add-equipment-bottom">
             <Plus className="w-4 h-4 mr-1" /> Add Row

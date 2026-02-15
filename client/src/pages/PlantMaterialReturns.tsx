@@ -150,7 +150,7 @@ export default function PlantMaterialReturns() {
 
     const qty = parseFloat(returnQuantity);
     if (qty <= 0 || qty > remainingQty) {
-      toast({ title: `Quantity must be between 0 and ${remainingQty.toFixed(2)}`, variant: "destructive" });
+      toast({ title: `Quantity must be between 0 and ${remainingQty.toFixed(3)}`, variant: "destructive" });
       return;
     }
 
@@ -399,7 +399,7 @@ export default function PlantMaterialReturns() {
                           if (remaining <= 0) return null;
                           return (
                             <SelectItem key={issue.id} value={String(issue.id)}>
-                              {issue.date} | {issue.issuedTo} | {issue.quantity} {issue.uom} (Remaining: {remaining.toFixed(2)})
+                              {issue.date} | {issue.issuedTo} | {issue.quantity} {issue.uom} (Remaining: {remaining.toFixed(3)})
                               {(issue as any).receivedBy ? ` | Rcvd: ${(issue as any).receivedBy}` : ""}
                             </SelectItem>
                           );
@@ -416,8 +416,8 @@ export default function PlantMaterialReturns() {
                         <div><span className="text-muted-foreground">Issue Date:</span> {selectedIssue.date} {selectedIssue.time && `at ${selectedIssue.time}`}</div>
                         <div><span className="text-muted-foreground">Issued To:</span> {selectedIssue.issuedTo}</div>
                         <div><span className="text-muted-foreground">Quantity:</span> {selectedIssue.quantity} {selectedIssue.uom}</div>
-                        <div><span className="text-muted-foreground">Already Returned:</span> {(returnedQtyByIssue[selectedIssue.id] || 0).toFixed(2)} {selectedIssue.uom}</div>
-                        <div className="font-semibold"><span className="text-muted-foreground">Remaining:</span> {remainingQty.toFixed(2)} {selectedIssue.uom}</div>
+                        <div><span className="text-muted-foreground">Already Returned:</span> {(returnedQtyByIssue[selectedIssue.id] || 0).toFixed(3)} {selectedIssue.uom}</div>
+                        <div className="font-semibold"><span className="text-muted-foreground">Remaining:</span> {remainingQty.toFixed(3)} {selectedIssue.uom}</div>
                         <div><span className="text-muted-foreground">Stock Owner:</span> {getPartyName(selectedIssue.partyId)}</div>
                         {(selectedIssue as any).receivedBy && <div><span className="text-muted-foreground">Received By:</span> {(selectedIssue as any).receivedBy}</div>}
                         {selectedIssue.purpose && <div><span className="text-muted-foreground">Purpose:</span> {selectedIssue.purpose}</div>}
@@ -436,14 +436,14 @@ export default function PlantMaterialReturns() {
                     </div>
 
                     <div>
-                      <Label>Return Quantity (Max: {remainingQty.toFixed(2)} {selectedIssue.uom})</Label>
+                      <Label>Return Quantity (Max: {remainingQty.toFixed(3)} {selectedIssue.uom})</Label>
                       <Input
                         type="number"
                         step="0.01"
                         max={remainingQty}
                         value={returnQuantity}
                         onChange={(e) => setReturnQuantity(e.target.value)}
-                        placeholder={`0.00 (max ${remainingQty.toFixed(2)})`}
+                        placeholder={`0.000 (max ${remainingQty.toFixed(3)})`}
                         data-testid="input-return-quantity"
                       />
                     </div>
@@ -518,7 +518,7 @@ export default function PlantMaterialReturns() {
               <span className="font-semibold text-green-700 dark:text-green-300">Return Totals:</span>
               {filteredTotals.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
-                  {t.materialName}: {t.total.toFixed(2)} {t.uom}
+                  {t.materialName}: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
             </div>

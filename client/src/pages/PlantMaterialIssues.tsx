@@ -582,7 +582,7 @@ export default function PlantMaterialIssues() {
               <span className="font-semibold text-orange-700 dark:text-orange-300">Filtered Totals:</span>
               {filteredTotals.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 text-sm px-3 py-1">
-                  {t.materialName}: {t.total.toFixed(2)} {t.uom}
+                  {t.materialName}: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
             </div>

@@ -384,8 +384,8 @@ export default function PlantBitumenStock() {
 
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "", `Tank ${r.tankNumber}`, r.depthCm.toString(),
-      r.volumeLiters.toLocaleString(), (r.weightKg / 1000).toFixed(3),
-      getUsableVolume(r.depthCm).toLocaleString(),
+      r.volumeLiters.toFixed(3), (r.weightKg / 1000).toFixed(3),
+      getUsableVolume(r.depthCm).toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.notes || "",
     ]);
@@ -404,7 +404,7 @@ export default function PlantBitumenStock() {
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>Bitumen Dip Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(L)</th><th>Type</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toLocaleString()}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${getUsableVolume(r.depthCm).toLocaleString()}</td><td>${r.readingType}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${getUsableVolume(r.depthCm).toFixed(3)}</td><td>${r.readingType}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -445,15 +445,15 @@ export default function PlantBitumenStock() {
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Total:</span>
-                  <span className="font-medium">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(2)} MT ({vol.toLocaleString()} L)</span>
+                  <span className="font-medium">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({vol.toFixed(3)} L)</span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Usable:</span>
-                  <span className="font-medium text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(2)} MT ({usable.toLocaleString()} L)</span>
+                  <span className="font-medium text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({usable.toFixed(3)} L)</span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Dead:</span>
-                  <span className="text-xs text-red-500">{Math.round(deadStockVolume).toLocaleString()} L</span>
+                  <span className="text-xs text-red-500">{Math.round(deadStockVolume).toFixed(3)} L</span>
                 </div>
                 {reading && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -519,7 +519,7 @@ export default function PlantBitumenStock() {
       </div>
 
       <div className="text-sm text-muted-foreground">
-        Tank: 250cm dia x 1060cm length | Capacity: {TANK_CAPACITY_LITERS.toLocaleString()} L | Dead stock at {DEFAULT_DEAD_STOCK_DEPTH} cm = ~{Math.round(deadStockVolume).toLocaleString()} L/tank | Bitumen: {BITUMEN_DENSITY_KG_PER_LITER} kg/L
+        Tank: 250cm dia x 1060cm length | Capacity: {TANK_CAPACITY_LITERS.toFixed(3)} L | Dead stock at {DEFAULT_DEAD_STOCK_DEPTH} cm = ~{Math.round(deadStockVolume).toFixed(3)} L/tank | Bitumen: {BITUMEN_DENSITY_KG_PER_LITER} kg/L
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -532,23 +532,23 @@ export default function PlantBitumenStock() {
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Total Volume:</span>
-              <span className="font-bold">{combinedTotal.toLocaleString()} L</span>
+              <span className="font-bold">{combinedTotal.toFixed(3)} L</span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Total Weight:</span>
-              <span className="font-bold">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(2)} MT ({Math.round(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg)</span>
+              <span className="font-bold">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({(Math.round(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER)).toFixed(3)} kg)</span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Usable Volume:</span>
-              <span className="font-bold text-green-600 dark:text-green-400">{combinedUsable.toLocaleString()} L</span>
+              <span className="font-bold text-green-600 dark:text-green-400">{combinedUsable.toFixed(3)} L</span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Usable Weight:</span>
-              <span className="font-bold text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(2)} MT ({Math.round(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg)</span>
+              <span className="font-bold text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({(Math.round(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER)).toFixed(3)} kg)</span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Dead Stock (2 tanks):</span>
-              <span className="text-xs text-red-500">{Math.round(combinedDead).toLocaleString()} L / {Math.round(combinedDead * BITUMEN_DENSITY_KG_PER_LITER).toLocaleString()} kg</span>
+              <span className="text-xs text-red-500">{Math.round(combinedDead).toFixed(3)} L / {(Math.round(combinedDead * BITUMEN_DENSITY_KG_PER_LITER)).toFixed(3)} kg</span>
             </div>
           </CardContent>
         </Card>
@@ -623,7 +623,7 @@ export default function PlantBitumenStock() {
                   {varianceData.map(row => (
                     <tr key={row.date} className="border-b" data-testid={`row-variance-${row.date}`}>
                       <td className="p-2">{row.date}</td>
-                      <td className="p-2 text-right">{row.productionMT.toFixed(2)}</td>
+                      <td className="p-2 text-right">{row.productionMT.toFixed(3)}</td>
                       <td className="p-2 text-right">{(row.theoreticalKg / 1000).toFixed(3)}</td>
                       <td className="p-2 text-right">{(row.actualKg / 1000).toFixed(3)}</td>
                       <td className="p-2 text-right">{(row.varianceKg / 1000).toFixed(3)}</td>
@@ -652,7 +652,7 @@ export default function PlantBitumenStock() {
                     return (
                       <tr className="border-t-2 font-bold">
                         <td className="p-2">Total</td>
-                        <td className="p-2 text-right">{totals.productionMT.toFixed(2)}</td>
+                        <td className="p-2 text-right">{totals.productionMT.toFixed(3)}</td>
                         <td className="p-2 text-right">{(totals.theoreticalKg / 1000).toFixed(3)}</td>
                         <td className="p-2 text-right">{(totals.actualKg / 1000).toFixed(3)}</td>
                         <td className="p-2 text-right">{(totals.varianceKg / 1000).toFixed(3)}</td>
@@ -739,9 +739,9 @@ export default function PlantBitumenStock() {
                       <td className="p-2">{r.time || "-"}</td>
                       <td className="p-2"><Badge variant="outline">Tank {r.tankNumber}</Badge></td>
                       <td className="p-2 text-right font-medium">{r.depthCm}</td>
-                      <td className="p-2 text-right">{r.volumeLiters.toLocaleString()}</td>
+                      <td className="p-2 text-right">{r.volumeLiters.toFixed(3)}</td>
                       <td className="p-2 text-right">{(r.weightKg / 1000).toFixed(3)}</td>
-                      <td className="p-2 text-right text-green-600 dark:text-green-400">{getUsableVolume(r.depthCm).toLocaleString()}</td>
+                      <td className="p-2 text-right text-green-600 dark:text-green-400">{getUsableVolume(r.depthCm).toFixed(3)}</td>
                       <td className="p-2">
                         <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : r.readingType === "receipt" ? "outline" : "secondary"}>
                           {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
@@ -845,15 +845,15 @@ export default function PlantBitumenStock() {
                     <div className="flex-1 space-y-1 text-sm">
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Total Volume:</span>
-                        <span className="font-bold">{Math.round(computedVolume).toLocaleString()} L ({(computedWeight / 1000).toFixed(3)} MT)</span>
+                        <span className="font-bold">{(Math.round(computedVolume)).toFixed(3)} L ({(computedWeight / 1000).toFixed(3)} MT)</span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Dead Stock:</span>
-                        <span className="text-red-500 text-xs">{Math.round(deadStockVolume).toLocaleString()} L ({(deadStockWeight / 1000).toFixed(3)} MT)</span>
+                        <span className="text-red-500 text-xs">{(Math.round(deadStockVolume)).toFixed(3)} L ({(deadStockWeight / 1000).toFixed(3)} MT)</span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Usable Stock:</span>
-                        <span className="font-bold text-green-600 dark:text-green-400">{Math.round(usableVolume).toLocaleString()} L ({(usableWeight / 1000).toFixed(3)} MT)</span>
+                        <span className="font-bold text-green-600 dark:text-green-400">{(Math.round(usableVolume)).toFixed(3)} L ({(usableWeight / 1000).toFixed(3)} MT)</span>
                       </div>
                       <div className="text-xs text-muted-foreground">Fill: {fillPercent.toFixed(1)}%</div>
                     </div>

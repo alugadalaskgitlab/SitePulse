@@ -578,7 +578,7 @@ export default function SiteEntry() {
                 <Input
                   type="number"
                   step="0.01"
-                  placeholder={calculateQuantity(entry)?.toFixed(2) || "Auto"}
+                  placeholder={calculateQuantity(entry)?.toFixed(3) || "Auto"}
                   value={entry.quantity ?? ""}
                   onChange={(e) => {
                     const updated = [...progress];
@@ -761,7 +761,7 @@ export default function SiteEntry() {
                       className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
                       data-testid={`display-working-hours-${idx}`}
                     >
-                      {workingHours > 0 ? `${workingHours.toFixed(2)} hrs` : "-"}
+                      {workingHours > 0 ? `${workingHours.toFixed(3)} hrs` : "-"}
                     </div>
                   </div>
                   <div>
@@ -855,7 +855,7 @@ export default function SiteEntry() {
           })}
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
             <p className="text-sm text-muted-foreground">Total Diesel</p>
-            <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(1)} L</p>
+            <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(3)} L</p>
           </div>
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('equipment')} data-testid="button-add-equipment-bottom">
             <Plus className="w-4 h-4 mr-1" /> Add Row

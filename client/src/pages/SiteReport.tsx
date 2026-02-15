@@ -277,7 +277,7 @@ export default function SiteReport() {
           <CardContent className="p-4 text-center">
             <div className="flex items-center justify-center gap-2">
               <Fuel className="w-5 h-5 text-primary" />
-              <p className="text-2xl font-bold text-primary">{totalDiesel.toFixed(1)} L</p>
+              <p className="text-2xl font-bold text-primary">{totalDiesel.toFixed(3)} L</p>
             </div>
             <p className="text-sm text-muted-foreground">Total Diesel</p>
           </CardContent>
@@ -334,7 +334,7 @@ export default function SiteReport() {
                       <TableCell className="text-right">{displayLength || '-'}</TableCell>
                       <TableCell className="text-right">{item.width || '-'}</TableCell>
                       <TableCell className="text-right">{item.thickness || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(3) || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>
                   );
@@ -411,7 +411,7 @@ export default function SiteReport() {
                         <TableCell>{item.operator || '-'}</TableCell>
                         <TableCell className="text-sm">{item.task || '-'}</TableCell>
                         <TableCell className="text-xs">{readingSource}</TableCell>
-                        <TableCell className="text-right">{hours != null ? hours.toFixed(2) : '-'}</TableCell>
+                        <TableCell className="text-right">{hours != null ? hours.toFixed(3) : '-'}</TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell>
                           <span className="text-xs">{dieselSourceLabel}</span>
@@ -499,7 +499,7 @@ export default function SiteReport() {
                         </Badge>
                       </TableCell>
                       <TableCell className="font-medium">{item.material}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(2) || '-'}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(3) || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                       <TableCell>{item.vehicleNumber || '-'}</TableCell>
                       <TableCell>{item.supplier || '-'}</TableCell>
@@ -522,7 +522,7 @@ export default function SiteReport() {
                     >
                       <p className="text-sm font-medium">{item.material}</p>
                       <div className="flex items-baseline gap-1 mt-1">
-                        <p className="text-xl font-bold text-primary">{item.total.toFixed(1)}</p>
+                        <p className="text-xl font-bold text-primary">{item.total.toFixed(3)}</p>
                         <p className="text-xs text-muted-foreground">{item.uom}</p>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -561,8 +561,8 @@ export default function SiteReport() {
                     <TableCell className="font-medium">{item.itemDescription}</TableCell>
                     <TableCell>{item.vendor || '-'}</TableCell>
                     <TableCell>{item.billNo || '-'}</TableCell>
-                    <TableCell className="text-right font-semibold">{item.amount ? Number(item.amount).toFixed(2) : '-'}</TableCell>
-                    <TableCell className="text-right">{item.quantity ? Number(item.quantity).toFixed(2) : '-'}</TableCell>
+                    <TableCell className="text-right font-semibold">{item.amount ? Number(item.amount).toFixed(3) : '-'}</TableCell>
+                    <TableCell className="text-right">{item.quantity ? Number(item.quantity).toFixed(3) : '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>
                   </TableRow>
                 ))}

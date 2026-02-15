@@ -761,7 +761,7 @@ export default function PlantMaterialReceipts() {
               <span className="font-semibold text-green-700 dark:text-green-300">Filtered Totals:</span>
               {filteredTotals.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
-                  {t.materialName}: {t.total.toFixed(2)} {t.uom}
+                  {t.materialName}: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
             </div>

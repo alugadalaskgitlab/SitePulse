@@ -326,7 +326,7 @@ export default function SiteMaterialTrips() {
                   <span className="font-semibold">{material}</span>
                 </div>
                 <div className="text-2xl font-bold text-primary">
-                  {data.totalQty.toFixed(2)} {data.uom}
+                  {data.totalQty.toFixed(3)} {data.uom}
                 </div>
                 <div className="text-sm text-muted-foreground">
                   {data.count} trip{data.count !== 1 ? 's' : ''} today
@@ -394,7 +394,7 @@ export default function SiteMaterialTrips() {
                         <td className="p-2">{trip.material}</td>
                         <td className="p-2">{trip.supplier || '-'}</td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
-                        <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(2)}</td>
+                        <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(3)}</td>
                         <td className="p-2">{trip.uom}</td>
                         <td className="p-2">{trip.location || '-'}</td>
                         <td className="p-2 text-center">

@@ -313,8 +313,8 @@ export default function AdminReports() {
       'Activities': group.activities.length,
       'Material Trips': group.materials.length,
       'Equipment Uses': group.equipment.length,
-      'Total Diesel (L)': group.totalDiesel.toFixed(1),
-      'Total Hours': group.totalHours.toFixed(1),
+      'Total Diesel (L)': group.totalDiesel.toFixed(3),
+      'Total Hours': group.totalHours.toFixed(3),
     }));
     const summarySheet = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
@@ -387,7 +387,7 @@ export default function AdminReports() {
           Operator: e.operator,
           'Start Time': e.startTime,
           'End Time': e.endTime,
-          Hours: e.hours.toFixed(1),
+          Hours: e.hours.toFixed(3),
           'Diesel (L)': e.diesel,
         });
       });
@@ -507,7 +507,7 @@ export default function AdminReports() {
         <p className="text-sm text-muted-foreground">Generated: {format(new Date(), "dd MMMM yyyy, hh:mm a")}</p>
         <p className="text-sm mt-2"><strong>Filters:</strong> {getActiveFiltersText()}</p>
         <p className="text-sm mt-1">
-          <strong>Summary:</strong> {dateGroupedData.length} day(s) | {overallTotals.totalActivities} activities | {overallTotals.totalMaterialTrips} material trips | {overallTotals.totalHours.toFixed(1)} equipment hours
+          <strong>Summary:</strong> {dateGroupedData.length} day(s) | {overallTotals.totalActivities} activities | {overallTotals.totalMaterialTrips} material trips | {overallTotals.totalHours.toFixed(3)} equipment hours
         </p>
       </div>
 
@@ -648,7 +648,7 @@ export default function AdminReports() {
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <Fuel className="w-5 h-5 text-primary" />
-                  <p className="text-2xl font-bold text-primary" data-testid="text-total-diesel">{overallTotals.totalDiesel.toFixed(1)} L</p>
+                  <p className="text-2xl font-bold text-primary" data-testid="text-total-diesel">{overallTotals.totalDiesel.toFixed(3)} L</p>
                 </div>
                 <p className="text-sm text-muted-foreground">Total Diesel</p>
               </CardContent>
@@ -657,7 +657,7 @@ export default function AdminReports() {
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <Clock className="w-5 h-5 text-green-500" />
-                  <p className="text-2xl font-bold text-green-500" data-testid="text-total-hours">{overallTotals.totalHours.toFixed(1)} hrs</p>
+                  <p className="text-2xl font-bold text-green-500" data-testid="text-total-hours">{overallTotals.totalHours.toFixed(3)} hrs</p>
                 </div>
                 <p className="text-sm text-muted-foreground">Equipment Hours</p>
               </CardContent>
@@ -723,7 +723,7 @@ export default function AdminReports() {
                             )}
                             {group.equipment.length > 0 && (
                               <Badge variant="outline" className="gap-1">
-                                <Fuel className="w-3 h-3" /> {group.totalDiesel.toFixed(1)}L
+                                <Fuel className="w-3 h-3" /> {group.totalDiesel.toFixed(3)}L
                               </Badge>
                             )}
                           </div>
@@ -797,7 +797,7 @@ export default function AdminReports() {
                                 <TableRow className="bg-muted/50 font-semibold">
                                   <TableCell colSpan={5}>Day Total</TableCell>
                                   <TableCell className="text-right">
-                                    {group.materials.reduce((sum, m) => sum + m.quantity, 0).toFixed(1)}
+                                    {group.materials.reduce((sum, m) => sum + m.quantity, 0).toFixed(3)}
                                   </TableCell>
                                   <TableCell>{group.materials.length} trip{group.materials.length !== 1 ? 's' : ''}</TableCell>
                                 </TableRow>
@@ -833,14 +833,14 @@ export default function AdminReports() {
                                     <TableCell>{e.operator}</TableCell>
                                     <TableCell>{e.startTime}</TableCell>
                                     <TableCell>{e.endTime}</TableCell>
-                                    <TableCell className="text-right">{e.hours.toFixed(1)}</TableCell>
+                                    <TableCell className="text-right">{e.hours.toFixed(3)}</TableCell>
                                     <TableCell className="text-right font-semibold">{e.diesel}</TableCell>
                                   </TableRow>
                                 ))}
                                 <TableRow className="bg-muted/50 font-semibold">
                                   <TableCell colSpan={6}>Day Total</TableCell>
-                                  <TableCell className="text-right">{group.totalHours.toFixed(1)}</TableCell>
-                                  <TableCell className="text-right">{group.totalDiesel.toFixed(1)}</TableCell>
+                                  <TableCell className="text-right">{group.totalHours.toFixed(3)}</TableCell>
+                                  <TableCell className="text-right">{group.totalDiesel.toFixed(3)}</TableCell>
                                 </TableRow>
                               </TableBody>
                             </Table>

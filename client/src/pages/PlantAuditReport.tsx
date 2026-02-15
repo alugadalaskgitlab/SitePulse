@@ -246,21 +246,21 @@ export default function PlantAuditReport() {
                         <td className="p-2 text-right font-mono text-muted-foreground">
                           {entry.adjustmentType === "bitumen" 
                             ? `${entry.theoreticalValue.toFixed(3)} MT`
-                            : `${entry.theoreticalValue.toFixed(1)} L`
+                            : `${entry.theoreticalValue.toFixed(3)} L`
                           }
                         </td>
                         <td className="p-2 text-right font-mono">
                           {entry.previousValue 
                             ? (entry.adjustmentType === "bitumen" 
                                 ? `${entry.previousValue.toFixed(3)} MT`
-                                : `${entry.previousValue.toFixed(1)} L`)
+                                : `${entry.previousValue.toFixed(3)} L`)
                             : "-"
                           }
                         </td>
                         <td className="p-2 text-right font-mono font-medium">
                           {entry.adjustmentType === "bitumen" 
                             ? `${entry.newValue.toFixed(3)} MT`
-                            : `${entry.newValue.toFixed(1)} L`
+                            : `${entry.newValue.toFixed(3)} L`
                           }
                         </td>
                         <td className={`p-2 text-right font-medium ${getVarianceColor(entry.variancePercent)}`}>

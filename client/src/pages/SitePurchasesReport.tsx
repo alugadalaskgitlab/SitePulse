@@ -193,7 +193,7 @@ export default function SitePurchasesReport() {
             <CardContent className="pt-6">
               <p className="text-sm text-muted-foreground">Total Amount</p>
               <p className="text-2xl font-bold text-teal-600" data-testid="text-total-amount">
-                {totalAmount.toLocaleString("en-IN", { style: "currency", currency: "INR" })}
+                {totalAmount.toFixed(3)}
               </p>
             </CardContent>
           </Card>
@@ -234,7 +234,7 @@ export default function SitePurchasesReport() {
                         <td className="p-2">{p.billNo || "-"}</td>
                         <td className="p-2 text-right">{p.quantity ?? "-"}</td>
                         <td className="p-2">{p.uom || "-"}</td>
-                        <td className="p-2 text-right">{p.amount ? p.amount.toLocaleString("en-IN") : "-"}</td>
+                        <td className="p-2 text-right">{p.amount ? p.amount.toFixed(3) : "-"}</td>
                         <td className="p-2">{p.engineer}</td>
                         <td className="p-2 text-center">
                           <Button
@@ -252,7 +252,7 @@ export default function SitePurchasesReport() {
                   <tfoot>
                     <tr className="border-t font-bold">
                       <td colSpan={7} className="p-2 text-right">Total:</td>
-                      <td className="p-2 text-right">{totalAmount.toLocaleString("en-IN")}</td>
+                      <td className="p-2 text-right">{totalAmount.toFixed(3)}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </tfoot>
