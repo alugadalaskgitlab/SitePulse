@@ -51,9 +51,10 @@ Preferred communication style: Simple, everyday language.
 - **Equipment Master**: Enhanced with ownership status (Owned/Hired), vendor names, registration numbers, and active status.
 
 #### Equipment Usage & Diesel Flow
-- **Equipment Usage** is the SINGLE source of truth for equipment diesel:
-  - Records runtime (meter readings OR time entry OR trip-based)
-  - When diesel is issued and "Provided by Contractor" is NOT checked → diesel is deducted from HLC stock and included in consumption analysis
+- **Diesel Stock Deduction Sources**: Both Plant Equipment Usage AND DPR equipment logs can deduct diesel from stock:
+  - **Plant Equipment Usage**: Records runtime (meter readings OR time entry OR trip-based). When diesel is issued with `plant_stock` source → deducts from HLC stock and included in consumption/efficiency analysis.
+  - **DPR Equipment Logs**: When diesel source is `plant_stock` → also deducts from HLC stock via `dpr_equipment_usage` ledger entries. No need to re-enter equipment in Plant module for diesel tracking.
+  - **Overlap Detection**: Historical migration checks for matching entries (same equipment name + date + diesel amount) between both sources to prevent double-counting.
   - When "Provided by Contractor" IS checked → no stock deduction, excluded from consumption analysis (contractor's scope)
 - **Diesel Consumption Calculation**:
   - Expected diesel = Runtime × Consumption Norm (L/hr for hour_meter, L/km for odometer)
@@ -61,7 +62,12 @@ Preferred communication style: Simple, everyday language.
   - For odometer equipment using time entry: hours are converted to km using 25 km/hr average speed
 - **Diesel Efficiency**: Plant equipment efficiency (L/hr or L/km) is tracked and compared against norms, with actual vs. expected diesel calculations.
 - **Material Issues for Diesel**: Only used for non-equipment diesel transfers (issuing to sites, generators, etc.). These still deduct from HLC stock but are NOT linked to equipment consumption.
-- **DPR Equipment Log Diesel Tracking**: When DPR equipment logs record `direct_purchase` diesel, a stock_ledger entry is created for procurement reporting (quantityIn=quantityOut, balanceAfter=null, no stock impact). `plant_stock` diesel from DPRs is NOT tracked in the ledger (Plant Equipment Usage is the single source of truth for stock deductions). Uses negative referenceId convention (-equipmentLogId) to distinguish from Plant module entries (positive IDs). Ledger entries are automatically cleaned up on DPR edit/delete.
+- **DPR Equipment Log Diesel Tracking**: DPR equipment diesel is tracked in the stock ledger based on diesel source:
+  - `plant_stock`: Creates a `dpr_equipment_usage` ledger entry that deducts diesel from HLC stock (quantityOut, balanceAfter updated). This eliminates the need to re-enter equipment in Plant Equipment Usage just for diesel tracking.
+  - `direct_purchase`: Creates a `direct_purchase` ledger entry for procurement reporting (quantityIn=quantityOut, balanceAfter=null, no stock impact).
+  - `contractor`: No ledger entry (contractor provides diesel).
+  - Uses negative referenceId convention (-equipmentLogId) to distinguish from Plant module entries (positive IDs). Ledger entries are automatically cleaned up (with stock balance reversal for plant_stock) on DPR edit/delete.
+- **Startup Migration - migrateDprPlantStockDieselToLedger**: Retroactively creates stock ledger deduction entries for all historical DPR equipment logs with `plant_stock` diesel. Includes overlap detection: matches DPR equipment by machine name + date + diesel amount against Plant Equipment Usage entries to avoid double-counting. Skips superseded DPR versions. Idempotent (safe to run multiple times).
 - **Diesel Source Preservation**: CRITICAL - when loading equipment data for editing, use `??` (nullish coalescing) instead of `||` (logical OR) for dieselSource, fuelStation, billNumber, amountPaid fields. Using `||` would silently overwrite valid values like empty strings to defaults, potentially changing `direct_purchase` to `plant_stock` and losing fuel station details.
 - **Startup Repair - repairLostDieselSource**: Scans DPR version chains for cases where original had `direct_purchase` diesel but later edits changed it to `plant_stock`. Restores the diesel source and related fields, and recreates stock ledger entries. Matches by machine name + diesel amount + operator + task. Idempotent via cleanup-before-insert pattern.
 

@@ -213,6 +213,9 @@ export interface IStorage {
 
   // Repair diesel source lost during DPR edits - carry forward direct_purchase from original versions
   repairLostDieselSource(): Promise<{ repaired: number; ledgerCreated: number; errors: number }>;
+
+  // Migrate historical DPR plant_stock diesel to stock ledger (with overlap detection against Plant Equipment Usage)
+  migrateDprPlantStockDieselToLedger(): Promise<{ created: number; skipped: number; overlapped: number; errors: number }>;
   
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -770,10 +773,10 @@ export class DatabaseStorage implements IStorage {
     dprDate: string,
     siteName: string
   ) {
-    const directPurchaseLogs = insertedEquipLogs.filter(
-      e => e.diesel && e.diesel > 0 && e.dieselSource === 'direct_purchase'
+    const dieselLogs = insertedEquipLogs.filter(
+      e => e.diesel && e.diesel > 0 && (e.dieselSource === 'direct_purchase' || e.dieselSource === 'plant_stock')
     );
-    if (directPurchaseLogs.length === 0) return;
+    if (dieselLogs.length === 0) return;
 
     const [dieselMaterial] = await tx.select().from(plantMaterials)
       .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
@@ -785,25 +788,62 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     const hlcPartyId = hlcParty?.id || null;
 
-    for (const eLog of directPurchaseLogs) {
+    for (const eLog of dieselLogs) {
       const dieselQty = eLog.diesel;
       const equipLogRefId = -eLog.id;
-      const fuelStation = eLog.fuelStation || 'Fuel Station';
-      const billNumber = eLog.billNumber || '';
-      const amountPaid = eLog.amountPaid || 0;
 
-      await tx.insert(stockLedger).values({
-        date: dprDate,
-        partyId: hlcPartyId,
-        materialId: dieselMaterial.id,
-        transactionType: "direct_purchase",
-        referenceId: equipLogRefId,
-        quantityIn: dieselQty,
-        quantityOut: dieselQty,
-        balanceAfter: null,
-        uom: dieselMaterial.defaultUom || 'Liters',
-        notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${eLog.machine || 'Equipment'} at ${siteName}`,
-      });
+      if (eLog.dieselSource === 'direct_purchase') {
+        const fuelStation = eLog.fuelStation || 'Fuel Station';
+        const billNumber = eLog.billNumber || '';
+        const amountPaid = eLog.amountPaid || 0;
+
+        await tx.insert(stockLedger).values({
+          date: dprDate,
+          partyId: hlcPartyId,
+          materialId: dieselMaterial.id,
+          transactionType: "direct_purchase",
+          referenceId: equipLogRefId,
+          quantityIn: dieselQty,
+          quantityOut: dieselQty,
+          balanceAfter: null,
+          uom: dieselMaterial.defaultUom || 'Liters',
+          notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${eLog.machine || 'Equipment'} at ${siteName}`,
+        });
+      } else if (eLog.dieselSource === 'plant_stock') {
+        const [existingBalance] = await tx.select().from(stockBalances)
+          .where(and(
+            hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+            eq(stockBalances.materialId, dieselMaterial.id)
+          ))
+          .limit(1);
+
+        const newBalance = (existingBalance?.balance || 0) - dieselQty;
+
+        if (existingBalance) {
+          await tx.update(stockBalances)
+            .set({ balance: newBalance, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, existingBalance.id));
+        } else {
+          await tx.insert(stockBalances).values({
+            partyId: hlcPartyId,
+            materialId: dieselMaterial.id,
+            balance: newBalance,
+            uom: dieselMaterial.defaultUom || 'Liters',
+          });
+        }
+
+        await tx.insert(stockLedger).values({
+          date: dprDate,
+          partyId: hlcPartyId,
+          materialId: dieselMaterial.id,
+          transactionType: "dpr_equipment_usage",
+          referenceId: equipLogRefId,
+          quantityOut: dieselQty,
+          balanceAfter: newBalance,
+          uom: dieselMaterial.defaultUom || 'Liters',
+          notes: `DPR diesel issued to ${eLog.machine || 'Equipment'} at ${siteName}`,
+        });
+      }
     }
   }
 
@@ -812,18 +852,61 @@ export class DatabaseStorage implements IStorage {
       .where(eq(equipmentLogs.dprId, dprId));
 
     const dieselLogs = existingLogs.filter(
-      (e: any) => e.diesel && e.diesel > 0 && e.dieselSource === 'direct_purchase'
+      (e: any) => e.diesel && e.diesel > 0 && (e.dieselSource === 'direct_purchase' || e.dieselSource === 'plant_stock')
     );
     if (dieselLogs.length === 0) return;
 
     for (const eLog of dieselLogs) {
       const equipLogRefId = -eLog.id;
-      await tx.delete(stockLedger).where(
-        and(
-          eq(stockLedger.transactionType, 'direct_purchase'),
-          eq(stockLedger.referenceId, equipLogRefId)
-        )
-      );
+
+      if (eLog.dieselSource === 'plant_stock') {
+        const [ledgerEntry] = await tx.select().from(stockLedger).where(
+          and(
+            eq(stockLedger.transactionType, 'dpr_equipment_usage'),
+            eq(stockLedger.referenceId, equipLogRefId)
+          )
+        ).limit(1);
+
+        if (ledgerEntry && ledgerEntry.quantityOut) {
+          const [dieselMaterial] = await tx.select().from(plantMaterials)
+            .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+            .limit(1);
+          const [hlcParty] = await tx.select().from(parties)
+            .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
+            .limit(1);
+          const hlcPartyId = hlcParty?.id || null;
+
+          if (dieselMaterial) {
+            const [existingBalance] = await tx.select().from(stockBalances)
+              .where(and(
+                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+                eq(stockBalances.materialId, dieselMaterial.id)
+              ))
+              .limit(1);
+
+            if (existingBalance) {
+              const restoredBalance = (existingBalance.balance || 0) + ledgerEntry.quantityOut;
+              await tx.update(stockBalances)
+                .set({ balance: restoredBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, existingBalance.id));
+            }
+          }
+        }
+
+        await tx.delete(stockLedger).where(
+          and(
+            eq(stockLedger.transactionType, 'dpr_equipment_usage'),
+            eq(stockLedger.referenceId, equipLogRefId)
+          )
+        );
+      } else if (eLog.dieselSource === 'direct_purchase') {
+        await tx.delete(stockLedger).where(
+          and(
+            eq(stockLedger.transactionType, 'direct_purchase'),
+            eq(stockLedger.referenceId, equipLogRefId)
+          )
+        );
+      }
     }
   }
 
@@ -2916,6 +2999,177 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { repaired, ledgerCreated, errors };
+  }
+
+  async migrateDprPlantStockDieselToLedger(): Promise<{ created: number; skipped: number; overlapped: number; errors: number }> {
+    let created = 0;
+    let skipped = 0;
+    let overlapped = 0;
+    let errors = 0;
+
+    try {
+      const [dieselMaterial] = await db.select().from(plantMaterials)
+        .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+        .limit(1);
+      if (!dieselMaterial) {
+        console.log('migrateDprPlantStockDieselToLedger: No diesel material found, skipping');
+        return { created, skipped, overlapped, errors };
+      }
+
+      const [hlcParty] = await db.select().from(parties)
+        .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
+        .limit(1);
+      const hlcPartyId = hlcParty?.id || null;
+
+      const allPlantStockLogs = await db.select({
+        id: equipmentLogs.id,
+        dprId: equipmentLogs.dprId,
+        machine: equipmentLogs.machine,
+        diesel: equipmentLogs.diesel,
+        dieselSource: equipmentLogs.dieselSource,
+        equipmentId: equipmentLogs.equipmentId,
+        date: dprs.date,
+        site: dprs.site,
+      }).from(equipmentLogs)
+        .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+        .where(and(
+          gt(equipmentLogs.diesel, 0),
+          sql`(${equipmentLogs.dieselSource} = 'plant_stock' OR ${equipmentLogs.dieselSource} IS NULL)`
+        ))
+        .orderBy(dprs.date);
+
+      if (allPlantStockLogs.length === 0) {
+        console.log('migrateDprPlantStockDieselToLedger: No plant_stock DPR equipment logs found');
+        return { created, skipped, overlapped, errors };
+      }
+
+      const allVersions = await db.select({
+        originalDprId: dprVersions.originalDprId,
+        dprId: dprVersions.dprId,
+      }).from(dprVersions);
+
+      const supersededDprIds = new Set(allVersions.map(v => v.originalDprId));
+
+      const allEquipUsage = await db.select({
+        date: equipmentUsage.date,
+        equipmentId: equipmentUsage.equipmentId,
+        dieselIssued: equipmentUsage.dieselIssued,
+      }).from(equipmentUsage)
+        .where(gt(equipmentUsage.dieselIssued, 0));
+
+      const allEquipMaster = await db.select({
+        id: equipmentMaster.id,
+        name: equipmentMaster.name,
+      }).from(equipmentMaster);
+
+      const equipNameMap = new Map<number, string>();
+      for (const em of allEquipMaster) {
+        equipNameMap.set(em.id, (em.name || '').toUpperCase().trim());
+      }
+
+      const plantUsageIndex = new Map<string, number[]>();
+      for (const eu of allEquipUsage) {
+        const equipName = equipNameMap.get(eu.equipmentId) || '';
+        const key = `${eu.date}|${equipName}`;
+        if (!plantUsageIndex.has(key)) {
+          plantUsageIndex.set(key, []);
+        }
+        plantUsageIndex.get(key)!.push(eu.dieselIssued || 0);
+      }
+
+      const existingLedgerRefIds = new Set<number>();
+      const existingEntries = await db.select({ referenceId: stockLedger.referenceId })
+        .from(stockLedger)
+        .where(eq(stockLedger.transactionType, 'dpr_equipment_usage'));
+      for (const e of existingEntries) {
+        if (e.referenceId !== null) existingLedgerRefIds.add(e.referenceId);
+      }
+
+      for (const log of allPlantStockLogs) {
+        try {
+          const equipLogRefId = -log.id;
+
+          if (existingLedgerRefIds.has(equipLogRefId)) {
+            skipped++;
+            continue;
+          }
+
+          if (supersededDprIds.has(log.dprId)) {
+            skipped++;
+            continue;
+          }
+
+          const machineName = (log.machine || '').toUpperCase().trim();
+          const dieselAmt = log.diesel || 0;
+          const lookupKey = `${log.date}|${machineName}`;
+          const plantUsageDiesels = plantUsageIndex.get(lookupKey) || [];
+
+          let isOverlap = false;
+          for (let i = 0; i < plantUsageDiesels.length; i++) {
+            if (Math.abs(plantUsageDiesels[i] - dieselAmt) < 0.01) {
+              isOverlap = true;
+              plantUsageDiesels.splice(i, 1);
+              break;
+            }
+          }
+
+          if (isOverlap) {
+            overlapped++;
+            console.log(`migrateDprPlantStockDieselToLedger: OVERLAP detected - DPR equip log ${log.id} (${machineName}, ${dieselAmt}L on ${log.date}) matches Plant Equipment Usage, skipping`);
+            continue;
+          }
+
+          await db.transaction(async (tx) => {
+            const [existingBalance] = await tx.select().from(stockBalances)
+              .where(and(
+                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
+                eq(stockBalances.materialId, dieselMaterial.id)
+              ))
+              .limit(1);
+
+            const newBalance = (existingBalance?.balance || 0) - dieselAmt;
+
+            if (existingBalance) {
+              await tx.update(stockBalances)
+                .set({ balance: newBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, existingBalance.id));
+            } else {
+              await tx.insert(stockBalances).values({
+                partyId: hlcPartyId,
+                materialId: dieselMaterial.id,
+                balance: newBalance,
+                uom: dieselMaterial.defaultUom || 'Liters',
+              });
+            }
+
+            await tx.insert(stockLedger).values({
+              date: log.date,
+              partyId: hlcPartyId,
+              materialId: dieselMaterial.id,
+              transactionType: "dpr_equipment_usage",
+              referenceId: equipLogRefId,
+              quantityOut: dieselAmt,
+              balanceAfter: newBalance,
+              uom: dieselMaterial.defaultUom || 'Liters',
+              notes: `DPR diesel issued to ${log.machine || 'Equipment'} at ${log.site} (historical migration)`,
+            });
+          });
+
+          existingLedgerRefIds.add(equipLogRefId);
+          created++;
+        } catch (err) {
+          console.error(`migrateDprPlantStockDieselToLedger: Error processing equip log ${log.id}:`, err);
+          errors++;
+        }
+      }
+
+      console.log(`migrateDprPlantStockDieselToLedger: Summary - created: ${created}, skipped: ${skipped} (already processed or superseded), overlapped: ${overlapped} (matched Plant Equipment Usage), errors: ${errors}`);
+    } catch (err) {
+      console.error('migrateDprPlantStockDieselToLedger: Fatal error:', err);
+      errors++;
+    }
+
+    return { created, skipped, overlapped, errors };
   }
 
   async getSiteMaterialLogs(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<{

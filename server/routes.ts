@@ -1708,6 +1708,15 @@ async function seedDatabase() {
   }
 
   try {
+    const dprDieselResult = await storage.migrateDprPlantStockDieselToLedger();
+    if (dprDieselResult.created > 0 || dprDieselResult.overlapped > 0) {
+      console.log(`Startup: Migrated DPR plant_stock diesel to ledger - created: ${dprDieselResult.created}, skipped: ${dprDieselResult.skipped}, overlapped (avoided double-count): ${dprDieselResult.overlapped}, errors: ${dprDieselResult.errors}`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to migrate DPR plant_stock diesel:", err);
+  }
+
+  try {
     const recalcResult = await storage.recalculateAllDispatchConsumption();
     if (recalcResult.varianceFixed > 0) {
       console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);
