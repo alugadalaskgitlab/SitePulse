@@ -480,7 +480,6 @@ export default function PlantBitumenStock() {
       "Depth (cm)": r.depthCm,
       "Volume (L)": r.volumeLiters,
       "Weight (MT)": +(r.weightKg / 1000).toFixed(3),
-      "Usable (L)": getUsableVolume(r.depthCm),
       "Usable (MT)": +(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3),
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       Notes: r.notes || "",
@@ -501,12 +500,12 @@ export default function PlantBitumenStock() {
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "", `Tank ${r.tankNumber}`, r.depthCm.toString(),
       r.volumeLiters.toFixed(3), (r.weightKg / 1000).toFixed(3),
-      getUsableVolume(r.depthCm).toFixed(3),
+      (getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.notes || "",
     ]);
     autoTable(doc, {
-      head: [["Date", "Time", "Tank", "Depth(cm)", "Volume(L)", "Weight(MT)", "Usable(L)", "Type", "Notes"]],
+      head: [["Date", "Time", "Tank", "Depth(cm)", "Volume(L)", "Weight(MT)", "Usable(MT)", "Type", "Notes"]],
       body: tableData,
       startY: 28,
       styles: { fontSize: 8 },
@@ -519,8 +518,8 @@ export default function PlantBitumenStock() {
       <html><head><title>Bitumen Dip Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>Bitumen Dip Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
-      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(L)</th><th>Type</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${getUsableVolume(r.depthCm).toFixed(3)}</td><td>${r.readingType}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(MT)</th><th>Type</th><th>Notes</th></tr>
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -857,36 +856,40 @@ export default function PlantBitumenStock() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-right p-2">T1 Opening (MT)</th>
-                    <th className="text-right p-2">T1 Closing (MT)</th>
-                    <th className="text-right p-2">T1 Dip Rcpt (MT)</th>
-                    <th className="text-right p-2">T1 Consumed (MT)</th>
-                    <th className="text-right p-2">T2 Opening (MT)</th>
-                    <th className="text-right p-2">T2 Closing (MT)</th>
-                    <th className="text-right p-2">T2 Dip Rcpt (MT)</th>
-                    <th className="text-right p-2">T2 Consumed (MT)</th>
-                    <th className="text-right p-2">Mat. Received (MT)</th>
-                    <th className="text-right p-2 font-bold">Total Consumed (MT)</th>
+                  <tr>
+                    <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
+                    <th colSpan={4} className="text-center p-2 border border-border bg-blue-50 dark:bg-blue-950 font-semibold">Tank 1 (Boiler)</th>
+                    <th colSpan={4} className="text-center p-2 border border-border bg-amber-50 dark:bg-amber-950 font-semibold">Tank 2 (Dryer)</th>
+                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (MT)</th>
+                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total Consumed (MT)</th>
+                  </tr>
+                  <tr>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950">Opening</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950">Closing</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950">Dip Rcpt</th>
+                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-950 font-semibold">Consumed</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950">Opening</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950">Closing</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950">Dip Rcpt</th>
+                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-950 font-semibold">Consumed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dailySummary.map(day => (
-                    <tr key={day.date} className="border-b" data-testid={`row-daily-${day.date}`}>
-                      <td className="p-2">{day.date}</td>
-                      <td className="p-2 text-right">{day.t1Opening ? (day.t1Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t1Closing ? (day.t1Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t1ReceiptVol ? (day.t1ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t1Consumption !== null ? (day.t1Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Opening ? (day.t2Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Closing ? (day.t2Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t2ReceiptVol ? (day.t2ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{day.t2Consumption !== null ? (day.t2Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right text-muted-foreground">{day.materialReceiptKg ? (day.materialReceiptKg / 1000).toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right font-bold">{day.totalConsumptionKg ? (day.totalConsumptionKg / 1000).toFixed(3) : "-"}</td>
+                    <tr key={day.date} data-testid={`row-daily-${day.date}`}>
+                      <td className="p-2 border border-border">{day.date}</td>
+                      <td className="p-2 text-right border border-border">{day.t1Opening ? (day.t1Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border">{day.t1Closing ? (day.t1Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border">{day.t1ReceiptVol ? (day.t1ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border font-medium">{day.t1Consumption !== null ? (day.t1Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border">{day.t2Opening ? (day.t2Opening.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border">{day.t2Closing ? (day.t2Closing.volumeLiters * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border">{day.t2ReceiptVol ? (day.t2ReceiptVol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border font-medium">{day.t2Consumption !== null ? (day.t2Consumption * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border text-muted-foreground">{day.materialReceiptKg ? (day.materialReceiptKg / 1000).toFixed(3) : "-"}</td>
+                      <td className="p-2 text-right border border-border font-bold">{day.totalConsumptionKg ? (day.totalConsumptionKg / 1000).toFixed(3) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1022,7 +1025,7 @@ export default function PlantBitumenStock() {
                     <th className="text-right p-2">Depth (cm)</th>
                     <th className="text-right p-2">Volume (L)</th>
                     <th className="text-right p-2">Weight (MT)</th>
-                    <th className="text-right p-2">Usable (L)</th>
+                    <th className="text-right p-2">Usable (MT)</th>
                     <th className="text-left p-2">Type</th>
                     <th className="text-left p-2">Notes</th>
                     {isAdmin && <th className="text-center p-2">Actions</th>}
@@ -1037,7 +1040,7 @@ export default function PlantBitumenStock() {
                       <td className="p-2 text-right font-medium">{r.depthCm}</td>
                       <td className="p-2 text-right">{r.volumeLiters.toFixed(3)}</td>
                       <td className="p-2 text-right">{(r.weightKg / 1000).toFixed(3)}</td>
-                      <td className="p-2 text-right text-green-600 dark:text-green-400">{getUsableVolume(r.depthCm).toFixed(3)}</td>
+                      <td className="p-2 text-right text-green-600 dark:text-green-400">{(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td>
                       <td className="p-2">
                         <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : r.readingType === "receipt" ? "outline" : "secondary"}>
                           {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
