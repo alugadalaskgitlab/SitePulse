@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Shield, TrendingUp, TrendingDown, ClipboardList, Lock } from "lucide-react";
 import { format } from "date-fns";
@@ -14,7 +14,9 @@ import type { ConsumptionAuditLog, TruckDispatch } from "@shared/schema";
 
 export default function PlantAuditReport() {
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
+  const backLink = appendOrigin(`/plant/dashboard?tab=stock${urlRole ? `&role=${urlRole}` : ""}`);
   
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [filterDateFrom, setFilterDateFrom] = useState("");

@@ -29,7 +29,7 @@ export default function PlantLdoFlowMeter() {
   const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
   const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
   const isAdmin = pageRole === "admin";
-  const backLink = appendOrigin("/plant?tab=stock");
+  const backLink = appendOrigin(`/plant/dashboard?tab=stock${pageRole ? `&role=${pageRole}` : ""}`);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<LdoFlowReading | null>(null);
@@ -421,7 +421,7 @@ export default function PlantLdoFlowMeter() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href={appendOrigin("/plant?tab=stock")}>
+          <Link href={appendOrigin("/plant/dashboard?tab=stock")}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>
@@ -434,7 +434,7 @@ export default function PlantLdoFlowMeter() {
             <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
             <p className="text-muted-foreground mb-4">Please access this page through the Stock Details tab in the Plant Module</p>
-            <Link href={appendOrigin("/plant?tab=stock")}>
+            <Link href={appendOrigin("/plant/dashboard?tab=stock")}>
               <Button data-testid="button-go-to-plant">Go to Plant Module</Button>
             </Link>
           </CardContent>

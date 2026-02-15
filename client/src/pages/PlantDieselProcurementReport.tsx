@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Fuel, TrendingUp, Package, MapPin, Loader2, Download, Printer } from "lucide-react";
 import { format } from "date-fns";
@@ -34,7 +34,9 @@ interface DieselProcurementData {
 
 export default function PlantDieselProcurementReport() {
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
+  const backLink = appendOrigin(`/plant/dashboard?tab=stock${urlRole ? `&role=${urlRole}` : ""}`);
   
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");

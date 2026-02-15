@@ -24,11 +24,19 @@ import { format } from "date-fns";
 
 export default function Plant() {
   const searchString = useSearch();
-  const tabParam = new URLSearchParams(searchString || window.location.search).get("tab");
+  const params = new URLSearchParams(searchString || window.location.search);
+  const tabParam = params.get("tab");
+  const roleParam = params.get("role") as "manager" | "admin" | null;
+  
+  const initialUnlocked = new Map<string, "manager" | "admin">();
+  if (tabParam && roleParam && ["stock", "masters", "dashboard"].includes(tabParam)) {
+    initialUnlocked.set(tabParam, roleParam);
+  }
+  
   const [activeTab, setActiveTab] = useState(tabParam || "operations");
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [unlockedTabs, setUnlockedTabs] = useState<Map<string, "manager" | "admin">>(new Map());
+  const [unlockedTabs, setUnlockedTabs] = useState<Map<string, "manager" | "admin">>(initialUnlocked);
   const { toast } = useToast();
   const { setAccess } = useAccess();
   
@@ -38,8 +46,16 @@ export default function Plant() {
   useEffect(() => {
     if (tabParam && ["operations", "stock", "masters", "dashboard"].includes(tabParam)) {
       setActiveTab(tabParam);
+      if (roleParam && ["stock", "masters", "dashboard"].includes(tabParam)) {
+        setUnlockedTabs(prev => {
+          const newMap = new Map(prev);
+          newMap.set(tabParam, roleParam);
+          return newMap;
+        });
+        setAccess(roleParam);
+      }
     }
-  }, [tabParam]);
+  }, [tabParam, roleParam]);
 
   const handleTabChange = (tab: string) => {
     if ((tab === "masters" || tab === "dashboard" || tab === "stock") && !unlockedTabs.has(tab)) {

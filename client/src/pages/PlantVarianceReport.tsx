@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, AlertTriangle, TrendingUp, TrendingDown, FileWarning, Lock } from "lucide-react";
 import { format } from "date-fns";
@@ -14,7 +14,9 @@ import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
 
 export default function PlantVarianceReport() {
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
+  const backLink = appendOrigin(`/plant/dashboard?tab=stock${urlRole ? `&role=${urlRole}` : ""}`);
   
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -158,7 +160,7 @@ export default function PlantVarianceReport() {
             <FileWarning className="w-6 h-6 text-amber-600" />
             Consumption Variance Report
           </h1>
-          <p className="text-muted-foreground">Dispatches where actual consumption differs from theoretical</p>
+          <p className="text-muted-foreground">Compares actual consumption (entered during dispatch) vs theoretical (from mix template)</p>
         </div>
       </div>
 
@@ -193,69 +195,75 @@ export default function PlantVarianceReport() {
       </Card>
 
       {summaryStats && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Total Entries with Variance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold" data-testid="text-total-entries">{summaryStats.totalEntries}</p>
-              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span>Bitumen:</span>
-                  <span className="text-red-600 dark:text-red-400">{summaryStats.bitumenOveruse} overuse</span>
-                  <span>/</span>
-                  <span className="text-green-600 dark:text-green-400">{summaryStats.bitumenUnderuse} underuse</span>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Total Dispatches with Variance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold" data-testid="text-total-entries">{summaryStats.totalEntries}</p>
+                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>Bitumen:</span>
+                    <span className="text-red-600 dark:text-red-400">{summaryStats.bitumenOveruse} excess (used more)</span>
+                    <span>/</span>
+                    <span className="text-green-600 dark:text-green-400">{summaryStats.bitumenUnderuse} saved (used less)</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>LDO:</span>
+                    <span className="text-red-600 dark:text-red-400">{summaryStats.ldoOveruse} excess</span>
+                    <span>/</span>
+                    <span className="text-green-600 dark:text-green-400">{summaryStats.ldoUnderuse} saved</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span>LDO:</span>
-                  <span className="text-red-600 dark:text-red-400">{summaryStats.ldoOveruse} overuse</span>
-                  <span>/</span>
-                  <span className="text-green-600 dark:text-green-400">{summaryStats.ldoUnderuse} underuse</span>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Bitumen Variance (Actual vs Template)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  {summaryStats.avgBitumenVariance > 0 ? (
+                    <TrendingUp className="w-4 h-4 text-red-500" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-green-500" />
+                  )}
+                  <p className="text-2xl font-bold" data-testid="text-avg-bitumen-variance">{formatVariance(summaryStats.avgBitumenVariance)}</p>
+                  <span className="text-xs text-muted-foreground">avg</span>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Bitumen Variance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                {summaryStats.avgBitumenVariance > 0 ? (
-                  <TrendingUp className="w-4 h-4 text-red-500" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-green-500" />
-                )}
-                <p className="text-2xl font-bold" data-testid="text-avg-bitumen-variance">{formatVariance(summaryStats.avgBitumenVariance)}</p>
-                <span className="text-xs text-muted-foreground">avg</span>
-              </div>
-              <p className={`text-sm font-mono mt-1 ${totalBitumenDiffKg > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-bitumen-diff">
-                {formatDiff(totalBitumenDiffKg, "Kg")} total
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">LDO Variance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                {summaryStats.avgLdoVariance > 0 ? (
-                  <TrendingUp className="w-4 h-4 text-red-500" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-green-500" />
-                )}
-                <p className="text-2xl font-bold" data-testid="text-avg-ldo-variance">{formatVariance(summaryStats.avgLdoVariance)}</p>
-                <span className="text-xs text-muted-foreground">avg</span>
-              </div>
-              <p className={`text-sm font-mono mt-1 ${totalLdoDiffL > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-ldo-diff">
-                {formatDiff(totalLdoDiffL, "L")} total
-              </p>
-            </CardContent>
-          </Card>
+                <p className={`text-sm font-mono mt-1 ${totalBitumenDiffKg > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-bitumen-diff">
+                  {formatDiff(totalBitumenDiffKg, "Kg")} total {totalBitumenDiffKg > 0 ? "(excess)" : totalBitumenDiffKg < 0 ? "(saved)" : ""}
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">LDO Variance (Actual vs Template)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  {summaryStats.avgLdoVariance > 0 ? (
+                    <TrendingUp className="w-4 h-4 text-red-500" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-green-500" />
+                  )}
+                  <p className="text-2xl font-bold" data-testid="text-avg-ldo-variance">{formatVariance(summaryStats.avgLdoVariance)}</p>
+                  <span className="text-xs text-muted-foreground">avg</span>
+                </div>
+                <p className={`text-sm font-mono mt-1 ${totalLdoDiffL > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-ldo-diff">
+                  {formatDiff(totalLdoDiffL, "L")} total {totalLdoDiffL > 0 ? "(excess)" : totalLdoDiffL < 0 ? "(saved)" : ""}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
+            <strong>Reading the numbers:</strong> Negative % (green) = Savings (less material used than template). Positive % (red) = Excess (more material used than template). 
+            The Kg/L difference shows the total quantity difference between actual and theoretical consumption across all dispatches.
+          </div>
         </div>
       )}
 
@@ -277,11 +285,11 @@ export default function PlantVarianceReport() {
                     <th className="text-left p-2">Truck</th>
                     <th className="text-left p-2">Mix</th>
                     <th className="text-right p-2">Load (MT)</th>
-                    <th className="text-right p-2">Bitumen Variance</th>
-                    <th className="text-right p-2">Bitumen Diff</th>
-                    <th className="text-right p-2">LDO (L/ton)</th>
-                    <th className="text-right p-2">LDO Variance</th>
-                    <th className="text-right p-2">LDO Diff</th>
+                    <th className="text-right p-2" title="Percentage difference: (Actual% - Template%) / Template% x 100. Negative = saved, Positive = excess">Bitumen Var %</th>
+                    <th className="text-right p-2" title="Quantity difference in Kg: Actual Kg - Theoretical Kg. Negative = saved, Positive = excess">Bitumen Diff (Kg)</th>
+                    <th className="text-right p-2" title="Actual LDO per ton / Theoretical LDO per ton">LDO (L/ton)</th>
+                    <th className="text-right p-2" title="Percentage difference in LDO. Negative = saved, Positive = excess">LDO Var %</th>
+                    <th className="text-right p-2" title="Quantity difference in Liters. Negative = saved, Positive = excess">LDO Diff (L)</th>
                     <th className="text-left p-2">Adjusted By</th>
                     <th className="text-left p-2">Adjusted At</th>
                   </tr>
