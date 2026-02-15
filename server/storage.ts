@@ -87,7 +87,7 @@ import {
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, notInArray, sql, asc, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull } from "drizzle-orm";
 import { format } from "date-fns";
 
 export interface IStorage {
@@ -917,16 +917,45 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDpr(id: number): Promise<boolean> {
     return await db.transaction(async (tx) => {
-      await this.cleanupDprEquipmentDieselLedger(tx, id);
-      await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
-      await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
-      await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
-      await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
-      await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
-      await tx.delete(dprVersions).where(eq(dprVersions.dprId, id));
-      const result = await tx.delete(dprs).where(eq(dprs.id, id));
+      const allVersionIds = await this.collectVersionChainAncestors(tx, id);
+
+      for (const dprId of allVersionIds) {
+        await this.cleanupDprEquipmentDieselLedger(tx, dprId);
+        await tx.delete(progressEntries).where(eq(progressEntries.dprId, dprId));
+        await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, dprId));
+        await tx.delete(labourLogs).where(eq(labourLogs.dprId, dprId));
+        await tx.delete(materialLogs).where(eq(materialLogs.dprId, dprId));
+        await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, dprId));
+      }
+
+      await tx.delete(dprVersions).where(
+        or(
+          inArray(dprVersions.dprId, allVersionIds),
+          inArray(dprVersions.originalDprId, allVersionIds)
+        )
+      );
+
+      await tx.delete(dprs).where(inArray(dprs.id, allVersionIds));
       return true;
     });
+  }
+
+  private async collectVersionChainAncestors(tx: any, targetId: number): Promise<number[]> {
+    const allVersionLinks = await tx.select().from(dprVersions);
+    const chainIds = new Set<number>([targetId]);
+
+    const traceAncestors = (dprId: number) => {
+      for (const v of allVersionLinks) {
+        if (v.dprId === dprId && !chainIds.has(v.originalDprId)) {
+          chainIds.add(v.originalDprId);
+          traceAncestors(v.originalDprId);
+        }
+      }
+    };
+
+    traceAncestors(targetId);
+
+    return Array.from(chainIds);
   }
 
   // Plant Report Methods
