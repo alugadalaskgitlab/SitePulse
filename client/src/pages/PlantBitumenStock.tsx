@@ -280,34 +280,50 @@ export default function PlantBitumenStock() {
     const totalReceiptsKg = filteredReceipts.reduce((s, r) => s + convertBitumenToKg(r.quantity, r.uom), 0);
     const totalReceiptsMT = totalReceiptsKg / 1000;
 
-    let latestDipReading: { date: string; time?: string; tank1MT: number; tank2MT: number; totalMT: number } | null = null;
+    let latestDipReading: { tank1MT: number; tank1UsableMT: number; tank1Date?: string; tank1Time?: string; tank2MT: number; tank2UsableMT: number; tank2Date?: string; tank2Time?: string; totalMT: number; totalUsableMT: number; displayDate: string; displayTime?: string } | null = null;
     if (readings && readings.length > 0) {
-      const sortedByDateTime = [...readings].sort((a, b) => {
+      const sortByDateTime = (arr: typeof readings) => [...arr].sort((a, b) => {
         const dc = b.date.localeCompare(a.date);
         if (dc !== 0) return dc;
         return (b.time || "").localeCompare(a.time || "");
       });
 
-      let latestDate: string | null = sortedByDateTime[0]?.date ?? null;
-      if (reconDateTo && latestDate && latestDate > reconDateTo) {
-        const inRange = sortedByDateTime.filter(r => r.date <= reconDateTo);
-        latestDate = inRange.length > 0 ? inRange[0].date : null;
-      }
+      const tank1Readings = sortByDateTime(readings.filter(r => r.tankNumber === 1));
+      const tank2Readings = sortByDateTime(readings.filter(r => r.tankNumber === 2));
 
-      if (latestDate) {
-        const latestReadings = sortedByDateTime.filter(r => r.date === latestDate);
-        const t1 = latestReadings.filter(r => r.tankNumber === 1);
-        const t2 = latestReadings.filter(r => r.tankNumber === 2);
-        const t1Latest = t1.length > 0 ? t1[0] : null;
-        const t2Latest = t2.length > 0 ? t2[0] : null;
+      const findLatest = (sorted: typeof readings) => {
+        if (sorted.length === 0) return null;
+        if (reconDateTo) {
+          const inRange = sorted.filter(r => r.date <= reconDateTo);
+          return inRange.length > 0 ? inRange[0] : null;
+        }
+        return sorted[0];
+      };
+
+      const t1Latest = findLatest(tank1Readings);
+      const t2Latest = findLatest(tank2Readings);
+
+      if (t1Latest || t2Latest) {
         const t1MT = t1Latest ? (t1Latest.weightKg / 1000) : 0;
         const t2MT = t2Latest ? (t2Latest.weightKg / 1000) : 0;
+        const t1UsableMT = t1Latest ? (getUsableVolume(t1Latest.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000) : 0;
+        const t2UsableMT = t2Latest ? (getUsableVolume(t2Latest.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000) : 0;
+        const displayDate = t1Latest && t2Latest
+          ? (t1Latest.date > t2Latest.date ? t1Latest.date : t2Latest.date)
+          : (t1Latest?.date || t2Latest?.date || "");
         latestDipReading = {
-          date: latestDate,
-          time: t1Latest?.time || t2Latest?.time || undefined,
           tank1MT: t1MT,
+          tank1UsableMT: t1UsableMT,
+          tank1Date: t1Latest?.date,
+          tank1Time: t1Latest?.time || undefined,
           tank2MT: t2MT,
+          tank2UsableMT: t2UsableMT,
+          tank2Date: t2Latest?.date,
+          tank2Time: t2Latest?.time || undefined,
           totalMT: t1MT + t2MT,
+          totalUsableMT: t1UsableMT + t2UsableMT,
+          displayDate,
+          displayTime: t1Latest?.time || t2Latest?.time || undefined,
         };
       }
     }
@@ -660,7 +676,7 @@ export default function PlantBitumenStock() {
             <BarChart3 className="w-5 h-5 text-amber-600" />
             <CardTitle className="text-sm font-medium">Bitumen Reconciliation</CardTitle>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Compare theoretical consumption (from mix templates) vs actual consumption (per dispatch variance) and physical stock (dip readings)
           </p>
         </CardHeader>
@@ -728,40 +744,40 @@ export default function PlantBitumenStock() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Card className="bg-muted/30">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
                       Total Production
                       <span title="Total mix dispatched in the selected period"  className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
                     <div className="text-xl font-bold">{reconciliationData.totalLoadMT.toFixed(3)} MT</div>
-                    <div className="text-xs text-muted-foreground">{reconciliationData.dispatchCount} dispatches</div>
+                    <div className="text-sm text-muted-foreground">{reconciliationData.dispatchCount} dispatches</div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-muted/30">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
                       Theoretical Bitumen
                       <span title="Bitumen that should have been consumed as per mix template design percentages" className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
                     <div className="text-xl font-bold">{reconciliationData.totalTheoreticalMT.toFixed(3)} MT</div>
-                    <div className="text-xs text-muted-foreground">As per mix template</div>
+                    <div className="text-sm text-muted-foreground">As per mix template</div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-muted/30">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
                       Actual Bitumen Used
                       <span title="Bitumen actually consumed as per the variance % entered during dispatch" className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
                     <div className="text-xl font-bold">{reconciliationData.totalActualMT.toFixed(3)} MT</div>
-                    <div className="text-xs text-muted-foreground">As per dispatch variance</div>
+                    <div className="text-sm text-muted-foreground">As per dispatch variance</div>
                   </CardContent>
                 </Card>
 
                 <Card className={`${reconciliationData.bitumenSavedMT >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30"}`}>
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
                       {reconciliationData.bitumenSavedMT >= 0 ? "Bitumen Saved" : "Bitumen Excess"}
                       <span title="Difference between theoretical and actual. Positive = saved (used less than template), Negative = excess (used more than template)" className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
@@ -769,7 +785,7 @@ export default function PlantBitumenStock() {
                       {reconciliationData.bitumenSavedMT >= 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                       {Math.abs(reconciliationData.bitumenSavedMT).toFixed(3)} MT
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       {reconciliationData.savingsPercent >= 0 ? "Savings" : "Excess"}: {Math.abs(reconciliationData.savingsPercent).toFixed(1)}% of theoretical
                     </div>
                   </CardContent>
@@ -779,12 +795,12 @@ export default function PlantBitumenStock() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Card className="bg-blue-50/50 dark:bg-blue-950/20">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
                       Bitumen Received (Receipts)
                       <span title="Total bitumen received from material receipts during the selected period" className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
                     <div className="text-xl font-bold">{reconciliationData.totalReceiptsMT.toFixed(3)} MT</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       {reconDateFrom || reconDateTo ? `${reconDateFrom || "start"} to ${reconDateTo || "now"}` : "All time"}
                     </div>
                   </CardContent>
@@ -792,18 +808,23 @@ export default function PlantBitumenStock() {
 
                 <Card className="bg-amber-50/50 dark:bg-amber-950/20">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
                       Physical Stock (Dip Reading)
-                      <span title="Physical bitumen stock in tanks as measured by the latest dip reading. This is a periodic reference, not daily." className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="Physical bitumen stock in tanks as measured by the latest dip reading per tank. Each tank's latest reading is found independently." className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
                     {reconciliationData.latestDipReading ? (
                       <>
                         <div className="text-xl font-bold">{reconciliationData.latestDipReading.totalMT.toFixed(3)} MT</div>
-                        <div className="text-xs text-muted-foreground">
-                          T1: {reconciliationData.latestDipReading.tank1MT.toFixed(3)} MT | T2: {reconciliationData.latestDipReading.tank2MT.toFixed(3)} MT
+                        <div className="text-sm text-muted-foreground">
+                          Usable: {reconciliationData.latestDipReading.totalUsableMT.toFixed(3)} MT
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          As of {reconciliationData.latestDipReading.date}{reconciliationData.latestDipReading.time ? ` at ${reconciliationData.latestDipReading.time}` : ""}
+                        <div className="text-sm text-muted-foreground mt-1">
+                          T1: {reconciliationData.latestDipReading.tank1MT.toFixed(3)} MT (usable: {reconciliationData.latestDipReading.tank1UsableMT.toFixed(3)})
+                          {reconciliationData.latestDipReading.tank1Date ? ` — ${reconciliationData.latestDipReading.tank1Date}` : ""}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          T2: {reconciliationData.latestDipReading.tank2MT.toFixed(3)} MT (usable: {reconciliationData.latestDipReading.tank2UsableMT.toFixed(3)})
+                          {reconciliationData.latestDipReading.tank2Date ? ` — ${reconciliationData.latestDipReading.tank2Date}` : ""}
                         </div>
                       </>
                     ) : (
@@ -813,7 +834,7 @@ export default function PlantBitumenStock() {
                 </Card>
               </div>
 
-              <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md space-y-1">
+              <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md space-y-1">
                 <div className="font-medium">How to read this:</div>
                 <div><strong>Theoretical</strong> = What the mix template says should have been consumed (template bitumen % x load weight)</div>
                 <div><strong>Actual</strong> = What was actually consumed based on the variance % entered during each dispatch</div>
