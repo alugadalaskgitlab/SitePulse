@@ -282,6 +282,10 @@ export default function PlantLdoFlowMeter() {
     return result.slice(0, 10);
   }, [dispatches, dailySummary]);
 
+  const { data: dipReadings, isLoading: dipLoading } = useQuery<LdoDipReading[]>({
+    queryKey: ["/api/plant-module/ldo-dip-readings"],
+  });
+
   const deliveryLocations = useMemo(() => {
     if (!dispatches) return [];
     const locs = new Set(dispatches.map(d => d.deliveryLocation).filter(Boolean));
@@ -291,7 +295,7 @@ export default function PlantLdoFlowMeter() {
   const reconciliationData = useMemo(() => {
     if (!dispatches) return null;
 
-    let filtered = dispatches.filter(d => d.status !== "cancelled");
+    let filtered = [...dispatches];
     if (reconDateFrom) filtered = filtered.filter(d => d.date >= reconDateFrom);
     if (reconDateTo) filtered = filtered.filter(d => d.date <= reconDateTo);
     if (reconPartyId !== "all") filtered = filtered.filter(d => String(d.partyId) === reconPartyId);
@@ -478,10 +482,6 @@ export default function PlantLdoFlowMeter() {
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
-  });
-
-  const { data: dipReadings, isLoading: dipLoading } = useQuery<LdoDipReading[]>({
-    queryKey: ["/api/plant-module/ldo-dip-readings"],
   });
 
   const latestDipTank1 = useMemo(() => {
