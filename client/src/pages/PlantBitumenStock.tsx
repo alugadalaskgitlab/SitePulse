@@ -560,11 +560,17 @@ export default function PlantBitumenStock() {
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Total:</span>
-                  <span className="font-medium">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({vol.toFixed(3)} L)</span>
+                  <span>
+                    <span className="font-bold text-base">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                    <span className="text-xs text-muted-foreground ml-1">({vol.toFixed(0)} L)</span>
+                  </span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Usable:</span>
-                  <span className="font-medium text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({usable.toFixed(3)} L)</span>
+                  <span>
+                    <span className="font-bold text-base text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                    <span className="text-xs text-muted-foreground ml-1">({usable.toFixed(0)} L)</span>
+                  </span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Dead:</span>
@@ -646,24 +652,22 @@ export default function PlantBitumenStock() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Total Volume:</span>
-              <span className="font-bold">{combinedTotal.toFixed(3)} L</span>
+              <span className="text-muted-foreground">Total:</span>
+              <span>
+                <span className="font-bold text-base">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                <span className="text-xs text-muted-foreground ml-1">({combinedTotal.toFixed(0)} L)</span>
+              </span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Total Weight:</span>
-              <span className="font-bold">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({(Math.round(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER)).toFixed(3)} kg)</span>
-            </div>
-            <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Usable Volume:</span>
-              <span className="font-bold text-green-600 dark:text-green-400">{combinedUsable.toFixed(3)} L</span>
-            </div>
-            <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Usable Weight:</span>
-              <span className="font-bold text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({(Math.round(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER)).toFixed(3)} kg)</span>
+              <span className="text-muted-foreground">Usable:</span>
+              <span>
+                <span className="font-bold text-base text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                <span className="text-xs text-muted-foreground ml-1">({combinedUsable.toFixed(0)} L)</span>
+              </span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Dead Stock (2 tanks):</span>
-              <span className="text-xs text-red-500">{Math.round(combinedDead).toFixed(3)} L / {(Math.round(combinedDead * BITUMEN_DENSITY_KG_PER_LITER)).toFixed(3)} kg</span>
+              <span className="text-xs text-red-500">{(combinedDead * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({Math.round(combinedDead).toFixed(0)} L)</span>
             </div>
           </CardContent>
         </Card>
@@ -1143,16 +1147,22 @@ export default function PlantBitumenStock() {
                     </div>
                     <div className="flex-1 space-y-1 text-sm">
                       <div className="flex justify-between gap-1 flex-wrap">
-                        <span className="text-muted-foreground">Total Volume:</span>
-                        <span className="font-bold">{(Math.round(computedVolume)).toFixed(3)} L ({(computedWeight / 1000).toFixed(3)} MT)</span>
+                        <span className="text-muted-foreground">Total:</span>
+                        <span>
+                          <span className="font-bold text-base">{(computedWeight / 1000).toFixed(3)} MT</span>
+                          <span className="text-xs text-muted-foreground ml-1">({Math.round(computedVolume).toFixed(0)} L)</span>
+                        </span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Dead Stock:</span>
-                        <span className="text-red-500 text-xs">{(Math.round(deadStockVolume)).toFixed(3)} L ({(deadStockWeight / 1000).toFixed(3)} MT)</span>
+                        <span className="text-red-500 text-xs">{(deadStockWeight / 1000).toFixed(3)} MT ({Math.round(deadStockVolume).toFixed(0)} L)</span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
-                        <span className="text-muted-foreground">Usable Stock:</span>
-                        <span className="font-bold text-green-600 dark:text-green-400">{(Math.round(usableVolume)).toFixed(3)} L ({(usableWeight / 1000).toFixed(3)} MT)</span>
+                        <span className="text-muted-foreground">Usable:</span>
+                        <span>
+                          <span className="font-bold text-base text-green-600 dark:text-green-400">{(usableWeight / 1000).toFixed(3)} MT</span>
+                          <span className="text-xs text-muted-foreground ml-1">({Math.round(usableVolume).toFixed(0)} L)</span>
+                        </span>
                       </div>
                       <div className="text-xs text-muted-foreground">Fill: {fillPercent.toFixed(1)}%</div>
                     </div>

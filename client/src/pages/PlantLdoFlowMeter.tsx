@@ -763,11 +763,17 @@ export default function PlantLdoFlowMeter() {
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Total:</span>
-                        <span className="font-medium" data-testid={`text-dip-volume-t${tankNum}`}>{(vol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({vol.toFixed(0)} L)</span>
+                        <span data-testid={`text-dip-volume-t${tankNum}`}>
+                          <span className="font-bold text-base">{vol.toFixed(0)} L</span>
+                          <span className="text-xs text-muted-foreground ml-1">({(vol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
+                        </span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Usable:</span>
-                        <span className="font-medium text-green-600 dark:text-green-400" data-testid={`text-dip-usable-t${tankNum}`}>{(usableVol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({usableVol.toFixed(0)} L)</span>
+                        <span data-testid={`text-dip-usable-t${tankNum}`}>
+                          <span className="font-bold text-base text-green-600 dark:text-green-400">{usableVol.toFixed(0)} L</span>
+                          <span className="text-xs text-muted-foreground ml-1">({(usableVol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
+                        </span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Dead:</span>
@@ -803,7 +809,7 @@ export default function PlantLdoFlowMeter() {
                 )}
                 {stock && (
                   <div className="pt-2 mt-1 border-t text-xs text-muted-foreground">
-                    <span>Flow Stock: {stock.stockL.toFixed(0)} L ({(stock.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
+                    <span>Flow Stock: <span className="font-bold">{stock.stockL.toFixed(0)} L</span> <span className="text-muted-foreground">({(stock.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span></span>
                     <span className="ml-1">as of {stock.date}</span>
                   </div>
                 )}
@@ -821,9 +827,9 @@ export default function PlantLdoFlowMeter() {
               <>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Dip Stock:</span>
-                  <span className="font-bold text-green-600 dark:text-green-400" data-testid="text-combined-dip-stock">
-                    {((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L
-                    ({(((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)
+                  <span data-testid="text-combined-dip-stock">
+                    <span className="font-bold text-base text-green-600 dark:text-green-400">{((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L</span>
+                    <span className="text-xs text-muted-foreground ml-1">({(((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                   </span>
                 </div>
               </>
@@ -832,9 +838,9 @@ export default function PlantLdoFlowMeter() {
               <>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-muted-foreground">Flow Stock:</span>
-                  <span className="font-bold" data-testid="text-combined-flow-stock">
-                    {((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L
-                    ({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)
+                  <span data-testid="text-combined-flow-stock">
+                    <span className="font-bold text-base">{((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L</span>
+                    <span className="text-xs text-muted-foreground ml-1">({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                   </span>
                 </div>
               </>
@@ -1342,16 +1348,18 @@ export default function PlantLdoFlowMeter() {
               {dipCalculatedVolume && (
                 <div className="mt-2 p-3 rounded-md bg-muted space-y-1 text-sm">
                   <div className="flex justify-between gap-1 flex-wrap">
-                    <span className="text-muted-foreground">Volume:</span>
-                    <span className="font-bold" data-testid="text-dip-calc-volume">{dipCalculatedVolume.volume.toFixed(0)} L</span>
-                  </div>
-                  <div className="flex justify-between gap-1 flex-wrap">
-                    <span className="text-muted-foreground">Weight:</span>
-                    <span className="font-bold" data-testid="text-dip-calc-weight">{dipCalculatedVolume.weight.toFixed(0)} kg</span>
+                    <span className="text-muted-foreground">Total:</span>
+                    <span data-testid="text-dip-calc-volume">
+                      <span className="font-bold text-base">{dipCalculatedVolume.volume.toFixed(0)} L</span>
+                      <span className="text-xs text-muted-foreground ml-1">({(dipCalculatedVolume.weight / 1000).toFixed(3)} MT)</span>
+                    </span>
                   </div>
                   <div className="flex justify-between gap-1 flex-wrap">
                     <span className="text-muted-foreground">Usable (excl. dead stock):</span>
-                    <span className="font-bold text-green-600 dark:text-green-400" data-testid="text-dip-calc-usable">{dipCalculatedVolume.usable.toFixed(0)} L</span>
+                    <span data-testid="text-dip-calc-usable">
+                      <span className="font-bold text-base text-green-600 dark:text-green-400">{dipCalculatedVolume.usable.toFixed(0)} L</span>
+                      <span className="text-xs text-muted-foreground ml-1">({((dipCalculatedVolume.usable * LDO_DENSITY_KG_PER_LITER) / 1000).toFixed(3)} MT)</span>
+                    </span>
                   </div>
                 </div>
               )}
