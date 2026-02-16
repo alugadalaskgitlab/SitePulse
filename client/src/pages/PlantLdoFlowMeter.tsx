@@ -706,89 +706,140 @@ export default function PlantLdoFlowMeter() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div
-          className={pageRole ? "cursor-pointer hover-elevate" : ""}
-          onClick={pageRole ? () => handleTankClick(1) : undefined}
-          data-testid="tank-card-1"
-        >
-          <Card className="overflow-visible">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Tank 1 (Boiler)</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {tankStock.tank1 ? (
-                <div className="space-y-1 text-sm">
-                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-stock-t1">
-                    {tankStock.tank1.stockL.toFixed(3)} L
-                  </div>
-                  <div className="text-sm font-medium">{(tankStock.tank1.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
-                  <div className="text-xs text-muted-foreground">
-                    Stock as of {tankStock.tank1.date} {tankStock.tank1.time || ""}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-muted-foreground text-sm">No stock recorded</div>
-              )}
-              {latestTank1 && (
-                <div className="pt-2 border-t text-xs text-muted-foreground">
-                  <span>Meter: {latestTank1.meterReading.toFixed(3)} L</span>
-                  <span className="ml-2">({latestTank1.date} {latestTank1.time || ""} - {latestTank1.readingType})</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {[1, 2].map(tankNum => {
+          const latestDip = tankNum === 1 ? latestDipTank1 : latestDipTank2;
+          const latestFlow = tankNum === 1 ? latestTank1 : latestTank2;
+          const stock = tankNum === 1 ? tankStock.tank1 : tankStock.tank2;
+          const maxDepth = getLdoMaxDepth(tankNum);
+          const deadStockDepth = getLdoDeadStockDepth(tankNum);
+          const deadStockVol = getLdoDeadStockVolume(tankNum);
+          const depth = latestDip?.depthCm || 0;
+          const vol = latestDip?.volumeLiters || 0;
+          const usableVol = latestDip ? getLdoUsableVolume(tankNum, depth) : 0;
+          const fillPercent = Math.min(100, (depth / maxDepth) * 100);
+          const deadStockPercent = (deadStockDepth / maxDepth) * 100;
+          const fillColor = tankNum === 1 ? "bg-blue-600/70 dark:bg-blue-500/50" : "bg-amber-700/70 dark:bg-amber-600/50";
 
-        <div
-          className={pageRole ? "cursor-pointer hover-elevate" : ""}
-          onClick={pageRole ? () => handleTankClick(2) : undefined}
-          data-testid="tank-card-2"
-        >
-          <Card className="overflow-visible">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Tank 2 (Dryer)</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {tankStock.tank2 ? (
-                <div className="space-y-1 text-sm">
-                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-stock-t2">
-                    {tankStock.tank2.stockL.toFixed(3)} L
+          return (
+            <Card key={tankNum} className="overflow-visible" data-testid={`tank-card-${tankNum}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Tank {tankNum} ({TANK_LABELS[tankNum]})</CardTitle>
+                {pageRole && (
+                  <div className="flex gap-3 mt-1">
+                    <button
+                      className="text-xs font-medium text-emerald-600 dark:text-emerald-400 underline underline-offset-2 hover:text-emerald-700 dark:hover:text-emerald-300"
+                      onClick={() => handleDipTankClick(tankNum)}
+                      data-testid={`link-dip-reading-t${tankNum}`}
+                    >
+                      <Ruler className="w-3 h-3 inline mr-1" />Dip Reading
+                    </button>
+                    <button
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300"
+                      onClick={() => handleTankClick(tankNum)}
+                      data-testid={`link-flow-meter-t${tankNum}`}
+                    >
+                      <Gauge className="w-3 h-3 inline mr-1" />Flow Meter
+                    </button>
                   </div>
-                  <div className="text-sm font-medium">{(tankStock.tank2.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
-                  <div className="text-xs text-muted-foreground">
-                    Stock as of {tankStock.tank2.date} {tankStock.tank2.time || ""}
+                )}
+              </CardHeader>
+              <CardContent>
+                {latestDip ? (
+                  <div className="flex gap-4 items-end">
+                    <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`tank-visual-${tankNum}`}>
+                      <div
+                        className={`absolute bottom-0 w-full ${fillColor} transition-all duration-500`}
+                        style={{ height: `${fillPercent}%` }}
+                      />
+                      <div
+                        className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
+                        style={{ height: `${deadStockPercent}%` }}
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1 text-sm">
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Depth:</span>
+                        <span className="font-medium" data-testid={`text-dip-depth-t${tankNum}`}>{depth} cm</span>
+                      </div>
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Total:</span>
+                        <span className="font-medium" data-testid={`text-dip-volume-t${tankNum}`}>{(vol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({vol.toFixed(0)} L)</span>
+                      </div>
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Usable:</span>
+                        <span className="font-medium text-green-600 dark:text-green-400" data-testid={`text-dip-usable-t${tankNum}`}>{(usableVol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({usableVol.toFixed(0)} L)</span>
+                      </div>
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Dead:</span>
+                        <span className="text-xs text-red-500">{deadStockVol.toFixed(0)} L</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Dip: {latestDip.date} {latestDip.time || ""}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="text-muted-foreground text-sm">No stock recorded</div>
-              )}
-              {latestTank2 && (
-                <div className="pt-2 border-t text-xs text-muted-foreground">
-                  <span>Meter: {latestTank2.meterReading.toFixed(3)} L</span>
-                  <span className="ml-2">({latestTank2.date} {latestTank2.time || ""} - {latestTank2.readingType})</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                ) : (
+                  <div className="flex gap-4 items-end">
+                    <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`tank-visual-${tankNum}`}>
+                      <div
+                        className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
+                        style={{ height: `${deadStockPercent}%` }}
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1 text-sm">
+                      <p className="text-muted-foreground">No dip reading recorded</p>
+                      <div className="flex justify-between gap-1 flex-wrap">
+                        <span className="text-muted-foreground">Dead:</span>
+                        <span className="text-xs text-red-500">{deadStockVol.toFixed(0)} L</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {latestFlow && (
+                  <div className="pt-2 mt-2 border-t text-xs text-muted-foreground">
+                    <span>Meter: {latestFlow.meterReading.toFixed(3)} L</span>
+                    <span className="ml-2">({latestFlow.date} {latestFlow.time || ""} - {latestFlow.readingType})</span>
+                  </div>
+                )}
+                {stock && (
+                  <div className="pt-2 mt-1 border-t text-xs text-muted-foreground">
+                    <span>Flow Stock: {stock.stockL.toFixed(0)} L ({(stock.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
+                    <span className="ml-1">as of {stock.date}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
 
         <Card className="overflow-visible">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Combined Stock & Consumption</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
+            {(latestDipTank1 || latestDipTank2) && (
+              <>
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-muted-foreground">Dip Stock:</span>
+                  <span className="font-bold text-green-600 dark:text-green-400" data-testid="text-combined-dip-stock">
+                    {((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L
+                    ({(((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)
+                  </span>
+                </div>
+              </>
+            )}
             {(tankStock.tank1 || tankStock.tank2) && (
               <>
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-muted-foreground">Total Stock:</span>
-                  <span className="font-bold text-green-600 dark:text-green-400" data-testid="text-combined-stock">
-                    {((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(3)} L
+                  <span className="text-muted-foreground">Flow Stock:</span>
+                  <span className="font-bold" data-testid="text-combined-flow-stock">
+                    {((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L
                     ({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)
                   </span>
                 </div>
-                <div className="border-b my-1" />
               </>
             )}
+            <div className="border-b my-1" />
             <div className="flex justify-between gap-1 flex-wrap">
               <span className="text-muted-foreground">Total Consumption (Recent):</span>
               <span className="font-bold" data-testid="text-combined-consumption">
@@ -808,7 +859,7 @@ export default function PlantLdoFlowMeter() {
       {dailySummary.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Daily Consumption Summary</CardTitle>
+            <CardTitle className="text-sm font-medium">Daily Consumption Summary (Flow Meter)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -850,99 +901,6 @@ export default function PlantLdoFlowMeter() {
           </CardContent>
         </Card>
       )}
-
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Ruler className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-          <h2 className="text-lg font-semibold">LDO Dip Readings</h2>
-          <span className="text-sm text-muted-foreground">(Physical tank measurement)</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map(tankNum => {
-            const latestDip = tankNum === 1 ? latestDipTank1 : latestDipTank2;
-            const maxDepth = getLdoMaxDepth(tankNum);
-            const deadStockDepth = getLdoDeadStockDepth(tankNum);
-            const deadStockVol = getLdoDeadStockVolume(tankNum);
-            const depth = latestDip?.depthCm || 0;
-            const vol = latestDip?.volumeLiters || 0;
-            const usableVol = latestDip ? getLdoUsableVolume(tankNum, depth) : 0;
-            const fillPercent = Math.min(100, (depth / maxDepth) * 100);
-            const deadStockPercent = (deadStockDepth / maxDepth) * 100;
-            const fillColor = tankNum === 1 ? "bg-blue-600/70 dark:bg-blue-500/50" : "bg-amber-700/70 dark:bg-amber-600/50";
-
-            return (
-              <div
-                key={tankNum}
-                className={pageRole ? "cursor-pointer hover-elevate" : ""}
-                onClick={pageRole ? () => handleDipTankClick(tankNum) : undefined}
-                data-testid={`dip-tank-card-${tankNum}`}
-              >
-                <Card className="overflow-visible">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Tank {tankNum} ({TANK_LABELS[tankNum]})</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {latestDip ? (
-                      <div className="flex gap-4 items-end">
-                        <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`dip-tank-visual-${tankNum}`}>
-                          <div
-                            className={`absolute bottom-0 w-full ${fillColor} transition-all duration-500`}
-                            style={{ height: `${fillPercent}%` }}
-                          />
-                          <div
-                            className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
-                            style={{ height: `${deadStockPercent}%` }}
-                          />
-                        </div>
-                        <div className="flex-1 space-y-1 text-sm">
-                          <div className="flex justify-between gap-1 flex-wrap">
-                            <span className="text-muted-foreground">Depth:</span>
-                            <span className="font-medium" data-testid={`text-dip-depth-t${tankNum}`}>{depth} cm</span>
-                          </div>
-                          <div className="flex justify-between gap-1 flex-wrap">
-                            <span className="text-muted-foreground">Total:</span>
-                            <span className="font-medium" data-testid={`text-dip-volume-t${tankNum}`}>{(vol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({vol.toFixed(0)} L)</span>
-                          </div>
-                          <div className="flex justify-between gap-1 flex-wrap">
-                            <span className="text-muted-foreground">Usable:</span>
-                            <span className="font-medium text-green-600 dark:text-green-400" data-testid={`text-dip-usable-t${tankNum}`}>{(usableVol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({usableVol.toFixed(0)} L)</span>
-                          </div>
-                          <div className="flex justify-between gap-1 flex-wrap">
-                            <span className="text-muted-foreground">Dead:</span>
-                            <span className="text-xs text-red-500">{deadStockVol.toFixed(0)} L</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Last: {latestDip.date} {latestDip.time || ""}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex gap-4 items-end">
-                        <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`dip-tank-visual-${tankNum}`}>
-                          <div
-                            className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
-                            style={{ height: `${deadStockPercent}%` }}
-                          />
-                        </div>
-                        <div className="flex-1 space-y-1 text-sm">
-                          <p className="text-muted-foreground">No dip reading recorded</p>
-                          <div className="flex justify-between gap-1 flex-wrap">
-                            <span className="text-muted-foreground">Dead:</span>
-                            <span className="text-xs text-red-500">{deadStockVol.toFixed(0)} L</span>
-                          </div>
-                          {pageRole && (
-                            <p className="text-xs text-muted-foreground mt-2">Click to record first reading</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            );
-          })}
-        </div>
 
         <Card>
           <CardHeader className="pb-2">
@@ -1019,7 +977,6 @@ export default function PlantLdoFlowMeter() {
             )}
           </CardContent>
         </Card>
-      </div>
 
       {varianceData.length > 0 && (
         <Card>
