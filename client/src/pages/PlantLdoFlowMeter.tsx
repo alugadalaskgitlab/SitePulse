@@ -19,7 +19,7 @@ import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { LdoFlowReading, LdoDipReading } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume, getLdoCapacity } from "@shared/ldo-dip-chart";
+import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume } from "@shared/ldo-dip-chart";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler", 2: "Dryer" };
 
@@ -711,7 +711,7 @@ export default function PlantLdoFlowMeter() {
           onClick={pageRole ? () => handleTankClick(1) : undefined}
           data-testid="tank-card-1"
         >
-          <Card className="overflow-visible border-l-4 border-l-blue-400 dark:border-l-blue-600" style={{borderRadius: 0}}>
+          <Card className="overflow-visible">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Tank 1 (Boiler)</CardTitle>
             </CardHeader>
@@ -744,7 +744,7 @@ export default function PlantLdoFlowMeter() {
           onClick={pageRole ? () => handleTankClick(2) : undefined}
           data-testid="tank-card-2"
         >
-          <Card className="overflow-visible border-l-4 border-l-amber-400 dark:border-l-amber-600" style={{borderRadius: 0}}>
+          <Card className="overflow-visible">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Tank 2 (Dryer)</CardTitle>
             </CardHeader>
@@ -862,13 +862,14 @@ export default function PlantLdoFlowMeter() {
           {[1, 2].map(tankNum => {
             const latestDip = tankNum === 1 ? latestDipTank1 : latestDipTank2;
             const maxDepth = getLdoMaxDepth(tankNum);
-            const capacity = getLdoCapacity(tankNum);
             const deadStockDepth = getLdoDeadStockDepth(tankNum);
             const deadStockVol = getLdoDeadStockVolume(tankNum);
-            const fillPercent = latestDip ? Math.min(100, (latestDip.volumeLiters / capacity) * 100) : 0;
-            const usableVol = latestDip ? getLdoUsableVolume(tankNum, latestDip.depthCm) : 0;
-            const colorClass = tankNum === 1 ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400";
-            const barColor = tankNum === 1 ? "bg-blue-500" : "bg-amber-500";
+            const depth = latestDip?.depthCm || 0;
+            const vol = latestDip?.volumeLiters || 0;
+            const usableVol = latestDip ? getLdoUsableVolume(tankNum, depth) : 0;
+            const fillPercent = Math.min(100, (depth / maxDepth) * 100);
+            const deadStockPercent = (deadStockDepth / maxDepth) * 100;
+            const fillColor = tankNum === 1 ? "bg-blue-600/70 dark:bg-blue-500/50" : "bg-amber-700/70 dark:bg-amber-600/50";
 
             return (
               <div
@@ -879,60 +880,61 @@ export default function PlantLdoFlowMeter() {
               >
                 <Card className="overflow-visible">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2 flex-wrap">
-                      Tank {tankNum} ({TANK_LABELS[tankNum]})
-                      <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                        {tankNum === 1 ? "Vertical" : "Horizontal"} - {maxDepth} cm max
-                      </Badge>
-                    </CardTitle>
+                    <CardTitle className="text-sm font-medium">Tank {tankNum} ({TANK_LABELS[tankNum]})</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
+                  <CardContent>
                     {latestDip ? (
-                      <>
-                        <div className="space-y-1">
-                          <div className={`text-2xl font-bold ${colorClass}`} data-testid={`text-dip-depth-t${tankNum}`}>
-                            {latestDip.depthCm} cm
-                          </div>
-                          <div className="text-sm font-medium" data-testid={`text-dip-volume-t${tankNum}`}>
-                            {latestDip.volumeLiters.toFixed(0)} L ({latestDip.weightKg.toFixed(0)} kg)
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {latestDip.date} {latestDip.time || ""} - {latestDip.readingType}
-                          </div>
+                      <div className="flex gap-4 items-end">
+                        <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`dip-tank-visual-${tankNum}`}>
+                          <div
+                            className={`absolute bottom-0 w-full ${fillColor} transition-all duration-500`}
+                            style={{ height: `${fillPercent}%` }}
+                          />
+                          <div
+                            className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
+                            style={{ height: `${deadStockPercent}%` }}
+                          />
                         </div>
-
-                        <div className="space-y-1">
-                          <div className="flex justify-between gap-1 text-xs flex-wrap">
-                            <span className="text-muted-foreground">Tank Level</span>
-                            <span className="font-medium">{fillPercent.toFixed(1)}%</span>
+                        <div className="flex-1 space-y-1 text-sm">
+                          <div className="flex justify-between gap-1 flex-wrap">
+                            <span className="text-muted-foreground">Depth:</span>
+                            <span className="font-medium" data-testid={`text-dip-depth-t${tankNum}`}>{depth} cm</span>
                           </div>
-                          <div className="h-3 bg-muted rounded-full overflow-hidden" data-testid={`bar-dip-level-t${tankNum}`}>
-                            <div
-                              className={`h-full ${barColor} rounded-full transition-all`}
-                              style={{ width: `${fillPercent}%` }}
-                            />
+                          <div className="flex justify-between gap-1 flex-wrap">
+                            <span className="text-muted-foreground">Total:</span>
+                            <span className="font-medium" data-testid={`text-dip-volume-t${tankNum}`}>{(vol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({vol.toFixed(0)} L)</span>
                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">Dead Stock:</span>
-                            <span className="ml-1 font-medium">{deadStockVol.toFixed(0)} L ({deadStockDepth} cm)</span>
-                          </div>
-                          <div>
+                          <div className="flex justify-between gap-1 flex-wrap">
                             <span className="text-muted-foreground">Usable:</span>
-                            <span className="ml-1 font-medium text-green-600 dark:text-green-400" data-testid={`text-dip-usable-t${tankNum}`}>
-                              {usableVol.toFixed(0)} L
-                            </span>
+                            <span className="font-medium text-green-600 dark:text-green-400" data-testid={`text-dip-usable-t${tankNum}`}>{(usableVol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({usableVol.toFixed(0)} L)</span>
                           </div>
+                          <div className="flex justify-between gap-1 flex-wrap">
+                            <span className="text-muted-foreground">Dead:</span>
+                            <span className="text-xs text-red-500">{deadStockVol.toFixed(0)} L</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Last: {latestDip.date} {latestDip.time || ""}
+                          </p>
                         </div>
-                      </>
+                      </div>
                     ) : (
-                      <div className="text-muted-foreground text-sm">No dip reading recorded</div>
-                    )}
-                    {pageRole && (
-                      <div className="pt-2 border-t text-xs text-muted-foreground">
-                        Click to record a new dip reading
+                      <div className="flex gap-4 items-end">
+                        <div className="relative w-16 h-32 rounded-md border-2 border-muted-foreground/30 overflow-hidden" data-testid={`dip-tank-visual-${tankNum}`}>
+                          <div
+                            className="absolute bottom-0 w-full border-t-2 border-dashed border-red-500/60"
+                            style={{ height: `${deadStockPercent}%` }}
+                          />
+                        </div>
+                        <div className="flex-1 space-y-1 text-sm">
+                          <p className="text-muted-foreground">No dip reading recorded</p>
+                          <div className="flex justify-between gap-1 flex-wrap">
+                            <span className="text-muted-foreground">Dead:</span>
+                            <span className="text-xs text-red-500">{deadStockVol.toFixed(0)} L</span>
+                          </div>
+                          {pageRole && (
+                            <p className="text-xs text-muted-foreground mt-2">Click to record first reading</p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </CardContent>
