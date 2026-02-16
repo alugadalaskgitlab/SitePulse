@@ -553,28 +553,28 @@ export default function PlantBitumenStock() {
                   style={{ height: `${deadStockPercent}%` }}
                 />
               </div>
-              <div className="flex-1 space-y-1 text-sm">
+              <div className="flex-1 space-y-1.5">
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-muted-foreground">Depth:</span>
-                  <span className="font-medium">{depth} cm</span>
+                  <span className="text-sm text-muted-foreground">Depth:</span>
+                  <span className="text-sm font-semibold">{depth} cm</span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-muted-foreground">Total:</span>
+                  <span className="text-sm text-muted-foreground">Total:</span>
                   <span>
-                    <span className="font-bold text-base">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                    <span className="font-bold text-lg">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
                     <span className="text-xs text-muted-foreground ml-1">({vol.toFixed(0)} L)</span>
                   </span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-muted-foreground">Usable:</span>
+                  <span className="text-sm text-muted-foreground">Usable:</span>
                   <span>
-                    <span className="font-bold text-base text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                    <span className="font-bold text-lg text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
                     <span className="text-xs text-muted-foreground ml-1">({usable.toFixed(0)} L)</span>
                   </span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-muted-foreground">Dead:</span>
-                  <span className="text-xs text-red-500">{Math.round(deadStockVolume).toFixed(3)} L</span>
+                  <span className="text-sm text-muted-foreground">Dead:</span>
+                  <span className="text-sm text-red-500">{Math.round(deadStockVolume).toFixed(0)} L</span>
                 </div>
                 {reading && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -650,24 +650,24 @@ export default function PlantBitumenStock() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Combined Stock</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-2">
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Total:</span>
+              <span className="text-sm text-muted-foreground">Total:</span>
               <span>
-                <span className="font-bold text-base">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                <span className="font-bold text-lg">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
                 <span className="text-xs text-muted-foreground ml-1">({combinedTotal.toFixed(0)} L)</span>
               </span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Usable:</span>
+              <span className="text-sm text-muted-foreground">Usable:</span>
               <span>
-                <span className="font-bold text-base text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                <span className="font-bold text-lg text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
                 <span className="text-xs text-muted-foreground ml-1">({combinedUsable.toFixed(0)} L)</span>
               </span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-muted-foreground">Dead Stock (2 tanks):</span>
-              <span className="text-xs text-red-500">{(combinedDead * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({Math.round(combinedDead).toFixed(0)} L)</span>
+              <span className="text-sm text-muted-foreground">Dead Stock (2 tanks):</span>
+              <span className="text-sm text-red-500">{(combinedDead * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT ({Math.round(combinedDead).toFixed(0)} L)</span>
             </div>
           </CardContent>
         </Card>
