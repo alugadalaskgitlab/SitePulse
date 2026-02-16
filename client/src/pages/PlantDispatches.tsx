@@ -55,6 +55,8 @@ export default function PlantDispatches() {
   const [driverName, setDriverName] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
   const [actualLdoPerTon, setActualLdoPerTon] = useState("");
+  const [bitumenTankNumber, setBitumenTankNumber] = useState("1");
+  const [ldoTankNumber, setLdoTankNumber] = useState("2");
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -71,11 +73,13 @@ export default function PlantDispatches() {
     driverName: string;
     actualBitumenPercent: string;
     actualLdoPerTon: string;
+    bitumenTankNumber: string;
+    ldoTankNumber: string;
   }
 
   const formData = useMemo<DispatchFormData>(() => ({
-    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon
-  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon]);
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon, bitumenTankNumber, ldoTankNumber
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon, bitumenTankNumber, ldoTankNumber]);
 
   const handleRestoreDraft = useCallback((data: DispatchFormData) => {
     setDate(data.date);
@@ -89,6 +93,8 @@ export default function PlantDispatches() {
     setDriverName(data.driverName || "");
     setActualBitumenPercent(data.actualBitumenPercent);
     setActualLdoPerTon(data.actualLdoPerTon || "");
+    setBitumenTankNumber(data.bitumenTankNumber || "1");
+    setLdoTankNumber(data.ldoTankNumber || "2");
   }, []);
 
   const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
@@ -166,6 +172,8 @@ export default function PlantDispatches() {
     setDriverName("");
     setActualBitumenPercent("");
     setActualLdoPerTon("");
+    setBitumenTankNumber("1");
+    setLdoTankNumber("2");
     setEditingDispatch(null);
   };
 
@@ -187,6 +195,8 @@ export default function PlantDispatches() {
     } else {
       setActualLdoPerTon("");
     }
+    setBitumenTankNumber(dispatch.bitumenTankNumber ? String(dispatch.bitumenTankNumber) : "1");
+    setLdoTankNumber(dispatch.ldoTankNumber ? String(dispatch.ldoTankNumber) : "2");
     setDialogOpen(true);
   };
 
@@ -279,6 +289,8 @@ export default function PlantDispatches() {
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
           actualLdoQty: computedActualLdoQty,
           adjustedBy: authenticatedRole,
+          bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
+          ldoTankNumber: parseInt(ldoTankNumber) || 2,
         }
       });
     } else {
@@ -294,6 +306,8 @@ export default function PlantDispatches() {
         driverName: driverName.toUpperCase() || null,
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
         actualLdoQty: computedActualLdoQty,
+        bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
+        ldoTankNumber: parseInt(ldoTankNumber) || 2,
       });
     }
   };
@@ -776,6 +790,33 @@ export default function PlantDispatches() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <Label>Bitumen Tank</Label>
+                  <Select value={bitumenTankNumber} onValueChange={setBitumenTankNumber}>
+                    <SelectTrigger data-testid="select-bitumen-tank">
+                      <SelectValue placeholder="Select tank" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Tank 1</SelectItem>
+                      <SelectItem value="2">Tank 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>LDO Tank</Label>
+                  <Select value={ldoTankNumber} onValueChange={setLdoTankNumber}>
+                    <SelectTrigger data-testid="select-ldo-tank">
+                      <SelectValue placeholder="Select tank" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
+                      <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <Label>Owner Name (optional)</Label>
                   <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value.toUpperCase())} placeholder="Vehicle owner" data-testid="input-owner-name" />
                 </div>
@@ -1111,6 +1152,10 @@ export default function PlantDispatches() {
                               <div>
                                 <span className="text-muted-foreground text-xs block">LDO (L)</span>
                                 <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(3) || "0"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Tanks</span>
+                                <span className="font-medium text-xs">B{dispatch.bitumenTankNumber || 1} / L{dispatch.ldoTankNumber || 2}</span>
                               </div>
                               {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
                                 (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (

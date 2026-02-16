@@ -30,6 +30,7 @@ import {
   adminNotifications,
   bitumenDipReadings,
   ldoFlowReadings,
+  ldoDipReadings,
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -84,6 +85,8 @@ import {
   type InsertBitumenDipReading,
   type LdoFlowReading,
   type InsertLdoFlowReading,
+  type LdoDipReading,
+  type InsertLdoDipReading,
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
@@ -4171,6 +4174,54 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLdoFlowReading(id: number): Promise<boolean> {
     const [deleted] = await db.delete(ldoFlowReadings).where(eq(ldoFlowReadings.id, id)).returning();
+    return !!deleted;
+  }
+
+  // ============================================
+  // LDO DIP READINGS
+  // ============================================
+
+  async getLdoDipReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string }): Promise<LdoDipReading[]> {
+    let conditions = [];
+    if (filters?.tankNumber !== undefined) conditions.push(eq(ldoDipReadings.tankNumber, filters.tankNumber));
+    if (filters?.readingType) conditions.push(eq(ldoDipReadings.readingType, filters.readingType));
+    if (filters?.dateFrom) conditions.push(gte(ldoDipReadings.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(ldoDipReadings.date, filters.dateTo));
+
+    return db.select().from(ldoDipReadings)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(ldoDipReadings.date), desc(ldoDipReadings.time));
+  }
+
+  async createLdoDipReading(reading: InsertLdoDipReading): Promise<LdoDipReading> {
+    const uppercased = {
+      ...reading,
+      notes: reading.notes?.toUpperCase(),
+    };
+    const [result] = await db.insert(ldoDipReadings).values(uppercased).returning();
+    return result;
+  }
+
+  async updateLdoDipReading(id: number, updates: Partial<InsertLdoDipReading>): Promise<LdoDipReading | undefined> {
+    const cleanUpdates: any = {};
+    if (updates.date !== undefined) cleanUpdates.date = updates.date;
+    if (updates.time !== undefined) cleanUpdates.time = updates.time;
+    if (updates.tankNumber !== undefined) cleanUpdates.tankNumber = updates.tankNumber;
+    if (updates.depthCm !== undefined) cleanUpdates.depthCm = updates.depthCm;
+    if (updates.volumeLiters !== undefined) cleanUpdates.volumeLiters = updates.volumeLiters;
+    if (updates.weightKg !== undefined) cleanUpdates.weightKg = updates.weightKg;
+    if (updates.readingType !== undefined) cleanUpdates.readingType = updates.readingType;
+    if (updates.notes !== undefined) cleanUpdates.notes = updates.notes?.toUpperCase();
+
+    const [result] = await db.update(ldoDipReadings)
+      .set(cleanUpdates)
+      .where(eq(ldoDipReadings.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteLdoDipReading(id: number): Promise<boolean> {
+    const [deleted] = await db.delete(ldoDipReadings).where(eq(ldoDipReadings.id, id)).returning();
     return !!deleted;
   }
 }

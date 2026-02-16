@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock, Ruler } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -17,8 +17,9 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { LdoFlowReading } from "@shared/schema";
+import type { LdoFlowReading, LdoDipReading } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume, getLdoCapacity } from "@shared/ldo-dip-chart";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler", 2: "Dryer" };
 
@@ -40,7 +41,7 @@ export default function PlantLdoFlowMeter() {
 
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print" | "dip-delete" | "dip-edit"; readingId?: number } | null>(null);
 
   const [tankNumber, setTankNumber] = useState("1");
   const [meterReading, setMeterReading] = useState("");
@@ -49,6 +50,16 @@ export default function PlantLdoFlowMeter() {
   const [readingTime, setReadingTime] = useState(format(new Date(), "HH:mm"));
   const [quantityLiters, setQuantityLiters] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [dipDialogOpen, setDipDialogOpen] = useState(false);
+  const [dipEditingReading, setDipEditingReading] = useState<LdoDipReading | null>(null);
+  const [dipDeleteConfirmId, setDipDeleteConfirmId] = useState<number | null>(null);
+  const [dipTankNumber, setDipTankNumber] = useState("1");
+  const [dipDate, setDipDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dipTime, setDipTime] = useState(format(new Date(), "HH:mm"));
+  const [dipReadingType, setDipReadingType] = useState("opening");
+  const [dipDepthCm, setDipDepthCm] = useState("");
+  const [dipNotes, setDipNotes] = useState("");
 
   const { data: readings, isLoading } = useQuery<LdoFlowReading[]>({
     queryKey: ["/api/plant-module/ldo-flow-readings"],
@@ -304,6 +315,146 @@ export default function PlantLdoFlowMeter() {
     },
   });
 
+  const { data: dipReadings, isLoading: dipLoading } = useQuery<LdoDipReading[]>({
+    queryKey: ["/api/plant-module/ldo-dip-readings"],
+  });
+
+  const latestDipTank1 = useMemo(() => {
+    if (!dipReadings) return null;
+    const tank1 = dipReadings.filter(r => r.tankNumber === 1);
+    if (tank1.length === 0) return null;
+    return tank1.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [dipReadings]);
+
+  const latestDipTank2 = useMemo(() => {
+    if (!dipReadings) return null;
+    const tank2 = dipReadings.filter(r => r.tankNumber === 2);
+    if (tank2.length === 0) return null;
+    return tank2.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [dipReadings]);
+
+  const sortedDipReadings = useMemo(() => {
+    if (!dipReadings) return [];
+    return [...dipReadings].sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+    });
+  }, [dipReadings]);
+
+  const dipCreateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/plant-module/ldo-dip-readings", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
+      toast({ title: "LDO dip reading recorded" });
+      resetDipForm();
+      setDipDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const dipUpdateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/plant-module/ldo-dip-readings/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
+      toast({ title: "LDO dip reading updated" });
+      resetDipForm();
+      setDipEditingReading(null);
+      setDipDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const dipDeleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/plant-module/ldo-dip-readings/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
+      toast({ title: "Dip reading deleted" });
+      setDipDeleteConfirmId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const dipCalculatedVolume = useMemo(() => {
+    const depth = parseFloat(dipDepthCm);
+    if (isNaN(depth) || depth <= 0) return null;
+    const tankNum = parseInt(dipTankNumber);
+    const volume = getLdoVolumeAtDepth(tankNum, depth);
+    const weight = volume * LDO_DENSITY_KG_PER_LITER;
+    const usable = getLdoUsableVolume(tankNum, depth);
+    return { volume, weight, usable };
+  }, [dipDepthCm, dipTankNumber]);
+
+  function resetDipForm() {
+    setDipTankNumber("1");
+    setDipDate(format(new Date(), "yyyy-MM-dd"));
+    setDipTime(format(new Date(), "HH:mm"));
+    setDipReadingType("opening");
+    setDipDepthCm("");
+    setDipNotes("");
+  }
+
+  function handleDipTankClick(tankNum: number) {
+    setDipEditingReading(null);
+    setDipTankNumber(String(tankNum));
+    setDipDate(format(new Date(), "yyyy-MM-dd"));
+    setDipTime(format(new Date(), "HH:mm"));
+    setDipReadingType("opening");
+    setDipDepthCm("");
+    setDipNotes("");
+    setDipDialogOpen(true);
+  }
+
+  function handleDipSubmit() {
+    const depth = parseFloat(dipDepthCm);
+    const tankNum = parseInt(dipTankNumber);
+    if (isNaN(depth) || depth <= 0) {
+      toast({ title: "Invalid depth", description: "Enter a valid depth in cm", variant: "destructive" });
+      return;
+    }
+    const maxDepth = getLdoMaxDepth(tankNum);
+    if (depth > maxDepth) {
+      toast({ title: "Depth exceeds tank", description: `Max depth for Tank ${tankNum} is ${maxDepth} cm`, variant: "destructive" });
+      return;
+    }
+    const volume = getLdoVolumeAtDepth(tankNum, depth);
+    const weight = volume * LDO_DENSITY_KG_PER_LITER;
+    const payload = {
+      date: dipDate,
+      time: dipTime || null,
+      tankNumber: tankNum,
+      depthCm: depth,
+      volumeLiters: Math.round(volume * 100) / 100,
+      weightKg: Math.round(weight * 100) / 100,
+      readingType: dipReadingType,
+      notes: dipNotes || null,
+    };
+    if (dipEditingReading) {
+      dipUpdateMutation.mutate({ id: dipEditingReading.id, data: payload });
+    } else {
+      dipCreateMutation.mutate(payload);
+    }
+  }
+
   function resetForm() {
     setTankNumber("1");
     setMeterReading("");
@@ -404,6 +555,20 @@ export default function PlantLdoFlowMeter() {
         setQuantityLiters(reading.quantityLiters ? String(reading.quantityLiters) : "");
         setNotes(reading.notes || "");
         setDialogOpen(true);
+      }
+    } else if (pendingAction.type === "dip-delete" && pendingAction.readingId) {
+      dipDeleteMutation.mutate(pendingAction.readingId);
+    } else if (pendingAction.type === "dip-edit" && pendingAction.readingId) {
+      const reading = dipReadings?.find(r => r.id === pendingAction.readingId);
+      if (reading) {
+        setDipEditingReading(reading);
+        setDipDate(reading.date);
+        setDipTime(reading.time || "");
+        setDipTankNumber(String(reading.tankNumber));
+        setDipDepthCm(String(reading.depthCm));
+        setDipReadingType(reading.readingType);
+        setDipNotes(reading.notes || "");
+        setDipDialogOpen(true);
       }
     } else if (pendingAction.type === "export-excel") {
       exportExcel();
@@ -685,6 +850,174 @@ export default function PlantLdoFlowMeter() {
           </CardContent>
         </Card>
       )}
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Ruler className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          <h2 className="text-lg font-semibold">LDO Dip Readings</h2>
+          <span className="text-sm text-muted-foreground">(Physical tank measurement)</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2].map(tankNum => {
+            const latestDip = tankNum === 1 ? latestDipTank1 : latestDipTank2;
+            const maxDepth = getLdoMaxDepth(tankNum);
+            const capacity = getLdoCapacity(tankNum);
+            const deadStockDepth = getLdoDeadStockDepth(tankNum);
+            const deadStockVol = getLdoDeadStockVolume(tankNum);
+            const fillPercent = latestDip ? Math.min(100, (latestDip.volumeLiters / capacity) * 100) : 0;
+            const usableVol = latestDip ? getLdoUsableVolume(tankNum, latestDip.depthCm) : 0;
+            const colorClass = tankNum === 1 ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400";
+            const barColor = tankNum === 1 ? "bg-blue-500" : "bg-amber-500";
+
+            return (
+              <div
+                key={tankNum}
+                className={pageRole ? "cursor-pointer hover-elevate" : ""}
+                onClick={pageRole ? () => handleDipTankClick(tankNum) : undefined}
+                data-testid={`dip-tank-card-${tankNum}`}
+              >
+                <Card className="overflow-visible">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                      Tank {tankNum} ({TANK_LABELS[tankNum]})
+                      <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                        {tankNum === 1 ? "Vertical" : "Horizontal"} - {maxDepth} cm max
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {latestDip ? (
+                      <>
+                        <div className="space-y-1">
+                          <div className={`text-2xl font-bold ${colorClass}`} data-testid={`text-dip-depth-t${tankNum}`}>
+                            {latestDip.depthCm} cm
+                          </div>
+                          <div className="text-sm font-medium" data-testid={`text-dip-volume-t${tankNum}`}>
+                            {latestDip.volumeLiters.toFixed(0)} L ({latestDip.weightKg.toFixed(0)} kg)
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {latestDip.date} {latestDip.time || ""} - {latestDip.readingType}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between gap-1 text-xs flex-wrap">
+                            <span className="text-muted-foreground">Tank Level</span>
+                            <span className="font-medium">{fillPercent.toFixed(1)}%</span>
+                          </div>
+                          <div className="h-3 bg-muted rounded-full overflow-hidden" data-testid={`bar-dip-level-t${tankNum}`}>
+                            <div
+                              className={`h-full ${barColor} rounded-full transition-all`}
+                              style={{ width: `${fillPercent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground">Dead Stock:</span>
+                            <span className="ml-1 font-medium">{deadStockVol.toFixed(0)} L ({deadStockDepth} cm)</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Usable:</span>
+                            <span className="ml-1 font-medium text-green-600 dark:text-green-400" data-testid={`text-dip-usable-t${tankNum}`}>
+                              {usableVol.toFixed(0)} L
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-muted-foreground text-sm">No dip reading recorded</div>
+                    )}
+                    {pageRole && (
+                      <div className="pt-2 border-t text-xs text-muted-foreground">
+                        Click to record a new dip reading
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })}
+        </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Dip Reading History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dipLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
+            ) : sortedDipReadings.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground" data-testid="text-no-dip-readings">No LDO dip readings recorded yet</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="table-dip-readings">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Date</th>
+                      <th className="text-left p-2">Time</th>
+                      <th className="text-left p-2">Tank</th>
+                      <th className="text-right p-2">Depth (cm)</th>
+                      <th className="text-right p-2">Volume (L)</th>
+                      <th className="text-right p-2">Weight (kg)</th>
+                      <th className="text-left p-2">Type</th>
+                      <th className="text-left p-2">Notes</th>
+                      {isAdmin && <th className="text-center p-2">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedDipReadings.map(r => (
+                      <tr key={r.id} className="border-b" data-testid={`row-dip-${r.id}`}>
+                        <td className="p-2">{r.date}</td>
+                        <td className="p-2">{r.time || "-"}</td>
+                        <td className="p-2">
+                          <Badge variant={r.tankNumber === 1 ? "default" : "secondary"} data-testid={`badge-dip-tank-${r.id}`}>
+                            T{r.tankNumber} ({TANK_LABELS[r.tankNumber]})
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-right font-medium" data-testid={`text-dip-depth-${r.id}`}>{r.depthCm}</td>
+                        <td className="p-2 text-right" data-testid={`text-dip-vol-${r.id}`}>{r.volumeLiters.toFixed(0)}</td>
+                        <td className="p-2 text-right" data-testid={`text-dip-wt-${r.id}`}>{r.weightKg.toFixed(0)}</td>
+                        <td className="p-2">
+                          <Badge variant="outline" data-testid={`badge-dip-type-${r.id}`}>
+                            {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-muted-foreground text-xs">{r.notes || "-"}</td>
+                        {isAdmin && (
+                          <td className="p-2 text-center">
+                            <div className="flex gap-1 justify-center">
+                              <Button size="icon" variant="ghost" onClick={() => handlePinAction("dip-edit", r.id)} data-testid={`button-dip-edit-${r.id}`}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              {dipDeleteConfirmId === r.id ? (
+                                <>
+                                  <Button size="sm" variant="destructive" onClick={() => handlePinAction("dip-delete", r.id)} data-testid={`button-dip-confirm-delete-${r.id}`}>
+                                    Confirm
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setDipDeleteConfirmId(null)}>
+                                    Cancel
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button size="icon" variant="ghost" onClick={() => setDipDeleteConfirmId(r.id)} data-testid={`button-dip-delete-${r.id}`}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {varianceData.length > 0 && (
         <Card>
@@ -982,6 +1315,103 @@ export default function PlantLdoFlowMeter() {
             <Button onClick={handleSubmit} disabled={isMutating || (readingType === "stock" ? !quantityLiters : !meterReading)} data-testid="button-submit-reading">
               {isMutating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               {editingReading ? "Update Reading" : "Record Reading"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dipDialogOpen} onOpenChange={setDipDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle data-testid="text-dip-dialog-title">
+              {dipEditingReading
+                ? "Edit Dip Reading"
+                : `Record Dip Reading - Tank ${dipTankNumber} (${TANK_LABELS[parseInt(dipTankNumber)] || ""})`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Date</Label>
+                <Input type="date" value={dipDate} onChange={e => setDipDate(e.target.value)} data-testid="input-dip-date" />
+              </div>
+              <div>
+                <Label>Time</Label>
+                <Input type="time" value={dipTime} onChange={e => setDipTime(e.target.value)} data-testid="input-dip-time" />
+              </div>
+            </div>
+
+            <div>
+              <Label>Tank</Label>
+              <Select value={dipTankNumber} onValueChange={setDipTankNumber}>
+                <SelectTrigger data-testid="select-dip-tank">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
+                  <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Reading Type</Label>
+              <Select value={dipReadingType} onValueChange={setDipReadingType}>
+                <SelectTrigger data-testid="select-dip-reading-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="opening">Opening</SelectItem>
+                  <SelectItem value="closing">Closing</SelectItem>
+                  <SelectItem value="stock">Stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Dip Depth (cm)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.5"
+                max={getLdoMaxDepth(parseInt(dipTankNumber))}
+                value={dipDepthCm}
+                onChange={e => setDipDepthCm(e.target.value)}
+                placeholder={`Max ${getLdoMaxDepth(parseInt(dipTankNumber))} cm`}
+                data-testid="input-dip-depth"
+              />
+              {dipCalculatedVolume && (
+                <div className="mt-2 p-3 rounded-md bg-muted space-y-1 text-sm">
+                  <div className="flex justify-between gap-1 flex-wrap">
+                    <span className="text-muted-foreground">Volume:</span>
+                    <span className="font-bold" data-testid="text-dip-calc-volume">{dipCalculatedVolume.volume.toFixed(0)} L</span>
+                  </div>
+                  <div className="flex justify-between gap-1 flex-wrap">
+                    <span className="text-muted-foreground">Weight:</span>
+                    <span className="font-bold" data-testid="text-dip-calc-weight">{dipCalculatedVolume.weight.toFixed(0)} kg</span>
+                  </div>
+                  <div className="flex justify-between gap-1 flex-wrap">
+                    <span className="text-muted-foreground">Usable (excl. dead stock):</span>
+                    <span className="font-bold text-green-600 dark:text-green-400" data-testid="text-dip-calc-usable">{dipCalculatedVolume.usable.toFixed(0)} L</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <Label>Notes (optional)</Label>
+              <Input value={dipNotes} onChange={e => setDipNotes(e.target.value)} placeholder="Any observations" data-testid="input-dip-notes" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDipDialogOpen(false); setDipEditingReading(null); }} data-testid="button-dip-cancel">Cancel</Button>
+            <Button
+              onClick={handleDipSubmit}
+              disabled={dipCreateMutation.isPending || dipUpdateMutation.isPending || !dipDepthCm}
+              data-testid="button-dip-submit"
+            >
+              {(dipCreateMutation.isPending || dipUpdateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {dipEditingReading ? "Update Dip Reading" : "Record Dip Reading"}
             </Button>
           </DialogFooter>
         </DialogContent>

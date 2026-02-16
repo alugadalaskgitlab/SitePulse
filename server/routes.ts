@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1548,6 +1548,57 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete LDO flow reading" });
+    }
+  });
+
+  // ============================================
+  // LDO DIP READINGS
+  // ============================================
+
+  app.get("/api/plant-module/ldo-dip-readings", async (req, res) => {
+    try {
+      const filters = {
+        tankNumber: req.query.tankNumber ? parseInt(req.query.tankNumber as string) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        readingType: req.query.readingType as string | undefined,
+      };
+      const readings = await storage.getLdoDipReadings(filters);
+      res.json(readings);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch LDO dip readings" });
+    }
+  });
+
+  app.post("/api/plant-module/ldo-dip-readings", async (req, res) => {
+    try {
+      const parsed = insertLdoDipReadingSchema.parse(req.body);
+      const reading = await storage.createLdoDipReading(parsed);
+      res.status(201).json(reading);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create LDO dip reading" });
+    }
+  });
+
+  app.patch("/api/plant-module/ldo-dip-readings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const result = await storage.updateLdoDipReading(id, req.body);
+      if (!result) return res.status(404).json({ message: "Reading not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update LDO dip reading" });
+    }
+  });
+
+  app.delete("/api/plant-module/ldo-dip-readings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteLdoDipReading(id);
+      if (!deleted) return res.status(404).json({ message: "Reading not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete LDO dip reading" });
     }
   });
 

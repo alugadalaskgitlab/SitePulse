@@ -266,6 +266,8 @@ export const truckDispatches = pgTable("truck_dispatches", {
   actualBitumenQty: real("actual_bitumen_qty"),
   actualBitumenPercent: real("actual_bitumen_percent"),
   actualLdoQty: real("actual_ldo_qty"),
+  bitumenTankNumber: integer("bitumen_tank_number"),
+  ldoTankNumber: integer("ldo_tank_number"),
   // Stock deduction tracking
   stockDeducted: integer("stock_deducted").default(0), // 1=deducted, 0=pending
   deductionSource: text("deduction_source"), // "party" or "plant_common" or "mixed"
@@ -635,12 +637,28 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const ldoDipReadings = pgTable("ldo_dip_readings", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  time: text("time"),
+  tankNumber: integer("tank_number").notNull(),
+  depthCm: real("depth_cm").notNull(),
+  volumeLiters: real("volume_liters").notNull(),
+  weightKg: real("weight_kg").notNull(),
+  readingType: text("reading_type").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertBitumenDipReadingSchema = createInsertSchema(bitumenDipReadings).omit({ id: true, createdAt: true });
 export const insertLdoFlowReadingSchema = createInsertSchema(ldoFlowReadings).omit({ id: true, createdAt: true });
+export const insertLdoDipReadingSchema = createInsertSchema(ldoDipReadings).omit({ id: true, createdAt: true });
 export type BitumenDipReading = typeof bitumenDipReadings.$inferSelect;
 export type LdoFlowReading = typeof ldoFlowReadings.$inferSelect;
+export type LdoDipReading = typeof ldoDipReadings.$inferSelect;
 export type InsertBitumenDipReading = z.infer<typeof insertBitumenDipReadingSchema>;
 export type InsertLdoFlowReading = z.infer<typeof insertLdoFlowReadingSchema>;
+export type InsertLdoDipReading = z.infer<typeof insertLdoDipReadingSchema>;
 
 // ============================================
 // ADMIN NOTIFICATIONS
