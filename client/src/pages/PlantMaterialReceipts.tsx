@@ -51,6 +51,7 @@ export default function PlantMaterialReceipts() {
   const [supplier, setSupplier] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
+  const [tankNumber, setTankNumber] = useState<string>("");
 
   interface ReceiptFormData {
     date: string;
@@ -62,11 +63,12 @@ export default function PlantMaterialReceipts() {
     supplier: string;
     vehicleNumber: string;
     challanNumber: string;
+    tankNumber: string;
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber
-  }), [date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber]);
+    date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber, tankNumber
+  }), [date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber, tankNumber]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -78,6 +80,7 @@ export default function PlantMaterialReceipts() {
     setSupplier(data.supplier);
     setVehicleNumber(data.vehicleNumber);
     setChallanNumber(data.challanNumber);
+    setTankNumber(data.tankNumber || "");
   }, []);
 
   const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
@@ -149,6 +152,7 @@ export default function PlantMaterialReceipts() {
     setSupplier("");
     setVehicleNumber("");
     setChallanNumber("");
+    setTankNumber("");
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
@@ -162,6 +166,7 @@ export default function PlantMaterialReceipts() {
     setSupplier(receipt.supplier || "");
     setVehicleNumber(receipt.vehicleNumber || "");
     setChallanNumber(receipt.challanNumber || "");
+    setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
     setDialogOpen(true);
   };
 
@@ -172,6 +177,9 @@ export default function PlantMaterialReceipts() {
       }
       return;
     }
+    
+    const selectedMaterial = materials?.find(m => m.id === parseInt(materialId));
+    const isTankMaterial = selectedMaterial && (selectedMaterial.category === "Bitumen" || selectedMaterial.category === "LDO");
     
     if (editingReceipt) {
       const updateData = {
@@ -185,6 +193,7 @@ export default function PlantMaterialReceipts() {
         supplier,
         vehicleNumber,
         challanNumber,
+        tankNumber: isTankMaterial && tankNumber ? parseInt(tankNumber) : null,
       };
       updateMutation.mutate({ id: editingReceipt.id, data: updateData });
     } else {
@@ -199,6 +208,7 @@ export default function PlantMaterialReceipts() {
         supplier,
         vehicleNumber,
         challanNumber,
+        tankNumber: isTankMaterial && tankNumber ? parseInt(tankNumber) : null,
       };
       createMutation.mutate(data);
     }
@@ -614,6 +624,26 @@ export default function PlantMaterialReceipts() {
                 </Select>
               </div>
 
+              {(() => {
+                const selectedMat = materials?.find(m => m.id === parseInt(materialId));
+                const showTank = selectedMat && (selectedMat.category === "Bitumen" || selectedMat.category === "LDO");
+                if (!showTank) return null;
+                return (
+                  <div>
+                    <Label>Receiving Tank</Label>
+                    <Select value={tankNumber} onValueChange={setTankNumber}>
+                      <SelectTrigger data-testid="select-tank-number">
+                        <SelectValue placeholder="Select tank" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Tank 1{selectedMat.category === "LDO" ? " (Boiler)" : ""}</SelectItem>
+                        <SelectItem value="2">Tank 2{selectedMat.category === "LDO" ? " (Dryer)" : ""}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Quantity</Label>
@@ -827,6 +857,12 @@ export default function PlantMaterialReceipts() {
                               <span className="text-muted-foreground text-xs block">Party/Job</span>
                               <span className="font-medium">{getPartyName(receipt.partyId)}</span>
                             </div>
+                            {receipt.tankNumber && (
+                              <div>
+                                <span className="text-muted-foreground text-xs block">Tank</span>
+                                <Badge variant="outline">T{receipt.tankNumber}</Badge>
+                              </div>
+                            )}
                           </div>
                           <div className="flex gap-2 ml-4">
                             <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>

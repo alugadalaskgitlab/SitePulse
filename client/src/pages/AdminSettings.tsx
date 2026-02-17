@@ -8,8 +8,10 @@ import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { PinAuth } from "@/components/PinAuth";
-import type { Site } from "@shared/schema";
+import type { Site, Party } from "@shared/schema";
 
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -23,8 +25,10 @@ export default function AdminSettings() {
 
   // Sites Master state
   const [newSiteName, setNewSiteName] = useState("");
+  const [newSitePartyId, setNewSitePartyId] = useState<string>("all");
   const [editingSiteId, setEditingSiteId] = useState<number | null>(null);
   const [editingSiteName, setEditingSiteName] = useState("");
+  const [editingSitePartyId, setEditingSitePartyId] = useState<string>("all");
   
   // Manager PIN change state
   const [newManagerPin, setNewManagerPin] = useState("");
@@ -89,9 +93,19 @@ export default function AdminSettings() {
     enabled: authenticated,
   });
 
+  const { data: partiesList = [] } = useQuery<Party[]>({
+    queryKey: ["/api/plant-module/parties"],
+    enabled: authenticated,
+  });
+
+  const getPartyName = (partyId: number | null) => {
+    if (!partyId) return null;
+    return partiesList.find(p => p.id === partyId)?.name || null;
+  };
+
   const createSiteMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const response = await apiRequest("POST", "/api/sites", { name });
+    mutationFn: async (data: { name: string; partyId: number | null }) => {
+      const response = await apiRequest("POST", "/api/sites", data);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || "Failed to create site");
@@ -101,6 +115,7 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
       setNewSiteName("");
+      setNewSitePartyId("all");
       toast({ title: "Site Added", description: "New site has been added." });
     },
     onError: (error: any) => {
@@ -109,8 +124,8 @@ export default function AdminSettings() {
   });
 
   const updateSiteMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: number; name: string }) => {
-      const response = await apiRequest("PATCH", `/api/sites/${id}`, { name });
+    mutationFn: async ({ id, name, partyId }: { id: number; name: string; partyId: number | null }) => {
+      const response = await apiRequest("PATCH", `/api/sites/${id}`, { name, partyId });
       if (!response.ok) throw new Error("Failed to update site");
       return response.json();
     },
@@ -118,7 +133,8 @@ export default function AdminSettings() {
       queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
       setEditingSiteId(null);
       setEditingSiteName("");
-      toast({ title: "Site Updated", description: "Site name has been updated." });
+      setEditingSitePartyId("all");
+      toast({ title: "Site Updated", description: "Site has been updated." });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -143,7 +159,10 @@ export default function AdminSettings() {
   const handleAddSite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSiteName.trim()) return;
-    createSiteMutation.mutate(newSiteName.trim());
+    createSiteMutation.mutate({
+      name: newSiteName.trim(),
+      partyId: newSitePartyId !== "all" ? parseInt(newSitePartyId) : null,
+    });
   };
 
   const handlePinAuthSuccess = (role: "manager" | "admin", pin: string) => {
@@ -373,14 +392,31 @@ export default function AdminSettings() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form onSubmit={handleAddSite} className="flex gap-2">
-            <Input
-              value={newSiteName}
-              onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
-              placeholder="Enter new site name"
-              className="uppercase flex-1"
-              data-testid="input-new-site"
-            />
+          <form onSubmit={handleAddSite} className="flex gap-2 flex-wrap items-end">
+            <div className="flex-1 min-w-[200px]">
+              <Label className="text-sm">Site Name</Label>
+              <Input
+                value={newSiteName}
+                onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
+                placeholder="Enter new site name"
+                className="uppercase"
+                data-testid="input-new-site"
+              />
+            </div>
+            <div className="w-[180px]">
+              <Label className="text-sm">Party (optional)</Label>
+              <Select value={newSitePartyId} onValueChange={setNewSitePartyId}>
+                <SelectTrigger data-testid="select-new-site-party">
+                  <SelectValue placeholder="All parties" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All parties</SelectItem>
+                  {partiesList.map(p => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               type="submit"
               disabled={createSiteMutation.isPending || !newSiteName.trim()}
@@ -413,12 +449,27 @@ export default function AdminSettings() {
                         data-testid={`input-edit-site-${site.id}`}
                         autoFocus
                       />
+                      <Select value={editingSitePartyId} onValueChange={setEditingSitePartyId}>
+                        <SelectTrigger className="w-[140px]" data-testid={`select-edit-site-party-${site.id}`}>
+                          <SelectValue placeholder="Party" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All parties</SelectItem>
+                          {partiesList.map(p => (
+                            <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button
                         size="icon"
                         variant="ghost"
                         onClick={() => {
                           if (editingSiteName.trim()) {
-                            updateSiteMutation.mutate({ id: site.id, name: editingSiteName.trim() });
+                            updateSiteMutation.mutate({
+                              id: site.id,
+                              name: editingSiteName.trim(),
+                              partyId: editingSitePartyId !== "all" ? parseInt(editingSitePartyId) : null,
+                            });
                           }
                         }}
                         disabled={updateSiteMutation.isPending}
@@ -429,7 +480,7 @@ export default function AdminSettings() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => { setEditingSiteId(null); setEditingSiteName(""); }}
+                        onClick={() => { setEditingSiteId(null); setEditingSiteName(""); setEditingSitePartyId("all"); }}
                         data-testid={`button-cancel-edit-site-${site.id}`}
                       >
                         <X className="w-4 h-4" />
@@ -437,11 +488,20 @@ export default function AdminSettings() {
                     </>
                   ) : (
                     <>
-                      <span className="flex-1 text-sm font-medium" data-testid={`text-site-name-${site.id}`}>{site.name}</span>
+                      <div className="flex-1 flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium" data-testid={`text-site-name-${site.id}`}>{site.name}</span>
+                        {site.partyId && (
+                          <Badge variant="outline" className="text-xs">{getPartyName(site.partyId) || "Unknown"}</Badge>
+                        )}
+                      </div>
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => { setEditingSiteId(site.id); setEditingSiteName(site.name); }}
+                        onClick={() => {
+                          setEditingSiteId(site.id);
+                          setEditingSiteName(site.name);
+                          setEditingSitePartyId(site.partyId ? String(site.partyId) : "all");
+                        }}
                         data-testid={`button-edit-site-${site.id}`}
                       >
                         <Pencil className="w-3.5 h-3.5" />

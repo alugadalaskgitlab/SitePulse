@@ -87,7 +87,7 @@ export default function PlantBitumenStock() {
     return m?.id ?? null;
   }, [materials]);
 
-  const { data: allReceipts } = useQuery<{ id: number; date: string; materialId: number; quantity: number; uom: string }[]>({
+  const { data: allReceipts } = useQuery<{ id: number; date: string; materialId: number; quantity: number; uom: string; tankNumber?: number | null }[]>({
     queryKey: ["/api/plant-module/material-receipts"],
   });
 
@@ -163,6 +163,18 @@ export default function PlantBitumenStock() {
     return map;
   }, [bitumenReceipts]);
 
+  const receiptsByDateTank = useMemo(() => {
+    const map: Record<string, { tank1Kg: number; tank2Kg: number; unassignedKg: number }> = {};
+    for (const r of bitumenReceipts) {
+      if (!map[r.date]) map[r.date] = { tank1Kg: 0, tank2Kg: 0, unassignedKg: 0 };
+      const kg = convertBitumenToKg(r.quantity, r.uom);
+      if (r.tankNumber === 1) map[r.date].tank1Kg += kg;
+      else if (r.tankNumber === 2) map[r.date].tank2Kg += kg;
+      else map[r.date].unassignedKg += kg;
+    }
+    return map;
+  }, [bitumenReceipts]);
+
   const dailySummary = useMemo(() => {
     if (!readings) return [];
     const grouped: Record<string, { date: string; entries: BitumenDipReading[] }> = {};
@@ -185,6 +197,7 @@ export default function PlantBitumenStock() {
         const t2ReceiptVol = t2Receipts.reduce((s, r) => s + r.volumeLiters, 0);
 
         const materialReceiptKg = receiptsByDate[day.date] || 0;
+        const tankReceipts = receiptsByDateTank[day.date] || { tank1Kg: 0, tank2Kg: 0, unassignedKg: 0 };
 
         let t1Consumption = null as number | null;
         let t2Consumption = null as number | null;
@@ -204,12 +217,13 @@ export default function PlantBitumenStock() {
           t1Opening, t1Closing, t2Opening, t2Closing,
           t1ReceiptVol, t2ReceiptVol,
           materialReceiptKg,
+          tankReceipts,
           t1Consumption, t2Consumption,
           totalConsumption: totalConsumptionL,
           totalConsumptionKg,
         };
       });
-  }, [readings, receiptsByDate]);
+  }, [readings, receiptsByDate, receiptsByDateTank]);
 
   const varianceData = useMemo(() => {
     if (!dispatches || !dailySummary.length) return [];
@@ -279,6 +293,10 @@ export default function PlantBitumenStock() {
     });
     const totalReceiptsKg = filteredReceipts.reduce((s, r) => s + convertBitumenToKg(r.quantity, r.uom), 0);
     const totalReceiptsMT = totalReceiptsKg / 1000;
+    const tank1ReceiptsKg = filteredReceipts.filter(r => r.tankNumber === 1).reduce((s, r) => s + convertBitumenToKg(r.quantity, r.uom), 0);
+    const tank2ReceiptsKg = filteredReceipts.filter(r => r.tankNumber === 2).reduce((s, r) => s + convertBitumenToKg(r.quantity, r.uom), 0);
+    const tank1ReceiptsMT = tank1ReceiptsKg / 1000;
+    const tank2ReceiptsMT = tank2ReceiptsKg / 1000;
 
     let latestDipReading: { tank1MT: number; tank1UsableMT: number; tank1Date?: string; tank1Time?: string; tank2MT: number; tank2UsableMT: number; tank2Date?: string; tank2Time?: string; totalMT: number; totalUsableMT: number; displayDate: string; displayTime?: string } | null = null;
     if (readings && readings.length > 0) {
@@ -336,6 +354,8 @@ export default function PlantBitumenStock() {
       bitumenSavedMT,
       savingsPercent,
       totalReceiptsMT,
+      tank1ReceiptsMT,
+      tank2ReceiptsMT,
       latestDipReading,
     };
   }, [dispatches, readings, bitumenReceipts, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite]);
@@ -554,30 +574,30 @@ export default function PlantBitumenStock() {
                 />
               </div>
               <div className="flex-1 space-y-1.5">
+                <div className="mb-2">
+                  <span className="text-sm font-medium text-green-700 dark:text-green-400">Usable Stock</span>
+                  <div>
+                    <span className="font-bold text-2xl text-green-700 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                    <span className="text-sm text-muted-foreground ml-1">({usable.toFixed(0)} L)</span>
+                  </div>
+                </div>
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-sm text-muted-foreground">Depth:</span>
+                  <span className="text-sm text-muted-foreground">Total Stock:</span>
+                  <span>
+                    <span className="font-semibold text-base">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                    <span className="text-sm text-muted-foreground ml-1">({vol.toFixed(0)} L)</span>
+                  </span>
+                </div>
+                <div className="flex justify-between gap-1 flex-wrap">
+                  <span className="text-sm text-muted-foreground">Dip Depth:</span>
                   <span className="text-sm font-semibold">{depth} cm</span>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-sm text-muted-foreground">Total:</span>
-                  <span>
-                    <span className="font-bold text-lg">{(vol * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
-                    <span className="text-xs text-muted-foreground ml-1">({vol.toFixed(0)} L)</span>
-                  </span>
-                </div>
-                <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-sm text-muted-foreground">Usable:</span>
-                  <span>
-                    <span className="font-bold text-lg text-green-600 dark:text-green-400">{(usable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
-                    <span className="text-xs text-muted-foreground ml-1">({usable.toFixed(0)} L)</span>
-                  </span>
-                </div>
-                <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-sm text-muted-foreground">Dead:</span>
+                  <span className="text-sm text-muted-foreground">Dead Stock:</span>
                   <span className="text-sm text-red-500">{Math.round(deadStockVolume).toFixed(0)} L</span>
                 </div>
                 {reading && (
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Last: {reading.date} {reading.time || ""}
                   </p>
                 )}
@@ -648,21 +668,21 @@ export default function PlantBitumenStock() {
         <TankIndicator label="Tank 2" reading={latestTank2} tankNum={2} />
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Combined Stock</CardTitle>
+            <CardTitle className="text-sm font-medium">Combined Stock (Both Tanks)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-sm text-muted-foreground">Total:</span>
-              <span>
-                <span className="font-bold text-lg">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
-                <span className="text-xs text-muted-foreground ml-1">({combinedTotal.toFixed(0)} L)</span>
-              </span>
+            <div className="mb-2">
+              <span className="text-sm font-medium text-green-700 dark:text-green-400">Total Usable Stock</span>
+              <div>
+                <span className="font-bold text-2xl text-green-700 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                <span className="text-sm text-muted-foreground ml-1">({combinedUsable.toFixed(0)} L)</span>
+              </div>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
-              <span className="text-sm text-muted-foreground">Usable:</span>
+              <span className="text-sm text-muted-foreground">Total Stock:</span>
               <span>
-                <span className="font-bold text-lg text-green-600 dark:text-green-400">{(combinedUsable * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
-                <span className="text-xs text-muted-foreground ml-1">({combinedUsable.toFixed(0)} L)</span>
+                <span className="font-semibold text-base">{(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</span>
+                <span className="text-sm text-muted-foreground ml-1">({combinedTotal.toFixed(0)} L)</span>
               </span>
             </div>
             <div className="flex justify-between gap-1 flex-wrap">
@@ -686,15 +706,15 @@ export default function PlantBitumenStock() {
         <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap items-end">
             <div>
-              <Label className="text-xs">From Date</Label>
+              <Label className="text-sm">From Date</Label>
               <Input type="date" value={reconDateFrom} onChange={e => setReconDateFrom(e.target.value)} className="w-40" data-testid="input-recon-date-from" />
             </div>
             <div>
-              <Label className="text-xs">To Date</Label>
+              <Label className="text-sm">To Date</Label>
               <Input type="date" value={reconDateTo} onChange={e => setReconDateTo(e.target.value)} className="w-40" data-testid="input-recon-date-to" />
             </div>
             <div>
-              <Label className="text-xs">Party</Label>
+              <Label className="text-sm">Party</Label>
               <Select value={reconPartyId} onValueChange={setReconPartyId}>
                 <SelectTrigger className="w-44" data-testid="select-recon-party">
                   <SelectValue placeholder="All Parties" />
@@ -708,7 +728,7 @@ export default function PlantBitumenStock() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Mix Template</Label>
+              <Label className="text-sm">Mix Template</Label>
               <Select value={reconMixTemplateId} onValueChange={setReconMixTemplateId}>
                 <SelectTrigger className="w-44" data-testid="select-recon-mix">
                   <SelectValue placeholder="All Mixes" />
@@ -722,7 +742,7 @@ export default function PlantBitumenStock() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Site / Location</Label>
+              <Label className="text-sm">Site / Location</Label>
               <Select value={reconSite} onValueChange={setReconSite}>
                 <SelectTrigger className="w-44" data-testid="select-recon-site">
                   <SelectValue placeholder="All Sites" />
@@ -803,6 +823,11 @@ export default function PlantBitumenStock() {
                       <span title="Total bitumen received from material receipts during the selected period" className="cursor-help"><Info className="w-3 h-3" /></span>
                     </div>
                     <div className="text-xl font-bold">{reconciliationData.totalReceiptsMT.toFixed(3)} MT</div>
+                    {(reconciliationData.tank1ReceiptsMT > 0 || reconciliationData.tank2ReceiptsMT > 0) && (
+                      <div className="text-sm text-muted-foreground">
+                        T1: {reconciliationData.tank1ReceiptsMT.toFixed(3)} MT | T2: {reconciliationData.tank2ReceiptsMT.toFixed(3)} MT
+                      </div>
+                    )}
                     <div className="text-sm text-muted-foreground">
                       {reconDateFrom || reconDateTo ? `${reconDateFrom || "start"} to ${reconDateTo || "now"}` : "All time"}
                     </div>
@@ -1050,7 +1075,7 @@ export default function PlantBitumenStock() {
                           {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
                         </Badge>
                       </td>
-                      <td className="p-2 text-muted-foreground text-xs">{r.notes || "-"}</td>
+                      <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
                       {isAdmin && <td className="p-2 text-center">
                         {deleteConfirmId === r.id ? (
                           <div className="flex gap-1 justify-center">
@@ -1124,7 +1149,7 @@ export default function PlantBitumenStock() {
             </div>
 
             <div>
-              <Label>Dip Depth (cm) <span className="text-muted-foreground text-xs">- Enter bitumen depth reading from gauge rod</span></Label>
+              <Label>Dip Depth (cm) <span className="text-muted-foreground text-sm">- Enter bitumen depth reading from gauge rod</span></Label>
               <Input
                 type="number"
                 min="0"
@@ -1150,21 +1175,21 @@ export default function PlantBitumenStock() {
                         <span className="text-muted-foreground">Total:</span>
                         <span>
                           <span className="font-bold text-base">{(computedWeight / 1000).toFixed(3)} MT</span>
-                          <span className="text-xs text-muted-foreground ml-1">({Math.round(computedVolume).toFixed(0)} L)</span>
+                          <span className="text-sm text-muted-foreground ml-1">({Math.round(computedVolume).toFixed(0)} L)</span>
                         </span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Dead Stock:</span>
-                        <span className="text-red-500 text-xs">{(deadStockWeight / 1000).toFixed(3)} MT ({Math.round(deadStockVolume).toFixed(0)} L)</span>
+                        <span className="text-red-500 text-sm">{(deadStockWeight / 1000).toFixed(3)} MT ({Math.round(deadStockVolume).toFixed(0)} L)</span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-muted-foreground">Usable:</span>
                         <span>
                           <span className="font-bold text-base text-green-600 dark:text-green-400">{(usableWeight / 1000).toFixed(3)} MT</span>
-                          <span className="text-xs text-muted-foreground ml-1">({Math.round(usableVolume).toFixed(0)} L)</span>
+                          <span className="text-sm text-muted-foreground ml-1">({Math.round(usableVolume).toFixed(0)} L)</span>
                         </span>
                       </div>
-                      <div className="text-xs text-muted-foreground">Fill: {fillPercent.toFixed(1)}%</div>
+                      <div className="text-sm text-muted-foreground">Fill: {fillPercent.toFixed(1)}%</div>
                     </div>
                   </div>
                 </CardContent>

@@ -243,6 +243,7 @@ export const materialReceipts = pgTable("material_receipts", {
   supplier: text("supplier"),
   vehicleNumber: text("vehicle_number"),
   challanNumber: text("challan_number"),
+  tankNumber: integer("tank_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -708,6 +709,7 @@ export const CONSUMPTION_TOLERANCE_PERCENT = 10;
 export const sites = pgTable("sites", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  partyId: integer("party_id"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });

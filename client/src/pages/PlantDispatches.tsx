@@ -19,7 +19,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { Party, MixTemplate, TruckDispatch, MixType } from "@shared/schema";
+import type { Party, MixTemplate, TruckDispatch, MixType, Site } from "@shared/schema";
 
 export default function PlantDispatches() {
   const { toast } = useToast();
@@ -119,6 +119,17 @@ export default function PlantDispatches() {
   const { data: mixTypes } = useQuery<MixType[]>({
     queryKey: ["/api/plant-module/mix-types"],
   });
+
+  const { data: sitesList } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
+
+  const filteredSites = useMemo(() => {
+    if (!sitesList) return [];
+    if (!partyId) return sitesList.filter(s => s.isActive !== 0);
+    const pid = parseInt(partyId);
+    return sitesList.filter(s => s.isActive !== 0 && (!s.partyId || s.partyId === pid));
+  }, [sitesList, partyId]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
@@ -740,7 +751,7 @@ export default function PlantDispatches() {
 
               <div>
                 <Label>Party/Job</Label>
-                <Select value={partyId} onValueChange={setPartyId}>
+                <Select value={partyId} onValueChange={(v) => { setPartyId(v); setDeliveryLocation(""); }}>
                   <SelectTrigger data-testid="select-dispatch-party">
                     <SelectValue placeholder="Select party" />
                   </SelectTrigger>
@@ -767,7 +778,7 @@ export default function PlantDispatches() {
                   </SelectContent>
                 </Select>
                 {selectedTemplate && (
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Theoretical Bitumen: {selectedTemplate.bitumenPercent}%
                   </p>
                 )}
@@ -784,8 +795,18 @@ export default function PlantDispatches() {
               </div>
 
               <div>
-                <Label>Delivery Location (optional)</Label>
-                <Input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value.toUpperCase())} placeholder="Site/chainage" data-testid="input-delivery-location" />
+                <Label>Delivery Site (optional)</Label>
+                <Select value={deliveryLocation || "__none__"} onValueChange={(v) => setDeliveryLocation(v === "__none__" ? "" : v)}>
+                  <SelectTrigger data-testid="input-delivery-location">
+                    <SelectValue placeholder="Select site" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- None --</SelectItem>
+                    {filteredSites.map(s => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -884,14 +905,14 @@ export default function PlantDispatches() {
                         data-testid="input-actual-ldo" 
                       />
                       {actualLdoPerTon && parseFloat(loadWeight) > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Total: {(parseFloat(actualLdoPerTon) * parseFloat(loadWeight)).toFixed(3)} L for {loadWeight} MT
                         </p>
                       )}
                     </div>
                   </div>
                   
-                  <p className="text-xs text-muted-foreground mt-2">
+                  <p className="text-sm text-muted-foreground mt-2">
                     Tolerance: ±{TOLERANCE_PERCENT}% from theoretical. Stock deduction uses theoretical values. Adjustments are logged for audit.
                   </p>
                 </div>
@@ -923,7 +944,7 @@ export default function PlantDispatches() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
-              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Label className="text-sm text-muted-foreground">DATE FROM</Label>
               <Input
                 type="date"
                 value={filterDateFrom}
@@ -932,7 +953,7 @@ export default function PlantDispatches() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Label className="text-sm text-muted-foreground">DATE TO</Label>
               <Input
                 type="date"
                 value={filterDateTo}
@@ -941,7 +962,7 @@ export default function PlantDispatches() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">PARTY</Label>
+              <Label className="text-sm text-muted-foreground">PARTY</Label>
               <Select value={filterPartyId} onValueChange={setFilterPartyId}>
                 <SelectTrigger data-testid="select-filter-party">
                   <SelectValue placeholder="All Parties" />
@@ -955,7 +976,7 @@ export default function PlantDispatches() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">MIX TYPE</Label>
+              <Label className="text-sm text-muted-foreground">MIX TYPE</Label>
               <Select value={filterMixType} onValueChange={setFilterMixType}>
                 <SelectTrigger data-testid="select-filter-mix-type">
                   <SelectValue placeholder="All Types" />
@@ -969,7 +990,7 @@ export default function PlantDispatches() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">VEHICLE NO</Label>
+              <Label className="text-sm text-muted-foreground">VEHICLE NO</Label>
               <Select value={filterVehicle} onValueChange={setFilterVehicle}>
                 <SelectTrigger data-testid="select-filter-vehicle">
                   <SelectValue placeholder="All Vehicles" />
@@ -983,7 +1004,7 @@ export default function PlantDispatches() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">OWNER</Label>
+              <Label className="text-sm text-muted-foreground">OWNER</Label>
               <Select value={filterOwner} onValueChange={setFilterOwner}>
                 <SelectTrigger data-testid="select-filter-owner">
                   <SelectValue placeholder="All Owners" />
@@ -1007,30 +1028,30 @@ export default function PlantDispatches() {
             <>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">FILTERED DISPATCHES</p>
+                  <p className="text-sm text-muted-foreground mb-1">FILTERED DISPATCHES</p>
                   <p className="text-2xl font-bold" data-testid="text-filtered-count">{filteredTotals.count}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.count} total</p>
+                  <p className="text-sm text-muted-foreground">of {allTotals.count} total</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">FILTERED LOAD (MT)</p>
+                  <p className="text-sm text-muted-foreground mb-1">FILTERED LOAD (MT)</p>
                   <p className="text-2xl font-bold" data-testid="text-filtered-load">{filteredTotals.loadWeight.toFixed(3)}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.loadWeight.toFixed(3)} total</p>
+                  <p className="text-sm text-muted-foreground">of {allTotals.loadWeight.toFixed(3)} total</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">FILTERED BITUMEN (MT)</p>
+                  <p className="text-sm text-muted-foreground mb-1">FILTERED BITUMEN (MT)</p>
                   <p className="text-2xl font-bold" data-testid="text-filtered-bitumen">{filteredTotals.bitumen.toFixed(3)}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.bitumen.toFixed(3)} total</p>
+                  <p className="text-sm text-muted-foreground">of {allTotals.bitumen.toFixed(3)} total</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">FILTERED LDO (L)</p>
+                  <p className="text-sm text-muted-foreground mb-1">FILTERED LDO (L)</p>
                   <p className="text-2xl font-bold" data-testid="text-filtered-ldo">{filteredTotals.ldo.toFixed(3)}</p>
-                  <p className="text-xs text-muted-foreground">of {allTotals.ldo.toFixed(3)} total</p>
+                  <p className="text-sm text-muted-foreground">of {allTotals.ldo.toFixed(3)} total</p>
                 </CardContent>
               </Card>
             </>
@@ -1038,25 +1059,25 @@ export default function PlantDispatches() {
             <>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">TOTAL DISPATCHES</p>
+                  <p className="text-sm text-muted-foreground mb-1">TOTAL DISPATCHES</p>
                   <p className="text-2xl font-bold" data-testid="text-total-count">{allTotals.count}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">TOTAL LOAD (MT)</p>
+                  <p className="text-sm text-muted-foreground mb-1">TOTAL LOAD (MT)</p>
                   <p className="text-2xl font-bold" data-testid="text-total-load">{allTotals.loadWeight.toFixed(3)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">TOTAL BITUMEN (MT)</p>
+                  <p className="text-sm text-muted-foreground mb-1">TOTAL BITUMEN (MT)</p>
                   <p className="text-2xl font-bold" data-testid="text-total-bitumen">{allTotals.bitumen.toFixed(3)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4">
-                  <p className="text-xs text-muted-foreground mb-1">TOTAL LDO (L)</p>
+                  <p className="text-sm text-muted-foreground mb-1">TOTAL LDO (L)</p>
                   <p className="text-2xl font-bold" data-testid="text-total-ldo">{allTotals.ldo.toFixed(3)}</p>
                 </CardContent>
               </Card>
@@ -1114,48 +1135,48 @@ export default function PlantDispatches() {
                           <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-2 text-sm">
                               <div>
-                                <span className="text-muted-foreground text-xs block">Time</span>
+                                <span className="text-muted-foreground text-sm block">Time</span>
                                 <span className="font-medium">{dispatch.time || "-"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Truck</span>
+                                <span className="text-muted-foreground text-sm block">Truck</span>
                                 <span className="font-medium">{dispatch.truckNumber}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Load</span>
+                                <span className="text-muted-foreground text-sm block">Load</span>
                                 <span className="font-medium">{dispatch.loadWeight} MT</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Mix</span>
+                                <span className="text-muted-foreground text-sm block">Mix</span>
                                 <Badge variant="outline" className="text-xs">{template?.mixType || "-"}</Badge>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Party</span>
+                                <span className="text-muted-foreground text-sm block">Party</span>
                                 <span className="font-medium">{getPartyName(dispatch.partyId)}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Site</span>
+                                <span className="text-muted-foreground text-sm block">Site</span>
                                 <span className="font-medium">{dispatch.deliveryLocation || "-"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Owner</span>
+                                <span className="text-muted-foreground text-sm block">Owner</span>
                                 <span className="font-medium" data-testid={`text-owner-${dispatch.id}`}>{dispatch.ownerName || "-"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Driver</span>
+                                <span className="text-muted-foreground text-sm block">Driver</span>
                                 <span className="font-medium" data-testid={`text-driver-${dispatch.id}`}>{dispatch.driverName || "-"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Bitumen (MT)</span>
+                                <span className="text-muted-foreground text-sm block">Bitumen (MT)</span>
                                 <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(3) || "0"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">LDO (L)</span>
+                                <span className="text-muted-foreground text-sm block">LDO (L)</span>
                                 <span className="font-medium">{dispatch.theoreticalLdoQty?.toFixed(3) || "0"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">Tanks</span>
-                                <span className="font-medium text-xs">B{dispatch.bitumenTankNumber || 1} / L{dispatch.ldoTankNumber || 2}</span>
+                                <span className="text-muted-foreground text-sm block">Tanks</span>
+                                <span className="font-medium text-sm">B{dispatch.bitumenTankNumber || 1} / L{dispatch.ldoTankNumber || 2}</span>
                               </div>
                               {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
                                 (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (

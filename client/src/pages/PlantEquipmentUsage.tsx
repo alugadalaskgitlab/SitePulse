@@ -776,13 +776,13 @@ export default function PlantEquipmentUsage() {
                   </SelectContent>
                 </Select>
                 {selectedEquipment && (
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Norm: {selectedEquipment.consumptionNorm} {selectedEquipment.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 )}
               </div>
 
-              <p className="text-xs text-muted-foreground italic">Enter meter readings OR time. Check "Trip Based Entry" for trip-based calculation.</p>
+              <p className="text-sm text-muted-foreground italic">Enter meter readings OR time. Check "Trip Based Entry" for trip-based calculation.</p>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -822,7 +822,7 @@ export default function PlantEquipmentUsage() {
                 <div className="p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-200/50 dark:border-blue-800/50 space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-xs">No. of Trips</Label>
+                      <Label className="text-sm">No. of Trips</Label>
                       <Input 
                         type="number" 
                         min="0" 
@@ -834,7 +834,7 @@ export default function PlantEquipmentUsage() {
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">Distance to Source (km)</Label>
+                      <Label className="text-sm">Distance to Source (km)</Label>
                       <Input 
                         type="number" 
                         min="0" 
@@ -847,7 +847,7 @@ export default function PlantEquipmentUsage() {
                     </div>
                   </div>
                   {numberOfTrips && tripDistance && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       Total: {(parseInt(numberOfTrips) * parseFloat(tripDistance) * 2).toFixed(3)} km ({numberOfTrips} trips × {tripDistance} km × 2)
                     </p>
                   )}
@@ -885,7 +885,7 @@ export default function PlantEquipmentUsage() {
                     <SelectItem value="contractor">Contractor Provided (no stock impact)</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   {dieselSource === "plant_stock" && !dieselIncluded && "Diesel will be deducted from plant HLC stock"}
                   {dieselSource === "direct_purchase" && !dieselIncluded && "Track diesel purchased directly at site"}
                   {(dieselSource === "contractor" || dieselIncluded) && "Tracking only - diesel is contractor's responsibility"}
@@ -960,7 +960,7 @@ export default function PlantEquipmentUsage() {
                         )}
                       </div>
                       {previousDieselBalance !== null && !editingUsage && (
-                        <p className="text-xs text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(3)} L</p>
+                        <p className="text-sm text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(3)} L</p>
                       )}
                     </div>
                     <div>
@@ -1013,7 +1013,7 @@ export default function PlantEquipmentUsage() {
         <CardContent>
           <div className="flex flex-col md:flex-row items-start md:items-end gap-4 flex-wrap">
             <div className="flex-1 min-w-[150px]">
-              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Label className="text-sm text-muted-foreground">DATE FROM</Label>
               <Input
                 type="date"
                 value={filterDateFrom}
@@ -1022,7 +1022,7 @@ export default function PlantEquipmentUsage() {
               />
             </div>
             <div className="flex-1 min-w-[150px]">
-              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Label className="text-sm text-muted-foreground">DATE TO</Label>
               <Input
                 type="date"
                 value={filterDateTo}
@@ -1031,7 +1031,7 @@ export default function PlantEquipmentUsage() {
               />
             </div>
             <div className="flex-1 min-w-[200px]">
-              <Label className="text-xs text-muted-foreground">EQUIPMENT</Label>
+              <Label className="text-sm text-muted-foreground">EQUIPMENT</Label>
               <Select value={filterEquipmentId} onValueChange={setFilterEquipmentId}>
                 <SelectTrigger data-testid="select-filter-equipment">
                   <SelectValue placeholder="All Equipment" />
@@ -1247,17 +1247,17 @@ export default function PlantEquipmentUsage() {
                           <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
                               <div>
-                                <span className="text-muted-foreground text-xs block">Equipment</span>
+                                <span className="text-muted-foreground text-sm block">Equipment</span>
                                 <span className="font-medium">{equip?.name || "Unknown"}</span>
                                 {(equip as any)?.registrationNumber && (
-                                  <span className="text-xs text-muted-foreground block">{(equip as any).registrationNumber}</span>
+                                  <span className="text-sm text-muted-foreground block">{(equip as any).registrationNumber}</span>
                                 )}
                                 {isDieselIncluded && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>
                                 )}
                               </div>
                               <div>
-                                <span className="text-muted-foreground text-xs block">
+                                <span className="text-muted-foreground text-sm block">
                                   {(entry as any).totalKm > 0 && !entry.hoursOrKmRun 
                                     ? "Distance" 
                                     : (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")}
@@ -1265,7 +1265,7 @@ export default function PlantEquipmentUsage() {
                                 {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
                                   <>
                                     <span className="font-medium">{((entry as any).totalKm || 0).toFixed(3)} km</span>
-                                    <span className="text-xs text-muted-foreground block">
+                                    <span className="text-sm text-muted-foreground block">
                                       {(entry as any).numberOfTrips} trips × {(entry as any).tripDistance} km × 2
                                     </span>
                                   </>
@@ -1273,11 +1273,11 @@ export default function PlantEquipmentUsage() {
                                   <>
                                     <span className="font-medium">{entry.hoursOrKmRun?.toFixed(3)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
                                     {entry.openingReading != null && entry.closingReading != null ? (
-                                      <span className="text-xs text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
+                                      <span className="text-sm text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
                                     ) : entry.startTime && entry.endTime ? (
-                                      <span className="text-xs text-muted-foreground block">Time: {entry.startTime} - {entry.endTime}</span>
+                                      <span className="text-sm text-muted-foreground block">Time: {entry.startTime} - {entry.endTime}</span>
                                     ) : (
-                                      <span className="text-xs text-muted-foreground block">-</span>
+                                      <span className="text-sm text-muted-foreground block">-</span>
                                     )}
                                   </>
                                 )}
@@ -1291,15 +1291,15 @@ export default function PlantEquipmentUsage() {
                               ) : (
                                 <>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Diesel Issued</span>
+                                    <span className="text-muted-foreground text-sm block">Diesel Issued</span>
                                     <span className="font-medium">{dieselIssuedVal.toFixed(3)} L</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Consumed</span>
+                                    <span className="text-muted-foreground text-sm block">Consumed</span>
                                     <span className="font-medium">{consumed.toFixed(3)} L</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Efficiency</span>
+                                    <span className="text-muted-foreground text-sm block">Efficiency</span>
                                     {(() => {
                                       // Use hoursOrKmRun, or totalKm for trip-based entries
                                       const runtime = entry.hoursOrKmRun || (entry as any).totalKm || 0;
@@ -1318,11 +1318,11 @@ export default function PlantEquipmentUsage() {
                                       );
                                     })()}
                                     {equip?.consumptionNorm && (
-                                      <span className="text-xs text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
+                                      <span className="text-sm text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
                                     )}
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Tank Balance</span>
+                                    <span className="text-muted-foreground text-sm block">Tank Balance</span>
                                     <span className="font-medium">{closingDieselVal.toFixed(3)} L</span>
                                   </div>
                                 </>
