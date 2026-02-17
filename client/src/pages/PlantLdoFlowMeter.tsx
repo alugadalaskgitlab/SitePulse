@@ -1069,24 +1069,24 @@ export default function PlantLdoFlowMeter() {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-blue-600" />
-            <CardTitle className="text-sm font-medium">LDO Reconciliation</CardTitle>
+            <CardTitle className="text-base font-semibold">LDO Reconciliation</CardTitle>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-base text-muted-foreground mt-1">
             Compare theoretical consumption (from mix template LDO norms) vs actual consumption (per dispatch variance) and physical stock (dip readings)
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap items-end">
             <div>
-              <Label className="text-sm">From Date</Label>
+              <Label className="text-base">From Date</Label>
               <Input type="date" value={reconDateFrom} onChange={e => setReconDateFrom(e.target.value)} className="w-40" data-testid="input-ldo-recon-date-from" />
             </div>
             <div>
-              <Label className="text-sm">To Date</Label>
+              <Label className="text-base">To Date</Label>
               <Input type="date" value={reconDateTo} onChange={e => setReconDateTo(e.target.value)} className="w-40" data-testid="input-ldo-recon-date-to" />
             </div>
             <div>
-              <Label className="text-sm">Party</Label>
+              <Label className="text-base">Party</Label>
               <Select value={reconPartyId} onValueChange={setReconPartyId}>
                 <SelectTrigger className="w-44" data-testid="select-ldo-recon-party">
                   <SelectValue placeholder="All Parties" />
@@ -1100,7 +1100,7 @@ export default function PlantLdoFlowMeter() {
               </Select>
             </div>
             <div>
-              <Label className="text-sm">Mix Template</Label>
+              <Label className="text-base">Mix Template</Label>
               <Select value={reconMixTemplateId} onValueChange={setReconMixTemplateId}>
                 <SelectTrigger className="w-44" data-testid="select-ldo-recon-mix">
                   <SelectValue placeholder="All Mixes" />
@@ -1114,7 +1114,7 @@ export default function PlantLdoFlowMeter() {
               </Select>
             </div>
             <div>
-              <Label className="text-sm">Site / Location</Label>
+              <Label className="text-base">Site / Location</Label>
               <Select value={reconSite} onValueChange={setReconSite}>
                 <SelectTrigger className="w-44" data-testid="select-ldo-recon-site">
                   <SelectValue placeholder="All Sites" />
@@ -1139,52 +1139,49 @@ export default function PlantLdoFlowMeter() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Card className="bg-muted/30">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       Total Production
-                      <span title="Total mix dispatched in the selected period" className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="Total mix dispatched in the selected period" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className="text-xl font-bold" data-testid="text-ldo-recon-production">{reconciliationData.totalLoadMT.toFixed(3)} MT</div>
-                    <div className="text-sm text-muted-foreground">{reconciliationData.dispatchCount} dispatches</div>
+                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-production">{reconciliationData.totalLoadMT.toFixed(3)} MT</div>
+                    <div className="text-base text-muted-foreground">{reconciliationData.dispatchCount} dispatches</div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-muted/30">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       Theoretical LDO
-                      <span title="LDO that should have been consumed as per mix template norms" className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="LDO that should have been consumed as per mix template norms" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className="text-xl font-bold" data-testid="text-ldo-recon-theoretical">{reconciliationData.totalTheoreticalL.toFixed(0)} L</div>
-                    <div className="text-sm text-muted-foreground">{(reconciliationData.totalTheoreticalL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-theoretical">{reconciliationData.totalTheoreticalL.toFixed(0)} L</div>
+                    <div className="text-base text-muted-foreground">As per mix template</div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-muted/30">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       Actual LDO Used
-                      <span title="LDO actually consumed as per the variance % entered during dispatch" className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="LDO actually consumed as per the variance % entered during dispatch" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className="text-xl font-bold" data-testid="text-ldo-recon-actual">{reconciliationData.totalActualL.toFixed(0)} L</div>
-                    <div className="text-sm text-muted-foreground">{(reconciliationData.totalActualL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-actual">{reconciliationData.totalActualL.toFixed(0)} L</div>
+                    <div className="text-base text-muted-foreground">As per dispatch variance</div>
                   </CardContent>
                 </Card>
 
                 <Card className={`${reconciliationData.ldoSavedL >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30"}`}>
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       {reconciliationData.ldoSavedL >= 0 ? "LDO Saved" : "LDO Excess"}
-                      <span title="Difference between theoretical and actual. Positive = saved (used less than template), Negative = excess (used more than template)" className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="Difference between theoretical and actual. Positive = saved (used less than template), Negative = excess (used more than template)" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className={`text-xl font-bold flex items-center gap-1 ${reconciliationData.ldoSavedL >= 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`} data-testid="text-ldo-recon-saved">
+                    <div className={`text-2xl font-bold flex items-center gap-1 ${reconciliationData.ldoSavedL >= 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`} data-testid="text-ldo-recon-saved">
                       {reconciliationData.ldoSavedL >= 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                       {Math.abs(reconciliationData.ldoSavedL).toFixed(0)} L
                     </div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-base text-muted-foreground">
                       {reconciliationData.savingsPercent >= 0 ? "Savings" : "Excess"}: {Math.abs(reconciliationData.savingsPercent).toFixed(1)}% of theoretical
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {(Math.abs(reconciliationData.ldoSavedL) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT
                     </div>
                   </CardContent>
                 </Card>
@@ -1193,52 +1190,52 @@ export default function PlantLdoFlowMeter() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Card className="bg-blue-50/50 dark:bg-blue-950/20">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       LDO Received (Receipts)
-                      <span title="Total LDO received from material receipts during the selected period" className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="Total LDO received from material receipts during the selected period" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className="text-xl font-bold" data-testid="text-ldo-recon-receipts">{reconciliationData.totalReceiptsL.toFixed(0)} L</div>
+                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{reconciliationData.totalReceiptsL.toFixed(0)} L</div>
                     {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-base text-muted-foreground">
                         T1: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | T2: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
                       </div>
                     )}
-                    <div className="text-sm text-muted-foreground">
-                      {(reconciliationData.totalReceiptsL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT | {reconDateFrom || reconDateTo ? `${reconDateFrom || "start"} to ${reconDateTo || "now"}` : "All time"}
+                    <div className="text-base text-muted-foreground">
+                      {reconDateFrom || reconDateTo ? `${reconDateFrom || "start"} to ${reconDateTo || "now"}` : "All time"}
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-amber-50/50 dark:bg-amber-950/20">
                   <CardContent className="p-4 space-y-1">
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       Physical Stock (Dip Reading)
-                      <span title="Physical LDO stock in tanks as measured by the latest dip reading per tank" className="cursor-help"><Info className="w-3 h-3" /></span>
+                      <span title="Physical LDO stock in tanks as measured by the latest dip reading per tank" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
                     {reconciliationData.latestDipReading ? (
                       <>
-                        <div className="text-xl font-bold" data-testid="text-ldo-recon-physical-stock">{reconciliationData.latestDipReading.totalL.toFixed(0)} L</div>
-                        <div className="text-sm text-muted-foreground">
-                          {reconciliationData.latestDipReading.totalMT.toFixed(3)} MT | Usable: {reconciliationData.latestDipReading.totalUsableL.toFixed(0)} L ({reconciliationData.latestDipReading.totalUsableMT.toFixed(3)} MT)
+                        <div className="text-2xl font-bold" data-testid="text-ldo-recon-physical-stock">{reconciliationData.latestDipReading.totalL.toFixed(0)} L</div>
+                        <div className="text-base font-semibold text-foreground">
+                          Usable: {reconciliationData.latestDipReading.totalUsableL.toFixed(0)} L
                         </div>
-                        <div className="text-sm text-muted-foreground mt-1">
+                        <div className="text-base text-muted-foreground mt-1">
                           T1 (Boiler): {reconciliationData.latestDipReading.tank1L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank1UsableL.toFixed(0)} L)
                           {reconciliationData.latestDipReading.tank1Date ? ` — ${reconciliationData.latestDipReading.tank1Date}` : ""}
                         </div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-base text-muted-foreground">
                           T2 (Dryer): {reconciliationData.latestDipReading.tank2L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank2UsableL.toFixed(0)} L)
                           {reconciliationData.latestDipReading.tank2Date ? ` — ${reconciliationData.latestDipReading.tank2Date}` : ""}
                         </div>
                       </>
                     ) : (
-                      <div className="text-sm text-muted-foreground">No dip readings available</div>
+                      <div className="text-base text-muted-foreground">No dip readings available</div>
                     )}
                   </CardContent>
                 </Card>
               </div>
 
-              <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md space-y-1">
-                <div className="font-medium">How to read this:</div>
+              <div className="text-base text-muted-foreground bg-muted/30 p-4 rounded-md space-y-1">
+                <div className="font-semibold">How to read this:</div>
                 <div><strong>Theoretical</strong> = What the mix template says should have been consumed (template LDO norm x load weight)</div>
                 <div><strong>Actual</strong> = What was actually consumed based on the variance % entered during each dispatch</div>
                 <div><strong>Saved/Excess</strong> = Theoretical minus Actual. Positive means less LDO was used than the template requires (savings). Negative means more was used (excess).</div>
@@ -1246,7 +1243,7 @@ export default function PlantLdoFlowMeter() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-4 text-muted-foreground text-sm">
+            <div className="text-center py-4 text-muted-foreground text-base">
               {reconciliationData?.dispatchCount === 0 ? "No dispatches found for selected filters" : "Loading dispatch data..."}
             </div>
           )}
