@@ -121,7 +121,7 @@ export default function PlantEquipmentUsage() {
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "complete" | "export-excel" | "export-pdf" | "print"; usageId?: number } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; usageId?: number } | null>(null);
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
@@ -336,12 +336,6 @@ export default function PlantEquipmentUsage() {
           if (entry) openEditDialog(entry);
         }
         break;
-      case "complete":
-        if (pendingAction.usageId) {
-          const completeEntry = usage?.find(u => u.id === pendingAction.usageId);
-          if (completeEntry) openEditDialog(completeEntry);
-        }
-        break;
       case "delete":
         if (pendingAction.usageId) {
           setDeleteConfirmId(pendingAction.usageId);
@@ -381,7 +375,7 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleCompleteClick = (entry: EquipmentUsage) => {
-    requestPinAuth({ type: "complete", usageId: entry.id });
+    openEditDialog(entry);
   };
 
   const isPartialEntry = (entry: EquipmentUsage) => {

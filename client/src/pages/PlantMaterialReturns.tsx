@@ -32,8 +32,8 @@ export default function PlantMaterialReturns() {
   const [filterMaterialId, setFilterMaterialId] = useState("all");
 
   const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "export-excel" | "export-pdf" | "print"; returnId?: number } | null>(null);
+  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager" | "any">("admin");
+  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; returnId?: number } | null>(null);
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>("");
   const [selectedIssueId, setSelectedIssueId] = useState<string>("");
@@ -234,6 +234,12 @@ export default function PlantMaterialReturns() {
     setShowPinAuth(false);
     if (pendingAction) {
       switch (pendingAction.type) {
+        case "edit":
+          if (pendingAction.returnId) {
+            const ret = returns?.find(r => r.id === pendingAction.returnId);
+            if (ret) openEditReturn(ret);
+          }
+          break;
         case "delete":
           if (pendingAction.returnId) setDeleteConfirmId(pendingAction.returnId);
           break;
@@ -251,9 +257,9 @@ export default function PlantMaterialReturns() {
     }
   };
 
-  const requireAuth = (action: { type: "delete" | "export-excel" | "export-pdf" | "print"; returnId?: number }) => {
+  const requireAuth = (action: { type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; returnId?: number }) => {
     setPendingAction(action);
-    setPinAuthTarget("admin");
+    setPinAuthTarget(action.type === "edit" ? "any" : "admin");
     setShowPinAuth(true);
   };
 
@@ -619,7 +625,7 @@ export default function PlantMaterialReturns() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEditReturn(ret)} data-testid={`button-edit-${ret.id}`}>
+                      <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "edit", returnId: ret.id })} data-testid={`button-edit-${ret.id}`}>
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "delete", returnId: ret.id })} data-testid={`button-delete-${ret.id}`}>

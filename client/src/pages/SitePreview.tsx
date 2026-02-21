@@ -171,22 +171,33 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   <TableHead>Task</TableHead>
                   <TableHead>Start</TableHead>
                   <TableHead>End</TableHead>
+                  <TableHead className="text-right">Opening</TableHead>
+                  <TableHead className="text-right">Closing</TableHead>
                   <TableHead className="text-right">Hours</TableHead>
                   <TableHead className="text-right">Diesel (L)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.equipment.filter(e => e.machine).map((item, i) => (
+                {data.equipment.filter(e => e.machine).map((item, i) => {
+                  const meterDiff = (item.openingReading != null && item.closingReading != null)
+                    ? item.closingReading - item.openingReading : null;
+                  const meterHours = (meterDiff != null && meterDiff >= 0) ? meterDiff.toFixed(3) : null;
+                  const timeHours = calculateHours(item.startTime, item.endTime);
+                  const displayHours = meterHours || timeHours;
+                  return (
                   <TableRow key={i}>
                     <TableCell className="font-medium">{item.machine}</TableCell>
                     <TableCell>{item.operator || '-'}</TableCell>
                     <TableCell className="text-sm">{item.task || '-'}</TableCell>
                     <TableCell>{item.startTime || '-'}</TableCell>
                     <TableCell>{item.endTime || '-'}</TableCell>
-                    <TableCell className="text-right">{calculateHours(item.startTime, item.endTime)}</TableCell>
+                    <TableCell className="text-right">{item.openingReading != null ? item.openingReading : '-'}</TableCell>
+                    <TableCell className="text-right">{item.closingReading != null ? item.closingReading : '-'}</TableCell>
+                    <TableCell className="text-right">{displayHours}</TableCell>
                     <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
