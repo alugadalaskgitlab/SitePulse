@@ -379,7 +379,7 @@ export default function PlantEquipmentUsage() {
   };
 
   const isPartialEntry = (entry: EquipmentUsage) => {
-    return entry.openingReading != null && entry.closingReading == null && !entry.startTime && !entry.endTime && !(entry as any).tripBasedEntry;
+    return entry.openingReading != null && entry.closingReading == null && !(entry as any).tripBasedEntry;
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
