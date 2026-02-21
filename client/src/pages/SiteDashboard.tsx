@@ -32,6 +32,8 @@ import {
   Truck,
   Trash2,
   ShoppingCart,
+  Clock,
+  Pencil,
 } from "lucide-react";
 import type { SiteMaterialTrip } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -1086,8 +1088,12 @@ export default function SiteDashboard() {
                     });
                   };
                   
+                  const pendingClosingCount = (dpr.equipment || []).filter(
+                    (e: any) => e.machine && e.openingReading != null && e.closingReading == null
+                  ).length;
+                  
                   return (
-                    <Card key={dpr.id} className="transition-all" data-testid={`card-report-${dpr.id}`}>
+                    <Card key={dpr.id} className={`transition-all ${pendingClosingCount > 0 ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -1097,6 +1103,12 @@ export default function SiteDashboard() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold truncate">{dpr.site}</h3>
+                                {pendingClosingCount > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-pending-closing-${dpr.id}`}>
+                                    <Clock className="w-3 h-3" />
+                                    Pending Closing ({pendingClosingCount})
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
                                 <span className="flex items-center gap-1">
@@ -1111,6 +1123,14 @@ export default function SiteDashboard() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
+                            {pendingClosingCount > 0 && (
+                              <Link href={appendOrigin(`/site/edit/${dpr.id}`)}>
+                                <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-complete-${dpr.id}`}>
+                                  <Pencil className="w-3 h-3" />
+                                  Complete
+                                </Button>
+                              </Link>
+                            )}
                             <Button 
                               size="sm" 
                               variant="ghost" 
