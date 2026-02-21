@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, Download, Printer, RotateCcw } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, Download, Printer, RotateCcw, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -25,6 +25,7 @@ export default function PlantMaterialReturns() {
   const backLink = appendOrigin("/plant/dashboard");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [editingReturn, setEditingReturn] = useState<MaterialReturn | null>(null);
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -97,7 +98,23 @@ export default function PlantMaterialReturns() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/plant-module/material-returns/${id}`, data),
+    onSuccess: () => {
+      invalidateQueries();
+      setDialogOpen(false);
+      setEditingReturn(null);
+      resetForm();
+      toast({ title: "Material return updated successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: err.message || "Failed to update return", variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
+    setEditingReturn(null);
     setSelectedMaterialId("");
     setSelectedIssueId("");
     setReturnDate(format(new Date(), "yyyy-MM-dd"));
@@ -106,6 +123,19 @@ export default function PlantMaterialReturns() {
     setReturnedBy("");
     setVehicleNumber("");
     setNotes("");
+  };
+
+  const openEditReturn = (ret: MaterialReturn) => {
+    setEditingReturn(ret);
+    setSelectedMaterialId(String(ret.materialId));
+    setSelectedIssueId(String(ret.originalIssueId));
+    setReturnDate(ret.date);
+    setReturnTime(ret.time || format(new Date(), "HH:mm"));
+    setReturnQuantity(String(ret.quantity));
+    setReturnedBy(ret.returnedBy || "");
+    setVehicleNumber(ret.vehicleNumber || "");
+    setNotes(ret.notes || "");
+    setDialogOpen(true);
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
@@ -142,8 +172,10 @@ export default function PlantMaterialReturns() {
   const remainingQty = useMemo(() => {
     if (!selectedIssue) return 0;
     const alreadyReturned = returnedQtyByIssue[selectedIssue.id] || 0;
-    return selectedIssue.quantity - alreadyReturned;
-  }, [selectedIssue, returnedQtyByIssue]);
+    const currentEntryQty = editingReturn && editingReturn.originalIssueId === selectedIssue.id
+      ? editingReturn.quantity : 0;
+    return selectedIssue.quantity - alreadyReturned + currentEntryQty;
+  }, [selectedIssue, returnedQtyByIssue, editingReturn]);
 
   const handleSubmit = () => {
     if (!selectedIssueId || !returnQuantity || !selectedIssue) return;
@@ -168,7 +200,11 @@ export default function PlantMaterialReturns() {
       notes: notes || null,
     };
 
-    createMutation.mutate(data);
+    if (editingReturn) {
+      updateMutation.mutate({ id: editingReturn.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   const filteredReturns = useMemo(() => {
@@ -367,13 +403,13 @@ export default function PlantMaterialReturns() {
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Record Material Return</DialogTitle>
+                <DialogTitle>{editingReturn ? "Edit Material Return" : "Record Material Return"}</DialogTitle>
               </DialogHeader>
 
               <div className="space-y-4 pt-2">
                 <div>
                   <Label>Step 1: Select Material</Label>
-                  <Select value={selectedMaterialId} onValueChange={(val) => { setSelectedMaterialId(val); setSelectedIssueId(""); setReturnQuantity(""); }}>
+                  <Select value={selectedMaterialId} onValueChange={(val) => { setSelectedMaterialId(val); setSelectedIssueId(""); setReturnQuantity(""); }} disabled={!!editingReturn}>
                     <SelectTrigger data-testid="select-material">
                       <SelectValue placeholder="Select material to return" />
                     </SelectTrigger>
@@ -388,15 +424,16 @@ export default function PlantMaterialReturns() {
                 {selectedMaterialId && (
                   <div>
                     <Label>Step 2: Select Original Issue</Label>
-                    <Select value={selectedIssueId} onValueChange={(val) => { setSelectedIssueId(val); setReturnQuantity(""); }}>
+                    <Select value={selectedIssueId} onValueChange={(val) => { setSelectedIssueId(val); setReturnQuantity(""); }} disabled={!!editingReturn}>
                       <SelectTrigger data-testid="select-issue">
                         <SelectValue placeholder="Select issue entry" />
                       </SelectTrigger>
                       <SelectContent>
                         {issuesForSelectedMaterial.map(issue => {
                           const alreadyReturned = returnedQtyByIssue[issue.id] || 0;
-                          const remaining = issue.quantity - alreadyReturned;
-                          if (remaining <= 0) return null;
+                          const editQtyBack = editingReturn && editingReturn.originalIssueId === issue.id ? editingReturn.quantity : 0;
+                          const remaining = issue.quantity - alreadyReturned + editQtyBack;
+                          if (remaining <= 0 && !(editingReturn && editingReturn.originalIssueId === issue.id)) return null;
                           return (
                             <SelectItem key={issue.id} value={String(issue.id)}>
                               {issue.date} | {issue.issuedTo} | {issue.quantity} {issue.uom} (Remaining: {remaining.toFixed(3)})
@@ -466,10 +503,10 @@ export default function PlantMaterialReturns() {
                     <Button
                       onClick={handleSubmit}
                       className="w-full"
-                      disabled={createMutation.isPending || !selectedIssueId || !returnQuantity || parseFloat(returnQuantity) <= 0 || parseFloat(returnQuantity) > remainingQty}
+                      disabled={createMutation.isPending || updateMutation.isPending || !selectedIssueId || !returnQuantity || parseFloat(returnQuantity) <= 0 || parseFloat(returnQuantity) > remainingQty}
                       data-testid="button-submit-return"
                     >
-                      {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Record Return"}
+                      {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingReturn ? "Update Return" : "Record Return")}
                     </Button>
                   </>
                 )}
@@ -582,6 +619,9 @@ export default function PlantMaterialReturns() {
                       </div>
                     </div>
                     <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEditReturn(ret)} data-testid={`button-edit-${ret.id}`}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "delete", returnId: ret.id })} data-testid={`button-delete-${ret.id}`}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>

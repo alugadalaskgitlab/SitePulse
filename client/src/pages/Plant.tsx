@@ -11,14 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Factory, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
 import { PinAuth } from "@/components/PinAuth";
-import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType } from "@shared/schema";
+import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -29,7 +29,7 @@ export default function Plant() {
   const roleParam = params.get("role") as "manager" | "admin" | null;
   
   const initialUnlocked = new Map<string, "manager" | "admin">();
-  if (tabParam && roleParam && ["stock", "masters", "dashboard"].includes(tabParam)) {
+  if (tabParam && roleParam && ["stock", "masters"].includes(tabParam)) {
     initialUnlocked.set(tabParam, roleParam);
   }
   
@@ -44,9 +44,9 @@ export default function Plant() {
   const backLink = getBackLink("/plant");
 
   useEffect(() => {
-    if (tabParam && ["operations", "stock", "masters", "dashboard"].includes(tabParam)) {
+    if (tabParam && ["operations", "stock", "masters"].includes(tabParam)) {
       setActiveTab(tabParam);
-      if (roleParam && ["stock", "masters", "dashboard"].includes(tabParam)) {
+      if (roleParam && ["stock", "masters"].includes(tabParam)) {
         setUnlockedTabs(prev => {
           const newMap = new Map(prev);
           newMap.set(tabParam, roleParam);
@@ -58,7 +58,7 @@ export default function Plant() {
   }, [tabParam, roleParam]);
 
   const handleTabChange = (tab: string) => {
-    if ((tab === "masters" || tab === "dashboard" || tab === "stock") && !unlockedTabs.has(tab)) {
+    if ((tab === "masters" || tab === "stock") && !unlockedTabs.has(tab)) {
       setPendingTab(tab);
       setShowPinAuth(true);
       return;
@@ -75,7 +75,7 @@ export default function Plant() {
         return newMap;
       });
       setActiveTab(pendingTab);
-      const tabNames: Record<string, string> = { masters: "Masters", dashboard: "Dashboard", stock: "Stock Details" };
+      const tabNames: Record<string, string> = { masters: "Masters", stock: "Stock Details" };
       toast({ title: `${tabNames[pendingTab] || pendingTab} unlocked`, description: role === "manager" ? "View and add only" : "Full access" });
     }
     setShowPinAuth(false);
@@ -112,7 +112,7 @@ export default function Plant() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="operations" className="gap-2" data-testid="tab-operations">
             <Truck className="w-4 h-4" />
             <span className="hidden sm:inline">Operations</span>
@@ -124,10 +124,6 @@ export default function Plant() {
           <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">Masters</span>
-          </TabsTrigger>
-          <TabsTrigger value="dashboard" className="gap-2" data-testid="tab-dashboard">
-            <Factory className="w-4 h-4" />
-            <span className="hidden sm:inline">Dashboard</span>
           </TabsTrigger>
         </TabsList>
 
@@ -169,22 +165,6 @@ export default function Plant() {
           )}
         </TabsContent>
 
-        <TabsContent value="dashboard" className="mt-6">
-          {unlockedTabs.has("dashboard") ? (
-            <DashboardTab unlockedRole={unlockedTabs.get("dashboard")!} />
-          ) : (
-            <Card className="py-12">
-              <CardContent className="text-center">
-                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
-                <p className="text-muted-foreground mb-2">Enter Manager or Admin PIN to access Dashboard</p>
-                <Button onClick={() => handleTabChange("dashboard")} data-testid="button-unlock-dashboard">
-                  <Lock className="w-4 h-4 mr-2" /> Unlock Dashboard
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
       </Tabs>
     </div>
   );
@@ -594,6 +574,10 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   const [stockPartyId, setStockPartyId] = useState<string>("");
   const [stockDate, setStockDate] = useState(new Date().toISOString().split('T')[0]);
   const [stockNotes, setStockNotes] = useState("");
+  const [editingOpeningStock, setEditingOpeningStock] = useState<MaterialOpeningStock | null>(null);
+  const [deleteOpeningStockId, setDeleteOpeningStockId] = useState<number | null>(null);
+  const [showOSPinAuth, setShowOSPinAuth] = useState(false);
+  const [pendingOSAction, setPendingOSAction] = useState<{ type: "delete"; stockId: number } | null>(null);
 
   const exportToExcel = (data: PlantMaterial[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(m => ({ Name: m.name, Category: m.category || "", UOM: m.defaultUom })));
@@ -609,6 +593,10 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
+  });
+
+  const { data: openingStocks } = useQuery<MaterialOpeningStock[]>({
+    queryKey: ["/api/plant-module/opening-stocks"],
   });
 
   const createMutation = useMutation({
@@ -635,9 +623,29 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     mutationFn: (data: { materialId: number; partyId?: number | null; isPlantCommon: number; quantity: number; uom: string; date: string; notes?: string }) =>
       apiRequest("POST", "/api/plant-module/opening-stocks", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().includes('stock') || false });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().includes('stock') || q.queryKey[0]?.toString().includes('opening') || false });
       resetOpeningStockForm();
       toast({ title: "Opening stock added successfully" });
+    },
+  });
+
+  const updateOpeningStockMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/plant-module/opening-stocks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().includes('stock') || q.queryKey[0]?.toString().includes('opening') || false });
+      resetOpeningStockForm();
+      toast({ title: "Opening stock updated successfully" });
+    },
+  });
+
+  const deleteOpeningStockMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/plant-module/opening-stocks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().includes('stock') || q.queryKey[0]?.toString().includes('opening') || false });
+      setDeleteOpeningStockId(null);
+      toast({ title: "Opening stock deleted successfully" });
     },
   });
 
@@ -661,6 +669,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   const resetOpeningStockForm = () => {
     setOpeningStockDialogOpen(false);
     setSelectedMaterialForStock(null);
+    setEditingOpeningStock(null);
     setStockQuantity("");
     setStockPartyId("");
     setStockDate(new Date().toISOString().split('T')[0]);
@@ -694,17 +703,54 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   };
 
   const handleOpeningStockSubmit = () => {
-    if (!selectedMaterialForStock || !stockQuantity) return;
-    
-    createOpeningStockMutation.mutate({
-      materialId: selectedMaterialForStock.id,
+    if (!stockQuantity) return;
+    const materialId = selectedMaterialForStock?.id ?? editingOpeningStock?.materialId;
+    if (!materialId) return;
+    const data = {
+      materialId,
       partyId: stockPartyId ? Number(stockPartyId) : null,
       isPlantCommon: 0,
       quantity: parseFloat(stockQuantity),
-      uom: selectedMaterialForStock.defaultUom || "Ton",
+      uom: selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "Ton",
       date: stockDate,
       notes: stockNotes || undefined,
-    });
+    };
+    if (editingOpeningStock) {
+      updateOpeningStockMutation.mutate({ id: editingOpeningStock.id, data });
+    } else {
+      createOpeningStockMutation.mutate(data);
+    }
+  };
+
+  const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
+  const getPartyName = (id: number | null) => {
+    if (id === null) return "HLC (Common)";
+    return parties?.find(p => p.id === id)?.name || `Party #${id}`;
+  };
+
+  const openEditOpeningStock = (os: MaterialOpeningStock) => {
+    setEditingOpeningStock(os);
+    setStockPartyId(os.partyId ? String(os.partyId) : "");
+    setStockQuantity(String(os.quantity));
+    setStockDate(os.date);
+    setStockNotes(os.notes || "");
+    setSelectedMaterialForStock(materials?.find(m => m.id === os.materialId) || null);
+    setOpeningStockDialogOpen(true);
+  };
+
+  const handleOSPinSuccess = () => {
+    setShowOSPinAuth(false);
+    if (pendingOSAction) {
+      if (pendingOSAction.type === "delete") {
+        setDeleteOpeningStockId(pendingOSAction.stockId);
+      }
+      setPendingOSAction(null);
+    }
+  };
+
+  const requireOSAuth = (action: { type: "delete"; stockId: number }) => {
+    setPendingOSAction(action);
+    setShowOSPinAuth(true);
   };
 
   return (
@@ -818,11 +864,50 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
           </div>
         )}
         
+        {openingStocks && openingStocks.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold mb-2">Opening Stock Entries</h3>
+            <div className="space-y-2">
+              {openingStocks.map((os) => (
+                <div key={os.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30 border" data-testid={`opening-stock-entry-${os.id}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{getMaterialName(os.materialId)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {os.quantity} {os.uom} | {getPartyName(os.partyId)} | {os.date}
+                      {os.notes ? ` | ${os.notes}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" onClick={() => openEditOpeningStock(os)} data-testid={`button-edit-opening-stock-${os.id}`}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" onClick={() => requireOSAuth({ type: "delete", stockId: os.id })} data-testid={`button-delete-opening-stock-${os.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showOSPinAuth && (
+          <PinAuth
+            targetRole="admin"
+            onSuccess={handleOSPinSuccess}
+            onClose={() => { setShowOSPinAuth(false); setPendingOSAction(null); }}
+          />
+        )}
+
         {/* Opening Stock Dialog */}
           <Dialog open={openingStockDialogOpen} onOpenChange={(open) => { if (!open) resetOpeningStockForm(); }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Opening Stock</DialogTitle>
+                <DialogTitle>{editingOpeningStock ? "Edit Opening Stock" : "Add Opening Stock"}</DialogTitle>
                 {selectedMaterialForStock && (
                   <p className="text-sm text-muted-foreground">{selectedMaterialForStock.name}</p>
                 )}
@@ -843,7 +928,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                 </div>
                 
                 <div>
-                  <Label htmlFor="stock-quantity">Quantity ({selectedMaterialForStock?.defaultUom || "Ton"})</Label>
+                  <Label htmlFor="stock-quantity">Quantity ({selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "Ton"})</Label>
                   <Input
                     id="stock-quantity"
                     type="number"
@@ -880,14 +965,39 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                 <Button 
                   onClick={handleOpeningStockSubmit} 
                   className="w-full" 
-                  disabled={createOpeningStockMutation.isPending || !stockQuantity || !stockPartyId}
+                  disabled={(createOpeningStockMutation.isPending || updateOpeningStockMutation.isPending) || !stockQuantity || !stockPartyId}
                   data-testid="button-save-opening-stock"
                 >
-                  {createOpeningStockMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Opening Stock"}
+                  {(createOpeningStockMutation.isPending || updateOpeningStockMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingOpeningStock ? "Update Opening Stock" : "Add Opening Stock"}
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
+
+        {/* Delete Opening Stock Confirmation Dialog */}
+        <Dialog open={deleteOpeningStockId !== null} onOpenChange={(open) => { if (!open) setDeleteOpeningStockId(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Opening Stock Entry</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              Are you sure you want to delete this opening stock entry? This action cannot be undone and will affect stock balances.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDeleteOpeningStockId(null)} data-testid="button-cancel-delete-opening-stock">
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => { if (deleteOpeningStockId) deleteOpeningStockMutation.mutate(deleteOpeningStockId); }}
+                disabled={deleteOpeningStockMutation.isPending}
+                data-testid="button-confirm-delete-opening-stock"
+              >
+                {deleteOpeningStockMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -1529,808 +1639,5 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function DashboardTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
-  const { toast } = useToast();
-  const isManager = unlockedRole === "manager";
-  const canExport = !isManager; // Managers cannot export
-  
-  // PIN auth state for per-action authentication (only for admin)
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" } | null>(null);
-
-  // KPI date range (separate from table filters)
-  const [kpiDateFrom, setKpiDateFrom] = useState("");
-  const [kpiDateTo, setKpiDateTo] = useState("");
-
-  // Table filters (separate from KPI)
-  const [tableDateFrom, setTableDateFrom] = useState("");
-  const [tableDateTo, setTableDateTo] = useState("");
-  const [tablePartyId, setTablePartyId] = useState<string>("all");
-  const [tableSite, setTableSite] = useState<string>("all");
-  const [tableMixType, setTableMixType] = useState<string>("all");
-  const [tableVehicle, setTableVehicle] = useState<string>("all");
-
-  const { data: dispatches } = useQuery<any[]>({ queryKey: ["/api/plant-module/dispatches"] });
-  const { data: equipmentUsage } = useQuery<any[]>({ queryKey: ["/api/plant-module/equipment-usage"] });
-  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
-  const { data: mixTemplates } = useQuery<MixTemplate[]>({ queryKey: ["/api/plant-module/mix-templates"] });
-  const { data: mixTypes } = useQuery<MixType[]>({ queryKey: ["/api/plant-module/mix-types"] });
-  const { data: equipmentMasterList } = useQuery<EquipmentMasterType[]>({ queryKey: ["/api/plant-module/equipment"] });
-
-  // KPI filtered data (only by KPI date range)
-  const kpiFilteredDispatches = dispatches?.filter((d) => {
-    if (kpiDateFrom && d.date < kpiDateFrom) return false;
-    if (kpiDateTo && d.date > kpiDateTo) return false;
-    return true;
-  }) || [];
-
-  const kpiFilteredEquipment = equipmentUsage?.filter((e) => {
-    if (kpiDateFrom && e.date < kpiDateFrom) return false;
-    if (kpiDateTo && e.date > kpiDateTo) return false;
-    return true;
-  }) || [];
-
-  // Helper to get mix type from dispatch
-  const getDispatchMixType = (d: any) => {
-    const template = mixTemplates?.find(m => m.id === d.mixTemplateId);
-    return template?.mixType || "";
-  };
-
-  // Table filtered data (by all table filters)
-  const tableFilteredDispatches = dispatches?.filter((d) => {
-    if (tableDateFrom && d.date < tableDateFrom) return false;
-    if (tableDateTo && d.date > tableDateTo) return false;
-    if (tablePartyId !== "all" && String(d.partyId) !== tablePartyId) return false;
-    if (tableSite !== "all" && d.deliveryLocation !== tableSite) return false;
-    if (tableMixType !== "all" && getDispatchMixType(d) !== tableMixType) return false;
-    if (tableVehicle !== "all" && d.truckNumber !== tableVehicle) return false;
-    return true;
-  }) || [];
-
-  // Get unique values for filters
-  const uniqueSites = Array.from(new Set(dispatches?.map(d => d.deliveryLocation).filter(Boolean) || []));
-  const uniqueVehicles = Array.from(new Set(dispatches?.map(d => d.truckNumber).filter(Boolean) || []));
-
-  // KPI calculations
-  const totalTons = kpiFilteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
-  const totalTrips = kpiFilteredDispatches.length;
-  // Equipment usage: actual consumed = openingDiesel + dieselIssued - closingDiesel
-  // Fall back to expectedDiesel if tank levels not tracked
-  const totalDieselConsumed = kpiFilteredEquipment.reduce((sum, e) => {
-    const opening = e.openingDiesel || 0;
-    const issued = e.dieselIssued || 0;
-    const closing = e.closingDiesel;
-    // If closing is tracked, calculate actual consumed from tank levels
-    // Otherwise, use expected diesel (norm-based)
-    const actualConsumed = closing != null ? (opening + issued - closing) : (e.expectedDiesel || 0);
-    return sum + Math.max(0, actualConsumed);
-  }, 0);
-  const totalHoursRun = kpiFilteredEquipment.reduce((sum, e) => sum + (e.hoursOrKmRun || 0), 0);
-  const dieselEfficiency = totalHoursRun > 0 ? (totalDieselConsumed / totalHoursRun).toFixed(3) : "N/A";
-
-  // Helper: Parse KVA from equipment name (e.g., "GENERATOR 30 KVA" -> 30)
-  const parseKvaFromName = (name: string): number | null => {
-    const match = name?.toUpperCase().match(/(\d+)\s*KVA/);
-    return match ? parseInt(match[1], 10) : null;
-  };
-
-  // Calculate generator efficiency by capacity group and per-generator
-  const generatorEfficiencyData = (() => {
-    // Filter to only generators
-    const generators = kpiFilteredEquipment.filter(e => {
-      const eqItem = equipmentMasterList?.find((eq: EquipmentMasterType) => eq.id === e.equipmentId);
-      const eqName = eqItem?.name || "";
-      return eqName.toUpperCase().includes("GENERATOR") || eqName.toUpperCase().includes("DG SET");
-    });
-
-    // Group by generator with aggregated stats
-    const perGeneratorMap = new Map<number, { 
-      name: string; 
-      kva: number | null;
-      totalDiesel: number; 
-      totalHours: number; 
-      entries: number;
-    }>();
-
-    generators.forEach(e => {
-      const eqItem = equipmentMasterList?.find((eq: EquipmentMasterType) => eq.id === e.equipmentId);
-      const equipmentName = eqItem?.name || `EQUIPMENT ${e.equipmentId}`;
-      const kva = parseKvaFromName(equipmentName);
-      
-      const opening = e.openingDiesel || 0;
-      const issued = e.dieselIssued || 0;
-      const closing = e.closingDiesel;
-      const actualConsumed = closing != null ? (opening + issued - closing) : (e.expectedDiesel || 0);
-      const hours = e.hoursOrKmRun || 0;
-
-      if (perGeneratorMap.has(e.equipmentId)) {
-        const existing = perGeneratorMap.get(e.equipmentId)!;
-        existing.totalDiesel += Math.max(0, actualConsumed);
-        existing.totalHours += hours;
-        existing.entries += 1;
-      } else {
-        perGeneratorMap.set(e.equipmentId, {
-          name: equipmentName.toUpperCase(),
-          kva,
-          totalDiesel: Math.max(0, actualConsumed),
-          totalHours: hours,
-          entries: 1,
-        });
-      }
-    });
-
-    // Convert to array with efficiency calculated
-    const perGenerator = Array.from(perGeneratorMap.values()).map(g => ({
-      ...g,
-      efficiency: g.totalHours > 0 ? g.totalDiesel / g.totalHours : null,
-    }));
-
-    // Group by capacity: Small (≤100 KVA) vs Large (>100 KVA)
-    const smallGenerators = perGenerator.filter(g => g.kva !== null && g.kva <= 100);
-    const largeGenerators = perGenerator.filter(g => g.kva !== null && g.kva > 100);
-    const unknownGenerators = perGenerator.filter(g => g.kva === null);
-
-    const calcGroupStats = (group: typeof perGenerator) => {
-      const totalDiesel = group.reduce((sum, g) => sum + g.totalDiesel, 0);
-      const totalHours = group.reduce((sum, g) => sum + g.totalHours, 0);
-      return {
-        totalDiesel,
-        totalHours,
-        efficiency: totalHours > 0 ? totalDiesel / totalHours : null,
-        generators: group,
-      };
-    };
-
-    return {
-      small: calcGroupStats(smallGenerators),
-      large: calcGroupStats(largeGenerators),
-      unknown: calcGroupStats(unknownGenerators),
-      all: perGenerator,
-    };
-  })();
-
-  const theoreticalVsActual = {
-    bitumen: { theoretical: 0, actual: 0 },
-    ldo: { theoretical: 0, actual: 0 },
-  };
-  kpiFilteredDispatches.forEach((d) => {
-    theoreticalVsActual.bitumen.theoretical += d.theoreticalBitumenQty || 0;
-    theoreticalVsActual.bitumen.actual += d.actualBitumenQty || 0;
-    theoreticalVsActual.ldo.theoretical += d.theoreticalLdoQty || 0;
-    theoreticalVsActual.ldo.actual += d.actualLdoQty || 0;
-  });
-
-  const LDO_NORM = 6;
-  const actualLdoPerTon = totalTons > 0 ? theoreticalVsActual.ldo.actual / totalTons : 0;
-  const ldoVariance = LDO_NORM - actualLdoPerTon;
-  const totalBitumenConsumed = theoreticalVsActual.bitumen.actual;
-
-  // Helper functions
-  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name?.toUpperCase() || `PARTY ${id}` : "";
-  const getMixType = (id: number | null) => {
-    if (!id) return "";
-    const template = mixTemplates?.find((m) => m.id === id);
-    return template?.mixType?.toUpperCase() || `MIX ${id}`;
-  };
-
-  // Table subtotals
-  const subtotalTons = tableFilteredDispatches.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
-  const subtotalBitumen = tableFilteredDispatches.reduce((sum, d) => sum + (d.actualBitumenQty || 0), 0); // Already in MT
-  const subtotalLdo = tableFilteredDispatches.reduce((sum, d) => sum + (d.actualLdoQty || 0), 0);
-  const subtotalTrips = tableFilteredDispatches.length;
-
-  // Build filename with date range and filters
-  const buildFilename = (extension: string) => {
-    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
-    const fromDate = tableDateFrom || "All";
-    const toDate = tableDateTo || "All";
-    const partyFilter = tablePartyId !== "all" ? getPartyName(Number(tablePartyId)).replace(/\s+/g, '') : "";
-    const siteFilter = tableSite !== "all" ? tableSite.replace(/\s+/g, '') : "";
-    const mixFilter = tableMixType !== "all" ? tableMixType.replace(/\s+/g, '') : "";
-    const filters = [partyFilter, siteFilter, mixFilter].filter(Boolean).join("_");
-    return `SiteLog_Plant_Dashboard_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
-  };
-
-  // Universal download function for all devices including iPad
-  const triggerDownload = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
-  };
-
-  // Export functions
-  const exportToExcel = async () => {
-    try {
-      const headerRows = [
-        ["PLANT DISPATCH SUMMARY REPORT"],
-        [`Generated: ${new Date().toLocaleString()}`],
-        [`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`],
-        [`Filters: Party: ${tablePartyId === "all" ? "All" : getPartyName(Number(tablePartyId))}, Site: ${tableSite === "all" ? "All" : tableSite}, Mix: ${tableMixType === "all" ? "All" : tableMixType}, Vehicle: ${tableVehicle === "all" ? "All" : tableVehicle}`],
-        [],
-        ["DISPATCH DATE & TIME", "PARTY", "SITE", "MIX TYPE", "LOAD / TONS (MT)", "VEHICLE NO", "BITUMEN CONSUMED (MT)", "LDO CONSUMED (L)"]
-      ];
-
-      const dataRows = tableFilteredDispatches.map(d => [
-        `${d.date} ${d.time || ""}`.trim().toUpperCase(),
-        getPartyName(d.partyId),
-        (d.deliveryLocation || "").toUpperCase(),
-        getMixType(d.mixTemplateId),
-        d.loadWeight?.toFixed(3) || "0.000",
-        (d.truckNumber || "").toUpperCase(),
-        (d.actualBitumenQty || 0).toFixed(3),
-        (d.actualLdoQty || 0).toFixed(3)
-      ]);
-
-      const totalRows = [
-        [],
-        ["TOTALS", "", "", "", subtotalTons.toFixed(3), `${subtotalTrips} TRIPS`, subtotalBitumen.toFixed(3), subtotalLdo.toFixed(3)]
-      ];
-
-      const ws = XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows, ...totalRows]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Dispatch Summary");
-      
-      const filename = buildFilename("xlsx");
-      
-      // Try File System Access API for save dialog (Chrome/Edge desktop)
-      if ('showSaveFilePicker' in window) {
-        try {
-          const handle = await (window as any).showSaveFilePicker({
-            suggestedName: filename,
-            types: [{
-              description: 'Excel Files',
-              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-            }]
-          });
-          const writable = await handle.createWritable();
-          const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-          await writable.write(buffer);
-          await writable.close();
-          toast({ title: "File saved successfully" });
-          return;
-        } catch (err: any) {
-          if (err.name === 'AbortError') return;
-        }
-      }
-      
-      // Standard download for Safari, mobile, and other browsers
-      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      triggerDownload(blob, filename);
-      toast({ title: "File download started", description: "Check your Downloads or Files app." });
-    } catch (err) {
-      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
-    }
-  };
-
-  const exportToPdf = async () => {
-    try {
-      const { default: jsPDF } = await import("jspdf");
-      const { default: autoTable } = await import("jspdf-autotable");
-      
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      
-      const headers = [["DATE/TIME", "PARTY", "SITE", "MIX", "LOAD", "VEHICLE", "BITUMEN", "LDO"]];
-      const data = tableFilteredDispatches.map(d => [
-        `${d.date} ${d.time || ""}`.trim(),
-        getPartyName(d.partyId),
-        (d.deliveryLocation || ""),
-        getMixType(d.mixTemplateId),
-        d.loadWeight?.toFixed(3) || "0.000",
-        (d.truckNumber || ""),
-        (d.actualBitumenQty || 0).toFixed(3),
-        (d.actualLdoQty || 0).toFixed(3)
-      ]);
-
-      let currentPage = 1;
-      const addHeader = () => {
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.text("PLANT DISPATCH SUMMARY REPORT", pageWidth / 2, 15, { align: "center" });
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Date Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}`, 14, 22);
-      };
-
-      const addFooter = (pageNum: number, totalPages: number) => {
-        doc.setFontSize(8);
-        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, pageHeight - 10);
-        doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
-      };
-
-      autoTable(doc, {
-        head: headers,
-        body: data,
-        startY: 28,
-        theme: "grid",
-        headStyles: { fillColor: [50, 50, 50], textColor: 255, fontSize: 7, fontStyle: "bold" },
-        bodyStyles: { fontSize: 7 },
-        margin: { top: 28, bottom: 25, left: 10, right: 10 },
-        didDrawPage: () => {
-          addHeader();
-          currentPage++;
-        },
-      });
-
-      const finalY = (doc as any).lastAutoTable?.finalY || 100;
-      if (finalY + 20 > pageHeight - 25) {
-        doc.addPage();
-        addHeader();
-      }
-
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      const subtotalY = Math.min(finalY + 10, pageHeight - 30);
-      doc.text(`TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(3)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(3)} L`, 14, subtotalY);
-
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        addFooter(i, totalPages);
-      }
-
-      const filename = buildFilename("pdf");
-      
-      // Try File System Access API for save dialog (Chrome/Edge desktop)
-      if ('showSaveFilePicker' in window) {
-        try {
-          const handle = await (window as any).showSaveFilePicker({
-            suggestedName: filename,
-            types: [{
-              description: 'PDF Files',
-              accept: { 'application/pdf': ['.pdf'] }
-            }]
-          });
-          const writable = await handle.createWritable();
-          const pdfBlob = doc.output('blob');
-          await writable.write(pdfBlob);
-          await writable.close();
-          toast({ title: "File saved successfully" });
-          return;
-        } catch (err: any) {
-          if (err.name === 'AbortError') return;
-        }
-      }
-      
-      // Standard download for Safari, mobile, and other browsers
-      const pdfBlob = doc.output('blob');
-      triggerDownload(pdfBlob, filename);
-      toast({ title: "File download started", description: "Check your Downloads or Files app." });
-    } catch (err) {
-      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
-    }
-  };
-  
-  const handlePrint = () => {
-    // Create a printable version formatted for A4 portrait
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Plant Dispatch Summary Report</title>
-          <style>
-            @page { size: A4 portrait; margin: 15mm; }
-            * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 10px; }
-            .header { margin-bottom: 15px; }
-            h1 { color: #333; margin: 0 0 5px 0; font-size: 16px; }
-            .date { color: #666; margin: 0; font-size: 9px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-            th, td { border: 1px solid #ccc; padding: 4px 3px; text-align: left; font-size: 8px; }
-            th { background-color: #f0f0f0; font-weight: bold; }
-            tr:nth-child(even) { background-color: #fafafa; }
-            .totals { margin-top: 15px; font-weight: bold; font-size: 10px; }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
-          </div>
-          <div class="header">
-            <h1>Plant Dispatch Summary Report</h1>
-            <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")} | Range: ${tableDateFrom || "All"} to ${tableDateTo || "All"}</p>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Date/Time</th>
-                <th>Party</th>
-                <th>Site</th>
-                <th>Mix</th>
-                <th>Load (MT)</th>
-                <th>Vehicle</th>
-                <th>Bitumen (MT)</th>
-                <th>LDO (L)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableFilteredDispatches.map(d => `
-                <tr>
-                  <td>${d.date} ${d.time || ''}</td>
-                  <td>${getPartyName(d.partyId)}</td>
-                  <td>${d.deliveryLocation || '-'}</td>
-                  <td>${getMixType(d.mixTemplateId)}</td>
-                  <td>${d.loadWeight?.toFixed(3) || '0.000'}</td>
-                  <td>${d.truckNumber || '-'}</td>
-                  <td>${(d.actualBitumenQty || 0).toFixed(3)}</td>
-                  <td>${(d.actualLdoQty || 0).toFixed(3)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <div class="totals">
-            TOTALS: ${subtotalTrips} TRIPS | ${subtotalTons.toFixed(3)} MT | BITUMEN: ${subtotalBitumen.toFixed(3)} MT | LDO: ${subtotalLdo.toFixed(3)} L
-          </div>
-        </body>
-      </html>
-    `;
-    
-    // Use iframe with srcdoc - attach onload BEFORE setting srcdoc for Safari compatibility
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    iframe.style.left = '-9999px';
-    
-    let printed = false;
-    const doPrint = () => {
-      if (printed) return;
-      printed = true;
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        window.print();
-      }
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 1000);
-    };
-    
-    // Attach onload BEFORE adding to DOM and setting srcdoc
-    iframe.onload = () => setTimeout(doPrint, 100);
-    document.body.appendChild(iframe);
-    iframe.srcdoc = printContent;
-    
-    // Fallback timeout in case onload doesn't fire
-    setTimeout(() => {
-      if (!printed) doPrint();
-    }, 2000);
-  };
-
-  // Per-action PIN authentication handlers
-  const requestPinAuth = (action: typeof pendingAction) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin"); // All plant module export actions require admin PIN
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
-
-    switch (pendingAction.type) {
-      case "export-excel":
-        exportToExcel();
-        break;
-      case "export-pdf":
-        exportToPdf();
-        break;
-      case "print":
-        handlePrint();
-        break;
-    }
-    setPendingAction(null);
-  };
-
-  const handleExportExcelClick = () => {
-    requestPinAuth({ type: "export-excel" });
-  };
-
-  const handleExportPdfClick = () => {
-    requestPinAuth({ type: "export-pdf" });
-  };
-
-  const handlePrintClick = () => {
-    requestPinAuth({ type: "print" });
-  };
-
-  return (
-    <div className="space-y-6">
-      {isManager && (
-        <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
-          Manager access: View only. Exports and printing are disabled.
-        </div>
-      )}
-      {/* KPI Date Range Selector */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">KPI DATE RANGE</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-xs text-muted-foreground">FROM DATE</Label>
-              <Input type="date" value={kpiDateFrom} onChange={(e) => setKpiDateFrom(e.target.value)} data-testid="input-kpi-date-from" />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">TO DATE</Label>
-              <Input type="date" value={kpiDateTo} onChange={(e) => setKpiDateTo(e.target.value)} data-testid="input-kpi-date-to" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">TOTAL PRODUCTION</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalTons.toFixed(3)} MT</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">TOTAL TRIPS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalTrips}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">GENERATOR EFFICIENCY</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* Small Generators (≤100 KVA) */}
-            {generatorEfficiencyData.small.generators.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground mb-1">SMALL (≤100 KVA)</div>
-                <div className="text-lg font-bold">
-                  {generatorEfficiencyData.small.efficiency?.toFixed(3) || "N/A"} L/HR
-                </div>
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  {generatorEfficiencyData.small.generators.map((g, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span className="truncate max-w-[120px]">{g.name}</span>
-                      <span className="font-medium">{g.efficiency?.toFixed(3) || "N/A"} L/HR</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Large Generators (>100 KVA) */}
-            {generatorEfficiencyData.large.generators.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground mb-1">LARGE (&gt;100 KVA)</div>
-                <div className="text-lg font-bold">
-                  {generatorEfficiencyData.large.efficiency?.toFixed(3) || "N/A"} L/HR
-                </div>
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  {generatorEfficiencyData.large.generators.map((g, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span className="truncate max-w-[120px]">{g.name}</span>
-                      <span className="font-medium">{g.efficiency?.toFixed(3) || "N/A"} L/HR</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Fallback if no generators found */}
-            {generatorEfficiencyData.all.length === 0 && (
-              <div className="text-lg font-bold text-muted-foreground">NO DATA</div>
-            )}
-            {/* Summary */}
-            {generatorEfficiencyData.all.length > 0 && (
-              <div className="pt-2 border-t text-xs text-muted-foreground">
-                Total: {(generatorEfficiencyData.small.totalDiesel + generatorEfficiencyData.large.totalDiesel).toFixed(0)}L / {(generatorEfficiencyData.small.totalHours + generatorEfficiencyData.large.totalHours).toFixed(3)} HRS
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">LDO EFFICIENCY</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${actualLdoPerTon <= LDO_NORM ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {totalTons > 0 ? actualLdoPerTon.toFixed(3) : "N/A"} L/TON
-            </div>
-            <p className="text-xs text-muted-foreground">TARGET: {LDO_NORM} L/TON</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">BITUMEN CONSUMED</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalBitumenConsumed.toFixed(3)} MT</div>
-            <p className="text-xs text-muted-foreground">{(totalBitumenConsumed * 1000).toFixed(0)} KG</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* PinAuth Modal */}
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAuthTarget}
-          onSuccess={handlePinSuccess}
-          onClose={() => {
-            setShowPinAuth(false);
-            setPendingAction(null);
-          }}
-        />
-      )}
-
-      {/* Dispatch Summary Section */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle>DISPATCH SUMMARY</CardTitle>
-            {canExport && (
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleExportExcelClick} data-testid="button-export-excel">
-                  <Download className="w-4 h-4 mr-1" />
-                  EXPORT EXCEL
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleExportPdfClick} data-testid="button-export-pdf">
-                  <Printer className="w-4 h-4 mr-1" />
-                  EXPORT PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={handlePrintClick} data-testid="button-print">
-                  <Printer className="w-4 h-4 mr-1" />
-                  PRINT
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Table Filters */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4 p-3 bg-muted/30 rounded-md">
-            <div>
-              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
-              <Input type="date" value={tableDateFrom} onChange={(e) => setTableDateFrom(e.target.value)} data-testid="input-table-date-from" className="h-8 text-sm" />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">DATE TO</Label>
-              <Input type="date" value={tableDateTo} onChange={(e) => setTableDateTo(e.target.value)} data-testid="input-table-date-to" className="h-8 text-sm" />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">PARTY</Label>
-              <Select value={tablePartyId} onValueChange={setTablePartyId}>
-                <SelectTrigger data-testid="select-table-party" className="h-8 text-sm">
-                  <SelectValue placeholder="ALL" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ALL</SelectItem>
-                  {parties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name?.toUpperCase()}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">SITE</Label>
-              <Select value={tableSite} onValueChange={setTableSite}>
-                <SelectTrigger data-testid="select-table-site" className="h-8 text-sm">
-                  <SelectValue placeholder="ALL" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ALL</SelectItem>
-                  {uniqueSites.map((site) => (
-                    <SelectItem key={site} value={site}>{site.toUpperCase()}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">MIX TYPE</Label>
-              <Select value={tableMixType} onValueChange={setTableMixType}>
-                <SelectTrigger data-testid="select-table-mix" className="h-8 text-sm">
-                  <SelectValue placeholder="ALL" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ALL</SelectItem>
-                  {mixTypes?.map((type) => (
-                    <SelectItem key={type.id} value={type.name}>{type.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">VEHICLE NO</Label>
-              <Select value={tableVehicle} onValueChange={setTableVehicle}>
-                <SelectTrigger data-testid="select-table-vehicle" className="h-8 text-sm">
-                  <SelectValue placeholder="ALL" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ALL</SelectItem>
-                  {uniqueVehicles.map((v) => (
-                    <SelectItem key={v} value={v}>{v.toUpperCase()}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Scrollable Table */}
-          <div className="border rounded-md">
-            <div className="max-h-[400px] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 sticky top-0 z-10">
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">DISPATCH DATE & TIME</th>
-                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">PARTY</th>
-                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">SITE</th>
-                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">MIX TYPE</th>
-                    <th className="text-right py-3 px-3 font-bold whitespace-nowrap">LOAD / TONS (MT)</th>
-                    <th className="text-left py-3 px-3 font-bold whitespace-nowrap">VEHICLE NO</th>
-                    <th className="text-right py-3 px-3 font-bold whitespace-nowrap">BITUMEN CONSUMED (MT)</th>
-                    <th className="text-right py-3 px-3 font-bold whitespace-nowrap">LDO CONSUMED (L)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableFilteredDispatches.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="text-center py-8 text-muted-foreground">NO DISPATCHES FOUND</td>
-                    </tr>
-                  ) : (
-                    tableFilteredDispatches.map((d, i) => (
-                      <tr key={d.id || i} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-dispatch-${d.id || i}`}>
-                        <td className="py-2 px-3 whitespace-nowrap">{`${d.date} ${d.time || ""}`.trim().toUpperCase()}</td>
-                        <td className="py-2 px-3 whitespace-nowrap">{getPartyName(d.partyId)}</td>
-                        <td className="py-2 px-3 whitespace-nowrap">{(d.deliveryLocation || "").toUpperCase()}</td>
-                        <td className="py-2 px-3 whitespace-nowrap">{getMixType(d.mixTemplateId)}</td>
-                        <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{d.loadWeight?.toFixed(3) || "0.000"}</td>
-                        <td className="py-2 px-3 whitespace-nowrap">{(d.truckNumber || "").toUpperCase()}</td>
-                        <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualBitumenQty || 0).toFixed(3)}</td>
-                        <td className="py-2 px-3 text-right whitespace-nowrap">{(d.actualLdoQty || 0).toFixed(3)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-                <tfoot className="bg-muted/70 border-t-2 border-foreground/20 sticky bottom-0">
-                  <tr>
-                    <td className="py-3 px-3 font-bold whitespace-nowrap">SUBTOTALS</td>
-                    <td className="py-3 px-3 whitespace-nowrap"></td>
-                    <td className="py-3 px-3 whitespace-nowrap"></td>
-                    <td className="py-3 px-3 whitespace-nowrap">{subtotalTrips} TRIPS</td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalTons.toFixed(3)}</td>
-                    <td className="py-3 px-3 whitespace-nowrap"></td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalBitumen.toFixed(3)}</td>
-                    <td className="py-3 px-3 text-right font-bold whitespace-nowrap">{subtotalLdo.toFixed(3)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
   );
 }

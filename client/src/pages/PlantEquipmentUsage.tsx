@@ -121,7 +121,7 @@ export default function PlantEquipmentUsage() {
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; usageId?: number } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "complete" | "export-excel" | "export-pdf" | "print"; usageId?: number } | null>(null);
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
@@ -276,13 +276,13 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
-    // Either meter readings OR time entry OR trip-based (when checked) must be provided
     const hasMeterReading = openingReading && closingReading;
     const hasTimeEntry = startTime && endTime;
     const hasTripEntry = tripBasedEntry && numberOfTrips && tripDistance;
+    const hasPartialEntry = openingReading && !closingReading && !hasTimeEntry && !hasTripEntry;
     
-    if (!equipmentId || (!hasMeterReading && !hasTimeEntry && !hasTripEntry)) {
-      toast({ title: "Please provide meter readings, time entry, or trip details (with Trip Based Entry checked)", variant: "destructive" });
+    if (!equipmentId || (!hasMeterReading && !hasTimeEntry && !hasTripEntry && !hasPartialEntry)) {
+      toast({ title: "Please provide at least an opening reading, or complete meter/time/trip details", variant: "destructive" });
       return;
     }
     
@@ -336,6 +336,12 @@ export default function PlantEquipmentUsage() {
           if (entry) openEditDialog(entry);
         }
         break;
+      case "complete":
+        if (pendingAction.usageId) {
+          const completeEntry = usage?.find(u => u.id === pendingAction.usageId);
+          if (completeEntry) openEditDialog(completeEntry);
+        }
+        break;
       case "delete":
         if (pendingAction.usageId) {
           setDeleteConfirmId(pendingAction.usageId);
@@ -372,6 +378,14 @@ export default function PlantEquipmentUsage() {
 
   const handlePrintClick = () => {
     requestPinAuth({ type: "print" });
+  };
+
+  const handleCompleteClick = (entry: EquipmentUsage) => {
+    requestPinAuth({ type: "complete", usageId: entry.id });
+  };
+
+  const isPartialEntry = (entry: EquipmentUsage) => {
+    return entry.openingReading != null && entry.closingReading == null && !entry.startTime && !entry.endTime && !(entry as any).tripBasedEntry;
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
@@ -783,13 +797,16 @@ export default function PlantEquipmentUsage() {
               </div>
 
               <p className="text-sm text-muted-foreground italic">Enter meter readings OR time. Check "Trip Based Entry" for trip-based calculation.</p>
+
+              <div className="text-sm font-semibold text-muted-foreground border-b pb-1">Morning Entry</div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
                   <Input type="number" step="0.1" value={openingReading} onChange={(e) => setOpeningReading(e.target.value)} placeholder="0.0" data-testid="input-opening-reading" />
                 </div>
-                <div>
+                <div className="flex flex-col">
+                  <div className="text-sm font-semibold text-muted-foreground border-b pb-1 mb-2">Evening Entry (can be added later)</div>
                   <Label>Closing {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
                   <Input type="number" step="0.1" value={closingReading} onChange={(e) => setClosingReading(e.target.value)} placeholder="0.0" data-testid="input-closing-reading" />
                 </div>
@@ -985,10 +1002,16 @@ export default function PlantEquipmentUsage() {
               <Button 
                 onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || ((!openingReading || !closingReading) && (!startTime || !endTime) && !(tripBasedEntry && numberOfTrips && tripDistance))} 
+                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || (!openingReading && (!startTime || !endTime) && !(tripBasedEntry && numberOfTrips && tripDistance))} 
                 data-testid="button-save-usage"
               >
-                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingUsage ? "Update Entry" : "Save Entry"}
+                {(createMutation.isPending || updateMutation.isPending) ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : editingUsage ? (
+                  editingUsage.openingReading != null && editingUsage.closingReading == null && closingReading ? "Complete Entry" : "Update Entry"
+                ) : (
+                  openingReading && !closingReading && !startTime && !endTime && !(tripBasedEntry && numberOfTrips && tripDistance) ? "Save Morning Entry" : "Save Entry"
+                )}
               </Button>
             </div>
           </DialogContent>
@@ -1255,14 +1278,24 @@ export default function PlantEquipmentUsage() {
                                 {isDieselIncluded && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>
                                 )}
+                                {isPartialEntry(entry) && (
+                                  <Badge variant="outline" className="mt-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>
+                                )}
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">
-                                  {(entry as any).totalKm > 0 && !entry.hoursOrKmRun 
-                                    ? "Distance" 
-                                    : (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")}
+                                  {isPartialEntry(entry)
+                                    ? (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")
+                                    : (entry as any).totalKm > 0 && !entry.hoursOrKmRun 
+                                      ? "Distance" 
+                                      : (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")}
                                 </span>
-                                {(entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
+                                {isPartialEntry(entry) ? (
+                                  <>
+                                    <span className="font-medium text-yellow-600 dark:text-yellow-400">Pending</span>
+                                    <span className="text-sm text-muted-foreground block">Opening: {entry.openingReading}</span>
+                                  </>
+                                ) : (entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
                                   <>
                                     <span className="font-medium">{((entry as any).totalKm || 0).toFixed(3)} km</span>
                                     <span className="text-sm text-muted-foreground block">
@@ -1296,29 +1329,38 @@ export default function PlantEquipmentUsage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-sm block">Consumed</span>
-                                    <span className="font-medium">{consumed.toFixed(3)} L</span>
+                                    {isPartialEntry(entry) ? (
+                                      <span className="font-medium text-yellow-600 dark:text-yellow-400">Pending</span>
+                                    ) : (
+                                      <span className="font-medium">{consumed.toFixed(3)} L</span>
+                                    )}
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-sm block">Efficiency</span>
-                                    {(() => {
-                                      // Use hoursOrKmRun, or totalKm for trip-based entries
-                                      const runtime = entry.hoursOrKmRun || (entry as any).totalKm || 0;
-                                      const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
-                                      if (runtime <= 0 || consumed <= 0) {
-                                        return <span className="font-medium text-muted-foreground">-</span>;
-                                      }
-                                      const efficiencyValue = consumed / runtime;
-                                      const norm = equip?.consumptionNorm || 0;
-                                      const isGood = norm > 0 ? efficiencyValue <= norm : true;
-                                      const unit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
-                                      return (
-                                        <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                          {efficiencyValue.toFixed(3)} {unit}
-                                        </span>
-                                      );
-                                    })()}
-                                    {equip?.consumptionNorm && (
-                                      <span className="text-sm text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
+                                    {isPartialEntry(entry) ? (
+                                      <span className="font-medium text-muted-foreground">-</span>
+                                    ) : (
+                                      <>
+                                        {(() => {
+                                          const runtime = entry.hoursOrKmRun || (entry as any).totalKm || 0;
+                                          const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
+                                          if (runtime <= 0 || consumed <= 0) {
+                                            return <span className="font-medium text-muted-foreground">-</span>;
+                                          }
+                                          const efficiencyValue = consumed / runtime;
+                                          const norm = equip?.consumptionNorm || 0;
+                                          const isGood = norm > 0 ? efficiencyValue <= norm : true;
+                                          const unit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
+                                          return (
+                                            <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                              {efficiencyValue.toFixed(3)} {unit}
+                                            </span>
+                                          );
+                                        })()}
+                                        {equip?.consumptionNorm && (
+                                          <span className="text-sm text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                   <div>
@@ -1329,6 +1371,11 @@ export default function PlantEquipmentUsage() {
                               )}
                             </div>
                             <div className="flex gap-2 ml-4">
+                              {isPartialEntry(entry) && (
+                                <Button size="sm" variant="outline" onClick={() => handleCompleteClick(entry)} className="gap-1 text-yellow-700 dark:text-yellow-300 border-yellow-300" data-testid={`button-complete-usage-${entry.id}`}>
+                                  <Gauge className="w-3 h-3" /> Complete
+                                </Button>
+                              )}
                               <Button size="icon" variant="ghost" onClick={() => handleEditClick(entry)} data-testid={`button-edit-usage-${entry.id}`}>
                                 <Edit className="w-4 h-4" />
                               </Button>

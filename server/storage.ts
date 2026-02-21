@@ -184,6 +184,7 @@ export interface IStorage {
   getMaterialReturns(filters?: { materialId?: number; originalIssueId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReturn[]>;
   getReturnedQtyForIssue(issueId: number): Promise<number>;
   createMaterialReturn(ret: InsertMaterialReturn): Promise<MaterialReturn>;
+  updateMaterialReturn(id: number, updates: Partial<InsertMaterialReturn>): Promise<MaterialReturn | undefined>;
   deleteMaterialReturn(id: number): Promise<boolean>;
   
   // Material Opening Stocks
@@ -3650,6 +3651,127 @@ export class DatabaseStorage implements IStorage {
         quantityIn: stockQuantity,
         balanceAfter: newBalance,
         uom: stockUom,
+        notes: conversionNote,
+      });
+
+      return result;
+    });
+  }
+
+  async updateMaterialReturn(id: number, updates: Partial<InsertMaterialReturn>): Promise<MaterialReturn | undefined> {
+    return db.transaction(async (tx) => {
+      const [original] = await tx.select().from(materialReturns).where(eq(materialReturns.id, id)).limit(1);
+      if (!original) return undefined;
+
+      // Get material info for UOM conversion (original)
+      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+
+      let origStockQuantity = original.quantity;
+      let origStockUom = original.uom;
+      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+        if (original.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+          origStockQuantity = original.quantity * material.conversionFactor;
+          origStockUom = material.conversionToUom;
+        }
+      }
+
+      // Reverse original stock balance
+      const origStockPartyId = original.isPlantCommon ? null : original.partyId;
+      const origCondition = origStockPartyId === null
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
+        : and(eq(stockBalances.partyId, origStockPartyId!), eq(stockBalances.materialId, original.materialId));
+
+      const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
+      if (origBal) {
+        await tx.update(stockBalances)
+          .set({ balance: origBal.balance - origStockQuantity, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, origBal.id));
+      }
+
+      // Validate new quantity against original issue remaining (considering this return already exists)
+      const newQuantity = updates.quantity ?? original.quantity;
+      const newOriginalIssueId = updates.originalIssueId ?? original.originalIssueId;
+      
+      const [originalIssue] = await tx.select().from(materialIssues)
+        .where(eq(materialIssues.id, newOriginalIssueId)).limit(1);
+      if (!originalIssue) throw new Error("Original issue not found");
+
+      const existingReturns = await tx.select().from(materialReturns)
+        .where(and(eq(materialReturns.originalIssueId, newOriginalIssueId), sql`${materialReturns.id} != ${id}`));
+      const totalReturned = existingReturns.reduce((sum, r) => sum + r.quantity, 0);
+      const remaining = originalIssue.quantity - totalReturned;
+
+      if (newQuantity > remaining) {
+        throw new Error(`Return quantity (${newQuantity}) exceeds remaining issuable amount (${remaining.toFixed(2)})`);
+      }
+
+      // Uppercase text fields
+      const uppercasedUpdates: any = { ...updates };
+      if (updates.returnedBy) uppercasedUpdates.returnedBy = updates.returnedBy.toUpperCase();
+      if (updates.vehicleNumber) uppercasedUpdates.vehicleNumber = updates.vehicleNumber.toUpperCase();
+      if (updates.notes) uppercasedUpdates.notes = updates.notes.toUpperCase();
+
+      // Update the return record
+      const [result] = await tx.update(materialReturns)
+        .set(uppercasedUpdates)
+        .where(eq(materialReturns.id, id))
+        .returning();
+
+      // Apply new stock balance
+      const newMaterialId = updates.materialId ?? original.materialId;
+      const newUom = updates.uom ?? original.uom;
+      const newPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
+
+      const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      
+      let newStockQuantity = newQuantity;
+      let newStockUom = newUom;
+      if (newMaterial?.conversionFactor && newMaterial?.conversionFromUom && newMaterial?.conversionToUom) {
+        if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
+          newStockQuantity = newQuantity * newMaterial.conversionFactor;
+          newStockUom = newMaterial.conversionToUom;
+        }
+      }
+
+      const newCondition = newPartyId === null
+        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
+        : and(eq(stockBalances.partyId, newPartyId!), eq(stockBalances.materialId, newMaterialId));
+
+      const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
+      const newBalance = (newBal?.balance ?? 0) + newStockQuantity;
+
+      if (newBal) {
+        await tx.update(stockBalances)
+          .set({ balance: newBalance, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, newBal.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: newPartyId,
+          materialId: newMaterialId,
+          balance: newBalance,
+          uom: newStockUom,
+        });
+      }
+
+      // Delete old ledger entry and create new one
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, "return"), eq(stockLedger.referenceId, id))
+      );
+
+      const newDate = updates.date ?? original.date;
+      const conversionNote = newStockQuantity !== newQuantity
+        ? `Return from issue #${newOriginalIssueId}${result.returnedBy ? ` by ${result.returnedBy}` : ''} (${newQuantity} ${newUom} = ${newStockQuantity.toFixed(3)} ${newStockUom})`
+        : `Return from issue #${newOriginalIssueId}${result.returnedBy ? ` by ${result.returnedBy}` : ''}`;
+
+      await tx.insert(stockLedger).values({
+        date: newDate,
+        partyId: newPartyId,
+        materialId: newMaterialId,
+        transactionType: "return",
+        referenceId: result.id,
+        quantityIn: newStockQuantity,
+        balanceAfter: newBalance,
+        uom: newStockUom,
         notes: conversionNote,
       });
 

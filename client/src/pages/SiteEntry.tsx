@@ -693,7 +693,8 @@ export default function SiteEntry() {
                   </div>
                 </div>
 
-                <p className="text-xs text-muted-foreground italic">Enter time OR hour meter readings (or both). Hour meter takes priority for calculations.</p>
+                <p className="text-xs font-semibold text-muted-foreground border-b pb-1">Morning Entry</p>
+                <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>

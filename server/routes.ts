@@ -1042,6 +1042,26 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/plant-module/material-returns/:id", async (req, res) => {
+    try {
+      const input = insertMaterialReturnSchema.partial().parse(req.body);
+      const updated = await storage.updateMaterialReturn(Number(req.params.id), input);
+      if (!updated) return res.status(404).json({ message: "Return not found" });
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      if (err.message?.includes("exceeds remaining")) {
+        return res.status(400).json({ message: err.message });
+      }
+      if (err.message?.includes("not found")) {
+        return res.status(404).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Failed to update material return" });
+    }
+  });
+
   app.delete("/api/plant-module/material-returns/:id", async (req, res) => {
     try {
       const deleted = await storage.deleteMaterialReturn(Number(req.params.id));

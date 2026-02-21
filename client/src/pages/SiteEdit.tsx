@@ -604,7 +604,7 @@ export default function SiteEdit() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">Enter time OR hour meter readings (or both). Hour meter takes priority for hours calculation.</p>
+          <p className="text-xs text-muted-foreground">Enter opening reading and diesel in the morning. Closing reading and end time can be added later when editing.</p>
           {equipment.map((entry, idx) => (
             <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
               <Button
