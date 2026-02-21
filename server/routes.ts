@@ -406,8 +406,8 @@ export async function registerRoutes(
   // Create a new version of DPR with edited data
   // Creates a copy with timestamp instead of overwriting original
   const versionSchema = z.object({
-    pin: z.string().length(4),
-    editedBy: z.enum(["manager", "admin"]),
+    pin: z.string().min(0),
+    editedBy: z.enum(["manager", "admin", "engineer"]),
     data: createDprRequestSchema,
     clientTimestamp: z.string().optional(),
   });
@@ -417,10 +417,23 @@ export async function registerRoutes(
       const originalId = Number(req.params.id);
       const input = versionSchema.parse(req.body);
       
-      // Server-side PIN validation using database
-      const isValid = await storage.verifyPin(input.editedBy, input.pin);
-      if (!isValid) {
-        return res.status(403).json({ message: "Invalid PIN for editing" });
+      if (input.editedBy === "engineer") {
+        const original = await storage.getDpr(originalId);
+        if (!original) {
+          return res.status(404).json({ message: "DPR not found" });
+        }
+        const equipment = Array.isArray(original.equipment) ? original.equipment : [];
+        const hasPendingClosing = equipment.some((e: any) => 
+          e.machine && e.openingReading != null && e.closingReading == null
+        );
+        if (!hasPendingClosing) {
+          return res.status(403).json({ message: "Engineer completion only allowed for DPRs with pending closing entries" });
+        }
+      } else {
+        const isValid = await storage.verifyPin(input.editedBy, input.pin);
+        if (!isValid) {
+          return res.status(403).json({ message: "Invalid PIN for editing" });
+        }
       }
       
       const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy, input.clientTimestamp);

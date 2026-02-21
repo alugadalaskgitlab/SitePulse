@@ -108,13 +108,17 @@ export default function SiteEdit() {
   const id = parseInt(params?.id || "0");
   const backToReport = appendOrigin(`/site/report/${id}`);
 
+  const isCompleteMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('complete');
+
   // Get PIN and role from sessionStorage (set by SiteReport before navigating)
   // Keep credentials in sessionStorage until successful save to handle page refresh
   const [pin] = useState(() => {
+    if (isCompleteMode) return "complete";
     return sessionStorage.getItem(`edit_pin_${id}`) || "";
   });
   
-  const [role] = useState<"manager" | "admin">(() => {
+  const [role] = useState<"manager" | "admin" | "engineer">(() => {
+    if (isCompleteMode) return "engineer";
     const storedRole = sessionStorage.getItem(`auth_role_${id}`) || "manager";
     return storedRole as "manager" | "admin";
   });

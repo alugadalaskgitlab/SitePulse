@@ -1124,7 +1124,7 @@ export default function SiteDashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             {pendingClosingCount > 0 && (
-                              <Link href={appendOrigin(`/site/edit/${dpr.id}`)}>
+                              <Link href={appendOrigin(`/site/edit/${dpr.id}?complete=true`)}>
                                 <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-complete-${dpr.id}`}>
                                   <Pencil className="w-3 h-3" />
                                   Complete
