@@ -311,12 +311,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Subscription and PIN required" });
       }
       const settings = await storage.getSettings();
-      const managerPinSetting = settings.find(s => s.key === "manager_pin");
-      const adminPinSetting = settings.find(s => s.key === "admin_pin");
-      if (!managerPinSetting?.value || !adminPinSetting?.value) {
-        return res.status(500).json({ message: "PIN settings not configured" });
+      const managerPin = settings.find(s => s.key === "manager_pin")?.value;
+      const adminPin = settings.find(s => s.key === "admin_pin")?.value;
+      if (!managerPin && !adminPin) {
+        return res.status(500).json({ message: "No PINs configured in settings" });
       }
-      if (pin !== managerPinSetting.value && pin !== adminPinSetting.value) {
+      const pinValid = (managerPin && pin === managerPin) || (adminPin && pin === adminPin);
+      if (!pinValid) {
         return res.status(403).json({ message: "Invalid PIN" });
       }
       const sub = await storage.createPushSubscription({

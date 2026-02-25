@@ -114,19 +114,25 @@ export function PushNotificationSetup() {
       });
 
       const subJson = subscription.toJSON();
-      await apiRequest("POST", "/api/push/subscribe", {
-        subscription: {
-          endpoint: subJson.endpoint,
-          keys: subJson.keys,
-        },
-        pin,
-        label: isIos ? "iOS Device" : "Device",
-      });
+      try {
+        await apiRequest("POST", "/api/push/subscribe", {
+          subscription: {
+            endpoint: subJson.endpoint,
+            keys: subJson.keys,
+          },
+          pin,
+          label: isIos ? "iOS Device" : "Device",
+        });
+      } catch (serverErr: any) {
+        await subscription.unsubscribe();
+        throw serverErr;
+      }
 
       setIsSubscribed(true);
       toast({ title: "Notifications Enabled", description: "You will now receive push notifications for all data entries" });
     } catch (err: any) {
       console.error("Push subscribe error:", err);
+      setIsSubscribed(false);
       toast({ title: "Failed", description: err.message || "Could not enable push notifications", variant: "destructive" });
     } finally {
       setIsLoading(false);
