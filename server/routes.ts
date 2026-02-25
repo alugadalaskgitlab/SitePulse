@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema } from "@shared/schema";
+import { sendPushToAll } from "./push";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -79,6 +80,7 @@ export async function registerRoutes(
     try {
       const input = insertSiteMaterialTripSchema.parse(req.body);
       const trip = await storage.createSiteMaterialTrip(input);
+      sendPushToAll("Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json(trip);
     } catch (err) {
       console.error("Error creating site material trip:", err);
@@ -92,6 +94,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
       const trip = await storage.updateSiteMaterialTrip(id, input);
+      sendPushToAll("Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
       res.json(trip);
     } catch (err) {
       console.error("Error updating site material trip:", err);
@@ -216,7 +219,7 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Site purchase not found" });
       }
-      
+      sendPushToAll("Site Purchase Updated", `Purchase #${id} updated by admin`, "/site-reports").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err?.name === "ZodError") {
@@ -292,6 +295,64 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // PUSH NOTIFICATIONS
+  // ============================================
+
+  app.get("/api/push/vapid-key", (req, res) => {
+    const key = process.env.VAPID_PUBLIC_KEY || "";
+    res.json({ publicKey: key });
+  });
+
+  app.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const { subscription, pin } = req.body;
+      if (!subscription || !pin) {
+        return res.status(400).json({ message: "Subscription and PIN required" });
+      }
+      const settings = await storage.getSettings();
+      const managerPinSetting = settings.find(s => s.key === "manager_pin");
+      const adminPinSetting = settings.find(s => s.key === "admin_pin");
+      if (!managerPinSetting?.value || !adminPinSetting?.value) {
+        return res.status(500).json({ message: "PIN settings not configured" });
+      }
+      if (pin !== managerPinSetting.value && pin !== adminPinSetting.value) {
+        return res.status(403).json({ message: "Invalid PIN" });
+      }
+      const sub = await storage.createPushSubscription({
+        endpoint: subscription.endpoint,
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+        label: req.body.label || null,
+      });
+      res.status(201).json(sub);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to subscribe" });
+    }
+  });
+
+  app.delete("/api/push/unsubscribe", async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint) {
+        return res.status(400).json({ message: "Endpoint required" });
+      }
+      await storage.deletePushSubscriptionByEndpoint(endpoint);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to unsubscribe" });
+    }
+  });
+
+  app.get("/api/push/subscriptions", async (req, res) => {
+    try {
+      const subs = await storage.getAllPushSubscriptions();
+      res.json(subs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch subscriptions" });
+    }
+  });
+
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
     const dpr = await storage.getDpr(Number(req.params.id));
@@ -306,6 +367,8 @@ export async function registerRoutes(
     try {
       const input = api.dprs.create.input.parse(req.body);
       const dpr = await storage.createDpr(input, input.clientTimestamp);
+      await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
+      sendPushToAll("New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
       res.status(201).json(dpr);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -438,15 +501,13 @@ export async function registerRoutes(
       
       const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy, input.clientTimestamp);
       
-      // Notify admin when manager edits DPR
-      if (input.editedBy === "manager") {
-        await storage.createNotification({
-          type: "info",
-          title: "DPR Edited by Manager",
-          message: `DPR for ${input.data.site} (${input.data.date}) was edited by Manager`,
-          isRead: 0,
-        });
-      }
+      await storage.createNotification({
+        type: "info",
+        title: "DPR Updated",
+        message: `DPR for ${input.data.site} (${input.data.date}) was edited by ${input.editedBy}`,
+        isRead: 0,
+      });
+      sendPushToAll("DPR Updated", `${input.editedBy} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
       
       res.status(201).json(newVersion);
     } catch (err) {
@@ -484,15 +545,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Original DPR not found" });
       }
       
-      // Notify admin when manager submits DPR
-      if (input.editedBy === "manager") {
-        await storage.createNotification({
-          type: "success",
-          title: "DPR Submitted by Manager",
-          message: `New DPR submitted for ${cloned.site} (${cloned.date}) by Manager`,
-          isRead: 0,
-        });
-      }
+      await storage.createNotification({
+        type: "success",
+        title: "DPR Cloned",
+        message: `DPR cloned for ${cloned.site} (${cloned.date}) by ${input.editedBy}`,
+        isRead: 0,
+      });
+      sendPushToAll("DPR Cloned", `${cloned.site} - ${cloned.date}`, "/site-reports").catch(() => {});
       
       res.status(201).json(cloned);
     } catch (err) {
@@ -522,10 +581,13 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Invalid admin PIN for deletion" });
       }
       
+      const dprToDelete = await storage.getDpr(id);
       const deleted = await storage.deleteDpr(id);
       if (!deleted) {
         return res.status(404).json({ message: "DPR not found" });
       }
+      await storage.createNotification({ type: "warning", title: "DPR Deleted", message: `DPR for ${dprToDelete?.site || 'unknown'} (${dprToDelete?.date || ''}) was deleted by admin`, isRead: 0 });
+      sendPushToAll("DPR Deleted", `${dprToDelete?.site || 'unknown'} - ${dprToDelete?.date || ''}`, "/site-reports").catch(() => {});
       res.status(204).send();
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -564,6 +626,7 @@ export async function registerRoutes(
     try {
       const input = createPlantReportRequestSchema.parse(req.body);
       const report = await storage.createPlantReport(input);
+      sendPushToAll("Plant Report Created", `Plant report for ${input.date}`, "/plant").catch(() => {});
       res.status(201).json(report);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -596,6 +659,7 @@ export async function registerRoutes(
       if (!cloned) {
         return res.status(404).json({ message: "Original plant report not found" });
       }
+      sendPushToAll("Plant Report Cloned", `Plant report cloned by ${input.editedBy}`, "/plant").catch(() => {});
       res.status(201).json(cloned);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -616,6 +680,7 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Plant report not found" });
       }
+      sendPushToAll("Plant Report Updated", `Plant report ${id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -647,6 +712,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Plant report not found" });
       }
+      sendPushToAll("Plant Report Deleted", `Plant report ${id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -902,13 +968,13 @@ export async function registerRoutes(
       }
       const receipt = await storage.createMaterialReceipt(body);
       
-      // Notify admin of new material receipt
       await storage.createNotification({
         type: "info",
         title: "Material Receipt Added",
         message: `New material receipt: ${receipt.quantity} ${receipt.uom} received on ${receipt.date}`,
         isRead: 0,
       });
+      sendPushToAll("Material Receipt", `${receipt.quantity} ${receipt.uom} received on ${receipt.date}`, "/plant").catch(() => {});
       
       res.status(201).json(receipt);
     } catch (err) {
@@ -925,6 +991,7 @@ export async function registerRoutes(
       }
       const updated = await storage.updateMaterialReceipt(Number(req.params.id), body);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
+      sendPushToAll("Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       console.error("Error updating material receipt:", err);
@@ -936,6 +1003,7 @@ export async function registerRoutes(
     try {
       const deleted = await storage.deleteMaterialReceipt(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Receipt not found" });
+      sendPushToAll("Material Receipt Deleted", `Receipt #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material receipt" });
@@ -962,13 +1030,13 @@ export async function registerRoutes(
       const input = insertMaterialIssueSchema.parse(req.body);
       const issue = await storage.createMaterialIssue(input);
       
-      // Notify admin of new material issue
       await storage.createNotification({
         type: "warning",
         title: "Material Issue",
         message: `Material issued: ${issue.quantity} ${issue.uom} to ${issue.issuedTo} on ${issue.date}`,
         isRead: 0,
       });
+      sendPushToAll("Material Issued", `${issue.quantity} ${issue.uom} to ${issue.issuedTo}`, "/plant").catch(() => {});
       
       res.status(201).json(issue);
     } catch (err) {
@@ -984,6 +1052,7 @@ export async function registerRoutes(
       const input = insertMaterialIssueSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialIssue(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Issue not found" });
+      sendPushToAll("Material Issue Updated", `Issue #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -997,6 +1066,7 @@ export async function registerRoutes(
     try {
       const deleted = await storage.deleteMaterialIssue(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Issue not found" });
+      sendPushToAll("Material Issue Deleted", `Issue #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material issue" });
@@ -1039,6 +1109,7 @@ export async function registerRoutes(
         message: `Material returned: ${result.quantity} ${result.uom} from issue #${result.originalIssueId} on ${result.date}`,
         isRead: 0,
       });
+      sendPushToAll("Material Returned", `${result.quantity} ${result.uom} returned on ${result.date}`, "/plant/material-returns").catch(() => {});
 
       res.status(201).json(result);
     } catch (err: any) {
@@ -1060,6 +1131,7 @@ export async function registerRoutes(
       const input = insertMaterialReturnSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialReturn(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Return not found" });
+      sendPushToAll("Material Return Updated", `Return #${req.params.id} updated`, "/plant/material-returns").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -1079,6 +1151,7 @@ export async function registerRoutes(
     try {
       const deleted = await storage.deleteMaterialReturn(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Return not found" });
+      sendPushToAll("Material Return Deleted", `Return #${req.params.id} deleted`, "/plant/material-returns").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material return" });
@@ -1116,6 +1189,7 @@ export async function registerRoutes(
     try {
       const input = insertMaterialOpeningStockSchema.parse(req.body);
       const stock = await storage.createMaterialOpeningStock(input);
+      sendPushToAll("Opening Stock Set", `Opening stock entry created`, "/plant").catch(() => {});
       res.status(201).json(stock);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1130,6 +1204,7 @@ export async function registerRoutes(
       const input = insertMaterialOpeningStockSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialOpeningStock(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Opening stock not found" });
+      sendPushToAll("Opening Stock Updated", `Opening stock #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1143,6 +1218,7 @@ export async function registerRoutes(
     try {
       const deleted = await storage.deleteMaterialOpeningStock(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Opening stock not found" });
+      sendPushToAll("Opening Stock Deleted", `Opening stock #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete opening stock" });
@@ -1168,13 +1244,13 @@ export async function registerRoutes(
     try {
       const result = await storage.createTruckDispatchWithStockDeduction(req.body);
       
-      // Notify admin of new mix dispatch
       await storage.createNotification({
         type: "success",
         title: "Mix Dispatched",
         message: `Truck dispatch: ${result.dispatch.loadWeight} MT dispatched on ${result.dispatch.date}`,
         isRead: 0,
       });
+      sendPushToAll("Dispatch Recorded", `${result.dispatch.loadWeight} MT dispatched on ${result.dispatch.date}`, "/plant").catch(() => {});
       
       res.status(201).json(result);
     } catch (err) {
@@ -1229,6 +1305,7 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Dispatch not found" });
       }
+      sendPushToAll("Dispatch Updated", `Dispatch #${id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       console.error("Update dispatch error:", err);
@@ -1243,6 +1320,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Dispatch not found" });
       }
+      sendPushToAll("Dispatch Deleted", `Dispatch #${id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       console.error("Delete dispatch error:", err);
@@ -1331,6 +1409,8 @@ export async function registerRoutes(
   app.post("/api/plant-module/equipment-usage", async (req, res) => {
     try {
       const usage = await storage.createEquipmentUsage(req.body);
+      const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId}`;
+      sendPushToAll("Equipment Entry", `${eqName} - Opening: ${req.body.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.status(201).json(usage);
     } catch (err) {
       res.status(500).json({ message: "Failed to create equipment usage" });
@@ -1344,6 +1424,8 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Equipment usage not found" });
       }
+      const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId || id}`;
+      sendPushToAll("Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update equipment usage" });
@@ -1357,6 +1439,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Equipment usage not found" });
       }
+      sendPushToAll("Equipment Entry Deleted", `Equipment usage #${id} deleted`, "/plant/equipment-usage").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete equipment usage" });
@@ -1380,6 +1463,7 @@ export async function registerRoutes(
   app.post("/api/plant-module/generator-logs", async (req, res) => {
     try {
       const log = await storage.createGeneratorLog(req.body);
+      sendPushToAll("Generator Log Added", `Generator log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
     } catch (err) {
       res.status(500).json({ message: "Failed to create generator log" });
@@ -1404,6 +1488,7 @@ export async function registerRoutes(
   app.post("/api/plant-module/ldo-logs", async (req, res) => {
     try {
       const log = await storage.createLdoLog(req.body);
+      sendPushToAll("LDO Log Added", `LDO log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
     } catch (err) {
       res.status(500).json({ message: "Failed to create LDO log" });
@@ -1505,6 +1590,7 @@ export async function registerRoutes(
     try {
       const parsed = insertBitumenDipReadingSchema.parse(req.body);
       const reading = await storage.createBitumenDipReading(parsed);
+      sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.dipDepth}cm`, "/plant/bitumen-stock").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create bitumen dip reading" });
@@ -1516,6 +1602,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const result = await storage.updateBitumenDipReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
+      sendPushToAll("Bitumen Dip Updated", `Tank ${req.body.tankNumber || ''} reading updated`, "/plant/bitumen-stock").catch(() => {});
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to update bitumen dip reading" });
@@ -1527,6 +1614,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteBitumenDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
+      sendPushToAll("Bitumen Dip Deleted", `Bitumen dip reading #${id} deleted`, "/plant/bitumen-stock").catch(() => {});
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete bitumen dip reading" });
@@ -1556,6 +1644,7 @@ export async function registerRoutes(
     try {
       const parsed = insertLdoFlowReadingSchema.parse(req.body);
       const reading = await storage.createLdoFlowReading(parsed);
+      sendPushToAll("LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create LDO flow reading" });
@@ -1567,6 +1656,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const result = await storage.updateLdoFlowReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
+      sendPushToAll("LDO Flow Updated", `LDO flow reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to update LDO flow reading" });
@@ -1578,6 +1668,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoFlowReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
+      sendPushToAll("LDO Flow Deleted", `LDO flow reading #${id} deleted`, "/plant/ldo-flow-meter").catch(() => {});
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete LDO flow reading" });
@@ -1607,6 +1698,7 @@ export async function registerRoutes(
     try {
       const parsed = insertLdoDipReadingSchema.parse(req.body);
       const reading = await storage.createLdoDipReading(parsed);
+      sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.dipDepth}cm`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create LDO dip reading" });
@@ -1618,6 +1710,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const result = await storage.updateLdoDipReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
+      sendPushToAll("LDO Dip Updated", `LDO dip reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to update LDO dip reading" });
@@ -1629,6 +1722,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
+      sendPushToAll("LDO Dip Deleted", `LDO dip reading #${id} deleted`, "/plant/ldo-flow-meter").catch(() => {});
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete LDO dip reading" });

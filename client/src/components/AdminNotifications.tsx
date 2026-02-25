@@ -9,8 +9,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
+import { PushNotificationSetup } from "./PushNotificationSetup";
 
 interface Notification {
   id: number;
@@ -192,6 +194,10 @@ export function AdminNotifications() {
             </div>
           )}
         </ScrollArea>
+        <Separator />
+        <div className="p-2">
+          <PushNotificationSetup />
+        </div>
       </PopoverContent>
     </Popover>
   );

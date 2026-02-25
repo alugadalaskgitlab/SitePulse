@@ -717,3 +717,20 @@ export const sites = pgTable("sites", {
 export const insertSiteSchema = createInsertSchema(sites).omit({ id: true, createdAt: true });
 export type Site = typeof sites.$inferSelect;
 export type InsertSite = z.infer<typeof insertSiteSchema>;
+
+// ============================================
+// PUSH SUBSCRIPTIONS
+// ============================================
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  label: text("label"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true });
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;

@@ -87,6 +87,9 @@ import {
   type InsertLdoFlowReading,
   type LdoDipReading,
   type InsertLdoDipReading,
+  pushSubscriptions,
+  type PushSubscription,
+  type InsertPushSubscription,
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
@@ -244,6 +247,11 @@ export interface IStorage {
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(): Promise<void>;
   deleteNotification(id: number): Promise<void>;
+
+  // Push Subscriptions
+  getAllPushSubscriptions(): Promise<PushSubscription[]>;
+  createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
+  deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
   
   // Sites Master
   getSites(): Promise<Site[]>;
@@ -3305,6 +3313,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNotification(id: number): Promise<void> {
     await db.delete(adminNotifications).where(eq(adminNotifications.id, id));
+  }
+
+  // Push Subscriptions
+  async getAllPushSubscriptions(): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions);
+  }
+
+  async createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription> {
+    const [sub] = await db
+      .insert(pushSubscriptions)
+      .values(data)
+      .onConflictDoUpdate({
+        target: pushSubscriptions.endpoint,
+        set: { p256dh: data.p256dh, auth: data.auth, label: data.label },
+      })
+      .returning();
+    return sub;
+  }
+
+  async deletePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
   }
 
   // ============================================

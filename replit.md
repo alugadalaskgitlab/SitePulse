@@ -81,6 +81,7 @@ Preferred communication style: Simple, everyday language.
 - **Site Reports**: Enhanced filtering (date range, site, engineer, activity, equipment, diesel usage, material) and Admin-only export features (Excel, PDF, Print) with multi-sheet Excel export.
 - **Equipment Tracking**: Supports both time entry and hour meter readings for equipment usage, with live efficiency calculation and visual indicators.
 - **Admin Notifications**: In-app notification system (info, warning, success, error) with bell icon, sound alerts, and auto-refresh, triggered by key actions like DPR submissions or material movements.
+- **Push Notifications**: Web Push (VAPID-based) for real-time OS-level notifications on iPhone/iPad/Android/Desktop. Requires PWA install on iOS. PIN-gated (Manager or Admin PIN required to subscribe). All data entry events trigger push to all subscribed devices. Stale subscriptions (410 Gone) auto-cleaned. Components: `server/push.ts` (sendPushToAll helper), `client/src/components/PushNotificationSetup.tsx` (UI), `client/public/service-worker.js` (push/notificationclick handlers), `push_subscriptions` DB table. VAPID keys stored as env vars (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY).
 
 ## External Dependencies
 
@@ -105,6 +106,9 @@ Preferred communication style: Simple, everyday language.
 - `@hookform/resolvers` (for Zod)
 - `zod`
 - `drizzle-zod`
+
+### Push Notifications
+- `web-push` (VAPID-based Web Push protocol)
 
 ### Date Utilities
 - `date-fns`

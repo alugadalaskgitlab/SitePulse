@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hlc-site-reporter-v2';
+const CACHE_NAME = 'hlc-site-reporter-v3';
 const urlsToCache = [
   '/manifest.json',
   '/favicon-16x16.png',
@@ -51,5 +51,52 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => caches.match(request))
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let data = { title: 'HLC Site Reporter', body: 'New update', url: '/', icon: '/icon-192x192.png', tag: 'hlc-notification' };
+  
+  try {
+    if (event.data) {
+      data = { ...data, ...event.data.json() };
+    }
+  } catch (e) {
+    if (event.data) {
+      data.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: data.icon,
+      badge: '/favicon-32x32.png',
+      tag: data.tag,
+      data: { url: data.url },
+      vibrate: [200, 100, 200],
+      requireInteraction: false
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  let url = event.notification.data?.url || '/';
+  if (url.startsWith('http') && !url.startsWith(self.location.origin)) {
+    url = '/';
+  }
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
   );
 });
