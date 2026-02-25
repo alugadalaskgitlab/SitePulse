@@ -313,9 +313,8 @@ export async function registerRoutes(
       if (!subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
         return res.status(400).json({ message: "Invalid subscription data — missing endpoint or keys" });
       }
-      const settings = await storage.getSettings();
-      const managerPin = settings.find(s => s.key === "manager_pin")?.value;
-      const adminPin = settings.find(s => s.key === "admin_pin")?.value;
+      const managerPin = await storage.getSetting("manager_pin");
+      const adminPin = await storage.getSetting("admin_pin");
       if (!managerPin && !adminPin) {
         return res.status(500).json({ message: "No PINs configured in settings" });
       }
