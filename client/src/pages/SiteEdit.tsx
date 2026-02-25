@@ -166,9 +166,10 @@ export default function SiteEdit() {
 
   useEffect(() => {
     if (dpr) {
+      const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
       setHeader({
         date: dpr.date,
-        site: dpr.site,
+        site: baseSite,
         engineer: dpr.engineer,
       });
 

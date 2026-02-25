@@ -542,7 +542,7 @@ export class DatabaseStorage implements IStorage {
 
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
-    const roleName = editedBy === "manager" ? "Manager" : "Admin";
+    const roleName = editedBy === "manager" ? "Manager" : editedBy === "admin" ? "Admin" : "Engineer";
     
     // Strip any existing suffix and get base site name, then add new suffix
     const baseSite = this.getBaseSiteName(original.site);
@@ -665,7 +665,7 @@ export class DatabaseStorage implements IStorage {
   async createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr> {
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
-    const roleName = editedBy === "manager" ? "Manager" : "Admin";
+    const roleName = editedBy === "manager" ? "Manager" : editedBy === "admin" ? "Admin" : "Engineer";
     
     // Strip any existing suffix and get base site name, then add new suffix
     const baseSite = this.getBaseSiteName(dprData.site);
@@ -1013,7 +1013,7 @@ export class DatabaseStorage implements IStorage {
 
     const now = new Date();
     const dateTime = now.toISOString().replace('T', ' ').substring(0, 19);
-    const roleName = editedBy === "manager" ? "Manager" : "Admin";
+    const roleName = editedBy === "manager" ? "Manager" : editedBy === "admin" ? "Admin" : "Engineer";
 
     return await db.transaction(async (tx) => {
       const [newReport] = await tx.insert(plantReports).values({
