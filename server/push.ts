@@ -18,6 +18,28 @@ export function initPush() {
   console.log("[Push] Initialized with VAPID keys");
 }
 
+export async function sendTestPush(endpoint: string, p256dh: string, auth: string) {
+  if (!pushInitialized) return;
+
+  try {
+    const payload = JSON.stringify({
+      title: "Notifications Enabled",
+      body: "You will now receive push alerts for all data entries",
+      url: "/",
+      icon: "/icon-192x192.png",
+      tag: "hlc-test",
+    });
+
+    await webpush.sendNotification(
+      { endpoint, keys: { p256dh, auth } },
+      payload
+    );
+    console.log("[Push] Test notification sent successfully");
+  } catch (err: any) {
+    console.error("[Push] Test notification failed:", err.message);
+  }
+}
+
 export async function sendPushToAll(title: string, body: string, url?: string) {
   if (!pushInitialized) return;
 

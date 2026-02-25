@@ -5,7 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema } from "@shared/schema";
-import { sendPushToAll } from "./push";
+import { sendPushToAll, sendTestPush } from "./push";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -325,6 +325,7 @@ export async function registerRoutes(
         auth: subscription.keys.auth,
         label: req.body.label || null,
       });
+      sendTestPush(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth).catch(() => {});
       res.status(201).json(sub);
     } catch (err) {
       res.status(500).json({ message: "Failed to subscribe" });
