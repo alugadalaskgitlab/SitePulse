@@ -38,3 +38,9 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BLd9s-RA4C4aHcxhghJGdnmLnCaq6S2fE8EjX9rkn2RfIIGZjHFGoA5Ne0Hk7tMDv5shoPemCSjaqYlLCSCfN0o"
+VAPID_SUBJECT = "mailto:admin@hlc-sitelog.com"
