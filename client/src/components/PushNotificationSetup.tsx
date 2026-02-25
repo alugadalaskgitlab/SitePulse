@@ -109,9 +109,9 @@ export function PushNotificationSetup() {
 
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
-        userVisualsOnly: true,
+        userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
-      } as any);
+      });
 
       const subJson = subscription.toJSON();
       await apiRequest("POST", "/api/push/subscribe", {
