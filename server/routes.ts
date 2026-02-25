@@ -310,6 +310,9 @@ export async function registerRoutes(
       if (!subscription || !pin) {
         return res.status(400).json({ message: "Subscription and PIN required" });
       }
+      if (!subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+        return res.status(400).json({ message: "Invalid subscription data — missing endpoint or keys" });
+      }
       const settings = await storage.getSettings();
       const managerPin = settings.find(s => s.key === "manager_pin")?.value;
       const adminPin = settings.find(s => s.key === "admin_pin")?.value;
@@ -328,8 +331,9 @@ export async function registerRoutes(
       });
       sendTestPush(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth).catch(() => {});
       res.status(201).json(sub);
-    } catch (err) {
-      res.status(500).json({ message: "Failed to subscribe" });
+    } catch (err: any) {
+      console.error("[Push] Subscribe error:", err);
+      res.status(500).json({ message: err.message || "Failed to subscribe" });
     }
   });
 
