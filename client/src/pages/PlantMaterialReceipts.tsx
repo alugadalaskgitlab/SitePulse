@@ -179,7 +179,7 @@ export default function PlantMaterialReceipts() {
     }
     
     const selectedMaterial = materials?.find(m => m.id === parseInt(materialId));
-    const isTankMaterial = selectedMaterial && (selectedMaterial.category === "Bitumen" || selectedMaterial.category === "LDO");
+    const isTankMaterial = selectedMaterial && (selectedMaterial.category === "Bitumen" || selectedMaterial.category === "LDO" || (selectedMaterial.name || "").toUpperCase() === "LDO");
     
     if (editingReceipt) {
       const updateData = {
@@ -626,7 +626,8 @@ export default function PlantMaterialReceipts() {
 
               {(() => {
                 const selectedMat = materials?.find(m => m.id === parseInt(materialId));
-                const showTank = selectedMat && (selectedMat.category === "Bitumen" || selectedMat.category === "LDO");
+                const isLdo = selectedMat && (selectedMat.category === "LDO" || (selectedMat.name || "").toUpperCase() === "LDO");
+                const showTank = selectedMat && (selectedMat.category === "Bitumen" || isLdo);
                 if (!showTank) return null;
                 return (
                   <div>
@@ -636,8 +637,8 @@ export default function PlantMaterialReceipts() {
                         <SelectValue placeholder="Select tank" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">Tank 1{selectedMat.category === "LDO" ? " (Boiler)" : ""}</SelectItem>
-                        <SelectItem value="2">Tank 2{selectedMat.category === "LDO" ? " (Dryer)" : ""}</SelectItem>
+                        <SelectItem value="1">Tank 1{isLdo ? " (Boiler)" : ""}</SelectItem>
+                        <SelectItem value="2">Tank 2{isLdo ? " (Dryer)" : ""}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -206,15 +206,15 @@ export default function PlantVarianceReport() {
                 <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span>Bitumen:</span>
-                    <span className="text-red-600 dark:text-red-400">{summaryStats.bitumenOveruse} excess (used more)</span>
+                    <span className="text-red-600 dark:text-red-400">{summaryStats.bitumenOveruse} loads over template</span>
                     <span>/</span>
-                    <span className="text-green-600 dark:text-green-400">{summaryStats.bitumenUnderuse} saved (used less)</span>
+                    <span className="text-green-600 dark:text-green-400">{summaryStats.bitumenUnderuse} loads under template</span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span>LDO:</span>
-                    <span className="text-red-600 dark:text-red-400">{summaryStats.ldoOveruse} excess</span>
+                    <span className="text-red-600 dark:text-red-400">{summaryStats.ldoOveruse} loads over template</span>
                     <span>/</span>
-                    <span className="text-green-600 dark:text-green-400">{summaryStats.ldoUnderuse} saved</span>
+                    <span className="text-green-600 dark:text-green-400">{summaryStats.ldoUnderuse} loads under template</span>
                   </div>
                 </div>
               </CardContent>
@@ -285,13 +285,16 @@ export default function PlantVarianceReport() {
                     <th className="text-left p-2">Truck</th>
                     <th className="text-left p-2">Mix</th>
                     <th className="text-right p-2">Load (MT)</th>
-                    <th className="text-right p-2" title="Percentage difference: (Actual% - Template%) / Template% x 100. Negative = saved, Positive = excess">Bitumen Var %</th>
-                    <th className="text-right p-2" title="Quantity difference in Kg: Actual Kg - Theoretical Kg. Negative = saved, Positive = excess">Bitumen Diff (Kg)</th>
-                    <th className="text-right p-2" title="Actual LDO per ton / Theoretical LDO per ton">LDO (L/ton)</th>
-                    <th className="text-right p-2" title="Percentage difference in LDO. Negative = saved, Positive = excess">LDO Var %</th>
-                    <th className="text-right p-2" title="Quantity difference in Liters. Negative = saved, Positive = excess">LDO Diff (L)</th>
-                    <th className="text-left p-2">Adjusted By</th>
-                    <th className="text-left p-2">Adjusted At</th>
+                    <th className="text-right p-2" title="Bitumen % from the mix template">Template %</th>
+                    <th className="text-right p-2" title="Actual bitumen % entered during dispatch">Actual %</th>
+                    <th className="text-right p-2" title="Percentage variance: (Actual - Template) / Template × 100">Variance %</th>
+                    <th className="text-right p-2" title="Quantity saved or excess in Kg">Saved/Excess (Kg)</th>
+                    <th className="text-right p-2" title="Theoretical LDO from mix template (liters)">LDO Norm (L)</th>
+                    <th className="text-right p-2" title="Actual LDO entered during dispatch (liters)">LDO Actual (L)</th>
+                    <th className="text-right p-2" title="Actual LDO per ton / Template LDO per ton">L/ton</th>
+                    <th className="text-right p-2" title="LDO variance percentage">LDO Var %</th>
+                    <th className="text-right p-2" title="LDO quantity saved or excess in liters">Saved/Excess (L)</th>
+                    <th className="text-left p-2">By</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -302,34 +305,78 @@ export default function PlantVarianceReport() {
                     const theoreticalLpt = getTheoreticalLdoPerTon(dispatch);
                     return (
                       <tr key={dispatch.id} className="border-b hover:bg-muted/50" data-testid={`row-variance-${dispatch.id}`}>
-                        <td className="p-2">{format(new Date(dispatch.date), "dd MMM yyyy")}</td>
-                        <td className="p-2 font-mono">{dispatch.truckNumber}</td>
-                        <td className="p-2">{getTemplateName(dispatch.mixTemplateId)}</td>
+                        <td className="p-2 whitespace-nowrap">{format(new Date(dispatch.date), "dd MMM")}</td>
+                        <td className="p-2 font-mono text-xs">{dispatch.truckNumber}</td>
+                        <td className="p-2 text-xs">{getTemplateName(dispatch.mixTemplateId)}</td>
                         <td className="p-2 text-right font-mono">{dispatch.loadWeight}</td>
+                        <td className="p-2 text-right font-mono text-xs">{dispatch.theoreticalBitumenPercent != null ? `${Number(dispatch.theoreticalBitumenPercent).toFixed(2)}%` : "-"}</td>
+                        <td className={`p-2 text-right font-mono text-xs font-semibold ${dispatch.actualBitumenPercent != null && dispatch.theoreticalBitumenPercent != null ? (Number(dispatch.actualBitumenPercent) > Number(dispatch.theoreticalBitumenPercent) ? "text-red-600 dark:text-red-400" : Number(dispatch.actualBitumenPercent) < Number(dispatch.theoreticalBitumenPercent) ? "text-green-600 dark:text-green-400" : "") : ""}`}>
+                          {dispatch.actualBitumenPercent != null ? `${Number(dispatch.actualBitumenPercent).toFixed(2)}%` : "-"}
+                        </td>
                         <td className="p-2 text-right">{getVarianceBadge(dispatch.bitumenVariancePercent)}</td>
                         <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(bitumenDiff)}`}>
                           {formatDiff(bitumenDiff, "Kg")}
                         </td>
+                        <td className="p-2 text-right font-mono text-xs text-muted-foreground">{dispatch.theoreticalLdoQty != null ? Number(dispatch.theoreticalLdoQty).toFixed(1) : "-"}</td>
+                        <td className={`p-2 text-right font-mono text-xs font-semibold ${dispatch.actualLdoQty != null && dispatch.theoreticalLdoQty != null ? (Number(dispatch.actualLdoQty) > Number(dispatch.theoreticalLdoQty) ? "text-red-600 dark:text-red-400" : Number(dispatch.actualLdoQty) < Number(dispatch.theoreticalLdoQty) ? "text-green-600 dark:text-green-400" : "") : ""}`}>
+                          {dispatch.actualLdoQty != null ? Number(dispatch.actualLdoQty).toFixed(1) : "-"}
+                        </td>
                         <td className="p-2 text-right font-mono text-xs">
                           {actualLpt != null ? (
-                            <span>{actualLpt.toFixed(3)}<span className="text-muted-foreground"> / {theoreticalLpt?.toFixed(3)}</span></span>
+                            <span>{actualLpt.toFixed(2)}<span className="text-muted-foreground">/{theoreticalLpt?.toFixed(1)}</span></span>
                           ) : "-"}
                         </td>
                         <td className="p-2 text-right">{getVarianceBadge(dispatch.ldoVariancePercent)}</td>
                         <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(ldoDiff)}`}>
                           {formatDiff(ldoDiff, "L")}
                         </td>
-                        <td className="p-2">
+                        <td className="p-2 text-xs">
                           {dispatch.adjustedBy ? (
-                            <Badge variant="outline">{dispatch.adjustedBy}</Badge>
+                            <Badge variant="outline" className="text-xs">{dispatch.adjustedBy}</Badge>
                           ) : "-"}
-                        </td>
-                        <td className="p-2 text-muted-foreground text-xs">
-                          {dispatch.adjustedAt ? format(new Date(dispatch.adjustedAt), "dd/MM HH:mm") : "-"}
                         </td>
                       </tr>
                     );
                   })}
+                  {dispatches.length > 1 && (() => {
+                    const totLoad = dispatches.reduce((s, d) => s + (d.loadWeight || 0), 0);
+                    const totTheoreticalBitKg = dispatches.reduce((s, d) => s + (d.theoreticalBitumenPercent != null && d.loadWeight ? d.loadWeight * Number(d.theoreticalBitumenPercent) / 100 * 1000 : 0), 0);
+                    const totActualBitKg = dispatches.reduce((s, d) => s + (d.actualBitumenPercent != null && d.loadWeight ? d.loadWeight * Number(d.actualBitumenPercent) / 100 * 1000 : 0), 0);
+                    const avgTemplatePercent = totLoad > 0 ? (totTheoreticalBitKg / (totLoad * 1000)) * 100 : 0;
+                    const avgActualPercent = totLoad > 0 ? (totActualBitKg / (totLoad * 1000)) * 100 : 0;
+                    const totLdoNorm = dispatches.reduce((s, d) => s + (d.theoreticalLdoQty != null ? Number(d.theoreticalLdoQty) : 0), 0);
+                    const totLdoActual = dispatches.reduce((s, d) => s + (d.actualLdoQty != null ? Number(d.actualLdoQty) : 0), 0);
+                    const avgLptActual = totLoad > 0 && totLdoActual > 0 ? totLdoActual / totLoad : null;
+                    const avgLptNorm = totLoad > 0 && totLdoNorm > 0 ? totLdoNorm / totLoad : null;
+                    return (
+                      <tr className="border-t-2 font-bold bg-muted/30">
+                        <td className="p-2" colSpan={3}>Total / Weighted Avg</td>
+                        <td className="p-2 text-right font-mono">{totLoad.toFixed(1)}</td>
+                        <td className="p-2 text-right font-mono text-xs">{avgTemplatePercent.toFixed(2)}%</td>
+                        <td className={`p-2 text-right font-mono text-xs ${avgActualPercent > avgTemplatePercent ? "text-red-600 dark:text-red-400" : avgActualPercent < avgTemplatePercent ? "text-green-600 dark:text-green-400" : ""}`}>
+                          {avgActualPercent.toFixed(2)}%
+                        </td>
+                        <td className="p-2 text-right">{getVarianceBadge(avgTemplatePercent > 0 ? ((avgActualPercent - avgTemplatePercent) / avgTemplatePercent) * 100 : null)}</td>
+                        <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(totalBitumenDiffKg)}`}>
+                          {formatDiff(totalBitumenDiffKg, "Kg")}
+                        </td>
+                        <td className="p-2 text-right font-mono text-xs text-muted-foreground">{totLdoNorm.toFixed(1)}</td>
+                        <td className={`p-2 text-right font-mono text-xs ${totLdoActual > totLdoNorm ? "text-red-600 dark:text-red-400" : totLdoActual < totLdoNorm ? "text-green-600 dark:text-green-400" : ""}`}>
+                          {totLdoActual.toFixed(1)}
+                        </td>
+                        <td className="p-2 text-right font-mono text-xs">
+                          {avgLptActual != null ? (
+                            <span>{avgLptActual.toFixed(2)}<span className="text-muted-foreground">/{avgLptNorm?.toFixed(1)}</span></span>
+                          ) : "-"}
+                        </td>
+                        <td className="p-2 text-right">{getVarianceBadge(totLdoNorm > 0 ? ((totLdoActual - totLdoNorm) / totLdoNorm) * 100 : null)}</td>
+                        <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(totalLdoDiffL)}`}>
+                          {formatDiff(totalLdoDiffL, "L")}
+                        </td>
+                        <td className="p-2"></td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
