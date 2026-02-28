@@ -262,6 +262,47 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
     return `${base}${sep}tab=stock&role=${unlockedRole}`;
   };
 
+  const { data: ldoFlowReadings } = useQuery<{ id: number; date: string; time: string | null; tankNumber: number; meterReading: number; readingType: string; quantityLiters: number | null }[]>({
+    queryKey: ["/api/plant-module/ldo-flow-readings"],
+  });
+
+  const ldoTankSummary = (() => {
+    if (!ldoFlowReadings) return null;
+    const LDO_DENSITY = 0.84;
+    const computeStock = (tankNum: number) => {
+      const tankR = ldoFlowReadings.filter(r => r.tankNumber === tankNum);
+      const stockEntries = tankR.filter(r => r.readingType === "stock").sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""));
+      if (stockEntries.length === 0) return null;
+      const latest = stockEntries[0];
+      const stockL = latest.quantityLiters || 0;
+      const stockDT = `${latest.date}T${latest.time || "00:00"}`;
+      const receiptsSince = tankR.filter(r => r.readingType === "receipt" && `${r.date}T${r.time || "00:00"}` > stockDT).reduce((s, r) => s + (r.quantityLiters || 0), 0);
+      const dateGroups: Record<string, { opens: { time: string; meter: number }[]; closes: { time: string; meter: number }[] }> = {};
+      for (const r of tankR) {
+        if (r.readingType !== "opening" && r.readingType !== "closing") continue;
+        if (r.date < latest.date || (r.date === latest.date && `${r.date}T${r.time || "00:00"}` <= stockDT)) continue;
+        if (!dateGroups[r.date]) dateGroups[r.date] = { opens: [], closes: [] };
+        const entry = { time: r.time || "", meter: r.meterReading };
+        if (r.readingType === "opening") dateGroups[r.date].opens.push(entry);
+        else dateGroups[r.date].closes.push(entry);
+      }
+      let consumed = 0;
+      for (const g of Object.values(dateGroups)) {
+        if (g.opens.length > 0 && g.closes.length > 0) {
+          const openVal = g.opens.sort((a, b) => a.time.localeCompare(b.time))[0].meter;
+          const closeVal = g.closes.sort((a, b) => b.time.localeCompare(a.time))[0].meter;
+          const diff = closeVal - openVal;
+          if (diff > 0) consumed += diff;
+        }
+      }
+      return stockL + receiptsSince - consumed;
+    };
+    const t1 = computeStock(1);
+    const t2 = computeStock(2);
+    const totalL = (t1 || 0) + (t2 || 0);
+    return { tank1L: t1, tank2L: t2, totalL, totalMT: (totalL * LDO_DENSITY / 1000) };
+  })();
+
   return (
     <div className="space-y-4">
       {isManager && (
@@ -353,7 +394,17 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">LDO Flow Meter Tracker</h3>
-              <p className="text-sm text-muted-foreground">Track LDO consumption via flow meter readings</p>
+              <p className="text-sm text-muted-foreground">Track LDO consumption, tank stock & variance analysis</p>
+              {ldoTankSummary && (
+                <div className="mt-2 flex items-center gap-3 text-sm" data-testid="text-ldo-stock-summary">
+                  <span className="font-bold text-blue-700 dark:text-blue-300">{ldoTankSummary.totalL.toFixed(0)} L</span>
+                  <span className="text-muted-foreground">({ldoTankSummary.totalMT.toFixed(3)} MT)</span>
+                  <span className="text-xs text-muted-foreground">
+                    T1: {ldoTankSummary.tank1L !== null ? `${ldoTankSummary.tank1L.toFixed(0)} L` : "—"} |
+                    T2: {ldoTankSummary.tank2L !== null ? `${ldoTankSummary.tank2L.toFixed(0)} L` : "—"}
+                  </span>
+                </div>
+              )}
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>

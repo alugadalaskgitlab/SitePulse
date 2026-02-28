@@ -997,9 +997,16 @@ export default function PlantLdoFlowMeter() {
                   </div>
                 )}
                 {stock && (
-                  <div className="pt-2 mt-1 border-t text-sm text-muted-foreground">
-                    <span>Flow Stock: <span className="font-bold">{stock.stockL.toFixed(0)} L</span> <span className="text-muted-foreground">({(stock.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span></span>
-                    <span className="ml-1">as of {stock.date}</span>
+                  <div className="pt-2 mt-2 border-t space-y-1">
+                    <div className="flex items-center gap-1">
+                      <Gauge className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase">Flow Meter Stock</span>
+                    </div>
+                    <div data-testid={`text-flow-stock-t${tankNum}`}>
+                      <span className="font-bold text-xl text-blue-700 dark:text-blue-300">{stock.stockL.toFixed(0)} L</span>
+                      <span className="text-sm text-muted-foreground ml-1">({(stock.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Based on stock entry of {stock.date} ± receipts & consumption</p>
                   </div>
                 )}
               </CardContent>
@@ -1040,12 +1047,17 @@ export default function PlantLdoFlowMeter() {
             )}
             {(tankStock.tank1 || tankStock.tank2) && (
               <>
-                <div className="flex justify-between gap-1 flex-wrap">
-                  <span className="text-sm text-muted-foreground">Flow Stock:</span>
-                  <span data-testid="text-combined-flow-stock">
-                    <span className="font-bold text-lg">{((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L</span>
-                    <span className="text-sm text-muted-foreground ml-1">({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
-                  </span>
+                <div className="flex items-center gap-1 mt-1">
+                  <Gauge className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase">Flow Meter Stock</span>
+                </div>
+                <div data-testid="text-combined-flow-stock">
+                  <span className="font-bold text-2xl text-blue-700 dark:text-blue-300">{((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L</span>
+                  <span className="text-sm text-muted-foreground ml-1">({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
+                </div>
+                <div className="text-xs text-muted-foreground flex gap-3">
+                  <span>T1: {tankStock.tank1 ? `${tankStock.tank1.stockL.toFixed(0)} L` : "—"}</span>
+                  <span>T2: {tankStock.tank2 ? `${tankStock.tank2.stockL.toFixed(0)} L` : "—"}</span>
                 </div>
               </>
             )}
@@ -1358,26 +1370,34 @@ export default function PlantLdoFlowMeter() {
                   <tr className="border-b">
                     <th className="text-left p-2">Date</th>
                     <th className="text-right p-2">Production (MT)</th>
-                    <th className="text-right p-2">Theoretical (L)</th>
+                    <th className="text-right p-2">Norm (L)</th>
                     <th className="text-right p-2">Actual T1 (L)</th>
                     <th className="text-right p-2">Actual T2 (L)</th>
                     <th className="text-right p-2">Actual Total (L)</th>
+                    <th className="text-right p-2">L/Ton</th>
                     <th className="text-right p-2">Variance (L)</th>
                     <th className="text-right p-2">Variance %</th>
                     <th className="text-center p-2">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {varianceData.map(row => (
+                  {varianceData.map(row => {
+                    const lPerTon = row.production > 0 ? row.actualTotal / row.production : null;
+                    const normPerTon = row.production > 0 ? row.theoretical / row.production : null;
+                    return (
                     <tr key={row.date} className="border-b" data-testid={`row-ldo-variance-${row.date}`}>
                       <td className="p-2">{row.date}</td>
-                      <td className="p-2 text-right">{row.production.toFixed(3)}</td>
-                      <td className="p-2 text-right">{row.theoretical.toFixed(3)}</td>
-                      <td className="p-2 text-right">{row.actualT1 !== null ? row.actualT1.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right">{row.actualT2 !== null ? row.actualT2.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right font-bold">{row.actualTotal.toFixed(3)}</td>
+                      <td className="p-2 text-right">{row.production.toFixed(1)}</td>
+                      <td className="p-2 text-right">{row.theoretical.toFixed(1)}</td>
+                      <td className="p-2 text-right">{row.actualT1 !== null ? row.actualT1.toFixed(1) : "-"}</td>
+                      <td className="p-2 text-right">{row.actualT2 !== null ? row.actualT2.toFixed(1) : "-"}</td>
+                      <td className="p-2 text-right font-bold">{row.actualTotal.toFixed(1)}</td>
+                      <td className={`p-2 text-right font-semibold ${lPerTon && normPerTon ? (lPerTon > normPerTon ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : ""}`}>
+                        {lPerTon !== null ? lPerTon.toFixed(2) : "-"}
+                        {normPerTon !== null && <span className="text-xs text-muted-foreground ml-0.5">/{normPerTon.toFixed(1)}</span>}
+                      </td>
                       <td className={`p-2 text-right font-bold ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {row.variance.toFixed(3)}
+                        {row.variance.toFixed(1)}
                       </td>
                       <td className={`p-2 text-right ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                         {row.variancePercent !== null ? `${row.variancePercent}%` : "-"}
@@ -1388,7 +1408,8 @@ export default function PlantLdoFlowMeter() {
                         {row.status === "OK" && <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">OK</Badge>}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {(() => {
                     const totProd = varianceData.reduce((s, r) => s + r.production, 0);
                     const totTheo = varianceData.reduce((s, r) => s + r.theoretical, 0);
@@ -1397,17 +1418,23 @@ export default function PlantLdoFlowMeter() {
                     const totActual = varianceData.reduce((s, r) => s + r.actualTotal, 0);
                     const totVar = totActual - totTheo;
                     const totVarPct = totTheo > 0 ? Math.round((totVar / totTheo) * 1000) / 10 : null;
+                    const totLPerTon = totProd > 0 ? totActual / totProd : null;
+                    const totNormPerTon = totProd > 0 ? totTheo / totProd : null;
                     const totStatus: "SAVING" | "LOSS" | "OK" = totTheo === 0 ? "OK" : totVar < 0 ? "SAVING" : totVar > 0 ? "LOSS" : "OK";
                     return (
                       <tr className="border-t-2 font-bold">
                         <td className="p-2">Total</td>
-                        <td className="p-2 text-right">{totProd.toFixed(3)}</td>
-                        <td className="p-2 text-right">{totTheo.toFixed(3)} ({(totTheo * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg)</td>
-                        <td className="p-2 text-right">{totT1.toFixed(3)}</td>
-                        <td className="p-2 text-right">{totT2.toFixed(3)}</td>
-                        <td className="p-2 text-right">{totActual.toFixed(3)} ({(totActual * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg)</td>
+                        <td className="p-2 text-right">{totProd.toFixed(1)}</td>
+                        <td className="p-2 text-right">{totTheo.toFixed(1)}</td>
+                        <td className="p-2 text-right">{totT1.toFixed(1)}</td>
+                        <td className="p-2 text-right">{totT2.toFixed(1)}</td>
+                        <td className="p-2 text-right">{totActual.toFixed(1)}</td>
+                        <td className={`p-2 text-right ${totLPerTon && totNormPerTon ? (totLPerTon > totNormPerTon ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : ""}`}>
+                          {totLPerTon !== null ? totLPerTon.toFixed(2) : "-"}
+                          {totNormPerTon !== null && <span className="text-xs text-muted-foreground ml-0.5">/{totNormPerTon.toFixed(1)}</span>}
+                        </td>
                         <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {totVar.toFixed(3)}
+                          {totVar.toFixed(1)}
                         </td>
                         <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                           {totVarPct !== null ? `${totVarPct}%` : "-"}
