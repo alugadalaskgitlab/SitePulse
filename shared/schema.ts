@@ -319,6 +319,9 @@ export const equipmentUsage = pgTable("equipment_usage", {
   fuelStation: text("fuel_station"), // Commercial pump name/location
   billNumber: text("bill_number"), // Receipt/bill number
   amountPaid: real("amount_paid"), // Total amount paid for diesel
+  // Diesel balance tracking (informational, no stock adjustment)
+  dieselBalanceInTank: real("diesel_balance_in_tank"), // Liters remaining in equipment tank at end of work
+  dieselBalanceConfirmed: boolean("diesel_balance_confirmed").default(false), // Whether balance was physically verified
   createdAt: timestamp("created_at").defaultNow(),
 });
 

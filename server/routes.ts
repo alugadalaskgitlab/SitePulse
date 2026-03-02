@@ -914,7 +914,8 @@ export async function registerRoutes(
   // Equipment Master
   app.get("/api/plant-module/equipment", async (req, res) => {
     try {
-      const equipmentList = await storage.getEquipmentMaster();
+      const includeInactive = req.query.includeInactive === "true";
+      const equipmentList = await storage.getEquipmentMaster(includeInactive);
       res.json(equipmentList);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch equipment" });
@@ -947,6 +948,20 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete equipment" });
+    }
+  });
+
+  app.patch("/api/plant-module/equipment/:id/toggle-active", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const allEquipment = await storage.getEquipmentMaster(true);
+      const equip = allEquipment.find(e => e.id === id);
+      if (!equip) return res.status(404).json({ message: "Equipment not found" });
+      const newStatus = equip.isActive === 1 ? 0 : 1;
+      const updated = await storage.updateEquipment(id, { isActive: newStatus } as any);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to toggle equipment status" });
     }
   });
 

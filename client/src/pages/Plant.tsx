@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1478,9 +1479,15 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   const [vendorName, setVendorName] = useState("");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
 
   const { data: equipment, isLoading } = useQuery<EquipmentMasterType[]>({
-    queryKey: ["/api/plant-module/equipment"],
+    queryKey: ["/api/plant-module/equipment", showInactive ? "all" : "active"],
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/equipment${showInactive ? "?includeInactive=true" : ""}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
   });
 
   const createMutation = useMutation({
@@ -1509,6 +1516,18 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
       toast({ title: "Equipment deleted successfully" });
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("PATCH", `/api/plant-module/equipment/${id}/toggle-active`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return key === "/api/plant-module/equipment";
+      }});
+      toast({ title: "Equipment status updated" });
     },
   });
 
@@ -1552,11 +1571,21 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <CardTitle className="flex items-center gap-2">
           <Gauge className="w-5 h-5" />
           Equipment Master
         </CardTitle>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="show-inactive"
+              checked={showInactive}
+              onCheckedChange={(checked) => setShowInactive(checked === true)}
+              data-testid="checkbox-show-inactive"
+            />
+            <Label htmlFor="show-inactive" className="text-sm cursor-pointer">Show Inactive</Label>
+          </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1" data-testid="button-add-equipment">
@@ -1647,6 +1676,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -1657,10 +1687,15 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
           <p className="text-muted-foreground text-center py-6">No equipment added yet.</p>
         ) : (
           <div className="space-y-2">
-            {equipment.map((equip) => (
-              <div key={equip.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+            {equipment.map((equip) => {
+              const isInactive = equip.isActive === 0;
+              return (
+              <div key={equip.id} className={`flex items-center justify-between p-3 rounded-md ${isInactive ? "bg-muted/30 opacity-60" : "bg-muted/50"}`}>
                 <div>
-                  <p className="font-medium">{equip.name}</p>
+                  <p className="font-medium flex items-center gap-2">
+                    {equip.name}
+                    {isInactive && <Badge variant="outline" className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500">Inactive</Badge>}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {(equip as any).registrationNumber && <span className="font-medium">{(equip as any).registrationNumber} | </span>}
                     {(equip as any).ownership === "hired" ? (
@@ -1674,6 +1709,16 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
                 </div>
                 {canEdit && (
                   <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => toggleActiveMutation.mutate(equip.id)}
+                      disabled={toggleActiveMutation.isPending}
+                      title={isInactive ? "Activate" : "Deactivate"}
+                      data-testid={`button-toggle-equipment-${equip.id}`}
+                    >
+                      <Power className={`w-4 h-4 ${isInactive ? "text-green-600" : "text-gray-400"}`} />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(equip)} data-testid={`button-edit-equipment-${equip.id}`}>
                       <Pencil className="w-4 h-4" />
                     </Button>
@@ -1685,7 +1730,8 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

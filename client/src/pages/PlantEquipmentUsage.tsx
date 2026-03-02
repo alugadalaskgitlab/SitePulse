@@ -48,6 +48,8 @@ export default function PlantEquipmentUsage() {
   const [numberOfTrips, setNumberOfTrips] = useState("");
   const [tripDistance, setTripDistance] = useState("");
   const [tripBasedEntry, setTripBasedEntry] = useState(false);
+  const [dieselBalanceInTank, setDieselBalanceInTank] = useState("");
+  const [dieselBalanceConfirmed, setDieselBalanceConfirmed] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -79,12 +81,14 @@ export default function PlantEquipmentUsage() {
     numberOfTrips: string;
     tripDistance: string;
     tripBasedEntry: boolean;
+    dieselBalanceInTank: string;
+    dieselBalanceConfirmed: boolean;
     remarks: string;
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, remarks
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, dieselBalanceInTank, dieselBalanceConfirmed, remarks
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, dieselBalanceInTank, dieselBalanceConfirmed, remarks]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
@@ -104,6 +108,8 @@ export default function PlantEquipmentUsage() {
     setNumberOfTrips(data.numberOfTrips || "");
     setTripDistance(data.tripDistance || "");
     setTripBasedEntry(data.tripBasedEntry || false);
+    setDieselBalanceInTank(data.dieselBalanceInTank ?? "");
+    setDieselBalanceConfirmed(data.dieselBalanceConfirmed || false);
     setRemarks(data.remarks);
   }, []);
 
@@ -209,6 +215,8 @@ export default function PlantEquipmentUsage() {
     setNumberOfTrips("");
     setTripDistance("");
     setTripBasedEntry(false);
+    setDieselBalanceInTank("");
+    setDieselBalanceConfirmed(false);
     setRemarks("");
     setEditingUsage(null);
     setPreviousDieselBalance(null);
@@ -236,6 +244,8 @@ export default function PlantEquipmentUsage() {
     setTripDistance((entry as any).tripDistance ? String((entry as any).tripDistance) : "");
     // Use persisted tripBasedEntry flag from database
     setTripBasedEntry((entry as any).tripBasedEntry === true);
+    setDieselBalanceInTank((entry as any).dieselBalanceInTank != null ? String((entry as any).dieselBalanceInTank) : "");
+    setDieselBalanceConfirmed((entry as any).dieselBalanceConfirmed === true);
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);
@@ -308,6 +318,8 @@ export default function PlantEquipmentUsage() {
       billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
       amountPaid: effectiveDieselSource === "direct_purchase" && amountPaid ? parseFloat(amountPaid) : null,
       siteName: effectiveDieselSource === "direct_purchase" ? siteName.toUpperCase() : null,
+      dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
+      dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
       remarks: remarks.toUpperCase(),
     };
 
@@ -985,6 +997,40 @@ export default function PlantEquipmentUsage() {
                       <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(3)} L</strong></p>
                     </div>
                   )}
+
+                  {parseFloat(dieselIssued || "0") > 0 && (
+                    <div className="border rounded-md p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Diesel Balance in Tank (L)</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={dieselBalanceInTank}
+                            onChange={(e) => setDieselBalanceInTank(e.target.value)}
+                            placeholder="Remaining diesel"
+                            data-testid="input-diesel-balance"
+                          />
+                        </div>
+                        <div className="flex items-end pb-2">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="diesel-balance-confirmed"
+                              checked={dieselBalanceConfirmed}
+                              onCheckedChange={(checked) => setDieselBalanceConfirmed(checked === true)}
+                              data-testid="checkbox-diesel-balance-confirmed"
+                            />
+                            <Label htmlFor="diesel-balance-confirmed" className="text-sm cursor-pointer">Balance Confirmed</Label>
+                          </div>
+                        </div>
+                      </div>
+                      {dieselBalanceInTank && parseFloat(dieselIssued || "0") > 0 && (
+                        <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm">
+                          <p>Net Diesel Consumed: <strong>{(parseFloat(dieselIssued || "0") - parseFloat(dieselBalanceInTank || "0")).toFixed(3)} L</strong></p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1360,6 +1406,19 @@ export default function PlantEquipmentUsage() {
                                   <div>
                                     <span className="text-muted-foreground text-sm block">Tank Balance</span>
                                     <span className="font-medium">{closingDieselVal.toFixed(3)} L</span>
+                                    {(entry as any).dieselBalanceInTank != null && (
+                                      <span className="text-sm block mt-1">
+                                        <span className="text-blue-600 dark:text-blue-400">
+                                          Balance: {((entry as any).dieselBalanceInTank as number).toFixed(3)} L
+                                          {(entry as any).dieselBalanceConfirmed && " ✓"}
+                                        </span>
+                                        {dieselIssuedVal > 0 && (
+                                          <span className="text-muted-foreground block">
+                                            Net: {(dieselIssuedVal - ((entry as any).dieselBalanceInTank as number)).toFixed(3)} L
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
                                   </div>
                                 </>
                               )}

@@ -143,7 +143,7 @@ export interface IStorage {
   updateMixTemplate(id: number, template: Partial<InsertMixTemplate>, components?: InsertMixTemplateComponent[]): Promise<MixTemplate | undefined>;
   deleteMixTemplate(id: number): Promise<boolean>;
   
-  getEquipmentMaster(): Promise<EquipmentMasterType[]>;
+  getEquipmentMaster(includeInactive?: boolean): Promise<EquipmentMasterType[]>;
   createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType>;
   updateEquipment(id: number, equipment: Partial<InsertEquipmentMaster>): Promise<EquipmentMasterType | undefined>;
   deleteEquipment(id: number): Promise<boolean>;
@@ -1247,7 +1247,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Equipment Master
-  async getEquipmentMaster(): Promise<EquipmentMasterType[]> {
+  async getEquipmentMaster(includeInactive?: boolean): Promise<EquipmentMasterType[]> {
+    if (includeInactive) {
+      return db.select().from(equipmentMaster).orderBy(asc(equipmentMaster.name));
+    }
     return db.select().from(equipmentMaster).where(eq(equipmentMaster.isActive, 1)).orderBy(asc(equipmentMaster.name));
   }
 
