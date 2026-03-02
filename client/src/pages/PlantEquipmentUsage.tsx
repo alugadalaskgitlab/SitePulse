@@ -134,8 +134,14 @@ export default function PlantEquipmentUsage() {
   });
 
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
-    queryKey: ["/api/plant-module/equipment"],
+    queryKey: ["/api/plant-module/equipment", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
   });
+  const activeEquipment = equipment?.filter(e => e.isActive === 1) || [];
 
   const createEquipmentMutation = useMutation({
     mutationFn: async (data: { name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number; ownership?: string; vendorName?: string }) => {
@@ -785,7 +791,7 @@ export default function PlantEquipmentUsage() {
                     <SelectValue placeholder="Select equipment" />
                   </SelectTrigger>
                   <SelectContent>
-                    {equipment?.map((equip) => (
+                    {activeEquipment.map((equip) => (
                       <SelectItem key={equip.id} value={String(equip.id)}>
                         {equip.name} {(equip as any).registrationNumber ? `(${(equip as any).registrationNumber})` : ""} - {equip.meterType === "hour_meter" ? "hrs" : "km"}
                       </SelectItem>

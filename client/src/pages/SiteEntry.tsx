@@ -121,7 +121,12 @@ export default function SiteEntry() {
 
   // Fetch equipment master for unified equipment tracking
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
-    queryKey: ["/api/plant-module/equipment"],
+    queryKey: ["/api/plant-module/equipment", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
   });
 
   // Fetch sites master for dropdown
