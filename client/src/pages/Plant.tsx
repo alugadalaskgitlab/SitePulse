@@ -19,8 +19,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccess } from "@/lib/access-context";
 import { PinAuth } from "@/components/PinAuth";
-import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock } from "@shared/schema";
-import { EQUIPMENT_TYPES, METER_TYPES } from "@shared/schema";
+import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel } from "@shared/schema";
+import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { format } from "date-fns";
 
 export default function Plant() {
@@ -429,6 +429,7 @@ function MastersTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
       <MaterialMaster isManagerMode={isManager} />
       <MixTemplateMaster isManagerMode={isManager} />
       <EquipmentMasterSection isManagerMode={isManager} />
+      <PersonnelMasterSection isManagerMode={isManager} />
     </div>
   );
 }
@@ -1735,6 +1736,208 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
           </div>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boolean }) {
+  const { toast } = useToast();
+  const { canEdit: globalCanEdit } = useAccess();
+  const canEdit = !isManagerMode && globalCanEdit;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<Personnel | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("Engineer");
+  const [phone, setPhone] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+
+  const { data: personnel, isLoading } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", showInactive ? "all" : "active"],
+    queryFn: async () => {
+      const res = await fetch(`/api/personnel${showInactive ? "?includeInactive=true" : ""}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; role: string; phone?: string }) =>
+      apiRequest("POST", "/api/personnel", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "Personnel added" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: number; name: string; role: string; phone?: string }) =>
+      apiRequest("PATCH", `/api/personnel/${data.id}`, { name: data.name, role: data.role, phone: data.phone }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "Personnel updated" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("PATCH", `/api/personnel/${id}/toggle-active`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
+      toast({ title: "Status updated" });
+    },
+  });
+
+  const resetForm = () => {
+    setName("");
+    setRole("Engineer");
+    setPhone("");
+    setEditingPerson(null);
+  };
+
+  const openEdit = (person: Personnel) => {
+    setEditingPerson(person);
+    setName(person.name);
+    setRole(person.role);
+    setPhone(person.phone || "");
+    setDialogOpen(true);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    const data = { name: name.trim(), role, phone: phone.trim() || undefined };
+    if (editingPerson) {
+      updateMutation.mutate({ id: editingPerson.id, ...data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="flex items-center gap-2">
+          <Users className="w-5 h-5" />
+          Personnel Master
+        </CardTitle>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="show-inactive-personnel"
+              checked={showInactive}
+              onCheckedChange={(checked) => setShowInactive(checked === true)}
+              data-testid="checkbox-show-inactive-personnel"
+            />
+            <Label htmlFor="show-inactive-personnel" className="text-xs cursor-pointer">Show Inactive</Label>
+          </div>
+          <Button size="sm" onClick={openCreate} data-testid="button-add-personnel">
+            <Plus className="w-4 h-4 mr-1" /> Add Personnel
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
+        ) : !personnel?.length ? (
+          <p className="text-muted-foreground text-center py-8">No personnel added yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {personnel.map(person => (
+              <div
+                key={person.id}
+                className={`flex items-center justify-between p-3 rounded-lg border ${!person.isActive ? "opacity-50" : ""}`}
+                data-testid={`personnel-row-${person.id}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div>
+                    <div className="font-medium">{person.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {person.role}
+                      {person.phone && ` · ${person.phone}`}
+                    </div>
+                  </div>
+                  {!person.isActive && <Badge variant="outline" className="text-xs">Inactive</Badge>}
+                </div>
+                <div className="flex items-center gap-1">
+                  {canEdit && (
+                    <>
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(person)} data-testid={`button-edit-personnel-${person.id}`}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => toggleMutation.mutate(person.id)}
+                        title={person.isActive ? "Deactivate" : "Activate"}
+                        data-testid={`button-toggle-personnel-${person.id}`}
+                      >
+                        <Power className={`w-4 h-4 ${person.isActive ? "text-green-600" : "text-muted-foreground"}`} />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{editingPerson ? "Edit Personnel" : "Add Personnel"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Name</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Full name"
+                data-testid="input-personnel-name"
+              />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger data-testid="select-personnel-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERSONNEL_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Phone (optional)</Label>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone number"
+                data-testid="input-personnel-phone"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!name.trim() || createMutation.isPending || updateMutation.isPending}
+              onClick={handleSubmit}
+              data-testid="button-save-personnel"
+            >
+              {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

@@ -1,18 +1,23 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { useDpr } from "@/hooks/use-dprs";
-import type { EquipmentMasterType, Site } from "@shared/schema";
+import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
+import { PERSONNEL_ROLES } from "@shared/schema";
 
 interface ProgressEntry {
   activity: string;
@@ -24,6 +29,9 @@ interface ProgressEntry {
   thickness: number | null;
   quantity: number | null;
   uom: string;
+  noSiteWork: boolean;
+  noSiteWorkDescription: string;
+  personnelIds: number[];
 }
 
 interface EquipmentEntry {
@@ -152,8 +160,30 @@ export default function SiteEdit() {
     engineer: "",
   });
 
+  const { data: personnelList } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel"],
+  });
+
+  const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
+  const [newPersonnelName, setNewPersonnelName] = useState("");
+  const [newPersonnelRole, setNewPersonnelRole] = useState("Engineer");
+  const [newPersonnelPhone, setNewPersonnelPhone] = useState("");
+
+  const createPersonnelMutation = useMutation({
+    mutationFn: (data: { name: string; role: string; phone?: string }) =>
+      apiRequest("POST", "/api/personnel", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/personnel"] });
+      setAddPersonnelOpen(false);
+      setNewPersonnelName("");
+      setNewPersonnelRole("Engineer");
+      setNewPersonnelPhone("");
+      toast({ title: "Personnel added" });
+    },
+  });
+
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -179,7 +209,7 @@ export default function SiteEdit() {
       });
 
       if (dpr.progress?.length) {
-        setProgress(dpr.progress.map(p => ({
+        setProgress(dpr.progress.map((p: any) => ({
           activity: p.activity || "",
           side: p.side || "",
           chainageFrom: p.chainageFrom || "",
@@ -189,6 +219,9 @@ export default function SiteEdit() {
           thickness: p.thickness,
           quantity: p.quantity,
           uom: p.uom || "SQM",
+          noSiteWork: p.noSiteWork || false,
+          noSiteWorkDescription: p.noSiteWorkDescription || "",
+          personnelIds: p.personnelIds || [],
         })));
       }
 
@@ -301,7 +334,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM" }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }]);
     } else if (section === 'labour') {
@@ -459,135 +492,35 @@ export default function SiteEdit() {
         </CardHeader>
         <CardContent className="space-y-4">
           {progress.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border rounded-lg bg-muted/30">
-              <div className="col-span-2">
-                <Label className="text-xs">Activity</Label>
-                <Input
-                  placeholder="Activity description"
-                  value={entry.activity}
-                  onChange={(e) => {
-                    const updated = [...progress];
-                    updated[idx].activity = e.target.value.toUpperCase();
-                    setProgress(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-activity-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Side</Label>
-                <Select
-                  value={entry.side}
-                  onValueChange={(val) => {
-                    const updated = [...progress];
-                    updated[idx].side = val;
-                    setProgress(updated);
-                  }}
-                >
-                  <SelectTrigger data-testid={`select-side-${idx}`}>
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">From (Km)</Label>
-                <Input
-                  placeholder="0+000"
-                  value={entry.chainageFrom}
-                  onChange={(e) => {
-                    const updated = [...progress];
-                    updated[idx].chainageFrom = e.target.value.toUpperCase();
-                    setProgress(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-chainage-from-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">To (Km)</Label>
-                <Input
-                  placeholder="0+000"
-                  value={entry.chainageTo}
-                  onChange={(e) => {
-                    const updated = [...progress];
-                    updated[idx].chainageTo = e.target.value.toUpperCase();
-                    setProgress(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-chainage-to-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Length (m)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0"
-                  value={entry.length ?? ""}
-                  onChange={(e) => {
-                    const updated = [...progress];
-                    updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
-                    updated[idx].quantity = calculateQuantity(updated[idx]);
-                    setProgress(updated);
-                  }}
-                  data-testid={`input-length-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Width (m)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0"
-                  value={entry.width ?? ""}
-                  onChange={(e) => {
-                    const updated = [...progress];
-                    updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
-                    updated[idx].quantity = calculateQuantity(updated[idx]);
-                    setProgress(updated);
-                  }}
-                  data-testid={`input-width-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Thickness (m)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0"
-                  value={entry.thickness ?? ""}
-                  onChange={(e) => {
-                    const updated = [...progress];
-                    updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
-                    updated[idx].quantity = calculateQuantity(updated[idx]);
-                    setProgress(updated);
-                  }}
-                  data-testid={`input-thickness-${idx}`}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">UOM</Label>
-                <Select
-                  value={entry.uom}
-                  onValueChange={(val) => {
-                    const updated = [...progress];
-                    updated[idx].uom = val;
-                    updated[idx].quantity = calculateQuantity(updated[idx]);
-                    setProgress(updated);
-                  }}
-                >
-                  <SelectTrigger data-testid={`select-uom-${idx}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end">
+            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`no-site-work-${idx}`}
+                      checked={entry.noSiteWork}
+                      onCheckedChange={(checked) => {
+                        const updated = [...progress];
+                        updated[idx].noSiteWork = checked === true;
+                        if (checked) {
+                          updated[idx].activity = updated[idx].activity || "NO SITE WORK";
+                          updated[idx].side = "";
+                          updated[idx].chainageFrom = "";
+                          updated[idx].chainageTo = "";
+                          updated[idx].length = null;
+                          updated[idx].width = null;
+                          updated[idx].thickness = null;
+                          updated[idx].quantity = null;
+                        } else {
+                          updated[idx].noSiteWorkDescription = "";
+                        }
+                        setProgress(updated);
+                      }}
+                      data-testid={`checkbox-no-site-work-${idx}`}
+                    />
+                    <Label htmlFor={`no-site-work-${idx}`} className="text-xs cursor-pointer">No Site Work</Label>
+                  </div>
+                </div>
                 <Button 
                   size="icon" 
                   variant="ghost" 
@@ -597,6 +530,214 @@ export default function SiteEdit() {
                 >
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
+              </div>
+
+              {entry.noSiteWork ? (
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs">Activity</Label>
+                    <Input
+                      placeholder="e.g., MACHINERY SHIFTING, OFFICE WORK"
+                      value={entry.activity}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].activity = e.target.value.toUpperCase();
+                        setProgress(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-activity-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Description</Label>
+                    <Textarea
+                      placeholder="Describe what was done..."
+                      value={entry.noSiteWorkDescription}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].noSiteWorkDescription = e.target.value.toUpperCase();
+                        setProgress(updated);
+                      }}
+                      className="uppercase"
+                      rows={3}
+                      data-testid={`input-description-${idx}`}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="col-span-2">
+                    <Label className="text-xs">Activity</Label>
+                    <Input
+                      placeholder="Activity description"
+                      value={entry.activity}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].activity = e.target.value.toUpperCase();
+                        setProgress(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-activity-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Side</Label>
+                    <Select
+                      value={entry.side}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].side = val;
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-side-${idx}`}>
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">From (Km)</Label>
+                    <Input
+                      placeholder="0+000"
+                      value={entry.chainageFrom}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        setProgress(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-chainage-from-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">To (Km)</Label>
+                    <Input
+                      placeholder="0+000"
+                      value={entry.chainageTo}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].chainageTo = e.target.value.toUpperCase();
+                        setProgress(updated);
+                      }}
+                      className="uppercase"
+                      data-testid={`input-chainage-to-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Length (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      value={entry.length ?? ""}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-length-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Width (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      value={entry.width ?? ""}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-width-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Thickness (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      value={entry.thickness ?? ""}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-thickness-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">UOM</Label>
+                    <Select
+                      value={entry.uom}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].uom = val;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-uom-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Label className="text-xs text-muted-foreground">Personnel:</Label>
+                {entry.personnelIds.map(pid => {
+                  const person = personnelList?.find(p => p.id === pid);
+                  return person ? (
+                    <Badge key={pid} variant="secondary" className="text-xs gap-1">
+                      {person.name}
+                      <X className="w-3 h-3 cursor-pointer" onClick={() => {
+                        const updated = [...progress];
+                        updated[idx].personnelIds = updated[idx].personnelIds.filter(id => id !== pid);
+                        setProgress(updated);
+                      }} />
+                    </Badge>
+                  ) : null;
+                })}
+                <Select
+                  value=""
+                  onValueChange={(val) => {
+                    if (val === "__add_new__") {
+                      setAddPersonnelOpen(true);
+                      return;
+                    }
+                    const pid = parseInt(val);
+                    if (!entry.personnelIds.includes(pid)) {
+                      const updated = [...progress];
+                      updated[idx].personnelIds = [...updated[idx].personnelIds, pid];
+                      setProgress(updated);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[140px] h-7 text-xs" data-testid={`select-personnel-${idx}`}>
+                    <SelectValue placeholder="+ Add person" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {personnelList?.filter(p => !entry.personnelIds.includes(p.id)).map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name} ({p.role})</SelectItem>
+                    ))}
+                    <SelectItem value="__add_new__" className="text-primary font-medium">
+                      <span className="flex items-center gap-1"><UserPlus className="h-3 w-3" /> New Personnel</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           ))}
@@ -1010,6 +1151,59 @@ export default function SiteEdit() {
           Save Changes
         </Button>
       </div>
+
+      <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Add New Personnel</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Name</Label>
+              <Input
+                value={newPersonnelName}
+                onChange={(e) => setNewPersonnelName(e.target.value)}
+                placeholder="Full name"
+                data-testid="input-new-personnel-name"
+              />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <Select value={newPersonnelRole} onValueChange={setNewPersonnelRole}>
+                <SelectTrigger data-testid="select-new-personnel-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERSONNEL_ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Phone (optional)</Label>
+              <Input
+                value={newPersonnelPhone}
+                onChange={(e) => setNewPersonnelPhone(e.target.value)}
+                placeholder="Phone number"
+                data-testid="input-new-personnel-phone"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddPersonnelOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!newPersonnelName.trim() || createPersonnelMutation.isPending}
+              onClick={() => createPersonnelMutation.mutate({
+                name: newPersonnelName.trim(),
+                role: newPersonnelRole,
+                phone: newPersonnelPhone.trim() || undefined,
+              })}
+              data-testid="button-save-new-personnel"
+            >
+              {createPersonnelMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

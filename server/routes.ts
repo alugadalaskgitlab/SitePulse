@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 
 export async function registerRoutes(
@@ -168,6 +168,53 @@ export async function registerRoutes(
       res.json({ seeded: count });
     } catch (err) {
       res.status(500).json({ message: "Failed to seed sites" });
+    }
+  });
+
+  // ============================================
+  // PERSONNEL MASTER
+  // ============================================
+
+  app.get("/api/personnel", async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === "true";
+      const list = await storage.getPersonnel(includeInactive);
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch personnel" });
+    }
+  });
+
+  app.post("/api/personnel", async (req, res) => {
+    try {
+      const parsed = insertPersonnelSchema.parse(req.body);
+      const person = await storage.createPersonnel(parsed);
+      res.status(201).json(person);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: "Failed to create personnel" });
+    }
+  });
+
+  app.patch("/api/personnel/:id", async (req, res) => {
+    try {
+      const parsed = insertPersonnelSchema.partial().parse(req.body);
+      const updated = await storage.updatePersonnel(Number(req.params.id), parsed);
+      if (!updated) return res.status(404).json({ message: "Personnel not found" });
+      res.json(updated);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: "Failed to update personnel" });
+    }
+  });
+
+  app.patch("/api/personnel/:id/toggle-active", async (req, res) => {
+    try {
+      const updated = await storage.togglePersonnelActive(Number(req.params.id));
+      if (!updated) return res.status(404).json({ message: "Personnel not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to toggle personnel status" });
     }
   });
 
@@ -364,7 +411,13 @@ export async function registerRoutes(
     if (!dpr) {
       return res.status(404).json({ message: 'DPR not found' });
     }
-    res.json(dpr);
+    const progressIds = dpr.progress?.map(p => p.id) || [];
+    const actPersonnel = progressIds.length > 0 ? await storage.getActivityPersonnel(progressIds) : [];
+    const enrichedProgress = dpr.progress?.map(p => ({
+      ...p,
+      personnelIds: actPersonnel.filter(ap => ap.progressEntryId === p.id).map(ap => ap.personnelId),
+    }));
+    res.json({ ...dpr, progress: enrichedProgress });
   });
 
   // Create new DPR

@@ -32,6 +32,7 @@ Preferred communication style: Simple, everyday language.
 - Daily Progress Reports (DPRs) including progress, equipment, labor, and material logs.
 - Plant Production Reports.
 - Versioning for DPRs for audit trails.
+- Personnel Master for tracking engineers, supervisors, assistants, foremen per activity.
 
 ### Authentication & Access Control
 - **Role-Based**: Engineer (view), Manager (edit), Admin (full control).
@@ -83,6 +84,8 @@ Preferred communication style: Simple, everyday language.
 - **Site Reports**: Enhanced filtering (date range, site, engineer, activity, equipment, diesel usage, material) and Admin-only export features (Excel, PDF, Print) with multi-sheet Excel export.
 - **Equipment Tracking**: Supports both time entry and hour meter readings for equipment usage, with live efficiency calculation and visual indicators. Diesel balance tracking (informational, no stock adjustment) with `dieselBalanceInTank` and `dieselBalanceConfirmed` fields — shows net consumed when balance is entered.
 - **Equipment Master**: Active/Inactive toggle via `PATCH /api/plant-module/equipment/:id/toggle-active`. "Show Inactive" checkbox in Equipment Master UI. `getEquipmentMaster(includeInactive?)` accepts optional param. Inactive equipment shown with dimmed styling and "Inactive" badge. DPR forms and usage dropdowns only show active equipment.
+- **Per-Row "No Site Work"**: Each activity progress row has a `noSiteWork` checkbox. When checked, structured fields (chainage/dimensions/qty) are hidden and replaced with a free-text `noSiteWorkDescription` textarea. Multiple rows in the same DPR can independently be structured or free-text. Stored per `progress_entries` row.
+- **Personnel Tracking Per Activity**: `personnel` table (name, role, phone, isActive) and `activity_personnel` junction table link personnel to each activity row. Personnel picker on each progress row in SiteEntry/SiteEdit forms with inline "Add Personnel" dialog. Personnel names shown in DPR preview and report views. Personnel Master UI in Plant.tsx Masters tab with add/edit/toggle active functionality. `PERSONNEL_ROLES = ["Engineer", "Supervisor", "Assistant", "Foreman", "Other"]`.
 - **Admin Notifications**: In-app notification system (info, warning, success, error) with bell icon, sound alerts, and auto-refresh, triggered by key actions like DPR submissions or material movements.
 - **Push Notifications**: Web Push (VAPID-based) for real-time OS-level notifications on iPhone/iPad/Android/Desktop. Requires PWA install on iOS. PIN-gated (Manager or Admin PIN required to subscribe). All data entry events trigger push to all subscribed devices. Stale subscriptions (410 Gone) auto-cleaned. Components: `server/push.ts` (sendPushToAll helper), `client/src/components/PushNotificationSetup.tsx` (UI), `client/public/service-worker.js` (push/notificationclick handlers), `push_subscriptions` DB table. VAPID keys stored as env vars (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY).
 

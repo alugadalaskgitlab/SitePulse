@@ -29,6 +29,8 @@ export const progressEntries = pgTable("progress_entries", {
   thickness: real("thickness"),
   quantity: real("quantity"),
   uom: text("uom"),
+  noSiteWork: boolean("no_site_work").default(false),
+  noSiteWorkDescription: text("no_site_work_description"),
 });
 
 // Equipment Log
@@ -510,12 +512,14 @@ export type PlantVersion = typeof plantVersions.$inferSelect;
 
 // Composite Request Type for Creating a Full DPR
 export const createDprRequestSchema = insertDprSchema.extend({
-  progress: z.array(insertProgressSchema).optional(),
+  progress: z.array(insertProgressSchema.extend({
+    personnelIds: z.array(z.number()).optional(),
+  })).optional(),
   equipment: z.array(insertEquipmentSchema).optional(),
   labour: z.array(insertLabourSchema).optional(),
   materials: z.array(insertMaterialSchema).optional(),
   sitePurchases: z.array(insertSitePurchaseSchema).optional(),
-  clientTimestamp: z.string().optional(), // Client's local timestamp for accurate time display
+  clientTimestamp: z.string().optional(),
 });
 
 export type CreateDprRequest = z.infer<typeof createDprRequestSchema>;
@@ -611,6 +615,33 @@ export const MIX_TYPES = ["BC", "DBM"] as const;
 
 // Default LDO norm (liters per ton)
 export const DEFAULT_LDO_NORM = 6;
+
+export const PERSONNEL_ROLES = ["Engineer", "Supervisor", "Assistant", "Foreman", "Other"] as const;
+
+// Personnel Master
+export const personnel = pgTable("personnel", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  role: text("role").notNull(), // Engineer, Supervisor, Assistant, Foreman, Other
+  phone: text("phone"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Activity-Personnel junction (tracks who was present per activity row)
+export const activityPersonnel = pgTable("activity_personnel", {
+  id: serial("id").primaryKey(),
+  progressEntryId: integer("progress_entry_id").notNull(),
+  personnelId: integer("personnel_id").notNull(),
+});
+
+export const insertPersonnelSchema = createInsertSchema(personnel).omit({ id: true, createdAt: true });
+export const insertActivityPersonnelSchema = createInsertSchema(activityPersonnel).omit({ id: true });
+
+export type Personnel = typeof personnel.$inferSelect;
+export type InsertPersonnel = z.infer<typeof insertPersonnelSchema>;
+export type ActivityPersonnel = typeof activityPersonnel.$inferSelect;
+export type InsertActivityPersonnel = z.infer<typeof insertActivityPersonnelSchema>;
 
 // ============================================
 // FUEL STOCK TRACKING - BITUMEN & LDO

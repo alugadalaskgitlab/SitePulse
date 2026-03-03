@@ -10,9 +10,10 @@ import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PinAuth } from "@/components/PinAuth";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { Personnel } from "@shared/schema";
 
 const MANAGER_PIN = "1234";
 const ADMIN_PIN = "5678";
@@ -23,6 +24,14 @@ export default function SiteReport() {
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { toast } = useToast();
+  const { data: personnelList } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel"],
+  });
+
+  const getPersonnelNames = (ids: number[] | undefined) => {
+    if (!ids?.length || !personnelList) return null;
+    return ids.map(id => personnelList.find(p => p.id === id)?.name).filter(Boolean).join(", ");
+  };
   const { appendOrigin } = useOrigin();
   const backLink = appendOrigin("/site/dashboard");
   
@@ -320,6 +329,24 @@ export default function SiteReport() {
               </TableHeader>
               <TableBody>
                 {dpr.progress.map((item: any, i: number) => {
+                  const personnelNames = getPersonnelNames(item.personnelIds);
+                  if (item.noSiteWork) {
+                    return (
+                      <TableRow key={i} data-testid={`row-progress-${i}`}>
+                        <TableCell className="font-medium">
+                          <div>{item.activity}</div>
+                          {item.noSiteWorkDescription && (
+                            <div className="text-xs text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
+                          )}
+                          {personnelNames && (
+                            <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                          )}
+                        </TableCell>
+                        <TableCell colSpan={8} className="text-muted-foreground italic">No site work</TableCell>
+                      </TableRow>
+                    );
+                  }
+
                   const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
                     ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
                     : null;
@@ -327,7 +354,12 @@ export default function SiteReport() {
                   
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
-                      <TableCell className="font-medium">{item.activity}</TableCell>
+                      <TableCell className="font-medium">
+                        <div>{item.activity}</div>
+                        {personnelNames && (
+                          <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                        )}
+                      </TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>

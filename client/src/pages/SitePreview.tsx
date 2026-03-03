@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
+import type { Personnel } from "@shared/schema";
 
 interface PreviewData {
   date: string;
@@ -27,6 +29,15 @@ interface SitePreviewProps {
 }
 
 export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: SitePreviewProps) {
+  const { data: personnelList } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel"],
+  });
+
+  const getPersonnelNames = (ids: number[] | undefined) => {
+    if (!ids?.length || !personnelList) return null;
+    return ids.map(id => personnelList.find(p => p.id === id)?.name).filter(Boolean).join(", ");
+  };
+
   const calculateHours = (startTime?: string, endTime?: string): string => {
     if (!startTime || !endTime) return '-';
     try {
@@ -131,6 +142,24 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
               </TableHeader>
               <TableBody>
                 {data.progress.filter(p => p.activity).map((item, i) => {
+                  const personnelNames = getPersonnelNames(item.personnelIds);
+                  if (item.noSiteWork) {
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">
+                          <div>{item.activity}</div>
+                          {item.noSiteWorkDescription && (
+                            <div className="text-xs text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
+                          )}
+                          {personnelNames && (
+                            <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                          )}
+                        </TableCell>
+                        <TableCell colSpan={8} className="text-muted-foreground italic">No site work</TableCell>
+                      </TableRow>
+                    );
+                  }
+
                   const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
                     ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
                     : null;
@@ -138,7 +167,12 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   
                   return (
                     <TableRow key={i}>
-                      <TableCell className="font-medium">{item.activity}</TableCell>
+                      <TableCell className="font-medium">
+                        <div>{item.activity}</div>
+                        {personnelNames && (
+                          <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                        )}
+                      </TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>

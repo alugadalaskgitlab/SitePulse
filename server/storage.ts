@@ -90,6 +90,11 @@ import {
   pushSubscriptions,
   type PushSubscription,
   type InsertPushSubscription,
+  personnel,
+  activityPersonnel,
+  type Personnel,
+  type InsertPersonnel,
+  type ActivityPersonnel,
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT
 } from "@shared/schema";
@@ -276,6 +281,16 @@ export interface IStorage {
   
   // Dispatch Variance Report
   getDispatchesWithVariance(filters?: { dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
+
+  // Personnel Master
+  getPersonnel(includeInactive?: boolean): Promise<Personnel[]>;
+  createPersonnel(data: InsertPersonnel): Promise<Personnel>;
+  updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined>;
+  togglePersonnelActive(id: number): Promise<Personnel | undefined>;
+
+  // Activity Personnel
+  saveActivityPersonnel(progressEntryId: number, personnelIds: number[]): Promise<void>;
+  getActivityPersonnel(progressEntryIds: number[]): Promise<ActivityPersonnel[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -408,13 +423,21 @@ export class DatabaseStorage implements IStorage {
 
       // 2. Insert Progress Entries with uppercase text fields
       if (dprData.progress?.length) {
-        await tx.insert(progressEntries).values(
-          dprData.progress.map(p => ({ 
-            ...p, 
-            dprId,
-            activity: p.activity?.toUpperCase() || p.activity,
-          }))
-        );
+        const progressWithPersonnel = dprData.progress.map(p => {
+          const { personnelIds, ...progressData } = p as any;
+          return { progressData: { ...progressData, dprId, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription }, personnelIds: personnelIds || [] };
+        });
+        const insertedProgress = await tx.insert(progressEntries).values(
+          progressWithPersonnel.map(p => p.progressData)
+        ).returning();
+        for (let i = 0; i < insertedProgress.length; i++) {
+          const pIds = progressWithPersonnel[i].personnelIds as number[];
+          if (pIds.length > 0) {
+            await tx.insert(activityPersonnel).values(
+              pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId }))
+            );
+          }
+        }
       }
 
       // 3. Insert Equipment Logs with uppercase text fields
@@ -487,6 +510,12 @@ export class DatabaseStorage implements IStorage {
       // Clean up old DPR equipment diesel ledger entries before deleting equipment logs
       await this.cleanupDprEquipmentDieselLedger(tx, id);
 
+      // Clean up old activity personnel before deleting progress entries
+      const oldProgressIds = (await tx.select({ id: progressEntries.id }).from(progressEntries).where(eq(progressEntries.dprId, id))).map(p => p.id);
+      if (oldProgressIds.length > 0) {
+        await tx.delete(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, oldProgressIds));
+      }
+
       // Delete old entries and insert new ones
       await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
@@ -495,9 +524,21 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
 
       if (dprData.progress?.length) {
-        await tx.insert(progressEntries).values(
-          dprData.progress.map(p => ({ ...p, dprId: id }))
-        );
+        const progressWithPersonnel = dprData.progress.map(p => {
+          const { personnelIds, ...progressData } = p as any;
+          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription }, personnelIds: personnelIds || [] };
+        });
+        const insertedProgress = await tx.insert(progressEntries).values(
+          progressWithPersonnel.map(p => p.progressData)
+        ).returning();
+        for (let i = 0; i < insertedProgress.length; i++) {
+          const pIds = progressWithPersonnel[i].personnelIds as number[];
+          if (pIds.length > 0) {
+            await tx.insert(activityPersonnel).values(
+              pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId }))
+            );
+          }
+        }
       }
 
       if (dprData.equipment?.length) {
@@ -561,9 +602,13 @@ export class DatabaseStorage implements IStorage {
 
       const dprId = newDpr.id;
 
-      // Copy progress entries with uppercase
+      // Copy progress entries with uppercase and activity personnel
       if (original.progress?.length) {
-        await tx.insert(progressEntries).values(
+        const oldProgressIds = original.progress.map(p => p.id);
+        const oldPersonnel = oldProgressIds.length > 0
+          ? await tx.select().from(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, oldProgressIds))
+          : [];
+        const insertedProgress = await tx.insert(progressEntries).values(
           original.progress.map(p => ({
             dprId,
             activity: p.activity?.toUpperCase() || p.activity,
@@ -575,8 +620,19 @@ export class DatabaseStorage implements IStorage {
             thickness: p.thickness,
             quantity: p.quantity,
             uom: p.uom,
+            noSiteWork: (p as any).noSiteWork || false,
+            noSiteWorkDescription: (p as any).noSiteWorkDescription,
           }))
-        );
+        ).returning();
+        for (let i = 0; i < insertedProgress.length; i++) {
+          const oldId = original.progress[i].id;
+          const pIds = oldPersonnel.filter(ap => ap.progressEntryId === oldId).map(ap => ap.personnelId);
+          if (pIds.length > 0) {
+            await tx.insert(activityPersonnel).values(
+              pIds.map(personnelId => ({ progressEntryId: insertedProgress[i].id, personnelId }))
+            );
+          }
+        }
       }
 
       // Copy equipment logs with uppercase
@@ -4377,6 +4433,50 @@ export class DatabaseStorage implements IStorage {
   async deleteLdoDipReading(id: number): Promise<boolean> {
     const [deleted] = await db.delete(ldoDipReadings).where(eq(ldoDipReadings.id, id)).returning();
     return !!deleted;
+  }
+
+  // Personnel Master
+  async getPersonnel(includeInactive?: boolean): Promise<Personnel[]> {
+    if (includeInactive) {
+      return db.select().from(personnel).orderBy(asc(personnel.name));
+    }
+    return db.select().from(personnel).where(eq(personnel.isActive, 1)).orderBy(asc(personnel.name));
+  }
+
+  async createPersonnel(data: InsertPersonnel): Promise<Personnel> {
+    const uppercased = { ...data, name: data.name.toUpperCase() };
+    const [result] = await db.insert(personnel).values(uppercased).returning();
+    return result;
+  }
+
+  async updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined> {
+    const updates = { ...data };
+    if (updates.name) updates.name = updates.name.toUpperCase();
+    const [result] = await db.update(personnel).set(updates).where(eq(personnel.id, id)).returning();
+    return result;
+  }
+
+  async togglePersonnelActive(id: number): Promise<Personnel | undefined> {
+    const [existing] = await db.select().from(personnel).where(eq(personnel.id, id)).limit(1);
+    if (!existing) return undefined;
+    const newStatus = existing.isActive === 1 ? 0 : 1;
+    const [result] = await db.update(personnel).set({ isActive: newStatus }).where(eq(personnel.id, id)).returning();
+    return result;
+  }
+
+  // Activity Personnel
+  async saveActivityPersonnel(progressEntryId: number, personnelIds: number[]): Promise<void> {
+    await db.delete(activityPersonnel).where(eq(activityPersonnel.progressEntryId, progressEntryId));
+    if (personnelIds.length > 0) {
+      await db.insert(activityPersonnel).values(
+        personnelIds.map(personnelId => ({ progressEntryId, personnelId }))
+      );
+    }
+  }
+
+  async getActivityPersonnel(progressEntryIds: number[]): Promise<ActivityPersonnel[]> {
+    if (progressEntryIds.length === 0) return [];
+    return db.select().from(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, progressEntryIds));
   }
 }
 
