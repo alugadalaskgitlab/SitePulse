@@ -1900,8 +1900,9 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
               <Label>Name</Label>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => setName(e.target.value.toUpperCase())}
                 placeholder="Full name"
+                className="uppercase"
                 data-testid="input-personnel-name"
               />
             </div>
@@ -1920,8 +1921,9 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
               <Label>Phone (optional)</Label>
               <Input
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(e.target.value.toUpperCase())}
                 placeholder="Phone number"
+                className="uppercase"
                 data-testid="input-personnel-phone"
               />
             </div>

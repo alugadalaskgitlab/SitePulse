@@ -1232,8 +1232,9 @@ export default function SiteEntry() {
               <Label>Name</Label>
               <Input
                 value={newPersonnelName}
-                onChange={(e) => setNewPersonnelName(e.target.value)}
+                onChange={(e) => setNewPersonnelName(e.target.value.toUpperCase())}
                 placeholder="Full name"
+                className="uppercase"
                 data-testid="input-new-personnel-name"
               />
             </div>
@@ -1252,8 +1253,9 @@ export default function SiteEntry() {
               <Label>Phone (optional)</Label>
               <Input
                 value={newPersonnelPhone}
-                onChange={(e) => setNewPersonnelPhone(e.target.value)}
+                onChange={(e) => setNewPersonnelPhone(e.target.value.toUpperCase())}
                 placeholder="Phone number"
+                className="uppercase"
                 data-testid="input-new-personnel-phone"
               />
             </div>
