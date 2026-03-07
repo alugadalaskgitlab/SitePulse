@@ -1737,7 +1737,7 @@ export default function PlantLdoFlowMeter() {
 
             <div>
               <Label>Notes (optional)</Label>
-              <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any observations" data-testid="input-notes" />
+              <Input value={notes} onChange={e => setNotes(e.target.value.toUpperCase())} className="uppercase" placeholder="Any observations" data-testid="input-notes" />
             </div>
           </div>
           <DialogFooter>
@@ -1832,7 +1832,7 @@ export default function PlantLdoFlowMeter() {
 
             <div>
               <Label>Notes (optional)</Label>
-              <Input value={dipNotes} onChange={e => setDipNotes(e.target.value)} placeholder="Any observations" data-testid="input-dip-notes" />
+              <Input value={dipNotes} onChange={e => setDipNotes(e.target.value.toUpperCase())} className="uppercase" placeholder="Any observations" data-testid="input-dip-notes" />
             </div>
           </div>
           <DialogFooter>

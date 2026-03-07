@@ -3,7 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
-import { ChevronLeft, Plus, Trash2, Eye, Loader2, UserPlus, X } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
+import { PinAuth } from "@/components/PinAuth";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 
@@ -157,6 +158,7 @@ export default function SiteEntry() {
   });
 
   const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
+  const [showAddPersonnelPin, setShowAddPersonnelPin] = useState(false);
   const [newPersonnelName, setNewPersonnelName] = useState("");
   const [newPersonnelRole, setNewPersonnelRole] = useState("Engineer");
   const [newPersonnelPhone, setNewPersonnelPhone] = useState("");
@@ -462,14 +464,34 @@ export default function SiteEntry() {
             </Select>
           </div>
           <div>
-            <Label>Engineer Name</Label>
-            <Input
-              placeholder="Enter engineer name"
-              value={header.engineer}
-              onChange={(e) => setHeader({ ...header, engineer: e.target.value.toUpperCase() })}
-              className="uppercase"
-              data-testid="input-engineer"
-            />
+            <Label>Engineer / Submitted By</Label>
+            <div className="flex gap-2">
+              <Select
+                value={header.engineer}
+                onValueChange={(val) => setHeader({ ...header, engineer: val })}
+              >
+                <SelectTrigger className="uppercase" data-testid="select-engineer">
+                  <SelectValue placeholder="Select Engineer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(personnelList || []).filter(p => p.isActive).map((p) => (
+                    <SelectItem key={p.id} value={`${p.name.toUpperCase()} - ${p.role.toUpperCase()}`}>
+                      {p.name.toUpperCase()} - {p.role.toUpperCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={() => setShowAddPersonnelPin(true)}
+                title="Add new personnel"
+                data-testid="button-add-engineer-personnel"
+              >
+                <UserPlus className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -718,7 +740,7 @@ export default function SiteEntry() {
                   value=""
                   onValueChange={(val) => {
                     if (val === "__add_new__") {
-                      setAddPersonnelOpen(true);
+                      setShowAddPersonnelPin(true);
                       return;
                     }
                     const pid = parseInt(val);
@@ -1221,6 +1243,17 @@ export default function SiteEntry() {
           Preview Report
         </Button>
       </div>
+
+      {showAddPersonnelPin && (
+        <PinAuth
+          targetRole="any"
+          onSuccess={() => {
+            setShowAddPersonnelPin(false);
+            setAddPersonnelOpen(true);
+          }}
+          onClose={() => setShowAddPersonnelPin(false)}
+        />
+      )}
 
       <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>
         <DialogContent className="sm:max-w-[400px]">

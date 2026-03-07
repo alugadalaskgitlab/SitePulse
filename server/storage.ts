@@ -228,6 +228,12 @@ export interface IStorage {
 
   // Migrate historical DPR plant_stock diesel to stock ledger (with overlap detection against Plant Equipment Usage)
   migrateDprPlantStockDieselToLedger(): Promise<{ created: number; skipped: number; overlapped: number; errors: number }>;
+
+  // Mark superseded DPRs from version chains
+  migrateSupersededDprs(): Promise<{ marked: number; errors: number }>;
+
+  // Update historical DPR engineer names to "NAME - ROLE" from Personnel Master
+  migrateEngineerNamesToPersonnelFormat(): Promise<{ updated: number; unmatched: number; errors: number }>;
   
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -299,36 +305,16 @@ export class DatabaseStorage implements IStorage {
   async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]> {
     let conditions = [];
     
+    conditions.push(eq(dprs.isSuperseded, false));
     if (filters?.site) conditions.push(eq(dprs.site, filters.site));
     if (filters?.engineer) conditions.push(eq(dprs.engineer, filters.engineer));
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
 
-    const allDprs = await db.select()
+    return await db.select()
       .from(dprs)
       .where(and(...conditions))
       .orderBy(desc(dprs.date));
-    
-    // Deduplicate by base site name + date, keeping only the latest version
-    const latestByKey = new Map<string, Dpr>();
-    for (const dpr of allDprs) {
-      const baseSite = this.getBaseSiteName(dpr.site);
-      const key = `${baseSite}|${dpr.date}`;
-      const existing = latestByKey.get(key);
-      if (!existing) {
-        latestByKey.set(key, dpr);
-      } else {
-        const existingTime = this.getEffectiveTimestamp(existing);
-        const currentTime = this.getEffectiveTimestamp(dpr);
-        if (currentTime > existingTime) {
-          latestByKey.set(key, dpr);
-        }
-      }
-    }
-    
-    return Array.from(latestByKey.values()).sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
   }
 
   // Helper to extract base site name (strips " – Edited by..." or " – Copy by..." suffix)
@@ -355,8 +341,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDprsWithDetails(): Promise<DprWithDetails[]> {
-    // Get all DPRs with their details
-    const allDprs = await db.query.dprs.findMany({
+    return await db.query.dprs.findMany({
+      where: eq(dprs.isSuperseded, false),
       with: {
         progress: true,
         equipment: true,
@@ -366,29 +352,6 @@ export class DatabaseStorage implements IStorage {
       },
       orderBy: desc(dprs.date),
     });
-    
-    // Deduplicate by base site name + date, keeping only the latest version
-    const latestByKey = new Map<string, DprWithDetails>();
-    for (const dpr of allDprs) {
-      const baseSite = this.getBaseSiteName(dpr.site);
-      const key = `${baseSite}|${dpr.date}`;
-      const existing = latestByKey.get(key);
-      if (!existing) {
-        latestByKey.set(key, dpr);
-      } else {
-        // Compare timestamps, keep the latest
-        const existingTime = this.getEffectiveTimestamp(existing);
-        const currentTime = this.getEffectiveTimestamp(dpr);
-        if (currentTime > existingTime) {
-          latestByKey.set(key, dpr);
-        }
-      }
-    }
-    
-    // Return deduplicated results sorted by date descending
-    return Array.from(latestByKey.values()).sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
   }
 
   async getDpr(id: number): Promise<DprWithDetails | undefined> {
@@ -830,6 +793,9 @@ export class DatabaseStorage implements IStorage {
         dprId: newDpr.id,
         editedBy,
       });
+
+      // Mark original DPR as superseded so it no longer appears in listings
+      await tx.update(dprs).set({ isSuperseded: true }).where(eq(dprs.id, originalId));
 
       return newDpr;
     });
@@ -4477,6 +4443,109 @@ export class DatabaseStorage implements IStorage {
   async getActivityPersonnel(progressEntryIds: number[]): Promise<ActivityPersonnel[]> {
     if (progressEntryIds.length === 0) return [];
     return db.select().from(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, progressEntryIds));
+  }
+
+  async migrateSupersededDprs(): Promise<{ marked: number; errors: number }> {
+    const result = { marked: 0, errors: 0 };
+    try {
+      const supersededIds = new Set<number>();
+
+      // Step 1: Mark originals from dpr_versions where the new version has "Edited by" (not "Copy by")
+      const allVersions = await db.select().from(dprVersions);
+      const allDprsList = await db.select().from(dprs);
+      const dprMap = new Map(allDprsList.map(d => [d.id, d]));
+      
+      for (const v of allVersions) {
+        const newDpr = dprMap.get(v.dprId);
+        if (newDpr && /Edited by/i.test(newDpr.site)) {
+          supersededIds.add(v.originalDprId);
+        }
+      }
+
+      // Step 2: Handle legacy duplicates not tracked in dpr_versions
+      // Group all non-superseded DPRs by baseSiteName + date, mark older ones
+      const groups = new Map<string, { id: number; site: string }[]>();
+      for (const dpr of allDprsList) {
+        if (supersededIds.has(dpr.id)) continue;
+        const baseSite = this.getBaseSiteName(dpr.site);
+        const key = `${baseSite}|${dpr.date}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push({ id: dpr.id, site: dpr.site });
+      }
+
+      for (const entries of groups.values()) {
+        if (entries.length <= 1) continue;
+        entries.sort((a, b) => b.id - a.id);
+        for (let i = 1; i < entries.length; i++) {
+          supersededIds.add(entries[i].id);
+        }
+      }
+
+      if (supersededIds.size > 0) {
+        const idsToMark = Array.from(supersededIds);
+        await db.update(dprs)
+          .set({ isSuperseded: true })
+          .where(inArray(dprs.id, idsToMark));
+        result.marked = idsToMark.length;
+        console.log(`migrateSupersededDprs: Marked ${result.marked} DPRs as superseded`);
+      }
+    } catch (err) {
+      console.error('migrateSupersededDprs: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
+  }
+
+  async migrateEngineerNamesToPersonnelFormat(): Promise<{ updated: number; unmatched: number; errors: number }> {
+    const result = { updated: 0, unmatched: 0, errors: 0 };
+    try {
+      const allPersonnel = await this.getPersonnel(true);
+      if (allPersonnel.length === 0) {
+        console.log('migrateEngineerNamesToPersonnelFormat: No personnel found, skipping');
+        return result;
+      }
+
+      const allDprsList = await db.select().from(dprs);
+      const rolePattern = /\s*-\s*(ENGINEER|SUPERVISOR|ASSISTANT|FOREMAN|OTHER)\s*$/i;
+
+      const personnelByName = new Map<string, typeof allPersonnel[0]>();
+      for (const p of allPersonnel) {
+        const key = p.name.trim().toUpperCase();
+        if (!personnelByName.has(key)) {
+          personnelByName.set(key, p);
+        }
+      }
+
+      for (const dpr of allDprsList) {
+        try {
+          if (rolePattern.test(dpr.engineer)) continue;
+
+          const engineerUpper = dpr.engineer.trim().toUpperCase();
+          const match = personnelByName.get(engineerUpper);
+
+          if (match) {
+            const newValue = `${match.name.trim().toUpperCase()} - ${match.role.toUpperCase()}`;
+            if (newValue !== dpr.engineer) {
+              await db.update(dprs).set({ engineer: newValue }).where(eq(dprs.id, dpr.id));
+              result.updated++;
+            }
+          } else {
+            result.unmatched++;
+          }
+        } catch (err) {
+          console.error(`migrateEngineerNamesToPersonnelFormat: Error processing DPR ${dpr.id}:`, err);
+          result.errors++;
+        }
+      }
+
+      if (result.updated > 0 || result.unmatched > 0) {
+        console.log(`migrateEngineerNamesToPersonnelFormat: Updated ${result.updated}, unmatched ${result.unmatched}, errors ${result.errors}`);
+      }
+    } catch (err) {
+      console.error('migrateEngineerNamesToPersonnelFormat: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
   }
 }
 

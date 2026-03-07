@@ -1923,6 +1923,24 @@ async function seedDatabase() {
   }
 
   try {
+    const supersededResult = await storage.migrateSupersededDprs();
+    if (supersededResult.marked > 0) {
+      console.log(`Startup: Marked ${supersededResult.marked} DPRs as superseded, ${supersededResult.errors} errors`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to migrate superseded DPRs:", err);
+  }
+
+  try {
+    const engineerResult = await storage.migrateEngineerNamesToPersonnelFormat();
+    if (engineerResult.updated > 0 || engineerResult.unmatched > 0) {
+      console.log(`Startup: Engineer names migration - updated: ${engineerResult.updated}, unmatched: ${engineerResult.unmatched}, errors: ${engineerResult.errors}`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to migrate engineer names:", err);
+  }
+
+  try {
     const orphanResult = await storage.migrateOrphanStockToHLC();
     if (orphanResult.ledgerFixed > 0 || orphanResult.balancesMerged > 0) {
       console.log(`Startup: Migrated orphan stock to HLC - ${orphanResult.ledgerFixed} ledger entries fixed, ${orphanResult.balancesMerged} balances merged, ${orphanResult.errors} errors`);

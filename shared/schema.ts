@@ -14,6 +14,7 @@ export const dprs = pgTable("dprs", {
   role: text("role").default("engineer"), // "engineer", "manager", or "admin"
   submittedAt: text("submitted_at"), // Timestamp when report was submitted (local time format)
   createdAt: timestamp("created_at").defaultNow(),
+  isSuperseded: boolean("is_superseded").default(false),
 });
 
 // Activity Progress

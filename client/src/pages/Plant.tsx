@@ -1750,6 +1750,7 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   const [role, setRole] = useState("Engineer");
   const [phone, setPhone] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [showAddPinAuth, setShowAddPinAuth] = useState(false);
 
   const { data: personnel, isLoading } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel", showInactive ? "all" : "active"],
@@ -1808,7 +1809,16 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
 
   const openCreate = () => {
     resetForm();
+    setShowAddPinAuth(true);
+  };
+
+  const handleAddPinSuccess = (_role: "manager" | "admin") => {
+    setShowAddPinAuth(false);
     setDialogOpen(true);
+  };
+
+  const handleAddPinClose = () => {
+    setShowAddPinAuth(false);
   };
 
   const handleSubmit = () => {
@@ -1889,6 +1899,14 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
           </div>
         )}
       </CardContent>
+
+      {showAddPinAuth && (
+        <PinAuth
+          targetRole="any"
+          onSuccess={handleAddPinSuccess}
+          onClose={handleAddPinClose}
+        />
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
