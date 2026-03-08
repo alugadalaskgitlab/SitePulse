@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Purchase Indent — Design Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  body { background: #f5f5f4; color: #1c1917; min-height: 100vh; }
+
+  .top-bar { background: #1c1917; color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .top-bar h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .top-bar .mockup-badge { background: #d97706; color: white; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+  .view-toggle { display: flex; gap: 0; margin-bottom: 20px; border-radius: 8px; overflow: hidden; border: 1px solid #d6d3d1; }
+  .view-toggle button { flex: 1; padding: 10px 16px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; }
+  .view-toggle button.active { background: #d97706; color: white; }
+  .view-toggle button:not(.active) { background: white; color: #78716c; }
+  .view-toggle button:not(.active):hover { background: #fafaf9; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .page-header h2 { font-size: 20px; font-weight: 700; flex: 1; }
+  .back-btn { background: none; border: 1px solid #d6d3d1; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #57534e; }
+  .back-btn:hover { background: #fafaf9; }
+
+  .card { background: white; border-radius: 12px; border: 1px solid #e7e5e4; margin-bottom: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card-header { padding: 14px 20px; border-bottom: 1px solid #e7e5e4; display: flex; justify-content: space-between; align-items: center; }
+  .card-header h3 { font-size: 15px; font-weight: 600; }
+  .card-body { padding: 20px; }
+
+  .form-grid { display: grid; gap: 14px; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 11px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select, .form-group textarea {
+    border: 1px solid #d6d3d1; border-radius: 6px; padding: 8px 12px; font-size: 14px;
+    text-transform: uppercase; background: white; color: #1c1917; width: 100%;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: #d97706; box-shadow: 0 0 0 2px rgba(217,119,6,0.15); }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+  .form-group .hint { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; }
+  .badge-pending { background: #fef3c7; color: #92400e; }
+  .badge-approved { background: #d1fae5; color: #065f46; }
+  .badge-purchasing { background: #e0e7ff; color: #3730a3; }
+  .badge-completed { background: #dbeafe; color: #1e40af; }
+  .badge-rejected { background: #fee2e2; color: #991b1b; }
+  .badge-urgent { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+  .badge-normal { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+  .badge-low { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+
+  .badge-item-purchased { background: #d1fae5; color: #065f46; }
+  .badge-item-partial { background: #fef3c7; color: #92400e; }
+  .badge-item-not { background: #fee2e2; color: #991b1b; }
+  .badge-item-pending { background: #f3f4f6; color: #6b7280; }
+
+  .btn { border: none; border-radius: 6px; padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.3px; transition: all 0.15s; }
+  .btn-primary { background: #d97706; color: white; }
+  .btn-primary:hover { background: #b45309; }
+  .btn-success { background: #059669; color: white; }
+  .btn-success:hover { background: #047857; }
+  .btn-danger { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-outline { background: white; border: 1px solid #d6d3d1; color: #57534e; }
+  .btn-outline:hover { background: #fafaf9; }
+  .btn-sm { padding: 5px 12px; font-size: 11px; }
+
+  .status-steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+  .step { display: inline-flex; align-items: center; gap: 4px; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid #e7e5e4; color: #a8a29e; text-transform: uppercase; letter-spacing: 0.3px; }
+  .step.active { border-color: #d97706; background: #fffbeb; color: #92400e; }
+  .step.done { border-color: #10b981; background: #d1fae5; color: #065f46; }
+  .step-arrow { color: #d6d3d1; font-size: 14px; }
+
+  .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .summary-card { background: white; border: 1px solid #e7e5e4; border-radius: 10px; padding: 14px 16px; text-align: center; }
+  .summary-card .sc-label { font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-card .sc-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .summary-card .sc-sub { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+
+  .indent-card { border-left: 4px solid #d97706; cursor: pointer; transition: all 0.15s; }
+  .indent-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+  .indent-card.status-approved { border-left-color: #10b981; }
+  .indent-card.status-completed { border-left-color: #3b82f6; }
+  .indent-card.status-rejected { border-left-color: #ef4444; }
+  .indent-card.status-partial { border-left-color: #f59e0b; }
+  .indent-card .indent-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .indent-card .indent-no { font-weight: 700; font-size: 15px; text-transform: uppercase; }
+  .indent-card .indent-meta { font-size: 12px; color: #78716c; margin-top: 3px; }
+  .indent-card .indent-right { display: flex; align-items: center; gap: 14px; }
+  .indent-card .items-count { font-size: 12px; color: #57534e; font-weight: 600; }
+
+  .items-table { width: 100%; border-collapse: collapse; }
+  .items-table th { text-align: left; font-size: 10px; font-weight: 700; color: #78716c; text-transform: uppercase; padding: 10px 8px; border-bottom: 2px solid #e7e5e4; letter-spacing: 0.5px; white-space: nowrap; }
+  .items-table td { padding: 10px 8px; border-bottom: 1px solid #f5f5f4; vertical-align: top; font-size: 13px; }
+  .items-table tbody tr:hover { background: #fafaf9; }
+  .items-table input, .items-table select {
+    border: 1px solid #e7e5e4; border-radius: 4px; padding: 6px 8px; font-size: 13px;
+    width: 100%; text-transform: uppercase; background: #fafaf9;
+  }
+  .items-table input:focus, .items-table select:focus { outline: none; border-color: #d97706; background: white; }
+
+  .delete-btn { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+  .delete-btn:hover { background: #fef2f2; }
+  .row-num { color: #a8a29e; font-size: 12px; font-weight: 500; }
+
+  .footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; }
+  .divider { border: none; border-top: 1px dashed #e7e5e4; margin: 16px 0; }
+  .section-label { font-size: 11px; font-weight: 700; color: #d97706; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .detail-item .di-label { font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .detail-item .di-value { font-size: 15px; font-weight: 600; margin-top: 2px; text-transform: uppercase; }
+
+  .purchase-update { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 16px; margin-top: 8px; }
+  .purchase-update .pu-header { font-size: 11px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+  .action-bar { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; background: #fafaf9; justify-content: space-between; align-items: center; }
+  .action-bar .action-left { display: flex; gap: 8px; }
+  .action-bar .action-right { display: flex; gap: 8px; }
+
+  .item-detail-card { background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+  .item-detail-card .idc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  .item-detail-card .idc-name { font-weight: 700; font-size: 14px; text-transform: uppercase; }
+  .item-detail-card .idc-meta { font-size: 12px; color: #78716c; margin-top: 2px; }
+  .item-detail-card .idc-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .purchased-info { border-radius: 6px; padding: 10px 12px; margin-top: 6px; }
+  .purchased-info .pi-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; font-size: 12px; }
+  .purchased-info .pi-grid span { color: #78716c; }
+  .purchased-info .pi-reason { font-size: 12px; margin-top: 6px; }
+
+  @media (max-width: 768px) {
+    .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
+    .summary-cards { grid-template-columns: 1fr 1fr; }
+    .detail-grid { grid-template-columns: 1fr 1fr; }
+    .indent-card .indent-row { flex-direction: column; align-items: flex-start; }
+    .indent-card .indent-right { width: 100%; justify-content: space-between; margin-top: 8px; }
+    .action-bar { flex-direction: column; gap: 10px; }
+    .action-bar .action-left, .action-bar .action-right { width: 100%; }
+    .purchased-info .pi-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 480px) {
+    .summary-cards { grid-template-columns: 1fr; }
+    .view-toggle button { font-size: 10px; padding: 8px 6px; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .purchased-info .pi-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>SITELOG — HIGH LANE CONSTRUCTIONS</h1>
+  <span class="mockup-badge">Design Mockup</span>
+</div>
+
+<div class="container">
+
+  <div class="view-toggle">
+    <button class="active" onclick="switchView('list')">Indents List</button>
+    <button onclick="switchView('form')">Raise Indent</button>
+    <button onclick="switchView('detail')">Admin Approval</button>
+    <button onclick="switchView('purchase')">Purchase Update</button>
+  </div>
+
+  <!-- ===================== LIST VIEW ===================== -->
+  <div class="view active" id="view-list">
+
+    <div class="page-header">
+      <button class="back-btn">← BACK TO PLANT</button>
+      <h2>Purchase Indents</h2>
+      <button class="btn btn-primary" onclick="switchView('form')">+ RAISE INDENT</button>
+    </div>
+
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="sc-label">Total Indents</div>
+        <div class="sc-value">18</div>
+        <div class="sc-sub">This month</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Pending Approval</div>
+        <div class="sc-value" style="color:#d97706;">3</div>
+        <div class="sc-sub">Awaiting admin</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Pending Purchase</div>
+        <div class="sc-value" style="color:#6366f1;">5</div>
+        <div class="sc-sub">Approved, not bought</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Completed</div>
+        <div class="sc-value" style="color:#10b981;">10</div>
+        <div class="sc-sub">All items purchased</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="form-grid cols-4">
+          <div class="form-group">
+            <label>Date From</label>
+            <input type="date" value="2026-02-01" />
+          </div>
+          <div class="form-group">
+            <label>Date To</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select>
+              <option>ALL STATUS</option>
+              <option>PENDING APPROVAL</option>
+              <option>APPROVED</option>
+              <option>PARTIALLY PURCHASED</option>
+              <option>COMPLETED</option>
+              <option>REJECTED</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Priority</label>
+            <select>
+              <option>ALL PRIORITY</option>
+              <option>URGENT</option>
+              <option>NORMAL</option>
+              <option>LOW</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending Approval -->
+    <div class="card indent-card" onclick="switchView('detail')">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="indent-row">
+          <div>
+            <div class="indent-no">HLC/PI/2026/0018</div>
+            <div class="indent-meta">08-MAR-2026 &bull; Raised by RAJU &bull; 4 items</div>
+            <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="badge badge-urgent">URGENT</span>
+              <span style="font-size: 11px; color: #78716c; padding-top: 3px;">DG SET / PLANT / SITE</span>
+            </div>
+          </div>
+          <div class="indent-right">
+            <div style="text-align: right;">
+              <div class="items-count">4 items</div>
+            </div>
+            <span class="badge badge-pending">PENDING APPROVAL</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Approved — ready for purchase -->
+    <div class="card indent-card status-approved" onclick="switchView('purchase')">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="indent-row">
+          <div>
+            <div class="indent-no">HLC/PI/2026/0017</div>
+            <div class="indent-meta">06-MAR-2026 &bull; Raised by RAJU &bull; 3 items &bull; Approved by ADMIN</div>
+            <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="badge badge-normal">NORMAL</span>
+              <span style="font-size: 11px; color: #78716c; padding-top: 3px;">OFFICE / SITE - FDR KK ROAD</span>
+            </div>
+          </div>
+          <div class="indent-right">
+            <div style="text-align: right;">
+              <div class="items-count">3 items</div>
+              <div style="font-size: 11px; color: #059669; margin-top: 2px;">Ready to purchase</div>
+            </div>
+            <span class="badge badge-approved">APPROVED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Partially purchased -->
+    <div class="card indent-card status-partial" onclick="switchView('purchase')">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="indent-row">
+          <div>
+            <div class="indent-no">HLC/PI/2026/0015</div>
+            <div class="indent-meta">02-MAR-2026 &bull; Raised by RAJU &bull; 5 items &bull; ₹ 3,250 purchased</div>
+            <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="badge badge-urgent">URGENT</span>
+              <span class="badge badge-normal">NORMAL</span>
+              <span style="font-size: 11px; color: #78716c; padding-top: 3px;">DG / PLANT / SITE</span>
+            </div>
+          </div>
+          <div class="indent-right">
+            <div style="text-align: right;">
+              <div class="items-count" style="color: #d97706;">3 of 5 purchased</div>
+            </div>
+            <span class="badge badge-purchasing">PARTIAL</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completed -->
+    <div class="card indent-card status-completed">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="indent-row">
+          <div>
+            <div class="indent-no">HLC/PI/2026/0012</div>
+            <div class="indent-meta">25-FEB-2026 &bull; Raised by RAJU &bull; 2 items &bull; ₹ 1,840 total</div>
+            <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="badge badge-low">LOW</span>
+              <span style="font-size: 11px; color: #78716c; padding-top: 3px;">PLANT</span>
+            </div>
+          </div>
+          <div class="indent-right">
+            <div style="text-align: right;">
+              <div class="items-count">2/2 purchased</div>
+            </div>
+            <span class="badge badge-completed">COMPLETED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rejected -->
+    <div class="card indent-card status-rejected">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="indent-row">
+          <div>
+            <div class="indent-no">HLC/PI/2026/0010</div>
+            <div class="indent-meta">20-FEB-2026 &bull; Raised by RAJU &bull; 1 item &bull; Rejected by ADMIN</div>
+            <div style="margin-top: 6px;">
+              <span style="font-size: 12px; color: #991b1b;">Reason: NOT REQUIRED AT THIS TIME</span>
+            </div>
+          </div>
+          <div class="indent-right">
+            <span class="badge badge-rejected">REJECTED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== RAISE NEW INDENT ===================== -->
+  <div class="view" id="view-form">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Raise New Indent</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Indent Details</h3>
+        <span class="badge badge-pending">NEW</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group">
+            <label>Indent No.</label>
+            <input type="text" value="HLC/PI/2026/0019" disabled style="background: #f5f5f4; color: #78716c;" />
+            <span class="hint">Auto-generated on save</span>
+          </div>
+          <div class="form-group">
+            <label>Raised By</label>
+            <input type="text" value="RAJU" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>General Remarks (Optional)</label>
+          <textarea placeholder="ANY GENERAL NOTES ABOUT THIS INDENT..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Items Required</h3>
+        <button class="btn btn-outline btn-sm" onclick="addItemRow()">+ ADD ITEM</button>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="items-table" id="indentItemsTable">
+          <thead>
+            <tr>
+              <th style="width:4%">#</th>
+              <th style="width:30%">Item Description</th>
+              <th style="width:8%">Qty</th>
+              <th style="width:10%">UOM</th>
+              <th style="width:24%">Purpose / For</th>
+              <th style="width:14%">Priority</th>
+              <th style="width:4%"></th>
+            </tr>
+          </thead>
+          <tbody id="indentItemsBody">
+            <tr>
+              <td><span class="row-num">1</span></td>
+              <td><input type="text" value="V-BELT B62 FOR DG SET" /></td>
+              <td><input type="number" value="2" style="width:60px" /></td>
+              <td>
+                <select style="width:75px">
+                  <option selected>NOS</option>
+                  <option>KG</option>
+                  <option>METERS</option>
+                  <option>LITERS</option>
+                  <option>SET</option>
+                  <option>PAIR</option>
+                  <option>BOX</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option selected>DG SET</option>
+                  <option>PLANT</option>
+                  <option>OFFICE</option>
+                  <option>SITE - FDR KK ROAD</option>
+                  <option>SITE - NH44 KM252</option>
+                  <option>EQUIPMENT REPAIR</option>
+                  <option>OTHER</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option selected value="urgent" style="color:#dc2626;">⚡ URGENT</option>
+                  <option value="normal">NORMAL</option>
+                  <option value="low">LOW</option>
+                </select>
+              </td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">2</span></td>
+              <td><input type="text" value="BEARING 6205 2RS" /></td>
+              <td><input type="number" value="4" style="width:60px" /></td>
+              <td>
+                <select style="width:75px">
+                  <option selected>NOS</option>
+                  <option>KG</option>
+                  <option>METERS</option>
+                  <option>LITERS</option>
+                  <option>SET</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option>DG SET</option>
+                  <option selected>PLANT</option>
+                  <option>OFFICE</option>
+                  <option>SITE - FDR KK ROAD</option>
+                  <option>EQUIPMENT REPAIR</option>
+                  <option>OTHER</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option value="urgent">⚡ URGENT</option>
+                  <option selected value="normal">NORMAL</option>
+                  <option value="low">LOW</option>
+                </select>
+              </td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">3</span></td>
+              <td><input type="text" value="MOBIL GEAR OIL 80W90" /></td>
+              <td><input type="number" value="5" style="width:60px" /></td>
+              <td>
+                <select style="width:75px">
+                  <option>NOS</option>
+                  <option>KG</option>
+                  <option>METERS</option>
+                  <option selected>LITERS</option>
+                  <option>SET</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option>DG SET</option>
+                  <option selected>PLANT</option>
+                  <option>OFFICE</option>
+                  <option>SITE - FDR KK ROAD</option>
+                  <option>EQUIPMENT REPAIR</option>
+                  <option>OTHER</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option value="urgent">⚡ URGENT</option>
+                  <option selected value="normal">NORMAL</option>
+                  <option value="low">LOW</option>
+                </select>
+              </td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">4</span></td>
+              <td><input type="text" value="MEASURING TAPE 30M" /></td>
+              <td><input type="number" value="1" style="width:60px" /></td>
+              <td>
+                <select style="width:75px">
+                  <option selected>NOS</option>
+                  <option>KG</option>
+                  <option>METERS</option>
+                  <option>LITERS</option>
+                  <option>SET</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option>DG SET</option>
+                  <option>PLANT</option>
+                  <option>OFFICE</option>
+                  <option selected>SITE - FDR KK ROAD</option>
+                  <option>EQUIPMENT REPAIR</option>
+                  <option>OTHER</option>
+                </select>
+              </td>
+              <td>
+                <select style="width:100%">
+                  <option value="urgent">⚡ URGENT</option>
+                  <option value="normal">NORMAL</option>
+                  <option selected value="low">LOW</option>
+                </select>
+              </td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer">
+        <button class="btn btn-outline" onclick="switchView('list')">CANCEL</button>
+        <button class="btn btn-primary" onclick="alert('Indent HLC/PI/2026/0019 submitted for approval!'); switchView('list');">SUBMIT INDENT</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== ADMIN APPROVAL VIEW ===================== -->
+  <div class="view" id="view-detail">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Indent Detail — Admin Approval</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>HLC/PI/2026/0018</h3>
+        <span class="badge badge-pending">PENDING APPROVAL</span>
+      </div>
+      <div class="card-body">
+        <div class="detail-grid" style="margin-bottom: 16px;">
+          <div class="detail-item">
+            <div class="di-label">Date</div>
+            <div class="di-value">08-MAR-2026</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Raised By</div>
+            <div class="di-value">RAJU</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Total Items</div>
+            <div class="di-value">4 ITEMS</div>
+          </div>
+        </div>
+
+        <div class="section-label">Workflow Status</div>
+        <div class="status-steps">
+          <span class="step active">● RAISED</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ APPROVED</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ PURCHASING</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ COMPLETED</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Items Requested</h3>
+      </div>
+      <div class="card-body" style="padding: 12px 16px;">
+
+        <div class="item-detail-card">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">1. V-BELT B62 FOR DG SET</div>
+              <div class="idc-meta">Qty: 2 NOS &bull; For: DG SET</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-urgent">URGENT</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="item-detail-card">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">2. BEARING 6205 2RS</div>
+              <div class="idc-meta">Qty: 4 NOS &bull; For: PLANT</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-normal">NORMAL</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="item-detail-card">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">3. MOBIL GEAR OIL 80W90</div>
+              <div class="idc-meta">Qty: 5 LITERS &bull; For: PLANT</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-normal">NORMAL</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="item-detail-card">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">4. MEASURING TAPE 30M</div>
+              <div class="idc-meta">Qty: 1 NOS &bull; For: SITE - FDR KK ROAD</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-low">LOW</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="action-bar">
+        <div class="action-left">
+          <button class="btn btn-danger" onclick="alert('Indent rejected. Manager will be notified.')">✕ REJECT</button>
+        </div>
+        <div class="action-right">
+          <button class="btn btn-success" onclick="alert('Indent approved! Purchaser can now procure items.'); switchView('purchase');">✓ APPROVE INDENT</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align: center; padding: 12px; color: #78716c; font-size: 12px; font-style: italic;">
+      Admin PIN required to approve or reject
+    </div>
+
+  </div>
+
+  <!-- ===================== PURCHASE UPDATE VIEW ===================== -->
+  <div class="view" id="view-purchase">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Purchase Update</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>HLC/PI/2026/0015</h3>
+        <span class="badge badge-purchasing">PARTIALLY PURCHASED</span>
+      </div>
+      <div class="card-body">
+        <div class="detail-grid" style="margin-bottom: 16px;">
+          <div class="detail-item">
+            <div class="di-label">Date</div>
+            <div class="di-value">02-MAR-2026</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Raised By</div>
+            <div class="di-value">RAJU</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Approved By</div>
+            <div class="di-value">ADMIN &bull; 02-MAR</div>
+          </div>
+        </div>
+
+        <div class="section-label">Workflow Status</div>
+        <div class="status-steps">
+          <span class="step done">✓ RAISED</span>
+          <span class="step-arrow">→</span>
+          <span class="step done">✓ APPROVED</span>
+          <span class="step-arrow">→</span>
+          <span class="step active">● PURCHASING</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ COMPLETED</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Items — Purchase Status</h3>
+        <div style="font-size: 12px; color: #78716c;">3 of 5 items updated</div>
+      </div>
+      <div class="card-body" style="padding: 12px 16px;">
+
+        <!-- Item 1: Purchased -->
+        <div class="item-detail-card" style="border-left: 3px solid #10b981;">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">1. FAN BELT A42 FOR GENERATOR</div>
+              <div class="idc-meta">Required: 2 NOS &bull; For: DG SET</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-urgent">URGENT</span>
+              <span class="badge badge-item-purchased">PURCHASED</span>
+            </div>
+          </div>
+          <div class="purchased-info" style="background: #f0fdf4;">
+            <div class="pi-grid">
+              <div><span>Qty Bought:</span> <strong>2 NOS</strong></div>
+              <div><span>Vendor:</span> <strong>SRI SAI BEARINGS</strong></div>
+              <div><span>Bill No:</span> <strong>SSB/1842</strong></div>
+              <div><span>Rate:</span> <strong>₹ 240</strong> &bull; <span>Amt:</span> <strong>₹ 480</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 2: Purchased -->
+        <div class="item-detail-card" style="border-left: 3px solid #10b981;">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">2. HYDRAULIC OIL 68</div>
+              <div class="idc-meta">Required: 20 LITERS &bull; For: PLANT</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-normal">NORMAL</span>
+              <span class="badge badge-item-purchased">PURCHASED</span>
+            </div>
+          </div>
+          <div class="purchased-info" style="background: #f0fdf4;">
+            <div class="pi-grid">
+              <div><span>Qty Bought:</span> <strong>20 LTR</strong></div>
+              <div><span>Vendor:</span> <strong>BALAJI OIL TRADERS</strong></div>
+              <div><span>Bill No:</span> <strong>BOT/0392</strong></div>
+              <div><span>Rate:</span> <strong>₹ 120/L</strong> &bull; <span>Amt:</span> <strong>₹ 2,400</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 3: Partial purchase -->
+        <div class="item-detail-card" style="border-left: 3px solid #f59e0b;">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">3. WELDING ROD 3.15MM</div>
+              <div class="idc-meta">Required: 10 KG &bull; For: EQUIPMENT REPAIR</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-normal">NORMAL</span>
+              <span class="badge badge-item-partial">PARTIAL — 5 OF 10 KG</span>
+            </div>
+          </div>
+          <div class="purchased-info" style="background: #fffbeb;">
+            <div class="pi-grid">
+              <div><span>Qty Bought:</span> <strong>5 KG</strong></div>
+              <div><span>Vendor:</span> <strong>KUMAR HARDWARE</strong></div>
+              <div><span>Bill No:</span> <strong>KH/2241</strong></div>
+              <div><span>Rate:</span> <strong>₹ 74/KG</strong> &bull; <span>Amt:</span> <strong>₹ 370</strong></div>
+            </div>
+            <div class="pi-reason" style="color: #92400e;">
+              <strong>Reason:</strong> ONLY 5 KG AVAILABLE IN STOCK, REMAINING WILL BE AVAILABLE TOMORROW
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 4: Not purchased -->
+        <div class="item-detail-card" style="border-left: 3px solid #ef4444;">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">4. DEPTH GAUGE DIGITAL</div>
+              <div class="idc-meta">Required: 1 NOS &bull; For: SITE - FDR KK ROAD</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-low">LOW</span>
+              <span class="badge badge-item-not">NOT PURCHASED</span>
+            </div>
+          </div>
+          <div class="purchased-info" style="background: #fef2f2;">
+            <div class="pi-reason" style="color: #991b1b;">
+              <strong>Reason:</strong> NOT AVAILABLE LOCALLY, NEED TO ORDER ONLINE — WILL TAKE 3-4 DAYS
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 5: Pending — editable purchase form -->
+        <div class="item-detail-card" style="border-left: 3px solid #d6d3d1;">
+          <div class="idc-header">
+            <div>
+              <div class="idc-name">5. GREASE GUN</div>
+              <div class="idc-meta">Required: 1 NOS &bull; For: PLANT</div>
+            </div>
+            <div class="idc-badges">
+              <span class="badge badge-normal">NORMAL</span>
+              <span class="badge badge-item-pending">PENDING</span>
+            </div>
+          </div>
+          <div class="purchase-update">
+            <div class="pu-header">Update Purchase Status</div>
+            <div class="form-grid cols-2" style="margin-bottom: 10px;">
+              <div class="form-group">
+                <label>Purchase Status</label>
+                <select>
+                  <option value="">SELECT...</option>
+                  <option>PURCHASED</option>
+                  <option>PARTIALLY PURCHASED</option>
+                  <option>NOT PURCHASED</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Qty Purchased</label>
+                <input type="number" placeholder="0" />
+              </div>
+            </div>
+            <div class="form-grid cols-2" style="margin-bottom: 10px;">
+              <div class="form-group">
+                <label>Vendor / Supplier</label>
+                <input type="text" placeholder="VENDOR NAME" />
+              </div>
+              <div class="form-group">
+                <label>Bill No.</label>
+                <input type="text" placeholder="BILL NUMBER" />
+              </div>
+            </div>
+            <div class="form-grid cols-2" style="margin-bottom: 10px;">
+              <div class="form-group">
+                <label>Rate (₹)</label>
+                <input type="number" placeholder="0.00" />
+              </div>
+              <div class="form-group">
+                <label>Amount (₹)</label>
+                <input type="number" placeholder="0.00" style="background: #f5f5f4;" disabled />
+                <span class="hint">Auto-calculated: qty × rate</span>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label>Remarks / Reason</label>
+              <textarea placeholder="REASON IF NOT PURCHASED OR PARTIAL, OR ANY NOTES..."></textarea>
+            </div>
+            <div style="text-align: right;">
+              <button class="btn btn-primary btn-sm" onclick="alert('Purchase status updated for Grease Gun!')">SAVE UPDATE</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="action-bar">
+        <div class="action-left">
+          <div style="font-size: 13px; color: #78716c;">
+            Total Purchased: <strong style="color: #1c1917; font-size: 16px;">₹ 3,250</strong>
+          </div>
+        </div>
+        <div class="action-right">
+          <button class="btn btn-outline" onclick="window.print()">PRINT</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+function switchView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  const labels = { list: 0, form: 1, detail: 2, purchase: 3 };
+  document.querySelectorAll('.view-toggle button')[labels[id]].classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function addItemRow() {
+  const tbody = document.getElementById('indentItemsBody');
+  const rowCount = tbody.rows.length + 1;
+  const row = tbody.insertRow();
+  row.innerHTML = `
+    <td><span class="row-num">${rowCount}</span></td>
+    <td><input type="text" placeholder="ITEM DESCRIPTION" /></td>
+    <td><input type="number" value="1" style="width:60px" /></td>
+    <td><select style="width:75px"><option selected>NOS</option><option>KG</option><option>METERS</option><option>LITERS</option><option>SET</option><option>PAIR</option><option>BOX</option></select></td>
+    <td><select style="width:100%"><option>DG SET</option><option>PLANT</option><option>OFFICE</option><option>SITE - FDR KK ROAD</option><option>SITE - NH44 KM252</option><option>EQUIPMENT REPAIR</option><option>OTHER</option></select></td>
+    <td><select style="width:100%"><option value="urgent">⚡ URGENT</option><option selected value="normal">NORMAL</option><option value="low">LOW</option></select></td>
+    <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+  `;
+}
+
+function deleteRow(btn) {
+  const tbody = document.getElementById('indentItemsBody');
+  if (tbody.rows.length > 1) {
+    btn.closest('tr').remove();
+    Array.from(tbody.rows).forEach((row, i) => {
+      row.querySelector('.row-num').textContent = i + 1;
+    });
+  }
+}
+</script>
+
+</body>
+</html>
