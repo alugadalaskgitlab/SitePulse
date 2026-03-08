@@ -417,7 +417,7 @@ export default function SiteEdit() {
       equipment: equipment.filter(e => e.machine).map(eq => ({
         ...eq,
         totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? String(Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2) : eq.totalKm || "",
+          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
       })),
       labour: labour.filter(l => l.count > 0),
       materials: materials.filter(m => m.material).map(m => ({

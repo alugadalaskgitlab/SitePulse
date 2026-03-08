@@ -338,7 +338,7 @@ export default function SiteEntry() {
       const normalizedEquipment = equipment.map(eq => ({
         ...eq,
         totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? String(Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2) : eq.totalKm || "",
+          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
       }));
 
       const response = await apiRequest("POST", "/api/dprs", {
