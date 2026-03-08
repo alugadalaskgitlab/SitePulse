@@ -2179,6 +2179,50 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-aliases", async (req, res) => {
+    try {
+      const aliases = await storage.getVendorAliases();
+      res.json(aliases);
+    } catch (err) {
+      console.error("Error fetching vendor aliases:", err);
+      res.status(500).json({ message: "Failed to fetch vendor aliases" });
+    }
+  });
+
+  app.post("/api/vendor-aliases", async (req, res) => {
+    try {
+      const { canonicalName, alias } = req.body;
+      if (!canonicalName || !alias) {
+        return res.status(400).json({ message: "canonicalName and alias are required" });
+      }
+      if (canonicalName.trim().toUpperCase() === alias.trim().toUpperCase()) {
+        return res.status(400).json({ message: "Alias cannot be the same as the canonical name" });
+      }
+      const result = await storage.addVendorAlias(canonicalName, alias);
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(409).json({ message: "This alias already exists" });
+      }
+      console.error("Error adding vendor alias:", err);
+      res.status(500).json({ message: "Failed to add vendor alias" });
+    }
+  });
+
+  app.delete("/api/vendor-aliases/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const deleted = await storage.deleteVendorAlias(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Alias not found" });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting vendor alias:", err);
+      res.status(500).json({ message: "Failed to delete vendor alias" });
+    }
+  });
+
   app.get("/api/vendor-bills/vendor-names", async (req, res) => {
     try {
       const names = await storage.getVendorNames();
@@ -2195,10 +2239,11 @@ export async function registerRoutes(
       const billType = req.query.billType as string;
       const periodFrom = req.query.periodFrom as string;
       const periodTo = req.query.periodTo as string;
+      const entryTypeFilter = (req.query.entryTypeFilter as string) || null;
       if (!vendorName || !billType || !periodFrom || !periodTo) {
         return res.status(400).json({ message: "vendorName, billType, periodFrom, and periodTo are required" });
       }
-      const items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo);
+      const items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo, entryTypeFilter);
       res.json(items);
     } catch (err) {
       console.error("Error fetching vendor bill auto items:", err);

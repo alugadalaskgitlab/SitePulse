@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,14 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { VendorBillWithItems } from "@shared/schema";
+import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 
 type ViewMode = "list" | "form" | "detail";
 
@@ -56,6 +57,18 @@ function getCategoryLabel(category: string) {
     case "transport": return "TRNS";
     default: return "OTHER";
   }
+}
+
+const ENTRY_TYPE_FILTERS = [
+  { value: "all", label: "ALL ENTRY TYPES" },
+  { value: "daily_hourly", label: "DAILY & HOURLY" },
+  { value: "trip_based", label: "TRIP BASED" },
+  { value: "monthly", label: "MONTHLY" },
+];
+
+function extractDiesel(description: string): number {
+  const match = description.match(/DIESEL:\s*(\d+(?:\.\d+)?)L/i);
+  return match ? parseFloat(match[1]) : 0;
 }
 
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
@@ -114,8 +127,13 @@ export default function VendorBills() {
     { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null },
   ]);
 
+  const [entryTypeFilter, setEntryTypeFilter] = useState("all");
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
+  const [showAliasDialog, setShowAliasDialog] = useState(false);
+  const [showAliasPinAuth, setShowAliasPinAuth] = useState(false);
+  const [aliasCanonical, setAliasCanonical] = useState("");
+  const [aliasValue, setAliasValue] = useState("");
 
   const { data: bills, isLoading } = useQuery<VendorBillWithItems[]>({
     queryKey: ["/api/vendor-bills"],
@@ -147,8 +165,37 @@ export default function VendorBills() {
 
   const vendorNames = vendorNamesData || [];
 
+  const { data: vendorAliasesData } = useQuery<VendorAlias[]>({
+    queryKey: ["/api/vendor-aliases"],
+  });
+
+  const addAliasMutation = useMutation({
+    mutationFn: (data: { canonicalName: string; alias: string }) =>
+      apiRequest("POST", "/api/vendor-aliases", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-aliases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/vendor-names"] });
+      toast({ title: "Vendor alias added" });
+      setAliasCanonical("");
+      setAliasValue("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add alias", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteAliasMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/vendor-aliases/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-aliases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/vendor-names"] });
+      toast({ title: "Alias removed" });
+    },
+  });
+
   const [vendorSearch, setVendorSearch] = useState("");
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const vendorInputRef = useRef<HTMLInputElement>(null);
 
   const filteredVendorNames = useMemo(() => {
     if (!vendorSearch) return vendorNames;
@@ -156,11 +203,11 @@ export default function VendorBills() {
   }, [vendorNames, vendorSearch]);
 
   const autoItemsUrl = vendorName && periodFrom && periodTo && billType !== "other"
-    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
+    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${entryTypeFilter && entryTypeFilter !== "all" ? `&entryTypeFilter=${encodeURIComponent(entryTypeFilter)}` : ""}`
     : null;
 
   const { data: autoItems, isFetching: autoItemsLoading } = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo],
+    queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo, entryTypeFilter],
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
   });
@@ -227,6 +274,7 @@ export default function VendorBills() {
     setPeriodFrom("");
     setPeriodTo("");
     setNotes("");
+    setEntryTypeFilter("all");
     setLineItems([{ date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null }]);
     setEditingBillId(null);
     setVendorSearch("");
@@ -300,6 +348,36 @@ export default function VendorBills() {
   };
 
   const totalAmount = useMemo(() => lineItems.reduce((sum, item) => sum + (item.amount || 0), 0), [lineItems]);
+
+  const applyRateToSimilar = (sourceIdx: number) => {
+    const source = lineItems[sourceIdx];
+    if (!source.rate || source.rate <= 0) return;
+    const sourceEntryType = source.description.match(/- (HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER)/)?.[1] || "";
+    let applied = 0;
+    let skipped = 0;
+    setLineItems(prev => {
+      const updated = [...prev];
+      for (let i = 0; i < updated.length; i++) {
+        if (i === sourceIdx) continue;
+        const itemEntryType = updated[i].description.match(/- (HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER)/)?.[1] || "";
+        const sameEquipment = source.equipmentId && updated[i].equipmentId === source.equipmentId;
+        const sameType = sourceEntryType && itemEntryType === sourceEntryType;
+        if (sameEquipment && sameType) {
+          if (!updated[i].rate || updated[i].rate === 0) {
+            updated[i] = { ...updated[i], rate: source.rate, amount: (updated[i].qty || 0) * source.rate };
+            applied++;
+          } else {
+            skipped++;
+          }
+        }
+      }
+      return updated;
+    });
+    toast({
+      title: applied > 0 ? `Rate applied to ${applied} row${applied > 1 ? "s" : ""}` : "No matching rows to apply",
+      description: skipped > 0 ? `${skipped} row${skipped > 1 ? "s" : ""} skipped (already have rates)` : undefined,
+    });
+  };
 
   const handleSubmit = () => {
     if (!vendorName || !billDate) {
@@ -545,6 +623,23 @@ export default function VendorBills() {
                 <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} data-testid="input-period-to" />
               </div>
             </div>
+            {(billType === "equipment" || billType === "all") && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-xs uppercase">Entry Type Filter</Label>
+                  <Select value={entryTypeFilter} onValueChange={setEntryTypeFilter}>
+                    <SelectTrigger data-testid="select-entry-type-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ENTRY_TYPE_FILTERS.map(f => (
+                        <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-4">
               <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Bill Status</p>
@@ -646,7 +741,17 @@ export default function VendorBills() {
                     </td>
                     <td className="px-2 py-1.5">
                       {item.source === "auto" ? (
-                        <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
+                        <div className="space-y-1">
+                          <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
+                          {extractDiesel(item.description) > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
+                                <Fuel className="w-3 h-3 mr-1" />
+                                {extractDiesel(item.description)}L DIESEL
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <Input
                           value={item.description}
@@ -679,13 +784,27 @@ export default function VendorBills() {
                       </Select>
                     </td>
                     <td className="px-2 py-1.5">
-                      <Input
-                        type="number"
-                        value={item.rate || ""}
-                        onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
-                        className="text-xs h-8"
-                        data-testid={`input-item-rate-${idx}`}
-                      />
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={item.rate || ""}
+                          onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
+                          className="text-xs h-8"
+                          data-testid={`input-item-rate-${idx}`}
+                        />
+                        {item.rate > 0 && item.equipmentId && item.source === "auto" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 flex-shrink-0"
+                            title="Apply rate to similar equipment rows"
+                            onClick={() => applyRateToSimilar(idx)}
+                            data-testid={`button-apply-rate-${idx}`}
+                          >
+                            <Copy className="w-3.5 h-3.5 text-blue-600" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-right font-semibold bg-amber-50 dark:bg-amber-900/20">
                       <span className="text-xs" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
@@ -889,7 +1008,19 @@ export default function VendorBills() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-2 py-2 font-medium text-xs" data-testid={`text-detail-item-desc-${idx}`}>{item.description}</td>
+                    <td className="px-2 py-2 font-medium text-xs" data-testid={`text-detail-item-desc-${idx}`}>
+                      <div className="space-y-1">
+                        <span>{item.description}</span>
+                        {extractDiesel(item.description) > 0 && (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate">
+                              <Fuel className="w-3 h-3 mr-1" />
+                              {extractDiesel(item.description)}L DIESEL
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-2 py-2 text-xs">{item.qty}</td>
                     <td className="px-2 py-2 text-xs">{item.unit}</td>
                     <td className="px-2 py-2 text-right text-xs">{formatCurrency(item.rate)}</td>
@@ -946,9 +1077,14 @@ export default function VendorBills() {
             <p className="text-xs text-muted-foreground">Manage vendor/supplier billing and payments</p>
           </div>
         </div>
-        <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-new-bill">
-          <Plus className="w-4 h-4 mr-1" /> NEW BILL
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={() => setShowAliasPinAuth(true)} title="Vendor Aliases" data-testid="button-vendor-aliases">
+            <Settings className="w-4 h-4" />
+          </Button>
+          <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-new-bill">
+            <Plus className="w-4 h-4 mr-1" /> NEW BILL
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1080,6 +1216,91 @@ export default function VendorBills() {
           onClose={() => { setShowPinAuth(false); setPendingStatusAction(null); }}
         />
       )}
+
+      {showAliasPinAuth && (
+        <PinAuth
+          targetRole="admin"
+          onSuccess={() => {
+            setShowAliasPinAuth(false);
+            setShowAliasDialog(true);
+          }}
+          onClose={() => setShowAliasPinAuth(false)}
+        />
+      )}
+
+      <Dialog open={showAliasDialog} onOpenChange={setShowAliasDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>VENDOR ALIASES</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Group vendor name spelling variations so billing pulls records from all variants.
+          </p>
+          <div className="space-y-3 mt-2">
+            <div className="grid grid-cols-5 gap-2 items-end">
+              <div className="col-span-2">
+                <Label className="text-xs uppercase">Canonical Name</Label>
+                <Select value={aliasCanonical} onValueChange={setAliasCanonical}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-alias-canonical">
+                    <SelectValue placeholder="SELECT VENDOR..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendorNames.map(name => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs uppercase">Alias (Alternate Spelling)</Label>
+                <Input
+                  value={aliasValue}
+                  onChange={e => setAliasValue(e.target.value.toUpperCase())}
+                  placeholder="ALTERNATE NAME"
+                  className="text-xs h-8 uppercase"
+                  data-testid="input-alias-value"
+                />
+              </div>
+              <Button
+                size="sm"
+                className="h-8"
+                disabled={!aliasCanonical || !aliasValue || addAliasMutation.isPending}
+                onClick={() => addAliasMutation.mutate({ canonicalName: aliasCanonical, alias: aliasValue })}
+                data-testid="button-add-alias"
+              >
+                {addAliasMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+              </Button>
+            </div>
+
+            <div className="border rounded-md max-h-60 overflow-y-auto">
+              {(!vendorAliasesData || vendorAliasesData.length === 0) ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No aliases configured</p>
+              ) : (
+                <div className="divide-y">
+                  {vendorAliasesData.map(a => (
+                    <div key={a.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <div>
+                        <span className="font-semibold">{a.canonicalName}</span>
+                        <span className="text-muted-foreground mx-2">=</span>
+                        <span className="text-amber-600 dark:text-amber-400">{a.alias}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => deleteAliasMutation.mutate(a.id)}
+                        data-testid={`button-delete-alias-${a.id}`}
+                      >
+                        <X className="w-3 h-3 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

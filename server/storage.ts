@@ -119,6 +119,8 @@ import {
   type CreateVendorBillRequest,
   type InsertVendorBill,
   type InsertVendorBillItem,
+  vendorAliases,
+  type VendorAlias,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull } from "drizzle-orm";
 import { format } from "date-fns";
@@ -344,8 +346,12 @@ export interface IStorage {
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
   updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
   deleteVendorBill(id: number): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string): Promise<Partial<InsertVendorBillItem>[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]>;
   getVendorNames(): Promise<string[]>;
+  getVendorAliases(): Promise<VendorAlias[]>;
+  addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
+  deleteVendorAlias(id: number): Promise<boolean>;
+  resolveVendorAliases(vendorName: string): Promise<string[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -4886,10 +4892,21 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string): Promise<Partial<InsertVendorBillItem>[]> {
-    const vendorUpper = vendorName.toUpperCase();
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]> {
+    const vendorVariants = await this.resolveVendorAliases(vendorName);
     const bt = billType.toLowerCase();
     const items: Partial<InsertVendorBillItem>[] = [];
+
+    const entryTypeLabel = (entryType: string | null) => {
+      switch ((entryType || "").toLowerCase()) {
+        case "hourly": return "HOURLY HIRE";
+        case "daily": return "DAILY HIRE";
+        case "trip_based": return "TRIP BASED";
+        case "monthly": return "MONTHLY HIRE";
+        case "time_meter": return "TIME/METER";
+        default: return "TIME/METER";
+      }
+    };
 
     const entryTypeUnit = (entryType: string | null) => {
       switch ((entryType || "").toLowerCase()) {
@@ -4919,11 +4936,41 @@ export class DatabaseStorage implements IStorage {
       return 0;
     };
 
+    const calcHours = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; hoursOrKmRun?: number | null }) => {
+      if (row.hoursWorked && row.hoursWorked > 0) return row.hoursWorked;
+      if (row.hoursOrKmRun && row.hoursOrKmRun > 0) return row.hoursOrKmRun;
+      if (row.startTime && row.endTime) {
+        const [sh, sm] = row.startTime.split(":").map(Number);
+        const [eh, em] = row.endTime.split(":").map(Number);
+        if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+          const diff = (eh * 60 + em - sh * 60 - sm) / 60;
+          if (diff > 0) return Math.round(diff * 100) / 100;
+        }
+      }
+      return 0;
+    };
+
+    const matchesEntryTypeFilter = (entryType: string | null) => {
+      if (!entryTypeFilter || entryTypeFilter === "all") return true;
+      const et = (entryType || "time_meter").toLowerCase();
+      if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et);
+      if (entryTypeFilter === "trip_based") return et === "trip_based";
+      if (entryTypeFilter === "monthly") return et === "monthly";
+      return true;
+    };
+
+    const vendorMatchSql = (col: any) => {
+      if (vendorVariants.length === 1) {
+        return sql`UPPER(TRIM(${col})) = ${vendorVariants[0]}`;
+      }
+      return sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
+    };
+
     if (bt === "equipment" || bt === "all") {
       const hiredEquipment = await db.select()
         .from(equipmentMaster)
         .where(and(
-          sql`UPPER(${equipmentMaster.vendorName}) = ${vendorUpper}`,
+          vendorMatchSql(equipmentMaster.vendorName),
           eq(equipmentMaster.ownership, "hired"),
         ));
 
@@ -4940,6 +4987,7 @@ export class DatabaseStorage implements IStorage {
           endTime: equipmentLogs.endTime,
           numberOfTrips: equipmentLogs.numberOfTrips,
           equipmentId: equipmentLogs.equipmentId,
+          diesel: equipmentLogs.diesel,
         })
         .from(equipmentLogs)
         .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
@@ -4951,12 +4999,19 @@ export class DatabaseStorage implements IStorage {
         ));
 
         for (const row of dprLogs) {
+          if (!matchesEntryTypeFilter(row.entryType)) continue;
           const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType });
+          const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime });
+          const dieselVal = row.diesel || 0;
           if (qty > 0) {
+            const machineName = eqMap.get(row.equipmentId!) || row.machine;
+            const label = entryTypeLabel(row.entryType);
+            let desc = `${machineName} (SITE) - ${label} | ${hours} HRS`;
+            if (dieselVal > 0) desc += ` | DIESEL: ${dieselVal}L`;
             items.push({
               date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
               category: "equipment",
-              description: `${eqMap.get(row.equipmentId!) || row.machine} (SITE)`,
+              description: desc,
               qty,
               unit: entryTypeUnit(row.entryType),
               source: "auto",
@@ -4975,18 +5030,70 @@ export class DatabaseStorage implements IStorage {
 
         for (const row of plantUsage) {
           const et = row.entryType || "time_meter";
+          if (!matchesEntryTypeFilter(et)) continue;
           const qty = calcQty({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: et });
+          const hours = calcHours({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime });
+          const dieselVal = row.dieselIssued || 0;
           if (qty > 0) {
+            const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
+            const label = entryTypeLabel(et);
+            let desc = `${machineName} (PLANT) - ${label} | ${hours} HRS`;
+            if (dieselVal > 0) desc += ` | DIESEL: ${dieselVal}L`;
             items.push({
               date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
               category: "equipment",
-              description: `${eqMap.get(row.equipmentId) || "EQUIPMENT"} (PLANT)`,
+              description: desc,
               qty,
               unit: entryTypeUnit(et),
               source: "auto",
               equipmentId: row.equipmentId,
             });
           }
+        }
+      }
+
+      const unlinkedConditions = [
+        isNull(equipmentLogs.equipmentId),
+        gte(dprs.date, periodFrom),
+        lte(dprs.date, periodTo),
+        eq(dprs.isSuperseded, false),
+      ];
+      const variantOrConditions = vendorVariants.map(v => sql`UPPER(TRIM(${equipmentLogs.machine})) LIKE '%' || ${v} || '%'`);
+      if (variantOrConditions.length > 0) {
+        unlinkedConditions.push(or(...variantOrConditions)!);
+      }
+
+      const unlinkedLogs = await db.select({
+        date: dprs.date,
+        machine: equipmentLogs.machine,
+        entryType: equipmentLogs.entryType,
+        hoursWorked: equipmentLogs.hoursWorked,
+        startTime: equipmentLogs.startTime,
+        endTime: equipmentLogs.endTime,
+        numberOfTrips: equipmentLogs.numberOfTrips,
+        diesel: equipmentLogs.diesel,
+      })
+      .from(equipmentLogs)
+      .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+      .where(and(...unlinkedConditions));
+
+      for (const row of unlinkedLogs) {
+        if (!matchesEntryTypeFilter(row.entryType)) continue;
+        const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType });
+        const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime });
+        const dieselVal = row.diesel || 0;
+        if (qty > 0) {
+          const label = entryTypeLabel(row.entryType);
+          let desc = `${(row.machine || "EQUIPMENT").toUpperCase()} (SITE-UNLINKED) - ${label} | ${hours} HRS`;
+          if (dieselVal > 0) desc += ` | DIESEL: ${dieselVal}L`;
+          items.push({
+            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+            category: "equipment",
+            description: desc,
+            qty,
+            unit: entryTypeUnit(row.entryType),
+            source: "auto",
+          });
         }
       }
     }
@@ -5003,7 +5110,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(dprs, eq(dprs.id, materialLogs.dprId))
       .where(and(
         eq(materialLogs.type, "Received"),
-        sql`UPPER(${materialLogs.supplier}) = ${vendorUpper}`,
+        vendorMatchSql(materialLogs.supplier),
         gte(dprs.date, periodFrom),
         lte(dprs.date, periodTo),
         eq(dprs.isSuperseded, false),
@@ -5025,7 +5132,7 @@ export class DatabaseStorage implements IStorage {
       const siteTrips = await db.select()
         .from(siteMaterialTrips)
         .where(and(
-          sql`UPPER(${siteMaterialTrips.supplier}) = ${vendorUpper}`,
+          vendorMatchSql(siteMaterialTrips.supplier),
           gte(siteMaterialTrips.date, periodFrom),
           lte(siteMaterialTrips.date, periodTo),
         ));
@@ -5053,7 +5160,7 @@ export class DatabaseStorage implements IStorage {
       .from(materialReceipts)
       .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
       .where(and(
-        sql`UPPER(${materialReceipts.supplier}) = ${vendorUpper}`,
+        vendorMatchSql(materialReceipts.supplier),
         gte(materialReceipts.date, periodFrom),
         lte(materialReceipts.date, periodTo),
       ));
@@ -5076,7 +5183,7 @@ export class DatabaseStorage implements IStorage {
       const dispatches = await db.select()
         .from(truckDispatches)
         .where(and(
-          sql`UPPER(${truckDispatches.ownerName}) = ${vendorUpper}`,
+          vendorMatchSql(truckDispatches.ownerName),
           gte(truckDispatches.date, periodFrom),
           lte(truckDispatches.date, periodTo),
         ));
@@ -5109,7 +5216,7 @@ export class DatabaseStorage implements IStorage {
     const eqVendors = await db.select({ name: equipmentMaster.vendorName })
       .from(equipmentMaster)
       .where(sql`${equipmentMaster.vendorName} IS NOT NULL AND ${equipmentMaster.vendorName} != ''`);
-    for (const r of eqVendors) { if (r.name) names.add(r.name.toUpperCase()); }
+    for (const r of eqVendors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
     const mrSuppliers = await db.select({ name: materialReceipts.supplier })
       .from(materialReceipts)
@@ -5131,7 +5238,19 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${truckDispatches.ownerName} IS NOT NULL AND ${truckDispatches.ownerName} != ''`);
     for (const r of tdOwners) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
-    return [...names].sort();
+    const allAliases = await db.select().from(vendorAliases);
+    const aliasToCanonical = new Map<string, string>();
+    for (const a of allAliases) {
+      aliasToCanonical.set(a.alias.toUpperCase().trim(), a.canonicalName.toUpperCase().trim());
+    }
+
+    const deduped = new Set<string>();
+    for (const name of names) {
+      const canonical = aliasToCanonical.get(name);
+      deduped.add(canonical || name);
+    }
+
+    return [...deduped].sort();
   }
 
   async getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]> {
@@ -5378,6 +5497,43 @@ export class DatabaseStorage implements IStorage {
       result.errors++;
     }
     return result;
+  }
+
+  async getVendorAliases(): Promise<VendorAlias[]> {
+    return await db.select().from(vendorAliases).orderBy(asc(vendorAliases.canonicalName));
+  }
+
+  async addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias> {
+    const [result] = await db.insert(vendorAliases).values({
+      canonicalName: canonicalName.toUpperCase().trim(),
+      alias: alias.toUpperCase().trim(),
+    }).returning();
+    return result;
+  }
+
+  async deleteVendorAlias(id: number): Promise<boolean> {
+    const result = await db.delete(vendorAliases).where(eq(vendorAliases.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async resolveVendorAliases(vendorName: string): Promise<string[]> {
+    const upper = vendorName.toUpperCase().trim();
+    const allAliases = await db.select().from(vendorAliases);
+    const names = new Set<string>();
+    names.add(upper);
+    for (const a of allAliases) {
+      if (a.canonicalName === upper || a.alias === upper) {
+        names.add(a.canonicalName);
+        names.add(a.alias);
+      }
+    }
+    const relatedCanonicals = [...names];
+    for (const a of allAliases) {
+      if (relatedCanonicals.includes(a.canonicalName)) {
+        names.add(a.alias);
+      }
+    }
+    return [...names];
   }
 }
 

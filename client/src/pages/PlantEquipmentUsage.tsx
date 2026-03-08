@@ -804,7 +804,7 @@ export default function PlantEquipmentUsage() {
                   <SelectContent>
                     {activeEquipment.map((equip) => (
                       <SelectItem key={equip.id} value={String(equip.id)}>
-                        {equip.name} {(equip as any).registrationNumber ? `(${(equip as any).registrationNumber})` : ""} - {equip.meterType === "hour_meter" ? "hrs" : "km"}
+                        {equip.name} {(equip as any).registrationNumber ? `(${(equip as any).registrationNumber})` : ""} - {equip.meterType === "hour_meter" ? "hrs" : "km"} | {(equip as any).ownership === "hired" ? `HIRED: ${(equip as any).vendorName}` : "HLC OWN"}
                       </SelectItem>
                     ))}
                     <SelectItem value="__add_new__" className="text-primary font-medium">

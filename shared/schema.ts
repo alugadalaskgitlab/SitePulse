@@ -959,3 +959,14 @@ export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
   items: z.array(insertVendorBillItemSchema.omit({ billId: true })),
 });
 export type CreateVendorBillRequest = z.infer<typeof createVendorBillRequestSchema>;
+
+export const vendorAliases = pgTable("vendor_aliases", {
+  id: serial("id").primaryKey(),
+  canonicalName: text("canonical_name").notNull(),
+  alias: text("alias").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVendorAliasSchema = createInsertSchema(vendorAliases).omit({ id: true, createdAt: true });
+export type VendorAlias = typeof vendorAliases.$inferSelect;
+export type InsertVendorAlias = z.infer<typeof insertVendorAliasSchema>;
