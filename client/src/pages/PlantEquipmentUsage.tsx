@@ -266,6 +266,13 @@ export default function PlantEquipmentUsage() {
   const handleEquipmentChange = async (value: string) => {
     setEquipmentId(value);
     setUserModifiedOpening(false);
+    const selectedEquip = activeEquipment.find(e => e.id === Number(value));
+    if (selectedEquip && (selectedEquip as any).ownership !== "hired") {
+      setEntryType("time_meter");
+      setTripBasedEntry(false);
+      setNumberOfTrips("");
+      setTripDistance("");
+    }
     
     if (value && !editingUsage) {
       setIsLoadingBalance(true);
@@ -810,6 +817,42 @@ export default function PlantEquipmentUsage() {
                     Norm: {selectedEquipment.consumptionNorm} {selectedEquipment.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 )}
+                {selectedEquipment && (selectedEquipment as any).ownership === "hired" && (
+                  <div className="mt-2 py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-2">
+                    <Label className="text-sm font-medium">Entry Type</Label>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={entryType}
+                        onValueChange={(val) => {
+                          setEntryType(val);
+                          if (val === "trip_based") {
+                            setTripBasedEntry(true);
+                          } else {
+                            setTripBasedEntry(false);
+                            setNumberOfTrips("");
+                            setTripDistance("");
+                          }
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-entry-type" className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
+                          <SelectItem value="hourly">Hourly Hire</SelectItem>
+                          <SelectItem value="daily">Daily Hire</SelectItem>
+                          <SelectItem value="trip_based">Trip Based</SelectItem>
+                          <SelectItem value="monthly">Monthly Hire</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(entryType === "daily" || entryType === "monthly") && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                          {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <p className="text-sm text-muted-foreground italic">
@@ -839,39 +882,6 @@ export default function PlantEquipmentUsage() {
                   <Label>End Time</Label>
                   <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-end-time" />
                 </div>
-              </div>
-
-              <div className="py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-2">
-                <Label className="text-sm font-medium">Entry Type</Label>
-                <Select
-                  value={entryType}
-                  onValueChange={(val) => {
-                    setEntryType(val);
-                    if (val === "trip_based") {
-                      setTripBasedEntry(true);
-                    } else {
-                      setTripBasedEntry(false);
-                      setNumberOfTrips("");
-                      setTripDistance("");
-                    }
-                  }}
-                >
-                  <SelectTrigger data-testid="select-entry-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
-                    <SelectItem value="hourly">Hourly Hire</SelectItem>
-                    <SelectItem value="daily">Daily Hire</SelectItem>
-                    <SelectItem value="trip_based">Trip Based</SelectItem>
-                    <SelectItem value="monthly">Monthly Hire</SelectItem>
-                  </SelectContent>
-                </Select>
-                {(entryType === "daily" || entryType === "monthly") && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                    {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                  </Badge>
-                )}
               </div>
 
               {(entryType === "trip_based" || tripBasedEntry) && (

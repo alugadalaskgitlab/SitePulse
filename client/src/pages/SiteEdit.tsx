@@ -845,6 +845,12 @@ export default function SiteEdit() {
                       updated[idx].equipmentId = selectedEquip.id;
                       updated[idx].machine = selectedEquip.name;
                       updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
+                      if (selectedEquip.ownership !== "hired") {
+                        updated[idx].entryType = "time_meter";
+                        updated[idx].numberOfTrips = null;
+                        updated[idx].tripDistance = null;
+                        updated[idx].totalKm = null;
+                      }
                     }
                     setEquipment(updated);
                   }}
@@ -863,6 +869,46 @@ export default function SiteEdit() {
                 {entry.equipmentId && entry.vehicleNo && (
                   <p className="text-xs text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
                 )}
+                {(() => {
+                  const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
+                  if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
+                  return (
+                    <div className="mt-2">
+                      <Label className="text-xs">Entry Type</Label>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={entry.entryType ?? "time_meter"}
+                          onValueChange={(val) => {
+                            const updated = [...equipment];
+                            updated[idx].entryType = val;
+                            if (val !== "trip_based") {
+                              updated[idx].numberOfTrips = null;
+                              updated[idx].tripDistance = null;
+                              updated[idx].totalKm = null;
+                            }
+                            setEquipment(updated);
+                          }}
+                        >
+                          <SelectTrigger data-testid={`select-entry-type-${idx}`} className="w-48">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
+                            <SelectItem value="hourly">Hourly Hire</SelectItem>
+                            <SelectItem value="daily">Daily Hire</SelectItem>
+                            <SelectItem value="trip_based">Trip Based</SelectItem>
+                            <SelectItem value="monthly">Monthly Hire</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isDailyOrMonthly && (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
+                            {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <Label className="text-xs">Operator</Label>
@@ -892,43 +938,6 @@ export default function SiteEdit() {
                   data-testid={`input-equipment-task-${idx}`}
                 />
               </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="col-span-2">
-                  <Label className="text-xs">Entry Type</Label>
-                  <Select
-                    value={entry.entryType ?? "time_meter"}
-                    onValueChange={(val) => {
-                      const updated = [...equipment];
-                      updated[idx].entryType = val;
-                      if (val !== "trip_based") {
-                        updated[idx].numberOfTrips = null;
-                        updated[idx].tripDistance = null;
-                        updated[idx].totalKm = null;
-                      }
-                      setEquipment(updated);
-                    }}
-                  >
-                    <SelectTrigger data-testid={`select-entry-type-${idx}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
-                      <SelectItem value="hourly">Hourly Hire</SelectItem>
-                      <SelectItem value="daily">Daily Hire</SelectItem>
-                      <SelectItem value="trip_based">Trip Based</SelectItem>
-                      <SelectItem value="monthly">Monthly Hire</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {isDailyOrMonthly && (
-                  <div className="col-span-2 flex items-end">
-                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
-                      {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                    </Badge>
-                  </div>
-                )}
               </div>
 
               <>
