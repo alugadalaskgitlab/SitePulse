@@ -42,16 +42,20 @@ interface EquipmentEntry {
   vehicleNo: string;
   operator: string;
   task: string;
+  entryType: string;
   startTime: string;
   endTime: string;
   openingReading: number | null;
   closingReading: number | null;
   diesel: number | null;
-  equipmentId: number | null; // Link to equipment master for unified tracking
-  dieselSource: string; // plant_stock, direct_purchase, contractor
-  fuelStation: string; // For direct_purchase
-  billNumber: string; // For direct_purchase
-  amountPaid: number | null; // For direct_purchase
+  equipmentId: number | null;
+  dieselSource: string;
+  fuelStation: string;
+  billNumber: string;
+  amountPaid: number | null;
+  numberOfTrips: number | null;
+  tripDistance: number | null;
+  totalKm: number | null;
 }
 
 interface LabourEntry {
@@ -181,7 +185,7 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -287,7 +291,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -331,13 +335,28 @@ export default function SiteEntry() {
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
+      const normalizedEquipment = equipment.map(eq => {
+        const isDailyMonthly = eq.entryType === "daily" || eq.entryType === "monthly";
+        return {
+          ...eq,
+          dieselSource: isDailyMonthly ? "contractor" : (eq.dieselSource || "plant_stock"),
+          startTime: isDailyMonthly ? "" : eq.startTime,
+          endTime: isDailyMonthly ? "" : eq.endTime,
+          openingReading: isDailyMonthly ? "" : eq.openingReading,
+          closingReading: isDailyMonthly ? "" : eq.closingReading,
+          hoursWorked: isDailyMonthly ? "" : eq.hoursWorked,
+          totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+            ? String(Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2) : eq.totalKm || "",
+        };
+      });
+
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
         site: header.site,
         engineer: header.engineer,
         role: "engineer",
         progress: progressWithCalc,
-        equipment,
+        equipment: normalizedEquipment,
         labour,
         materials,
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
@@ -783,6 +802,10 @@ export default function SiteEntry() {
         <CardContent className="space-y-4">
           {equipment.map((entry, idx) => {
             const workingHours = getWorkingHours(entry);
+            const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
+            const isTripBased = entry.entryType === "trip_based";
+            const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
+            const calculatedTotalKm = (entry.numberOfTrips && entry.tripDistance) ? entry.numberOfTrips * entry.tripDistance * 2 : 0;
             
             return (
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
@@ -858,94 +881,242 @@ export default function SiteEntry() {
                   </div>
                 </div>
 
-                <p className="text-xs font-semibold text-muted-foreground border-b pb-1">Morning Entry</p>
-                <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
-                
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <Label className="text-xs">Start Time</Label>
-                    <Input
-                      type="time"
-                      value={entry.startTime}
-                      onChange={(e) => {
+                  <div className="col-span-2">
+                    <Label className="text-xs">Entry Type</Label>
+                    <Select
+                      value={entry.entryType ?? "time_meter"}
+                      onValueChange={(val) => {
                         const updated = [...equipment];
-                        updated[idx].startTime = e.target.value;
+                        updated[idx].entryType = val;
+                        if (val === "daily" || val === "monthly") {
+                          updated[idx].dieselSource = "contractor";
+                          updated[idx].startTime = "";
+                          updated[idx].endTime = "";
+                          updated[idx].openingReading = null;
+                          updated[idx].closingReading = null;
+                          updated[idx].numberOfTrips = null;
+                          updated[idx].tripDistance = null;
+                          updated[idx].totalKm = null;
+                        } else if (val === "trip_based") {
+                          updated[idx].dieselSource = "contractor";
+                          updated[idx].startTime = "";
+                          updated[idx].endTime = "";
+                          updated[idx].openingReading = null;
+                          updated[idx].closingReading = null;
+                        } else {
+                          updated[idx].numberOfTrips = null;
+                          updated[idx].tripDistance = null;
+                          updated[idx].totalKm = null;
+                        }
                         setEquipment(updated);
                       }}
-                      data-testid={`input-equipment-start-${idx}`}
-                    />
+                    >
+                      <SelectTrigger data-testid={`select-entry-type-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
+                        <SelectItem value="hourly">Hourly Hire</SelectItem>
+                        <SelectItem value="daily">Daily Hire</SelectItem>
+                        <SelectItem value="trip_based">Trip Based</SelectItem>
+                        <SelectItem value="monthly">Monthly Hire</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div>
-                    <Label className="text-xs">End Time</Label>
-                    <Input
-                      type="time"
-                      value={entry.endTime}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].endTime = e.target.value;
-                        setEquipment(updated);
-                      }}
-                      data-testid={`input-equipment-end-${idx}`}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Opening Hour Meter</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      placeholder="e.g. 1234.5"
-                      value={entry.openingReading ?? ""}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
-                        setEquipment(updated);
-                      }}
-                      data-testid={`input-equipment-opening-${idx}`}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Closing Hour Meter</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      placeholder="e.g. 1238.0"
-                      value={entry.closingReading ?? ""}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].closingReading = e.target.value ? parseFloat(e.target.value) : null;
-                        setEquipment(updated);
-                      }}
-                      data-testid={`input-equipment-closing-${idx}`}
-                    />
-                  </div>
+                  {isDailyOrMonthly && (
+                    <div className="col-span-2 flex items-end">
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
+                        {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"} — Diesel by vendor
+                      </Badge>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Working Hours</Label>
-                    <div 
-                      className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
-                      data-testid={`display-working-hours-${idx}`}
-                    >
-                      {workingHours > 0 ? `${workingHours.toFixed(3)} hrs` : "-"}
+                {isTimeMeter && (
+                  <>
+                    <p className="text-xs font-semibold text-muted-foreground border-b pb-1">
+                      {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Morning Entry"}
+                    </p>
+                    {entry.entryType !== "hourly" && (
+                      <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
+                    )}
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div>
+                        <Label className="text-xs">Start Time</Label>
+                        <Input
+                          type="time"
+                          value={entry.startTime}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].startTime = e.target.value;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-start-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">End Time</Label>
+                        <Input
+                          type="time"
+                          value={entry.endTime}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].endTime = e.target.value;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-end-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Opening Hour Meter</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g. 1234.5"
+                          value={entry.openingReading ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-opening-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Closing Hour Meter</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g. 1238.0"
+                          value={entry.closingReading ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].closingReading = e.target.value ? parseFloat(e.target.value) : null;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-closing-${idx}`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Working Hours</Label>
+                        <div 
+                          className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
+                          data-testid={`display-working-hours-${idx}`}
+                        >
+                          {workingHours > 0 ? `${workingHours.toFixed(3)} hrs` : "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Diesel Issued (L)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="0"
+                          value={entry.diesel ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-diesel-${idx}`}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {isTripBased && (
+                  <>
+                    <p className="text-xs font-semibold text-muted-foreground border-b pb-1">Trip Based Entry</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div>
+                        <Label className="text-xs">No. of Trips</Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          placeholder="0"
+                          value={entry.numberOfTrips ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].numberOfTrips = e.target.value ? parseInt(e.target.value) : null;
+                            const trips = updated[idx].numberOfTrips || 0;
+                            const dist = updated[idx].tripDistance || 0;
+                            updated[idx].totalKm = trips * dist * 2;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-trips-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Trip Distance (km one-way)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="0"
+                          value={entry.tripDistance ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].tripDistance = e.target.value ? parseFloat(e.target.value) : null;
+                            const trips = updated[idx].numberOfTrips || 0;
+                            const dist = updated[idx].tripDistance || 0;
+                            updated[idx].totalKm = trips * dist * 2;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-trip-distance-${idx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Total KM (round trip)</Label>
+                        <div 
+                          className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
+                          data-testid={`display-total-km-${idx}`}
+                        >
+                          {calculatedTotalKm > 0 ? `${calculatedTotalKm.toFixed(1)} km` : "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Diesel Issued (L)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="0"
+                          value={entry.diesel ?? ""}
+                          onChange={(e) => {
+                            const updated = [...equipment];
+                            updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
+                            setEquipment(updated);
+                          }}
+                          data-testid={`input-equipment-diesel-${idx}`}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {isDailyOrMonthly && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Diesel Issued (L) — Optional</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        placeholder="0"
+                        value={entry.diesel ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
+                          setEquipment(updated);
+                        }}
+                        data-testid={`input-equipment-diesel-${idx}`}
+                      />
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-xs">Diesel Issued (L)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      placeholder="0"
-                      value={entry.diesel ?? ""}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                        setEquipment(updated);
-                      }}
-                      data-testid={`input-equipment-diesel-${idx}`}
-                    />
-                  </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>

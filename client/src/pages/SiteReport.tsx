@@ -422,15 +422,24 @@ export default function SiteReport() {
                       return diff >= 0 ? diff : null;
                     };
                     
+                    const et = item.entryType || "time_meter";
+                    const isTripBased = et === "trip_based";
+                    const isDailyMonthly = et === "daily" || et === "monthly";
+                    
                     const meterHours = calculateMeterHours(item.openingReading, item.closingReading);
                     const timeHours = calculateTimeHours(item.startTime, item.endTime);
-                    const hours = item.hoursWorked ?? meterHours ?? timeHours;
+                    const hours = isDailyMonthly ? null : (item.hoursWorked ?? meterHours ?? timeHours);
                     
                     const hasReading = item.openingReading != null && item.closingReading != null;
                     const hasTime = item.startTime && item.endTime;
-                    const readingSource = hasReading 
-                      ? `Meter: ${item.openingReading} - ${item.closingReading}`
-                      : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
+                    const readingSource = isTripBased 
+                      ? (item.numberOfTrips && item.tripDistance ? `${item.numberOfTrips} trips × ${item.tripDistance} km` : '-')
+                      : isDailyMonthly ? (et === "daily" ? "Daily Hire" : "Monthly Hire")
+                      : hasReading 
+                        ? `Meter: ${item.openingReading} - ${item.closingReading}`
+                        : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
+
+                    const entryTypeLabel = et === "hourly" ? "Hourly" : et === "daily" ? "Daily" : et === "monthly" ? "Monthly" : et === "trip_based" ? "Trip" : "";
 
                     const dieselSourceLabel = item.dieselSource === 'direct_purchase' ? 'Direct Purchase'
                       : item.dieselSource === 'contractor' ? 'Contractor'
@@ -438,12 +447,19 @@ export default function SiteReport() {
                     
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
-                        <TableCell className="font-medium">{item.machine}</TableCell>
+                        <TableCell className="font-medium">
+                          {item.machine}
+                          {entryTypeLabel && <span className="ml-1 text-[10px] text-muted-foreground">({entryTypeLabel})</span>}
+                        </TableCell>
                         <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
                         <TableCell className="text-sm">{item.task || '-'}</TableCell>
                         <TableCell className="text-xs">{readingSource}</TableCell>
-                        <TableCell className="text-right">{hours != null ? hours.toFixed(3) : '-'}</TableCell>
+                        <TableCell className="text-right">
+                          {isTripBased && item.numberOfTrips && item.tripDistance
+                            ? `${(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km`
+                            : hours != null ? hours.toFixed(3) : '-'}
+                        </TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell>
                           <span className="text-xs">{dieselSourceLabel}</span>

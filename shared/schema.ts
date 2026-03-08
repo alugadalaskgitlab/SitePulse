@@ -41,12 +41,17 @@ export const equipmentLogs = pgTable("equipment_logs", {
   machine: text("machine").notNull(),
   operator: text("operator"),
   vehicleNo: text("vehicle_no"), // Vehicle registration number
+  entryType: text("entry_type").default("time_meter"), // time_meter, hourly, daily, trip_based, monthly
   startTime: text("start_time"),
   endTime: text("end_time"),
   // Hour meter fields (optional - user can choose time OR meter OR both)
   openingReading: real("opening_reading"),
   closingReading: real("closing_reading"),
   hoursWorked: real("hours_worked"), // Auto-calculated from time or meter
+  // Trip-based tracking
+  numberOfTrips: integer("number_of_trips"),
+  tripDistance: real("trip_distance"), // One-way distance in km
+  totalKm: real("total_km"), // Auto-calculated: trips × distance × 2
   diesel: real("diesel"),
   dieselNorm: real("diesel_norm"), // L/hr norm for efficiency calculation
   expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursWorked * norm
@@ -292,6 +297,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   equipmentId: integer("equipment_id").notNull(),
+  entryType: text("entry_type").default("time_meter"), // time_meter, hourly, daily, trip_based, monthly
   // Hour meter fields (optional if using time entry)
   openingReading: real("opening_reading"), // Hours or KM (meter) - now optional
   closingReading: real("closing_reading"), // now optional
@@ -300,7 +306,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   endTime: text("end_time"),
   hoursOrKmRun: real("hours_or_km_run"), // Auto-calculated: from meter OR time
   // Trip-based tracking (for water tankers, etc.)
-  tripBasedEntry: boolean("trip_based_entry").default(false), // Flag to use trip-based calculation
+  tripBasedEntry: boolean("trip_based_entry").default(false), // Flag to use trip-based calculation (backward compat)
   numberOfTrips: integer("number_of_trips"), // Number of round trips
   tripDistance: real("trip_distance"), // One-way distance to source (km)
   totalKm: real("total_km"), // Auto-calculated: trips × distance × 2

@@ -213,21 +213,32 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
               </TableHeader>
               <TableBody>
                 {data.equipment.filter(e => e.machine).map((item, i) => {
+                  const et = item.entryType || "time_meter";
                   const meterDiff = (item.openingReading != null && item.closingReading != null)
                     ? item.closingReading - item.openingReading : null;
                   const meterHours = (meterDiff != null && meterDiff >= 0) ? meterDiff.toFixed(3) : null;
                   const timeHours = calculateHours(item.startTime, item.endTime);
-                  const displayHours = meterHours || timeHours;
+                  const isTripBased = et === "trip_based";
+                  const isDailyMonthly = et === "daily" || et === "monthly";
+                  const displayHours = isTripBased
+                    ? (item.numberOfTrips && item.tripDistance ? `${item.numberOfTrips} TRIPS × ${item.tripDistance} KM = ${(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} KM` : '-')
+                    : isDailyMonthly ? '-' : (meterHours || timeHours);
                   return (
                   <TableRow key={i}>
-                    <TableCell className="font-medium">{item.machine}</TableCell>
+                    <TableCell className="font-medium">
+                      {item.machine}
+                      {et === "hourly" && <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">HOURLY</Badge>}
+                      {et === "daily" && <Badge variant="outline" className="ml-1 text-[10px] bg-amber-50 text-amber-700 border-amber-200">DAILY HIRE</Badge>}
+                      {et === "monthly" && <Badge variant="outline" className="ml-1 text-[10px] bg-purple-50 text-purple-700 border-purple-200">MONTHLY HIRE</Badge>}
+                      {isTripBased && <Badge variant="outline" className="ml-1 text-[10px] bg-green-50 text-green-700 border-green-200">TRIP BASED</Badge>}
+                    </TableCell>
                     <TableCell>{item.operator || '-'}</TableCell>
                     <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                    <TableCell>{item.startTime || '-'}</TableCell>
-                    <TableCell>{item.endTime || '-'}</TableCell>
-                    <TableCell className="text-right">{item.openingReading != null ? item.openingReading : '-'}</TableCell>
-                    <TableCell className="text-right">{item.closingReading != null ? item.closingReading : '-'}</TableCell>
-                    <TableCell className="text-right">{displayHours}</TableCell>
+                    <TableCell>{isDailyMonthly ? '-' : (item.startTime || '-')}</TableCell>
+                    <TableCell>{isDailyMonthly ? '-' : (item.endTime || '-')}</TableCell>
+                    <TableCell className="text-right">{isDailyMonthly ? '-' : (item.openingReading != null ? item.openingReading : '-')}</TableCell>
+                    <TableCell className="text-right">{isDailyMonthly ? '-' : (item.closingReading != null ? item.closingReading : '-')}</TableCell>
+                    <TableCell className="text-right text-xs">{displayHours}</TableCell>
                     <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                   </TableRow>
                   );

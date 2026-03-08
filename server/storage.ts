@@ -620,6 +620,10 @@ export class DatabaseStorage implements IStorage {
             hoursWorked: e.hoursWorked,
             dieselNorm: e.dieselNorm,
             expectedDiesel: e.expectedDiesel,
+            entryType: (e as any).entryType ?? "time_meter",
+            numberOfTrips: (e as any).numberOfTrips ?? null,
+            tripDistance: (e as any).tripDistance ?? null,
+            totalKm: (e as any).totalKm ?? null,
           }))
         ).returning();
 
