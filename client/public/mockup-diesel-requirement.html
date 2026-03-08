@@ -110,6 +110,10 @@
 
   .action-bar { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; background: #fafaf9; justify-content: space-between; align-items: center; }
 
+  .approval-input { background: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 4px; padding: 4px 8px; width: 70px; font-size: 13px; text-align: center; font-weight: 700; color: #059669; }
+  .approval-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 2px rgba(5,150,105,0.15); }
+  .approval-input.reduced { border-color: #f59e0b; color: #d97706; background: #fffbeb; }
+
   .comparison-positive { color: #059669; }
   .comparison-negative { color: #dc2626; }
   .comparison-neutral { color: #78716c; }
@@ -511,7 +515,8 @@
 
     <div class="card">
       <div class="card-header">
-        <h3>Equipment Breakdown</h3>
+        <h3>Equipment Breakdown — Approve Quantities</h3>
+        <div style="font-size: 11px; color: #78716c;">Admin can reduce diesel qty per equipment</div>
       </div>
       <div class="card-body" style="padding: 0; overflow-x: auto;">
         <table class="equip-table">
@@ -522,7 +527,8 @@
               <th>Purpose</th>
               <th>Est. Hours</th>
               <th>Norm (L/hr)</th>
-              <th class="right">Diesel (L)</th>
+              <th class="right">Planned (L)</th>
+              <th class="right">Approve (L)</th>
             </tr>
           </thead>
           <tbody>
@@ -532,7 +538,8 @@
               <td>EXCAVATION</td>
               <td>8</td>
               <td>4.0</td>
-              <td class="right">32</td>
+              <td class="right" style="color: #78716c;">32</td>
+              <td class="right"><input class="approval-input" type="number" value="32" min="0" max="32" /></td>
             </tr>
             <tr>
               <td>2</td>
@@ -540,7 +547,8 @@
               <td>SAND TRANSPORT</td>
               <td>10</td>
               <td>6.0</td>
-              <td class="right">60</td>
+              <td class="right" style="color: #78716c;">60</td>
+              <td class="right"><input class="approval-input" type="number" value="60" min="0" max="60" /></td>
             </tr>
             <tr>
               <td>3</td>
@@ -548,7 +556,8 @@
               <td>COMPACTION</td>
               <td>6</td>
               <td>8.0</td>
-              <td class="right">48</td>
+              <td class="right" style="color: #78716c;">48</td>
+              <td class="right"><input class="approval-input" type="number" value="48" min="0" max="48" /></td>
             </tr>
             <tr>
               <td>4</td>
@@ -556,7 +565,8 @@
               <td>PLANT POWER</td>
               <td>18</td>
               <td>4.0</td>
-              <td class="right">72</td>
+              <td class="right" style="color: #78716c;">72</td>
+              <td class="right"><input class="approval-input" type="number" value="72" min="0" max="72" /></td>
             </tr>
             <tr>
               <td>5</td>
@@ -564,7 +574,8 @@
               <td>OFFICE / CAMP</td>
               <td>24</td>
               <td>3.5</td>
-              <td class="right">84</td>
+              <td class="right" style="color: #78716c;">84</td>
+              <td class="right"><input class="approval-input" type="number" value="84" min="0" max="84" /></td>
             </tr>
             <tr>
               <td>6</td>
@@ -572,13 +583,18 @@
               <td>WMM PRODUCTION</td>
               <td>8</td>
               <td>15.5</td>
-              <td class="right">124</td>
+              <td class="right" style="color: #78716c;">124</td>
+              <td class="right">
+                <input class="approval-input reduced" type="number" value="80" min="0" max="124" />
+                <div style="font-size: 10px; color: #d97706; font-weight: 600; margin-top: 2px;">Reduced from 124</div>
+              </td>
             </tr>
           </tbody>
           <tfoot>
             <tr style="background: #fffbeb;">
-              <td colspan="5" style="text-align: right; padding-right: 16px;">TOTAL</td>
-              <td class="right" style="font-size: 16px; color: #d97706;">420 L</td>
+              <td colspan="5" style="text-align: right; padding-right: 16px;">TOTAL PLANNED</td>
+              <td class="right" style="color: #78716c;">420 L</td>
+              <td class="right" style="font-size: 16px; font-weight: 800; color: #059669;">376 L</td>
             </tr>
           </tfoot>
         </table>
@@ -589,7 +605,7 @@
           <button class="btn btn-danger" onclick="alert('Requirement rejected.')">✕ REJECT</button>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-success" onclick="alert('Diesel requirement approved!'); switchView('update');">✓ APPROVE</button>
+          <button class="btn btn-success" onclick="alert('Diesel requirement approved with 376 L!'); switchView('update');">✓ APPROVE</button>
         </div>
       </div>
     </div>
