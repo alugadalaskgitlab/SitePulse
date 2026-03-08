@@ -775,3 +775,185 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true });
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+
+// ============================================
+// PURCHASE INDENTS
+// ============================================
+
+export const purchaseIndents = pgTable("purchase_indents", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  indentNo: text("indent_no").notNull(),
+  proposedBy: text("proposed_by").notNull(),
+  raisedBy: text("raised_by").notNull(),
+  status: text("status").default("pending").notNull(),
+  remarks: text("remarks"),
+  approvalRemarks: text("approval_remarks"),
+  approvedBy: text("approved_by"),
+  approvedAt: text("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const purchaseIndentItems = pgTable("purchase_indent_items", {
+  id: serial("id").primaryKey(),
+  indentId: integer("indent_id").notNull(),
+  description: text("description").notNull(),
+  qty: real("qty").notNull(),
+  uom: text("uom").notNull(),
+  purpose: text("purpose").notNull(),
+  priority: text("priority").default("normal").notNull(),
+  approvedQty: real("approved_qty"),
+  purchaseStatus: text("purchase_status"),
+  qtyPurchased: real("qty_purchased"),
+  vendor: text("vendor"),
+  billNo: text("bill_no"),
+  rate: real("rate"),
+  amount: real("amount"),
+  purchaseRemarks: text("purchase_remarks"),
+});
+
+export const purchaseIndentsRelations = relations(purchaseIndents, ({ many }) => ({
+  items: many(purchaseIndentItems),
+}));
+
+export const purchaseIndentItemsRelations = relations(purchaseIndentItems, ({ one }) => ({
+  indent: one(purchaseIndents, { fields: [purchaseIndentItems.indentId], references: [purchaseIndents.id] }),
+}));
+
+export const insertPurchaseIndentSchema = createInsertSchema(purchaseIndents).omit({ id: true, createdAt: true });
+export const insertPurchaseIndentItemSchema = createInsertSchema(purchaseIndentItems).omit({ id: true });
+export type PurchaseIndent = typeof purchaseIndents.$inferSelect;
+export type PurchaseIndentItem = typeof purchaseIndentItems.$inferSelect;
+export type InsertPurchaseIndent = z.infer<typeof insertPurchaseIndentSchema>;
+export type InsertPurchaseIndentItem = z.infer<typeof insertPurchaseIndentItemSchema>;
+
+export type PurchaseIndentWithItems = PurchaseIndent & {
+  items: PurchaseIndentItem[];
+};
+
+export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.extend({
+  items: z.array(insertPurchaseIndentItemSchema.omit({ indentId: true })),
+});
+export type CreatePurchaseIndentRequest = z.infer<typeof createPurchaseIndentRequestSchema>;
+
+// ============================================
+// DAILY DIESEL REQUIREMENTS
+// ============================================
+
+export const dieselRequirements = pgTable("diesel_requirements", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  raisedBy: text("raised_by").notNull(),
+  totalPlanned: real("total_planned").notNull(),
+  totalApproved: real("total_approved"),
+  status: text("status").default("pending").notNull(),
+  remarks: text("remarks"),
+  approvedBy: text("approved_by"),
+  approvedAt: text("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  qtyPurchased: real("qty_purchased"),
+  supplier: text("supplier"),
+  billNo: text("bill_no"),
+  rate: real("rate"),
+  amount: real("amount"),
+  purchasedAt: text("purchased_at"),
+  purchaseRemarks: text("purchase_remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const dieselRequirementItems = pgTable("diesel_requirement_items", {
+  id: serial("id").primaryKey(),
+  requirementId: integer("requirement_id").notNull(),
+  equipmentId: integer("equipment_id"),
+  equipmentName: text("equipment_name").notNull(),
+  purpose: text("purpose"),
+  estHours: real("est_hours"),
+  norm: real("norm"),
+  plannedQty: real("planned_qty").notNull(),
+  approvedQty: real("approved_qty"),
+});
+
+export const dieselRequirementsRelations = relations(dieselRequirements, ({ many }) => ({
+  items: many(dieselRequirementItems),
+}));
+
+export const dieselRequirementItemsRelations = relations(dieselRequirementItems, ({ one }) => ({
+  requirement: one(dieselRequirements, { fields: [dieselRequirementItems.requirementId], references: [dieselRequirements.id] }),
+}));
+
+export const insertDieselRequirementSchema = createInsertSchema(dieselRequirements).omit({ id: true, createdAt: true });
+export const insertDieselRequirementItemSchema = createInsertSchema(dieselRequirementItems).omit({ id: true });
+export type DieselRequirement = typeof dieselRequirements.$inferSelect;
+export type DieselRequirementItem = typeof dieselRequirementItems.$inferSelect;
+export type InsertDieselRequirement = z.infer<typeof insertDieselRequirementSchema>;
+export type InsertDieselRequirementItem = z.infer<typeof insertDieselRequirementItemSchema>;
+
+export type DieselRequirementWithItems = DieselRequirement & {
+  items: DieselRequirementItem[];
+};
+
+export const createDieselRequirementRequestSchema = insertDieselRequirementSchema.extend({
+  items: z.array(insertDieselRequirementItemSchema.omit({ requirementId: true })),
+});
+export type CreateDieselRequirementRequest = z.infer<typeof createDieselRequirementRequestSchema>;
+
+// ============================================
+// VENDOR BILLS
+// ============================================
+
+export const vendorBills = pgTable("vendor_bills", {
+  id: serial("id").primaryKey(),
+  billDate: date("bill_date").notNull(),
+  billNo: text("bill_no").notNull(),
+  billType: text("bill_type").notNull(),
+  vendorName: text("vendor_name").notNull(),
+  periodFrom: date("period_from"),
+  periodTo: date("period_to"),
+  status: text("status").default("draft").notNull(),
+  notes: text("notes"),
+  totalAmount: real("total_amount"),
+  verifiedBy: text("verified_by"),
+  verifiedAt: text("verified_at"),
+  approvedBy: text("approved_by"),
+  approvedAt: text("approved_at"),
+  paidAt: text("paid_at"),
+  paymentRemarks: text("payment_remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const vendorBillItems = pgTable("vendor_bill_items", {
+  id: serial("id").primaryKey(),
+  billId: integer("bill_id").notNull(),
+  description: text("description").notNull(),
+  qty: real("qty"),
+  unit: text("unit"),
+  rate: real("rate"),
+  amount: real("amount"),
+  source: text("source").default("manual"),
+  equipmentId: integer("equipment_id"),
+});
+
+export const vendorBillsRelations = relations(vendorBills, ({ many }) => ({
+  items: many(vendorBillItems),
+}));
+
+export const vendorBillItemsRelations = relations(vendorBillItems, ({ one }) => ({
+  bill: one(vendorBills, { fields: [vendorBillItems.billId], references: [vendorBills.id] }),
+}));
+
+export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true });
+export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems).omit({ id: true });
+export type VendorBill = typeof vendorBills.$inferSelect;
+export type VendorBillItem = typeof vendorBillItems.$inferSelect;
+export type InsertVendorBill = z.infer<typeof insertVendorBillSchema>;
+export type InsertVendorBillItem = z.infer<typeof insertVendorBillItemSchema>;
+
+export type VendorBillWithItems = VendorBill & {
+  items: VendorBillItem[];
+};
+
+export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
+  items: z.array(insertVendorBillItemSchema.omit({ billId: true })),
+});
+export type CreateVendorBillRequest = z.infer<typeof createVendorBillRequestSchema>;

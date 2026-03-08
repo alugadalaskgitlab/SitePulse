@@ -52,6 +52,17 @@ Preferred communication style: Simple, everyday language.
 - **Fuel Stock Tracking**: Includes Bitumen Stock Tracker (tank dip chart with linear interpolation), LDO Flow Meter Tracker (meter readings for consumption), and Consumption Variance Report (actual vs. template).
 - **Material Returns**: System for returning issued materials back to plant stock, linked to original issues.
 
+### Procurement & Finance Module
+- **Purchase Indents**: Multi-item purchase request system with partial quantity approval workflow. Indent number format: `HLC/PI/YYYY/NNNN`. Statuses: pending → approved → completed (auto when all items purchased) or rejected. Features: proposedBy/raisedBy fields, per-item approval with adjustable quantities, purchase tracking (vendor, bill, rate, amount per item).
+  - Tables: `purchase_indents`, `purchase_indent_items`
+  - Routes: `/api/purchase-indents`, `/plant/purchase-indents`
+- **Daily Diesel Requirements**: Per-equipment diesel planning and procurement tool (does NOT affect stock). Features: equipment dropdown from master, estimated hours/norm/planned qty, editable approval qty per equipment, purchase tracking, comparison report (planned vs purchased vs actual issued from equipment_logs/equipment_usage).
+  - Tables: `diesel_requirements`, `diesel_requirement_items`
+  - Routes: `/api/diesel-requirements`, `/plant/diesel-requirements`
+- **Vendor Bills**: Invoice tracking with 4-step workflow (Draft → Verified → Approved → Paid). Bill number format: `HLC/VB/YYYY/NNNN`. Types: equipment/material/other. Features: auto-pull line items from DPR/Plant records for vendor+period, source tags (AUTO/MANUAL), PIN-gated status advancement.
+  - Tables: `vendor_bills`, `vendor_bill_items`
+  - Routes: `/api/vendor-bills`, `/plant/vendor-bills`
+
 ### UI/UX & Features
 - **UI Enhancements**: Responsive design using shadcn/ui.
 - **Site Reports**: Advanced filtering (date range, site, engineer, etc.) and Admin-only export options (Excel, PDF, Print).

@@ -90,13 +90,35 @@ import {
   pushSubscriptions,
   type PushSubscription,
   type InsertPushSubscription,
+  dieselRequirements,
+  dieselRequirementItems,
+  type DieselRequirement,
+  type DieselRequirementItem,
+  type DieselRequirementWithItems,
+  type CreateDieselRequirementRequest,
+  type InsertDieselRequirement,
+  type InsertDieselRequirementItem,
+  purchaseIndents,
+  purchaseIndentItems,
+  type PurchaseIndent,
+  type PurchaseIndentItem,
+  type PurchaseIndentWithItems,
+  type CreatePurchaseIndentRequest,
   personnel,
   activityPersonnel,
   type Personnel,
   type InsertPersonnel,
   type ActivityPersonnel,
   DEFAULT_LDO_NORM,
-  CONSUMPTION_TOLERANCE_PERCENT
+  CONSUMPTION_TOLERANCE_PERCENT,
+  vendorBills,
+  vendorBillItems,
+  type VendorBill,
+  type VendorBillItem,
+  type VendorBillWithItems,
+  type CreateVendorBillRequest,
+  type InsertVendorBill,
+  type InsertVendorBillItem,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull } from "drizzle-orm";
 import { format } from "date-fns";
@@ -297,6 +319,32 @@ export interface IStorage {
   // Activity Personnel
   saveActivityPersonnel(progressEntryId: number, personnelIds: number[]): Promise<void>;
   getActivityPersonnel(progressEntryIds: number[]): Promise<ActivityPersonnel[]>;
+
+  // Purchase Indents
+  getPurchaseIndents(filters?: { dateFrom?: string; dateTo?: string; status?: string; priority?: string }): Promise<PurchaseIndentWithItems[]>;
+  getPurchaseIndent(id: number): Promise<PurchaseIndentWithItems | undefined>;
+  createPurchaseIndent(data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems>;
+  approvePurchaseIndent(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string, remarks?: string): Promise<PurchaseIndentWithItems | undefined>;
+  rejectPurchaseIndent(id: number, reason: string, rejectedBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }): Promise<PurchaseIndentItem | undefined>;
+
+  // Daily Diesel Requirements
+  getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
+  getDieselRequirement(id: number): Promise<DieselRequirementWithItems | undefined>;
+  createDieselRequirement(data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems>;
+  approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined>;
+  rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
+  updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined>;
+  getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
+
+  // Vendor Bills
+  getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]>;
+  getVendorBill(id: number): Promise<VendorBillWithItems | undefined>;
+  createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
+  updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
+  updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
+  deleteVendorBill(id: number): Promise<boolean>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string): Promise<Partial<InsertVendorBillItem>[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -4498,6 +4546,616 @@ export class DatabaseStorage implements IStorage {
       result.errors++;
     }
     return result;
+  }
+
+  // ============================================
+  // PURCHASE INDENTS CRUD
+  // ============================================
+
+  async getPurchaseIndents(filters?: { dateFrom?: string; dateTo?: string; status?: string; priority?: string }): Promise<PurchaseIndentWithItems[]> {
+    let conditions: any[] = [];
+    if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(purchaseIndents.date, filters.dateTo));
+    if (filters?.status) conditions.push(eq(purchaseIndents.status, filters.status));
+
+    const indents = await db.query.purchaseIndents.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
+      with: { items: true },
+      orderBy: desc(purchaseIndents.date),
+    });
+
+    if (filters?.priority) {
+      return (indents as PurchaseIndentWithItems[]).filter(indent =>
+        indent.items.some(item => item.priority === filters.priority)
+      );
+    }
+
+    return indents as PurchaseIndentWithItems[];
+  }
+
+  async getPurchaseIndent(id: number): Promise<PurchaseIndentWithItems | undefined> {
+    const indent = await db.query.purchaseIndents.findFirst({
+      where: eq(purchaseIndents.id, id),
+      with: { items: true },
+    });
+    return indent as PurchaseIndentWithItems | undefined;
+  }
+
+  private async generateIndentNo(tx: any): Promise<string> {
+    const year = new Date().getFullYear();
+    const [result] = await tx.select({ count: sql<number>`count(*)` })
+      .from(purchaseIndents)
+      .where(sql`EXTRACT(YEAR FROM ${purchaseIndents.createdAt}) = ${year}`);
+    const seq = (Number(result?.count) || 0) + 1;
+    return `HLC/PI/${year}/${String(seq).padStart(4, '0')}`;
+  }
+
+  async createPurchaseIndent(data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems> {
+    return await db.transaction(async (tx) => {
+      const indentNo = await this.generateIndentNo(tx);
+
+      const [indent] = await tx.insert(purchaseIndents).values({
+        date: data.date,
+        indentNo,
+        proposedBy: data.proposedBy.toUpperCase(),
+        raisedBy: data.raisedBy.toUpperCase(),
+        status: data.status || "pending",
+        remarks: data.remarks?.toUpperCase() || data.remarks,
+      }).returning();
+
+      let items: PurchaseIndentItem[] = [];
+      if (data.items?.length) {
+        items = await tx.insert(purchaseIndentItems).values(
+          data.items.map(item => ({
+            indentId: indent.id,
+            description: item.description.toUpperCase(),
+            qty: item.qty,
+            uom: item.uom.toUpperCase(),
+            purpose: item.purpose.toUpperCase(),
+            priority: item.priority || "normal",
+          }))
+        ).returning();
+      }
+
+      return { ...indent, items };
+    });
+  }
+
+  async approvePurchaseIndent(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string, remarks?: string): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      const approvedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+
+      await tx.update(purchaseIndents)
+        .set({
+          status: "approved",
+          approvedBy: approvedBy.toUpperCase(),
+          approvedAt,
+          approvalRemarks: remarks?.toUpperCase() || remarks,
+        })
+        .where(eq(purchaseIndents.id, id));
+
+      for (const ai of approvedItems) {
+        await tx.update(purchaseIndentItems)
+          .set({ approvedQty: ai.approvedQty })
+          .where(eq(purchaseIndentItems.id, ai.itemId));
+      }
+
+      const result = await db.query.purchaseIndents.findFirst({
+        where: eq(purchaseIndents.id, id),
+        with: { items: true },
+      });
+      return result as PurchaseIndentWithItems | undefined;
+    });
+  }
+
+  async rejectPurchaseIndent(id: number, reason: string, rejectedBy: string): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return undefined;
+
+    await db.update(purchaseIndents)
+      .set({
+        status: "rejected",
+        rejectionReason: reason.toUpperCase(),
+        approvedBy: rejectedBy.toUpperCase(),
+        approvedAt: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+      })
+      .where(eq(purchaseIndents.id, id));
+
+    const result = await db.query.purchaseIndents.findFirst({
+      where: eq(purchaseIndents.id, id),
+      with: { items: true },
+    });
+    return result as PurchaseIndentWithItems | undefined;
+  }
+
+  async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }): Promise<PurchaseIndentItem | undefined> {
+    const updates: any = { ...purchaseData };
+    if (updates.vendor) updates.vendor = updates.vendor.toUpperCase();
+    if (updates.billNo) updates.billNo = updates.billNo.toUpperCase();
+    if (updates.purchaseRemarks) updates.purchaseRemarks = updates.purchaseRemarks.toUpperCase();
+    if (updates.purchaseStatus) updates.purchaseStatus = updates.purchaseStatus.toUpperCase();
+
+    const [updatedItem] = await db.update(purchaseIndentItems)
+      .set(updates)
+      .where(eq(purchaseIndentItems.id, itemId))
+      .returning();
+
+    if (!updatedItem) return undefined;
+
+    const indentId = updatedItem.indentId;
+    const allItems = await db.select().from(purchaseIndentItems)
+      .where(eq(purchaseIndentItems.indentId, indentId));
+
+    const allPurchased = allItems.every(item =>
+      item.purchaseStatus === "PURCHASED" || item.purchaseStatus === "purchased"
+    );
+
+    if (allPurchased && allItems.length > 0) {
+      await db.update(purchaseIndents)
+        .set({ status: "completed" })
+        .where(eq(purchaseIndents.id, indentId));
+    }
+
+    return updatedItem;
+  }
+
+  // ============================================
+  // VENDOR BILLS CRUD
+  // ============================================
+
+  async getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]> {
+    let conditions: any[] = [];
+    if (filters?.dateFrom) conditions.push(gte(vendorBills.billDate, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(vendorBills.billDate, filters.dateTo));
+    if (filters?.vendor) conditions.push(eq(vendorBills.vendorName, filters.vendor.toUpperCase()));
+    if (filters?.status) conditions.push(eq(vendorBills.status, filters.status));
+
+    const bills = await db.query.vendorBills.findMany({
+      where: conditions.length > 0 ? and(...conditions) : undefined,
+      with: { items: true },
+      orderBy: desc(vendorBills.billDate),
+    });
+    return bills as VendorBillWithItems[];
+  }
+
+  async getVendorBill(id: number): Promise<VendorBillWithItems | undefined> {
+    const bill = await db.query.vendorBills.findFirst({
+      where: eq(vendorBills.id, id),
+      with: { items: true },
+    });
+    return bill as VendorBillWithItems | undefined;
+  }
+
+  private async generateVendorBillNo(): Promise<string> {
+    const year = new Date().getFullYear();
+    const existing = await db.select({ billNo: vendorBills.billNo })
+      .from(vendorBills)
+      .where(sql`${vendorBills.billNo} LIKE ${'HLC/VB/' + year + '/%'}`)
+      .orderBy(desc(vendorBills.id));
+    
+    let nextNum = 1;
+    if (existing.length > 0) {
+      const lastNo = existing[0].billNo;
+      const parts = lastNo.split('/');
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastNum)) nextNum = lastNum + 1;
+    }
+    return `HLC/VB/${year}/${String(nextNum).padStart(4, '0')}`;
+  }
+
+  async createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems> {
+    const billNo = await this.generateVendorBillNo();
+
+    return await db.transaction(async (tx) => {
+      const [bill] = await tx.insert(vendorBills).values({
+        billDate: data.billDate,
+        billNo,
+        billType: data.billType.toUpperCase(),
+        vendorName: data.vendorName.toUpperCase(),
+        periodFrom: data.periodFrom,
+        periodTo: data.periodTo,
+        status: data.status || "draft",
+        notes: data.notes?.toUpperCase() || data.notes,
+        totalAmount: data.totalAmount,
+        verifiedBy: data.verifiedBy?.toUpperCase() || data.verifiedBy,
+        verifiedAt: data.verifiedAt,
+        approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
+        approvedAt: data.approvedAt,
+        paidAt: data.paidAt,
+        paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
+      }).returning();
+
+      let items: VendorBillItem[] = [];
+      if (data.items?.length) {
+        items = await tx.insert(vendorBillItems).values(
+          data.items.map(item => ({
+            billId: bill.id,
+            description: item.description.toUpperCase(),
+            qty: item.qty,
+            unit: item.unit?.toUpperCase() || item.unit,
+            rate: item.rate,
+            amount: item.amount,
+            source: item.source || "manual",
+            equipmentId: item.equipmentId,
+          }))
+        ).returning();
+      }
+
+      return { ...bill, items };
+    });
+  }
+
+  async updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined> {
+    const existing = await this.getVendorBill(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(vendorBills)
+        .set({
+          billDate: data.billDate,
+          billType: data.billType.toUpperCase(),
+          vendorName: data.vendorName.toUpperCase(),
+          periodFrom: data.periodFrom,
+          periodTo: data.periodTo,
+          notes: data.notes?.toUpperCase() || data.notes,
+          totalAmount: data.totalAmount,
+          paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
+        })
+        .where(eq(vendorBills.id, id))
+        .returning();
+
+      await tx.delete(vendorBillItems).where(eq(vendorBillItems.billId, id));
+
+      let items: VendorBillItem[] = [];
+      if (data.items?.length) {
+        items = await tx.insert(vendorBillItems).values(
+          data.items.map(item => ({
+            billId: id,
+            description: item.description.toUpperCase(),
+            qty: item.qty,
+            unit: item.unit?.toUpperCase() || item.unit,
+            rate: item.rate,
+            amount: item.amount,
+            source: item.source || "manual",
+            equipmentId: item.equipmentId,
+          }))
+        ).returning();
+      }
+
+      return { ...updated, items };
+    });
+  }
+
+  async updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined> {
+    const existing = await this.getVendorBill(id);
+    if (!existing) return undefined;
+
+    const validTransitions: Record<string, string[]> = {
+      draft: ["verified"],
+      verified: ["approved"],
+      approved: ["paid"],
+    };
+
+    const allowed = validTransitions[existing.status];
+    if (!allowed || !allowed.includes(status)) {
+      throw new Error(`Invalid status transition from "${existing.status}" to "${status}"`);
+    }
+
+    const updates: Partial<VendorBill> = { status };
+    const now = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    const actorUpper = actor.toUpperCase();
+
+    if (status === "verified") {
+      updates.verifiedBy = actorUpper;
+      updates.verifiedAt = now;
+    } else if (status === "approved") {
+      updates.approvedBy = actorUpper;
+      updates.approvedAt = now;
+    } else if (status === "paid") {
+      updates.paidAt = now;
+    }
+
+    await db.update(vendorBills)
+      .set(updates)
+      .where(eq(vendorBills.id, id));
+
+    return await this.getVendorBill(id);
+  }
+
+  async deleteVendorBill(id: number): Promise<boolean> {
+    const existing = await this.getVendorBill(id);
+    if (!existing) return false;
+
+    if (existing.status !== "draft") {
+      throw new Error("Only draft bills can be deleted");
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(vendorBillItems).where(eq(vendorBillItems.billId, id));
+      await tx.delete(vendorBills).where(eq(vendorBills.id, id));
+    });
+
+    return true;
+  }
+
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string): Promise<Partial<InsertVendorBillItem>[]> {
+    const vendorUpper = vendorName.toUpperCase();
+    const items: Partial<InsertVendorBillItem>[] = [];
+
+    if (billType.toLowerCase() === "equipment") {
+      const equipment = await db.select()
+        .from(equipmentMaster)
+        .where(and(
+          eq(equipmentMaster.vendorName, vendorUpper),
+          eq(equipmentMaster.ownership, "hired"),
+        ));
+
+      if (equipment.length > 0) {
+        const equipmentIds = equipment.map(e => e.id);
+        const usageRecords = await db.select()
+          .from(equipmentUsage)
+          .where(and(
+            inArray(equipmentUsage.equipmentId, equipmentIds),
+            gte(equipmentUsage.date, periodFrom),
+            lte(equipmentUsage.date, periodTo),
+          ));
+
+        const usageByEquipment = new Map<number, { totalHours: number; name: string }>();
+        for (const eq of equipment) {
+          usageByEquipment.set(eq.id, { totalHours: 0, name: eq.name });
+        }
+        for (const u of usageRecords) {
+          const existing = usageByEquipment.get(u.equipmentId);
+          if (existing) {
+            existing.totalHours += (u.hoursOrKmRun || 0);
+          }
+        }
+
+        for (const [eqId, data] of usageByEquipment.entries()) {
+          if (data.totalHours > 0) {
+            items.push({
+              description: data.name,
+              qty: data.totalHours,
+              unit: "HRS",
+              source: "auto",
+              equipmentId: eqId,
+            });
+          }
+        }
+      }
+    } else if (billType.toLowerCase() === "material") {
+      const receipts = await db.select()
+        .from(materialReceipts)
+        .where(and(
+          eq(materialReceipts.supplier, vendorUpper),
+          gte(materialReceipts.date, periodFrom),
+          lte(materialReceipts.date, periodTo),
+        ));
+
+      const materialIds = [...new Set(receipts.map(r => r.materialId))];
+      const materials = materialIds.length > 0
+        ? await db.select().from(plantMaterials).where(inArray(plantMaterials.id, materialIds))
+        : [];
+      const materialMap = new Map(materials.map(m => [m.id, m.name]));
+
+      const grouped = new Map<number, { qty: number; uom: string }>();
+      for (const r of receipts) {
+        const existing = grouped.get(r.materialId);
+        if (existing) {
+          existing.qty += (r.quantity || 0);
+        } else {
+          grouped.set(r.materialId, { qty: r.quantity || 0, uom: r.uom });
+        }
+      }
+
+      for (const [matId, data] of grouped.entries()) {
+        items.push({
+          description: materialMap.get(matId) || `MATERIAL #${matId}`,
+          qty: data.qty,
+          unit: data.uom,
+          source: "auto",
+        });
+      }
+    }
+
+    return items;
+  }
+
+  async getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]> {
+    const results = await db.query.dieselRequirements.findMany({
+      with: { items: true },
+      orderBy: desc(dieselRequirements.date),
+    });
+
+    let filtered = results as DieselRequirementWithItems[];
+    if (filters?.dateFrom) {
+      filtered = filtered.filter(r => r.date >= filters.dateFrom!);
+    }
+    if (filters?.dateTo) {
+      filtered = filtered.filter(r => r.date <= filters.dateTo!);
+    }
+    if (filters?.status) {
+      filtered = filtered.filter(r => r.status === filters.status);
+    }
+    return filtered;
+  }
+
+  async getDieselRequirement(id: number): Promise<DieselRequirementWithItems | undefined> {
+    const result = await db.query.dieselRequirements.findFirst({
+      where: eq(dieselRequirements.id, id),
+      with: { items: true },
+    });
+    return result as DieselRequirementWithItems | undefined;
+  }
+
+  async createDieselRequirement(data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems> {
+    return await db.transaction(async (tx) => {
+      const [requirement] = await tx.insert(dieselRequirements).values({
+        date: data.date,
+        raisedBy: data.raisedBy.toUpperCase(),
+        totalPlanned: data.totalPlanned,
+        status: data.status || "pending",
+        remarks: data.remarks?.toUpperCase() || data.remarks,
+      }).returning();
+
+      let items: DieselRequirementItem[] = [];
+      if (data.items?.length) {
+        items = await tx.insert(dieselRequirementItems).values(
+          data.items.map(item => ({
+            requirementId: requirement.id,
+            equipmentId: item.equipmentId,
+            equipmentName: item.equipmentName.toUpperCase(),
+            purpose: item.purpose?.toUpperCase() || item.purpose,
+            estHours: item.estHours,
+            norm: item.norm,
+            plannedQty: item.plannedQty,
+          }))
+        ).returning();
+      }
+
+      return { ...requirement, items };
+    });
+  }
+
+  async approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined> {
+    const existing = await this.getDieselRequirement(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      const approvedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+
+      for (const ai of approvedItems) {
+        await tx.update(dieselRequirementItems)
+          .set({ approvedQty: ai.approvedQty })
+          .where(eq(dieselRequirementItems.id, ai.itemId));
+      }
+
+      const updatedItems = await tx.select().from(dieselRequirementItems)
+        .where(eq(dieselRequirementItems.requirementId, id));
+      const totalApproved = updatedItems.reduce((sum, item) => sum + (item.approvedQty || 0), 0);
+
+      await tx.update(dieselRequirements)
+        .set({
+          status: "approved",
+          approvedBy: approvedBy.toUpperCase(),
+          approvedAt,
+          totalApproved,
+        })
+        .where(eq(dieselRequirements.id, id));
+
+      const result = await db.query.dieselRequirements.findFirst({
+        where: eq(dieselRequirements.id, id),
+        with: { items: true },
+      });
+      return result as DieselRequirementWithItems | undefined;
+    });
+  }
+
+  async rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined> {
+    const existing = await this.getDieselRequirement(id);
+    if (!existing) return undefined;
+
+    await db.update(dieselRequirements)
+      .set({
+        status: "rejected",
+        rejectionReason: reason.toUpperCase(),
+        approvedBy: rejectedBy.toUpperCase(),
+        approvedAt: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+      })
+      .where(eq(dieselRequirements.id, id));
+
+    const result = await db.query.dieselRequirements.findFirst({
+      where: eq(dieselRequirements.id, id),
+      with: { items: true },
+    });
+    return result as DieselRequirementWithItems | undefined;
+  }
+
+  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined> {
+    const existing = await this.getDieselRequirement(id);
+    if (!existing) return undefined;
+
+    const updates: any = { ...purchaseData };
+    if (updates.supplier) updates.supplier = updates.supplier.toUpperCase();
+    if (updates.billNo) updates.billNo = updates.billNo.toUpperCase();
+    if (updates.purchaseRemarks) updates.purchaseRemarks = updates.purchaseRemarks.toUpperCase();
+    if (!updates.purchasedAt) updates.purchasedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    updates.status = "purchased";
+
+    await db.update(dieselRequirements)
+      .set(updates)
+      .where(eq(dieselRequirements.id, id));
+
+    const result = await db.query.dieselRequirements.findFirst({
+      where: eq(dieselRequirements.id, id),
+      with: { items: true },
+    });
+    return result as DieselRequirementWithItems | undefined;
+  }
+
+  async getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]> {
+    const requirements = await db.select()
+      .from(dieselRequirements)
+      .where(and(
+        gte(dieselRequirements.date, dateFrom),
+        lte(dieselRequirements.date, dateTo),
+      ))
+      .orderBy(asc(dieselRequirements.date));
+
+    const dieselMat = await db.select().from(plantMaterials)
+      .where(sql`LOWER(${plantMaterials.name}) = 'diesel'`)
+      .limit(1);
+    const dieselMaterialId = dieselMat[0]?.id;
+
+    const usageRecords = await db.select()
+      .from(equipmentUsage)
+      .where(and(
+        gte(equipmentUsage.date, dateFrom),
+        lte(equipmentUsage.date, dateTo),
+      ));
+
+    const equipLogs = await db.select()
+      .from(equipmentLogs)
+      .where(and(
+        gte(sql`(SELECT date FROM dprs WHERE dprs.id = ${equipmentLogs.dprId})`, dateFrom),
+        lte(sql`(SELECT date FROM dprs WHERE dprs.id = ${equipmentLogs.dprId})`, dateTo),
+      ));
+
+    const dateMap = new Map<string, { totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }>();
+
+    for (const req of requirements) {
+      const existing = dateMap.get(req.date) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };
+      existing.totalPlanned += req.totalPlanned || 0;
+      existing.totalApproved += req.totalApproved || 0;
+      existing.totalPurchased += req.qtyPurchased || 0;
+      dateMap.set(req.date, existing);
+    }
+
+    for (const usage of usageRecords) {
+      const d = usage.date;
+      const existing = dateMap.get(d) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };
+      existing.totalActualIssued += usage.dieselIssued || 0;
+      dateMap.set(d, existing);
+    }
+
+    for (const eLog of equipLogs) {
+      if (eLog.diesel && eLog.diesel > 0 && eLog.dprId) {
+        const [dpr] = await db.select({ date: dprs.date }).from(dprs).where(eq(dprs.id, eLog.dprId)).limit(1);
+        if (dpr) {
+          const d = dpr.date;
+          const existing = dateMap.get(d) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };
+          existing.totalActualIssued += eLog.diesel || 0;
+          dateMap.set(d, existing);
+        }
+      }
+    }
+
+    return Array.from(dateMap.entries())
+      .map(([date, data]) => ({ date, ...data }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   async migrateEngineerNamesToPersonnelFormat(): Promise<{ updated: number; unmatched: number; errors: number }> {

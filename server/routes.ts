@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 
 export async function registerRoutes(
@@ -1799,6 +1799,498 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete LDO dip reading" });
+    }
+  });
+
+  // ============================================
+  // PURCHASE INDENTS
+  // ============================================
+
+  app.get("/api/purchase-indents", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        status: req.query.status as string | undefined,
+        priority: req.query.priority as string | undefined,
+      };
+      const indents = await storage.getPurchaseIndents(filters);
+      res.json(indents);
+    } catch (err) {
+      console.error("Error fetching purchase indents:", err);
+      res.status(500).json({ message: "Failed to fetch purchase indents" });
+    }
+  });
+
+  app.get("/api/purchase-indents/summary", async (req, res) => {
+    try {
+      const all = await storage.getPurchaseIndents();
+      const summary = {
+        total: all.length,
+        pending: all.filter(i => i.status === "pending").length,
+        approved: all.filter(i => i.status === "approved").length,
+        rejected: all.filter(i => i.status === "rejected").length,
+        completed: all.filter(i => i.status === "completed").length,
+      };
+      res.json(summary);
+    } catch (err) {
+      console.error("Error fetching purchase indent summary:", err);
+      res.status(500).json({ message: "Failed to fetch purchase indent summary" });
+    }
+  });
+
+  app.get("/api/purchase-indents/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const indent = await storage.getPurchaseIndent(id);
+      if (!indent) {
+        return res.status(404).json({ message: "Purchase indent not found" });
+      }
+      res.json(indent);
+    } catch (err) {
+      console.error("Error fetching purchase indent:", err);
+      res.status(500).json({ message: "Failed to fetch purchase indent" });
+    }
+  });
+
+  app.post("/api/purchase-indents", async (req, res) => {
+    try {
+      const input = createPurchaseIndentRequestSchema.parse(req.body);
+      const indent = await storage.createPurchaseIndent(input);
+      res.status(201).json(indent);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, errors: err.errors });
+      }
+      console.error("Error creating purchase indent:", err);
+      res.status(500).json({ message: "Failed to create purchase indent" });
+    }
+  });
+
+  app.patch("/api/purchase-indents/:id/approve", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, approvedItems, remarks } = req.body;
+
+      if (!pin || typeof pin !== "string") {
+        return res.status(400).json({ message: "PIN is required" });
+      }
+
+      const isAdmin = await storage.verifyPin("admin", pin);
+      const isManager = await storage.verifyPin("manager", pin);
+      if (!isAdmin && !isManager) {
+        return res.status(403).json({ message: "Invalid PIN" });
+      }
+
+      const approvedBy = isAdmin ? "ADMIN" : "MANAGER";
+
+      const approvedItemsSchema = z.array(z.object({
+        itemId: z.number(),
+        approvedQty: z.number(),
+      }));
+      const validatedItems = approvedItemsSchema.parse(approvedItems);
+
+      const indent = await storage.approvePurchaseIndent(id, validatedItems, approvedBy, remarks);
+      if (!indent) {
+        return res.status(404).json({ message: "Purchase indent not found" });
+      }
+      res.json(indent);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error approving purchase indent:", err);
+      res.status(500).json({ message: "Failed to approve purchase indent" });
+    }
+  });
+
+  app.patch("/api/purchase-indents/:id/reject", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, reason } = req.body;
+
+      if (!pin || typeof pin !== "string") {
+        return res.status(400).json({ message: "PIN is required" });
+      }
+
+      const isAdmin = await storage.verifyPin("admin", pin);
+      const isManager = await storage.verifyPin("manager", pin);
+      if (!isAdmin && !isManager) {
+        return res.status(403).json({ message: "Invalid PIN" });
+      }
+
+      const rejectedBy = isAdmin ? "ADMIN" : "MANAGER";
+
+      if (!reason || typeof reason !== "string") {
+        return res.status(400).json({ message: "Rejection reason is required" });
+      }
+
+      const indent = await storage.rejectPurchaseIndent(id, reason, rejectedBy);
+      if (!indent) {
+        return res.status(404).json({ message: "Purchase indent not found" });
+      }
+      res.json(indent);
+    } catch (err) {
+      console.error("Error rejecting purchase indent:", err);
+      res.status(500).json({ message: "Failed to reject purchase indent" });
+    }
+  });
+
+  app.patch("/api/purchase-indent-items/:id/purchase-update", async (req, res) => {
+    try {
+      const itemId = Number(req.params.id);
+      const updateSchema = z.object({
+        purchaseStatus: z.string().optional(),
+        qtyPurchased: z.number().optional(),
+        vendor: z.string().optional(),
+        billNo: z.string().optional(),
+        rate: z.number().optional(),
+        amount: z.number().optional(),
+        purchaseRemarks: z.string().optional(),
+      });
+      const purchaseData = updateSchema.parse(req.body);
+      const item = await storage.updatePurchaseItemStatus(itemId, purchaseData);
+      if (!item) {
+        return res.status(404).json({ message: "Purchase indent item not found" });
+      }
+      res.json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error updating purchase indent item:", err);
+      res.status(500).json({ message: "Failed to update purchase indent item" });
+    }
+  });
+
+  // ============================================
+  // DAILY DIESEL REQUIREMENTS
+  // ============================================
+
+  app.get("/api/diesel-requirements", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        status: req.query.status as string | undefined,
+      };
+      const requirements = await storage.getDieselRequirements(filters);
+      res.json(requirements);
+    } catch (err) {
+      console.error("Error fetching diesel requirements:", err);
+      res.status(500).json({ message: "Failed to fetch diesel requirements" });
+    }
+  });
+
+  app.get("/api/diesel-requirements/summary", async (req, res) => {
+    try {
+      const all = await storage.getDieselRequirements();
+      const summary = {
+        total: all.length,
+        pending: all.filter(r => r.status === "pending").length,
+        approved: all.filter(r => r.status === "approved").length,
+        rejected: all.filter(r => r.status === "rejected").length,
+      };
+      res.json(summary);
+    } catch (err) {
+      console.error("Error fetching diesel requirement summary:", err);
+      res.status(500).json({ message: "Failed to fetch diesel requirement summary" });
+    }
+  });
+
+  app.get("/api/diesel-requirements/comparison", async (req, res) => {
+    try {
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      if (!dateFrom || !dateTo) {
+        return res.status(400).json({ message: "dateFrom and dateTo are required" });
+      }
+      const report = await storage.getDieselComparisonReport(dateFrom, dateTo);
+      res.json(report);
+    } catch (err) {
+      console.error("Error fetching diesel comparison report:", err);
+      res.status(500).json({ message: "Failed to fetch diesel comparison report" });
+    }
+  });
+
+  app.get("/api/diesel-requirements/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const requirement = await storage.getDieselRequirement(id);
+      if (!requirement) {
+        return res.status(404).json({ message: "Diesel requirement not found" });
+      }
+      res.json(requirement);
+    } catch (err) {
+      console.error("Error fetching diesel requirement:", err);
+      res.status(500).json({ message: "Failed to fetch diesel requirement" });
+    }
+  });
+
+  app.post("/api/diesel-requirements", async (req, res) => {
+    try {
+      const input = createDieselRequirementRequestSchema.parse(req.body);
+      const requirement = await storage.createDieselRequirement(input);
+      res.status(201).json(requirement);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, errors: err.errors });
+      }
+      console.error("Error creating diesel requirement:", err);
+      res.status(500).json({ message: "Failed to create diesel requirement" });
+    }
+  });
+
+  app.patch("/api/diesel-requirements/:id/approve", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, approvedItems } = req.body;
+
+      if (!pin || typeof pin !== "string") {
+        return res.status(400).json({ message: "PIN is required" });
+      }
+
+      const isAdmin = await storage.verifyPin("admin", pin);
+      const isManager = await storage.verifyPin("manager", pin);
+      if (!isAdmin && !isManager) {
+        return res.status(403).json({ message: "Invalid PIN" });
+      }
+
+      const approvedBy = isAdmin ? "ADMIN" : "MANAGER";
+
+      const approvedItemsSchema = z.array(z.object({
+        itemId: z.number(),
+        approvedQty: z.number(),
+      }));
+      const validatedItems = approvedItemsSchema.parse(approvedItems);
+
+      const requirement = await storage.approveDieselRequirement(id, validatedItems, approvedBy);
+      if (!requirement) {
+        return res.status(404).json({ message: "Diesel requirement not found" });
+      }
+      res.json(requirement);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error approving diesel requirement:", err);
+      res.status(500).json({ message: "Failed to approve diesel requirement" });
+    }
+  });
+
+  app.patch("/api/diesel-requirements/:id/reject", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, reason } = req.body;
+
+      if (!pin || typeof pin !== "string") {
+        return res.status(400).json({ message: "PIN is required" });
+      }
+
+      const isAdmin = await storage.verifyPin("admin", pin);
+      const isManager = await storage.verifyPin("manager", pin);
+      if (!isAdmin && !isManager) {
+        return res.status(403).json({ message: "Invalid PIN" });
+      }
+
+      const rejectedBy = isAdmin ? "ADMIN" : "MANAGER";
+
+      if (!reason || typeof reason !== "string") {
+        return res.status(400).json({ message: "Rejection reason is required" });
+      }
+
+      const requirement = await storage.rejectDieselRequirement(id, reason, rejectedBy);
+      if (!requirement) {
+        return res.status(404).json({ message: "Diesel requirement not found" });
+      }
+      res.json(requirement);
+    } catch (err) {
+      console.error("Error rejecting diesel requirement:", err);
+      res.status(500).json({ message: "Failed to reject diesel requirement" });
+    }
+  });
+
+  app.patch("/api/diesel-requirements/:id/purchase-update", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const updateSchema = z.object({
+        qtyPurchased: z.number().optional(),
+        supplier: z.string().optional(),
+        billNo: z.string().optional(),
+        rate: z.number().optional(),
+        amount: z.number().optional(),
+        purchasedAt: z.string().optional(),
+        purchaseRemarks: z.string().optional(),
+      });
+      const purchaseData = updateSchema.parse(req.body);
+      const requirement = await storage.updateDieselPurchase(id, purchaseData);
+      if (!requirement) {
+        return res.status(404).json({ message: "Diesel requirement not found" });
+      }
+      res.json(requirement);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error updating diesel purchase:", err);
+      res.status(500).json({ message: "Failed to update diesel purchase" });
+    }
+  });
+
+  // ============================================
+  // VENDOR BILLS
+  // ============================================
+
+  app.get("/api/vendor-bills", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        vendor: req.query.vendor as string | undefined,
+        status: req.query.status as string | undefined,
+      };
+      const bills = await storage.getVendorBills(filters);
+      res.json(bills);
+    } catch (err) {
+      console.error("Error fetching vendor bills:", err);
+      res.status(500).json({ message: "Failed to fetch vendor bills" });
+    }
+  });
+
+  app.get("/api/vendor-bills/summary", async (req, res) => {
+    try {
+      const bills = await storage.getVendorBills();
+      const summary = {
+        total: bills.length,
+        totalAmount: bills.reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        draft: bills.filter(b => b.status === "draft").length,
+        draftAmount: bills.filter(b => b.status === "draft").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        verified: bills.filter(b => b.status === "verified").length,
+        verifiedAmount: bills.filter(b => b.status === "verified").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        approved: bills.filter(b => b.status === "approved").length,
+        approvedAmount: bills.filter(b => b.status === "approved").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        paid: bills.filter(b => b.status === "paid").length,
+        paidAmount: bills.filter(b => b.status === "paid").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+      };
+      res.json(summary);
+    } catch (err) {
+      console.error("Error fetching vendor bills summary:", err);
+      res.status(500).json({ message: "Failed to fetch vendor bills summary" });
+    }
+  });
+
+  app.get("/api/vendor-bills/auto-items", async (req, res) => {
+    try {
+      const vendorName = req.query.vendorName as string;
+      const billType = req.query.billType as string;
+      const periodFrom = req.query.periodFrom as string;
+      const periodTo = req.query.periodTo as string;
+      if (!vendorName || !billType || !periodFrom || !periodTo) {
+        return res.status(400).json({ message: "vendorName, billType, periodFrom, and periodTo are required" });
+      }
+      const items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo);
+      res.json(items);
+    } catch (err) {
+      console.error("Error fetching vendor bill auto items:", err);
+      res.status(500).json({ message: "Failed to fetch auto items" });
+    }
+  });
+
+  app.get("/api/vendor-bills/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const bill = await storage.getVendorBill(id);
+      if (!bill) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+      res.json(bill);
+    } catch (err) {
+      console.error("Error fetching vendor bill:", err);
+      res.status(500).json({ message: "Failed to fetch vendor bill" });
+    }
+  });
+
+  app.post("/api/vendor-bills", async (req, res) => {
+    try {
+      const input = createVendorBillRequestSchema.parse(req.body);
+      const bill = await storage.createVendorBill(input);
+      res.status(201).json(bill);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating vendor bill:", err);
+      res.status(500).json({ message: "Failed to create vendor bill" });
+    }
+  });
+
+  app.put("/api/vendor-bills/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = createVendorBillRequestSchema.parse(req.body);
+      const bill = await storage.updateVendorBill(id, input);
+      if (!bill) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+      res.json(bill);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error updating vendor bill:", err);
+      res.status(500).json({ message: "Failed to update vendor bill" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/:id/status", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const statusSchema = z.object({
+        status: z.enum(["draft", "verified", "approved", "paid"]),
+        actor: z.string().min(1),
+        pin: z.string().optional(),
+      });
+      const { status, actor, pin } = statusSchema.parse(req.body);
+
+      if (status === "verified" || status === "approved") {
+        if (!pin) {
+          return res.status(400).json({ message: "PIN is required for verification/approval" });
+        }
+        const role = status === "verified" ? "manager" : "admin";
+        const isValid = await storage.verifyPin(role, pin);
+        if (!isValid) {
+          const isOtherValid = await storage.verifyPin(role === "manager" ? "admin" : "manager", pin);
+          if (!isOtherValid) {
+            return res.status(403).json({ message: `Invalid PIN for ${status}` });
+          }
+        }
+      }
+
+      const bill = await storage.updateVendorBillStatus(id, status, actor);
+      if (!bill) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+      res.json(bill);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error updating vendor bill status:", err);
+      res.status(500).json({ message: "Failed to update vendor bill status" });
+    }
+  });
+
+  app.delete("/api/vendor-bills/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const deleted = await storage.deleteVendorBill(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Vendor bill not found or not in draft status" });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting vendor bill:", err);
+      res.status(500).json({ message: "Failed to delete vendor bill" });
     }
   });
 
