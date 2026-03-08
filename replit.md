@@ -47,7 +47,7 @@ Preferred communication style: Simple, everyday language.
 - Manages material receipts, mix templates, truck dispatches, and stock deductions.
 - **Party-Based Stock**: All stock is attributed to a party, with HLC as primary for common stock.
 - **Equipment Master**: Enhanced with ownership status, vendor details, and active status.
-- **Equipment Entry Types**: Supports `time_meter`, `hourly`, `daily`, `trip_based`, and `monthly` entry modes for equipment logs in both DPRs and Plant.
+- **Equipment Entry Types**: Supports `time_meter`, `hourly`, `daily`, `trip_based`, and `monthly` entry modes for equipment logs in both DPRs and Plant. Entry type is a billing label — all types keep time/meter/diesel fields visible for consumption tracking. Trip-based additionally shows trip count and distance fields.
 - **Diesel Flow**: Diesel stock deduction from HLC stock can originate from both Plant Equipment Usage and DPR equipment logs, with overlap detection.
 - **Fuel Stock Tracking**: Includes Bitumen Stock Tracker (tank dip chart with linear interpolation), LDO Flow Meter Tracker (meter readings for consumption), and Consumption Variance Report (actual vs. template).
 - **Material Returns**: System for returning issued materials back to plant stock, linked to original issues.

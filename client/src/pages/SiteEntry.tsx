@@ -335,20 +335,11 @@ export default function SiteEntry() {
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
-      const normalizedEquipment = equipment.map(eq => {
-        const isDailyMonthly = eq.entryType === "daily" || eq.entryType === "monthly";
-        return {
-          ...eq,
-          dieselSource: isDailyMonthly ? "contractor" : (eq.dieselSource || "plant_stock"),
-          startTime: isDailyMonthly ? "" : eq.startTime,
-          endTime: isDailyMonthly ? "" : eq.endTime,
-          openingReading: isDailyMonthly ? "" : eq.openingReading,
-          closingReading: isDailyMonthly ? "" : eq.closingReading,
-          hoursWorked: isDailyMonthly ? "" : eq.hoursWorked,
-          totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-            ? String(Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2) : eq.totalKm || "",
-        };
-      });
+      const normalizedEquipment = equipment.map(eq => ({
+        ...eq,
+        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+          ? String(Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2) : eq.totalKm || "",
+      }));
 
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
@@ -889,22 +880,7 @@ export default function SiteEntry() {
                       onValueChange={(val) => {
                         const updated = [...equipment];
                         updated[idx].entryType = val;
-                        if (val === "daily" || val === "monthly") {
-                          updated[idx].dieselSource = "contractor";
-                          updated[idx].startTime = "";
-                          updated[idx].endTime = "";
-                          updated[idx].openingReading = null;
-                          updated[idx].closingReading = null;
-                          updated[idx].numberOfTrips = null;
-                          updated[idx].tripDistance = null;
-                          updated[idx].totalKm = null;
-                        } else if (val === "trip_based") {
-                          updated[idx].dieselSource = "contractor";
-                          updated[idx].startTime = "";
-                          updated[idx].endTime = "";
-                          updated[idx].openingReading = null;
-                          updated[idx].closingReading = null;
-                        } else {
+                        if (val !== "trip_based") {
                           updated[idx].numberOfTrips = null;
                           updated[idx].tripDistance = null;
                           updated[idx].totalKm = null;
@@ -927,20 +903,17 @@ export default function SiteEntry() {
                   {isDailyOrMonthly && (
                     <div className="col-span-2 flex items-end">
                       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
-                        {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"} — Diesel by vendor
+                        {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
                       </Badge>
                     </div>
                   )}
                 </div>
 
-                {isTimeMeter && (
-                  <>
+                <>
                     <p className="text-xs font-semibold text-muted-foreground border-b pb-1">
-                      {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Morning Entry"}
+                      {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
                     </p>
-                    {entry.entryType !== "hourly" && (
-                      <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
-                    )}
+                    <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
                     
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
@@ -1027,8 +1000,7 @@ export default function SiteEntry() {
                         />
                       </div>
                     </div>
-                  </>
-                )}
+                </>
 
                 {isTripBased && (
                   <>
@@ -1096,26 +1068,6 @@ export default function SiteEntry() {
                       </div>
                     </div>
                   </>
-                )}
-
-                {isDailyOrMonthly && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Diesel Issued (L) — Optional</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="0"
-                        value={entry.diesel ?? ""}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                          setEquipment(updated);
-                        }}
-                        data-testid={`input-equipment-diesel-${idx}`}
-                      />
-                    </div>
-                  </div>
                 )}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

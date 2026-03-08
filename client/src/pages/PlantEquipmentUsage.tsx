@@ -300,24 +300,23 @@ export default function PlantEquipmentUsage() {
     const hasMeterReading = openingReading && closingReading;
     const hasTimeEntry = startTime && endTime;
     const hasTripEntry = (entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance;
-    const isDailyMonthly = entryType === "daily" || entryType === "monthly";
     const hasPartialEntry = openingReading && !closingReading && !hasTimeEntry && !hasTripEntry;
     
-    if (!equipmentId || (!hasMeterReading && !hasTimeEntry && !hasTripEntry && !hasPartialEntry && !isDailyMonthly)) {
+    if (!equipmentId || (!hasMeterReading && !hasTimeEntry && !hasTripEntry && !hasPartialEntry)) {
       toast({ title: "Please provide at least an opening reading, or complete meter/time/trip details", variant: "destructive" });
       return;
     }
     
-    const effectiveDieselSource = isDailyMonthly ? "contractor" : (dieselIncluded ? "contractor" : dieselSource);
+    const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
     
     const data = {
       date,
       equipmentId: parseInt(equipmentId),
       entryType,
-      openingReading: isDailyMonthly ? null : (openingReading ? parseFloat(openingReading) : null),
-      closingReading: isDailyMonthly ? null : (closingReading ? parseFloat(closingReading) : null),
-      startTime: isDailyMonthly ? null : (startTime || null),
-      endTime: isDailyMonthly ? null : (endTime || null),
+      openingReading: openingReading ? parseFloat(openingReading) : null,
+      closingReading: closingReading ? parseFloat(closingReading) : null,
+      startTime: startTime || null,
+      endTime: endTime || null,
       numberOfTrips: (entryType === "trip_based" || tripBasedEntry) && numberOfTrips ? parseInt(numberOfTrips) : null,
       tripDistance: (entryType === "trip_based" || tripBasedEntry) && tripDistance ? parseFloat(tripDistance) : null,
       tripBasedEntry: entryType === "trip_based" || tripBasedEntry,
@@ -813,38 +812,34 @@ export default function PlantEquipmentUsage() {
                 )}
               </div>
 
-              {entryType !== "daily" && entryType !== "monthly" && (
-                <>
-                  <p className="text-sm text-muted-foreground italic">
-                    {entryType === "hourly" ? "Enter time worked for hourly hire billing." : "Enter meter readings OR time."}
-                  </p>
+              <p className="text-sm text-muted-foreground italic">
+                {entryType === "hourly" ? "Enter time worked for hourly hire billing." : "Enter meter readings OR time."}
+              </p>
 
-                  <div className="text-sm font-semibold text-muted-foreground border-b pb-1">Morning Entry</div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
-                      <Input type="number" step="0.1" value={openingReading} onChange={(e) => setOpeningReading(e.target.value)} placeholder="0.0" data-testid="input-opening-reading" />
-                    </div>
-                    <div className="flex flex-col">
-                      <div className="text-sm font-semibold text-muted-foreground border-b pb-1 mb-2">Evening Entry (can be added later)</div>
-                      <Label>Closing {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
-                      <Input type="number" step="0.1" value={closingReading} onChange={(e) => setClosingReading(e.target.value)} placeholder="0.0" data-testid="input-closing-reading" />
-                    </div>
-                  </div>
+              <div className="text-sm font-semibold text-muted-foreground border-b pb-1">Morning Entry</div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
+                  <Input type="number" step="0.1" value={openingReading} onChange={(e) => setOpeningReading(e.target.value)} placeholder="0.0" data-testid="input-opening-reading" />
+                </div>
+                <div className="flex flex-col">
+                  <div className="text-sm font-semibold text-muted-foreground border-b pb-1 mb-2">Evening Entry (can be added later)</div>
+                  <Label>Closing {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
+                  <Input type="number" step="0.1" value={closingReading} onChange={(e) => setClosingReading(e.target.value)} placeholder="0.0" data-testid="input-closing-reading" />
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Start Time</Label>
-                      <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-start-time" />
-                    </div>
-                    <div>
-                      <Label>End Time</Label>
-                      <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-end-time" />
-                    </div>
-                  </div>
-                </>
-              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Start Time</Label>
+                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-start-time" />
+                </div>
+                <div>
+                  <Label>End Time</Label>
+                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-end-time" />
+                </div>
+              </div>
 
               <div className="py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-2">
                 <Label className="text-sm font-medium">Entry Type</Label>
@@ -858,14 +853,6 @@ export default function PlantEquipmentUsage() {
                       setTripBasedEntry(false);
                       setNumberOfTrips("");
                       setTripDistance("");
-                    }
-                    if (val === "daily" || val === "monthly") {
-                      setDieselIncluded(true);
-                      setDieselSource("contractor");
-                      setOpeningReading("");
-                      setClosingReading("");
-                      setStartTime("");
-                      setEndTime("");
                     }
                   }}
                 >
@@ -882,7 +869,7 @@ export default function PlantEquipmentUsage() {
                 </Select>
                 {(entryType === "daily" || entryType === "monthly") && (
                   <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                    {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"} — Diesel by vendor
+                    {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
                   </Badge>
                 )}
               </div>
@@ -1088,7 +1075,7 @@ export default function PlantEquipmentUsage() {
               <Button 
                 onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || (!openingReading && (!startTime || !endTime) && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance) && entryType !== "daily" && entryType !== "monthly")} 
+                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || (!openingReading && (!startTime || !endTime) && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance))} 
                 data-testid="button-save-usage"
               >
                 {(createMutation.isPending || updateMutation.isPending) ? (
@@ -1096,7 +1083,7 @@ export default function PlantEquipmentUsage() {
                 ) : editingUsage ? (
                   editingUsage.openingReading != null && editingUsage.closingReading == null && closingReading ? "Complete Entry" : "Update Entry"
                 ) : (
-                  openingReading && !closingReading && !startTime && !endTime && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance) && entryType !== "daily" && entryType !== "monthly" ? "Save Morning Entry" : "Save Entry"
+                  openingReading && !closingReading && !startTime && !endTime && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance) ? "Save Morning Entry" : "Save Entry"
                 )}
               </Button>
             </div>
@@ -1373,7 +1360,7 @@ export default function PlantEquipmentUsage() {
                                 {(entry as any).entryType === "trip_based" && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>
                                 )}
-                                {isDieselIncluded && !(entry as any).entryType?.match(/^(daily|monthly)$/) && (
+                                {isDieselIncluded && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>
                                 )}
                                 {isPartialEntry(entry) && (

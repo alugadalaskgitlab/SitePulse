@@ -219,10 +219,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   const meterHours = (meterDiff != null && meterDiff >= 0) ? meterDiff.toFixed(3) : null;
                   const timeHours = calculateHours(item.startTime, item.endTime);
                   const isTripBased = et === "trip_based";
-                  const isDailyMonthly = et === "daily" || et === "monthly";
-                  const displayHours = isTripBased
-                    ? (item.numberOfTrips && item.tripDistance ? `${item.numberOfTrips} TRIPS × ${item.tripDistance} KM = ${(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} KM` : '-')
-                    : isDailyMonthly ? '-' : (meterHours || timeHours);
+                  const displayHours = meterHours || timeHours;
                   return (
                   <TableRow key={i}>
                     <TableCell className="font-medium">
@@ -234,11 +231,16 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                     </TableCell>
                     <TableCell>{item.operator || '-'}</TableCell>
                     <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                    <TableCell>{isDailyMonthly ? '-' : (item.startTime || '-')}</TableCell>
-                    <TableCell>{isDailyMonthly ? '-' : (item.endTime || '-')}</TableCell>
-                    <TableCell className="text-right">{isDailyMonthly ? '-' : (item.openingReading != null ? item.openingReading : '-')}</TableCell>
-                    <TableCell className="text-right">{isDailyMonthly ? '-' : (item.closingReading != null ? item.closingReading : '-')}</TableCell>
-                    <TableCell className="text-right text-xs">{displayHours}</TableCell>
+                    <TableCell>{item.startTime || '-'}</TableCell>
+                    <TableCell>{item.endTime || '-'}</TableCell>
+                    <TableCell className="text-right">{item.openingReading != null ? item.openingReading : '-'}</TableCell>
+                    <TableCell className="text-right">{item.closingReading != null ? item.closingReading : '-'}</TableCell>
+                    <TableCell className="text-right text-xs">
+                      {displayHours || '-'}
+                      {isTripBased && item.numberOfTrips && item.tripDistance && (
+                        <div className="text-[10px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km = {(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                   </TableRow>
                   );

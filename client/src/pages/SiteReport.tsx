@@ -424,20 +424,16 @@ export default function SiteReport() {
                     
                     const et = item.entryType || "time_meter";
                     const isTripBased = et === "trip_based";
-                    const isDailyMonthly = et === "daily" || et === "monthly";
                     
                     const meterHours = calculateMeterHours(item.openingReading, item.closingReading);
                     const timeHours = calculateTimeHours(item.startTime, item.endTime);
-                    const hours = isDailyMonthly ? null : (item.hoursWorked ?? meterHours ?? timeHours);
+                    const hours = item.hoursWorked ?? meterHours ?? timeHours;
                     
                     const hasReading = item.openingReading != null && item.closingReading != null;
                     const hasTime = item.startTime && item.endTime;
-                    const readingSource = isTripBased 
-                      ? (item.numberOfTrips && item.tripDistance ? `${item.numberOfTrips} trips × ${item.tripDistance} km` : '-')
-                      : isDailyMonthly ? (et === "daily" ? "Daily Hire" : "Monthly Hire")
-                      : hasReading 
-                        ? `Meter: ${item.openingReading} - ${item.closingReading}`
-                        : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
+                    const readingSource = hasReading 
+                      ? `Meter: ${item.openingReading} - ${item.closingReading}`
+                      : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
 
                     const entryTypeLabel = et === "hourly" ? "Hourly" : et === "daily" ? "Daily" : et === "monthly" ? "Monthly" : et === "trip_based" ? "Trip" : "";
 
@@ -454,11 +450,17 @@ export default function SiteReport() {
                         <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
                         <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                        <TableCell className="text-xs">{readingSource}</TableCell>
+                        <TableCell className="text-xs">
+                          {readingSource}
+                          {isTripBased && item.numberOfTrips && item.tripDistance && (
+                            <div className="text-[10px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km</div>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
-                          {isTripBased && item.numberOfTrips && item.tripDistance
-                            ? `${(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km`
-                            : hours != null ? hours.toFixed(3) : '-'}
+                          {hours != null ? hours.toFixed(3) : '-'}
+                          {isTripBased && item.numberOfTrips && item.tripDistance && (
+                            <div className="text-[10px] text-muted-foreground">{(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell>
