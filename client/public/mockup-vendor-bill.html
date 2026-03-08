@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendor Bill — Design Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  body { background: #f5f5f4; color: #1c1917; min-height: 100vh; }
+
+  .top-bar { background: #1c1917; color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .top-bar h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .top-bar .mockup-badge { background: #d97706; color: white; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+  .view-toggle { display: flex; gap: 0; margin-bottom: 20px; border-radius: 8px; overflow: hidden; border: 1px solid #d6d3d1; }
+  .view-toggle button { flex: 1; padding: 10px 16px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; }
+  .view-toggle button.active { background: #d97706; color: white; }
+  .view-toggle button:not(.active) { background: white; color: #78716c; }
+  .view-toggle button:not(.active):hover { background: #fafaf9; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .page-header h2 { font-size: 20px; font-weight: 700; flex: 1; }
+  .back-btn { background: none; border: 1px solid #d6d3d1; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #57534e; }
+  .back-btn:hover { background: #fafaf9; }
+
+  .card { background: white; border-radius: 12px; border: 1px solid #e7e5e4; margin-bottom: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card-header { padding: 14px 20px; border-bottom: 1px solid #e7e5e4; display: flex; justify-content: space-between; align-items: center; }
+  .card-header h3 { font-size: 15px; font-weight: 600; }
+  .card-body { padding: 20px; }
+
+  .form-grid { display: grid; gap: 14px; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 11px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select, .form-group textarea {
+    border: 1px solid #d6d3d1; border-radius: 6px; padding: 8px 12px; font-size: 14px;
+    text-transform: uppercase; background: white; color: #1c1917; width: 100%;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: #d97706; box-shadow: 0 0 0 2px rgba(217,119,6,0.15); }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+  .form-group .hint { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .badge-draft { background: #fef3c7; color: #92400e; }
+  .badge-verified { background: #d1fae5; color: #065f46; }
+  .badge-approved { background: #e0e7ff; color: #3730a3; }
+  .badge-paid { background: #dbeafe; color: #1e40af; }
+
+  .btn { border: none; border-radius: 6px; padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.3px; transition: all 0.15s; }
+  .btn-primary { background: #d97706; color: white; }
+  .btn-primary:hover { background: #b45309; }
+  .btn-outline { background: white; border: 1px solid #d6d3d1; color: #57534e; }
+  .btn-outline:hover { background: #fafaf9; }
+  .btn-sm { padding: 5px 12px; font-size: 11px; }
+  .btn-danger { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .btn-danger:hover { background: #fee2e2; }
+
+  .status-steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .step { display: inline-flex; align-items: center; gap: 4px; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid #e7e5e4; color: #a8a29e; text-transform: uppercase; letter-spacing: 0.3px; cursor: pointer; transition: all 0.15s; }
+  .step.active { border-color: #d97706; background: #fffbeb; color: #92400e; }
+  .step.done { border-color: #10b981; background: #d1fae5; color: #065f46; }
+  .step-arrow { color: #d6d3d1; font-size: 14px; }
+
+  .info-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: #1e40af; line-height: 1.4; }
+  .info-banner .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  .line-items-table { width: 100%; border-collapse: collapse; }
+  .line-items-table th { text-align: left; font-size: 10px; font-weight: 700; color: #78716c; text-transform: uppercase; padding: 10px 8px; border-bottom: 2px solid #e7e5e4; letter-spacing: 0.5px; white-space: nowrap; }
+  .line-items-table th.right { text-align: right; }
+  .line-items-table td { padding: 8px; border-bottom: 1px solid #f5f5f4; vertical-align: middle; }
+  .line-items-table tbody tr:hover { background: #fafaf9; }
+  .line-items-table input, .line-items-table select {
+    border: 1px solid #e7e5e4; border-radius: 4px; padding: 6px 8px; font-size: 13px;
+    width: 100%; text-transform: uppercase; background: #fafaf9;
+  }
+  .line-items-table input:focus, .line-items-table select:focus { outline: none; border-color: #d97706; background: white; }
+  .amt-cell { text-align: right; font-weight: 600; font-size: 13px; color: #1c1917; background: #fffbeb; padding: 6px 10px !important; border-radius: 4px; white-space: nowrap; }
+  .totals-row { background: #fffbeb; }
+  .totals-row td { font-weight: 700; font-size: 14px; border-top: 2px solid #d97706; padding: 12px 8px !important; }
+  .source-tag { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+  .source-auto { background: #dbeafe; color: #1e40af; }
+  .source-manual { background: #f3f4f6; color: #6b7280; }
+  .delete-btn { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+  .delete-btn:hover { background: #fef2f2; }
+  .row-num { color: #a8a29e; font-size: 12px; font-weight: 500; }
+
+  .footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; }
+  .divider { border: none; border-top: 1px dashed #e7e5e4; margin: 16px 0; }
+  .section-label { font-size: 11px; font-weight: 700; color: #d97706; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+  .bill-card { border-left: 4px solid #d97706; cursor: pointer; transition: all 0.15s; }
+  .bill-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+  .bill-card.status-verified { border-left-color: #10b981; }
+  .bill-card.status-approved { border-left-color: #6366f1; }
+  .bill-card.status-paid { border-left-color: #3b82f6; }
+  .bill-card .bill-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .bill-card .vendor-name { font-weight: 700; font-size: 15px; text-transform: uppercase; }
+  .bill-card .bill-meta { font-size: 12px; color: #78716c; margin-top: 3px; }
+  .bill-card .bill-amount { font-weight: 700; font-size: 17px; }
+  .bill-card .bill-amount.draft { color: #d97706; }
+  .bill-card .bill-amount.verified { color: #10b981; }
+  .bill-card .bill-amount.approved { color: #6366f1; }
+  .bill-card .bill-amount.paid { color: #3b82f6; }
+  .bill-card .bill-items-count { font-size: 11px; color: #78716c; }
+  .bill-card .bill-right { display: flex; align-items: center; gap: 14px; }
+  .bill-card .bill-actions { display: flex; gap: 6px; }
+
+  .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .summary-card { background: white; border: 1px solid #e7e5e4; border-radius: 10px; padding: 14px 16px; text-align: center; }
+  .summary-card .sc-label { font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-card .sc-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .summary-card .sc-sub { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: #a8a29e; }
+  .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state .empty-text { font-size: 14px; }
+
+  @media (max-width: 768px) {
+    .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
+    .summary-cards { grid-template-columns: 1fr 1fr; }
+    .line-items-table { font-size: 12px; }
+    .bill-card .bill-row { flex-direction: column; align-items: flex-start; }
+    .bill-card .bill-right { width: 100%; justify-content: space-between; margin-top: 8px; }
+    .status-steps { gap: 4px; }
+    .step { padding: 4px 10px; font-size: 10px; }
+  }
+
+  @media (max-width: 480px) {
+    .summary-cards { grid-template-columns: 1fr; }
+    .view-toggle button { font-size: 11px; padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>SITELOG — HIGH LANE CONSTRUCTIONS</h1>
+  <span class="mockup-badge">Design Mockup</span>
+</div>
+
+<div class="container">
+
+  <div class="view-toggle">
+    <button class="active" onclick="switchView('list')">Bills List View</button>
+    <button onclick="switchView('form')">New Bill Form</button>
+    <button onclick="switchView('detail')">Bill Detail View</button>
+  </div>
+
+  <!-- ===================== LIST VIEW ===================== -->
+  <div class="view active" id="view-list">
+
+    <div class="page-header">
+      <button class="back-btn">← BACK TO PLANT</button>
+      <h2>Vendor Bills</h2>
+      <button class="btn btn-primary" onclick="switchView('form')">+ NEW BILL</button>
+    </div>
+
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="sc-label">Total Bills</div>
+        <div class="sc-value">12</div>
+        <div class="sc-sub">This month</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Draft</div>
+        <div class="sc-value" style="color:#d97706;">3</div>
+        <div class="sc-sub">₹ 5,48,200</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Verified</div>
+        <div class="sc-value" style="color:#10b981;">5</div>
+        <div class="sc-sub">₹ 8,21,000</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Paid</div>
+        <div class="sc-value" style="color:#3b82f6;">4</div>
+        <div class="sc-sub">₹ 6,14,800</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="form-grid cols-4">
+          <div class="form-group">
+            <label>Date From</label>
+            <input type="date" value="2026-02-01" />
+          </div>
+          <div class="form-group">
+            <label>Date To</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group">
+            <label>Vendor</label>
+            <select>
+              <option>ALL VENDORS</option>
+              <option>KUMAR EARTH MOVERS</option>
+              <option>RAJESH TRANSPORT</option>
+              <option>SRINIVAS MATERIALS</option>
+              <option>BALAJI AGGREGATES</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select>
+              <option>ALL STATUS</option>
+              <option>DRAFT</option>
+              <option>VERIFIED</option>
+              <option>APPROVED</option>
+              <option>PAID</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bill-card" onclick="switchView('detail')">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="bill-row">
+          <div>
+            <div class="vendor-name">KUMAR EARTH MOVERS</div>
+            <div class="bill-meta">Bill# HLC/VB/2026/0042 &bull; Equipment Hire &bull; 01-Feb to 28-Feb 2026</div>
+          </div>
+          <div class="bill-right">
+            <div style="text-align: right;">
+              <div class="bill-amount draft">₹ 3,37,200</div>
+              <div class="bill-items-count">4 line items</div>
+            </div>
+            <span class="badge badge-draft">DRAFT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bill-card status-verified">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="bill-row">
+          <div>
+            <div class="vendor-name">SRINIVAS MATERIALS</div>
+            <div class="bill-meta">Bill# HLC/VB/2026/0039 &bull; Material Supply &bull; 15-Jan to 31-Jan 2026</div>
+          </div>
+          <div class="bill-right">
+            <div style="text-align: right;">
+              <div class="bill-amount verified">₹ 1,85,400</div>
+              <div class="bill-items-count">6 line items</div>
+            </div>
+            <span class="badge badge-verified">VERIFIED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bill-card status-approved">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="bill-row">
+          <div>
+            <div class="vendor-name">BALAJI AGGREGATES</div>
+            <div class="bill-meta">Bill# HLC/VB/2026/0037 &bull; Material Supply &bull; 01-Jan to 31-Jan 2026</div>
+          </div>
+          <div class="bill-right">
+            <div style="text-align: right;">
+              <div class="bill-amount approved">₹ 4,22,000</div>
+              <div class="bill-items-count">8 line items</div>
+            </div>
+            <span class="badge badge-approved">APPROVED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bill-card status-paid">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="bill-row">
+          <div>
+            <div class="vendor-name">RAJESH TRANSPORT</div>
+            <div class="bill-meta">Bill# HLC/VB/2026/0035 &bull; Equipment Hire &bull; 01-Jan to 31-Jan 2026</div>
+          </div>
+          <div class="bill-right">
+            <div style="text-align: right;">
+              <div class="bill-amount paid">₹ 2,14,000</div>
+              <div class="bill-items-count">3 line items</div>
+            </div>
+            <span class="badge badge-paid">PAID</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bill-card status-paid">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="bill-row">
+          <div>
+            <div class="vendor-name">KUMAR EARTH MOVERS</div>
+            <div class="bill-meta">Bill# HLC/VB/2026/0030 &bull; Equipment Hire &bull; 01-Dec to 31-Dec 2025</div>
+          </div>
+          <div class="bill-right">
+            <div style="text-align: right;">
+              <div class="bill-amount paid">₹ 2,95,600</div>
+              <div class="bill-items-count">5 line items</div>
+            </div>
+            <span class="badge badge-paid">PAID</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== FORM VIEW ===================== -->
+  <div class="view" id="view-form">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>New Vendor Bill</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Bill Details</h3>
+        <span class="badge badge-draft">DRAFT</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label>Bill Date</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group">
+            <label>Bill Number</label>
+            <input type="text" value="HLC/VB/2026/0042" />
+          </div>
+          <div class="form-group">
+            <label>Bill Type</label>
+            <select id="billType" onchange="updateBillType()">
+              <option value="equipment">EQUIPMENT HIRE</option>
+              <option value="material">MATERIAL SUPPLY</option>
+              <option value="other">OTHER / MISCELLANEOUS</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label>Vendor / Supplier Name</label>
+            <select>
+              <option>KUMAR EARTH MOVERS</option>
+              <option>RAJESH TRANSPORT</option>
+              <option>SRINIVAS MATERIALS</option>
+              <option>BALAJI AGGREGATES</option>
+            </select>
+            <span class="hint">Select from equipment master vendors or type a new name</span>
+          </div>
+          <div class="form-group">
+            <label>Period From</label>
+            <input type="date" value="2026-02-01" />
+          </div>
+          <div class="form-group">
+            <label>Period To</label>
+            <input type="date" value="2026-02-28" />
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <div class="section-label">Bill Status</div>
+        <div class="status-steps">
+          <span class="step active" onclick="setStatus(this)">● DRAFT</span>
+          <span class="step-arrow">→</span>
+          <span class="step" onclick="setStatus(this)">○ VERIFIED</span>
+          <span class="step-arrow">→</span>
+          <span class="step" onclick="setStatus(this)">○ APPROVED</span>
+          <span class="step-arrow">→</span>
+          <span class="step" onclick="setStatus(this)">○ PAID</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-banner" id="autoPullBanner">
+      <span class="icon">ℹ️</span>
+      <span>Equipment usage data for <strong>KUMAR EARTH MOVERS</strong> from <strong>01-FEB-2026</strong> to <strong>28-FEB-2026</strong> has been auto-populated below from DPR and Plant Equipment Usage records. You can edit rates, add or remove items.</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Bill Line Items</h3>
+        <button class="btn btn-outline btn-sm" onclick="addRow()">+ ADD ITEM</button>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="line-items-table" id="lineItemsTable">
+          <thead>
+            <tr>
+              <th style="width:4%">#</th>
+              <th style="width:28%">Description / Equipment</th>
+              <th style="width:8%">Qty</th>
+              <th style="width:11%">Unit</th>
+              <th style="width:12%">Rate (₹)</th>
+              <th style="width:14%" class="right">Amount (₹)</th>
+              <th style="width:8%">Source</th>
+              <th style="width:5%"></th>
+            </tr>
+          </thead>
+          <tbody id="lineItemsBody">
+            <tr>
+              <td><span class="row-num">1</span></td>
+              <td><input type="text" value="JCB 3DX - EXCAVATION WORK" /></td>
+              <td><input type="number" value="156" style="width:65px" onchange="calcAmount(this)" /></td>
+              <td>
+                <select style="width:80px">
+                  <option selected>HOURS</option>
+                  <option>DAYS</option>
+                  <option>TRIPS</option>
+                </select>
+              </td>
+              <td><input type="number" value="850" style="width:85px" onchange="calcAmount(this)" /></td>
+              <td class="amt-cell">₹ 1,32,600</td>
+              <td><span class="source-tag source-auto">AUTO</span></td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">2</span></td>
+              <td><input type="text" value="TIPPER AP39-TG4521 - SAND TRANSPORT" /></td>
+              <td><input type="number" value="48" style="width:65px" onchange="calcAmount(this)" /></td>
+              <td>
+                <select style="width:80px">
+                  <option>HOURS</option>
+                  <option>DAYS</option>
+                  <option selected>TRIPS</option>
+                </select>
+              </td>
+              <td><input type="number" value="1200" style="width:85px" onchange="calcAmount(this)" /></td>
+              <td class="amt-cell">₹ 57,600</td>
+              <td><span class="source-tag source-auto">AUTO</span></td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">3</span></td>
+              <td><input type="text" value="VIBRATORY ROLLER - COMPACTION" /></td>
+              <td><input type="number" value="18" style="width:65px" onchange="calcAmount(this)" /></td>
+              <td>
+                <select style="width:80px">
+                  <option>HOURS</option>
+                  <option selected>DAYS</option>
+                  <option>TRIPS</option>
+                </select>
+              </td>
+              <td><input type="number" value="4500" style="width:85px" onchange="calcAmount(this)" /></td>
+              <td class="amt-cell">₹ 81,000</td>
+              <td><span class="source-tag source-auto">AUTO</span></td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">4</span></td>
+              <td><input type="text" value="WATER TANKER - CURING" /></td>
+              <td><input type="number" value="22" style="width:65px" onchange="calcAmount(this)" /></td>
+              <td>
+                <select style="width:80px">
+                  <option>HOURS</option>
+                  <option selected>DAYS</option>
+                  <option>TRIPS</option>
+                </select>
+              </td>
+              <td><input type="number" value="3000" style="width:85px" onchange="calcAmount(this)" /></td>
+              <td class="amt-cell">₹ 66,000</td>
+              <td><span class="source-tag source-manual">MANUAL</span></td>
+              <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="totals-row">
+              <td colspan="5" style="text-align: right; padding-right: 16px; font-size: 15px;">TOTAL</td>
+              <td class="amt-cell" style="font-size: 16px; font-weight: 800;" id="totalAmount">₹ 3,37,200</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Notes / Remarks</label>
+          <textarea>FEBRUARY 2026 EQUIPMENT HIRE CHARGES - RAJESHWAR PROJECT NH-44 KM 252+000 TO 258+000</textarea>
+        </div>
+      </div>
+      <div class="footer">
+        <button class="btn btn-outline" onclick="switchView('list')">CANCEL</button>
+        <button class="btn btn-primary">SAVE BILL</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== DETAIL VIEW ===================== -->
+  <div class="view" id="view-detail">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK TO LIST</button>
+      <h2>Bill Detail</h2>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-outline btn-sm">PRINT</button>
+        <button class="btn btn-outline btn-sm">EXPORT PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="switchView('form')">EDIT</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px;">Vendor</div>
+            <div style="font-size: 20px; font-weight: 700; margin-top: 2px;">KUMAR EARTH MOVERS</div>
+          </div>
+          <div style="text-align: right;">
+            <span class="badge badge-draft" style="font-size: 12px; padding: 4px 14px;">DRAFT</span>
+          </div>
+        </div>
+
+        <div class="form-grid cols-4" style="margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase;">Bill Number</div>
+            <div style="font-size: 14px; font-weight: 600; margin-top: 2px;">HLC/VB/2026/0042</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase;">Bill Date</div>
+            <div style="font-size: 14px; font-weight: 600; margin-top: 2px;">08-MAR-2026</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase;">Bill Type</div>
+            <div style="font-size: 14px; font-weight: 600; margin-top: 2px;">EQUIPMENT HIRE</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase;">Period</div>
+            <div style="font-size: 14px; font-weight: 600; margin-top: 2px;">01-FEB to 28-FEB 2026</div>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <div class="section-label">Status Progress</div>
+        <div class="status-steps" style="margin-bottom: 4px;">
+          <span class="step done">✓ DRAFT</span>
+          <span class="step-arrow">→</span>
+          <span class="step active">● VERIFIED</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ APPROVED</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ PAID</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Line Items</h3>
+        <div style="font-weight: 700; font-size: 16px; color: #d97706;">TOTAL: ₹ 3,37,200</div>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="line-items-table">
+          <thead>
+            <tr>
+              <th style="width:5%">#</th>
+              <th style="width:35%">Description</th>
+              <th style="width:10%">Qty</th>
+              <th style="width:10%">Unit</th>
+              <th style="width:12%" class="right">Rate (₹)</th>
+              <th style="width:15%" class="right">Amount (₹)</th>
+              <th style="width:8%">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="row-num">1</span></td>
+              <td style="font-weight: 500;">JCB 3DX - EXCAVATION WORK</td>
+              <td>156</td>
+              <td>HOURS</td>
+              <td style="text-align: right;">850</td>
+              <td class="amt-cell">₹ 1,32,600</td>
+              <td><span class="source-tag source-auto">AUTO</span></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">2</span></td>
+              <td style="font-weight: 500;">TIPPER AP39-TG4521 - SAND TRANSPORT</td>
+              <td>48</td>
+              <td>TRIPS</td>
+              <td style="text-align: right;">1,200</td>
+              <td class="amt-cell">₹ 57,600</td>
+              <td><span class="source-tag source-auto">AUTO</span></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">3</span></td>
+              <td style="font-weight: 500;">VIBRATORY ROLLER - COMPACTION</td>
+              <td>18</td>
+              <td>DAYS</td>
+              <td style="text-align: right;">4,500</td>
+              <td class="amt-cell">₹ 81,000</td>
+              <td><span class="source-tag source-auto">AUTO</span></td>
+            </tr>
+            <tr>
+              <td><span class="row-num">4</span></td>
+              <td style="font-weight: 500;">WATER TANKER - CURING</td>
+              <td>22</td>
+              <td>DAYS</td>
+              <td style="text-align: right;">3,000</td>
+              <td class="amt-cell">₹ 66,000</td>
+              <td><span class="source-tag source-manual">MANUAL</span></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="totals-row">
+              <td colspan="5" style="text-align: right; padding-right: 16px;">TOTAL</td>
+              <td class="amt-cell" style="font-size: 16px; font-weight: 800;">₹ 3,37,200</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <div class="section-label">Notes</div>
+        <div style="font-size: 14px; color: #57534e; line-height: 1.5;">
+          FEBRUARY 2026 EQUIPMENT HIRE CHARGES - RAJESHWAR PROJECT NH-44 KM 252+000 TO 258+000
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.view-toggle button').forEach((b, i) => {
+    b.classList.remove('active');
+    if ((name === 'list' && i === 0) || (name === 'form' && i === 1) || (name === 'detail' && i === 2)) {
+      b.classList.add('active');
+    }
+  });
+  window.scrollTo(0, 0);
+}
+
+function setStatus(el) {
+  const steps = el.parentElement.querySelectorAll('.step');
+  let found = false;
+  steps.forEach(s => {
+    if (!found) {
+      if (s === el) {
+        s.className = 'step active';
+        s.textContent = '● ' + s.textContent.replace(/[●○✓] /, '');
+        found = true;
+      } else {
+        s.className = 'step done';
+        s.textContent = '✓ ' + s.textContent.replace(/[●○✓] /, '');
+      }
+    } else {
+      s.className = 'step';
+      s.textContent = '○ ' + s.textContent.replace(/[●○✓] /, '');
+    }
+  });
+}
+
+function calcAmount(el) {
+  const row = el.closest('tr');
+  const inputs = row.querySelectorAll('input[type="number"]');
+  const qty = parseFloat(inputs[0].value) || 0;
+  const rate = parseFloat(inputs[1].value) || 0;
+  const amount = qty * rate;
+  row.querySelector('.amt-cell').textContent = '₹ ' + amount.toLocaleString('en-IN');
+  updateTotal();
+}
+
+function updateTotal() {
+  let total = 0;
+  document.querySelectorAll('#lineItemsBody .amt-cell').forEach(cell => {
+    const val = cell.textContent.replace(/[₹,\s]/g, '');
+    total += parseFloat(val) || 0;
+  });
+  document.getElementById('totalAmount').textContent = '₹ ' + total.toLocaleString('en-IN');
+}
+
+function addRow() {
+  const body = document.getElementById('lineItemsBody');
+  const rowCount = body.querySelectorAll('tr').length + 1;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><span class="row-num">${rowCount}</span></td>
+    <td><input type="text" placeholder="ENTER DESCRIPTION" /></td>
+    <td><input type="number" value="0" style="width:65px" onchange="calcAmount(this)" /></td>
+    <td>
+      <select style="width:80px">
+        <option>HOURS</option>
+        <option>DAYS</option>
+        <option>TRIPS</option>
+        <option>TONS</option>
+        <option>KL</option>
+        <option>NOS</option>
+      </select>
+    </td>
+    <td><input type="number" value="0" style="width:85px" onchange="calcAmount(this)" /></td>
+    <td class="amt-cell">₹ 0</td>
+    <td><span class="source-tag source-manual">MANUAL</span></td>
+    <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
+  `;
+  body.appendChild(tr);
+}
+
+function deleteRow(btn) {
+  btn.closest('tr').remove();
+  const rows = document.querySelectorAll('#lineItemsBody tr');
+  rows.forEach((r, i) => { r.querySelector('.row-num').textContent = i + 1; });
+  updateTotal();
+}
+
+function updateBillType() {
+  const type = document.getElementById('billType').value;
+  const banner = document.getElementById('autoPullBanner');
+  if (type === 'equipment') {
+    banner.innerHTML = '<span class="icon">ℹ️</span><span>Equipment usage data for <strong>KUMAR EARTH MOVERS</strong> from <strong>01-FEB-2026</strong> to <strong>28-FEB-2026</strong> has been auto-populated below from DPR and Plant Equipment Usage records. You can edit rates, add or remove items.</span>';
+    banner.style.display = 'flex';
+  } else if (type === 'material') {
+    banner.innerHTML = '<span class="icon">ℹ️</span><span>Material receipts from <strong>KUMAR EARTH MOVERS</strong> between <strong>01-FEB-2026</strong> and <strong>28-FEB-2026</strong> have been auto-populated below. Enter unit rates to calculate amounts.</span>';
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+</script>
+
+</body>
+</html>
