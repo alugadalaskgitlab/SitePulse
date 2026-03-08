@@ -435,8 +435,6 @@ export default function SiteReport() {
                       ? `Meter: ${item.openingReading} - ${item.closingReading}`
                       : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
 
-                    const entryTypeLabel = et === "hourly" ? "Hourly" : et === "daily" ? "Daily" : et === "monthly" ? "Monthly" : et === "trip_based" ? "Trip" : "";
-
                     const dieselSourceLabel = item.dieselSource === 'direct_purchase' ? 'Direct Purchase'
                       : item.dieselSource === 'contractor' ? 'Contractor'
                       : item.dieselSource === 'plant_stock' ? 'Plant Stock' : '-';
@@ -445,7 +443,10 @@ export default function SiteReport() {
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
                         <TableCell className="font-medium">
                           {item.machine}
-                          {entryTypeLabel && <span className="ml-1 text-[10px] text-muted-foreground">({entryTypeLabel})</span>}
+                          {et === "hourly" && <Badge variant="outline" className="ml-1 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
+                          {et === "daily" && <Badge variant="outline" className="ml-1 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
+                          {et === "monthly" && <Badge variant="outline" className="ml-1 text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
+                          {et === "trip_based" && <Badge variant="outline" className="ml-1 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
                         </TableCell>
                         <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
