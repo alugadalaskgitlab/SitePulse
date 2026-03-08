@@ -26,7 +26,6 @@
   .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
   .page-header h2 { font-size: 20px; font-weight: 700; flex: 1; }
   .back-btn { background: none; border: 1px solid #d6d3d1; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #57534e; }
-  .back-btn:hover { background: #fafaf9; }
 
   .card { background: white; border-radius: 12px; border: 1px solid #e7e5e4; margin-bottom: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
   .card-header { padding: 14px 20px; border-bottom: 1px solid #e7e5e4; display: flex; justify-content: space-between; align-items: center; }
@@ -57,7 +56,6 @@
   .badge-urgent { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
   .badge-normal { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
   .badge-low { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-
   .badge-item-purchased { background: #d1fae5; color: #065f46; }
   .badge-item-partial { background: #fef3c7; color: #92400e; }
   .badge-item-not { background: #fee2e2; color: #991b1b; }
@@ -116,7 +114,7 @@
   .divider { border: none; border-top: 1px dashed #e7e5e4; margin: 16px 0; }
   .section-label { font-size: 11px; font-weight: 700; color: #d97706; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
 
-  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
   .detail-item .di-label { font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
   .detail-item .di-value { font-size: 15px; font-weight: 600; margin-top: 2px; text-transform: uppercase; }
 
@@ -124,8 +122,6 @@
   .purchase-update .pu-header { font-size: 11px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
 
   .action-bar { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; background: #fafaf9; justify-content: space-between; align-items: center; }
-  .action-bar .action-left { display: flex; gap: 8px; }
-  .action-bar .action-right { display: flex; gap: 8px; }
 
   .item-detail-card { background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
   .item-detail-card .idc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
@@ -138,14 +134,21 @@
   .purchased-info .pi-grid span { color: #78716c; }
   .purchased-info .pi-reason { font-size: 12px; margin-top: 6px; }
 
+  .qty-compare { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; }
+  .qty-compare .qty-intended { color: #78716c; text-decoration: line-through; }
+  .qty-compare .qty-approved { color: #059669; font-weight: 700; }
+  .qty-compare .qty-arrow { color: #d6d3d1; }
+  .qty-compare .qty-same { color: #1c1917; font-weight: 600; }
+
+  .approval-input { background: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 4px; padding: 4px 8px; width: 70px; font-size: 13px; text-align: center; font-weight: 700; color: #059669; }
+  .approval-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 2px rgba(5,150,105,0.15); }
+
   @media (max-width: 768px) {
     .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
     .summary-cards { grid-template-columns: 1fr 1fr; }
     .detail-grid { grid-template-columns: 1fr 1fr; }
     .indent-card .indent-row { flex-direction: column; align-items: flex-start; }
     .indent-card .indent-right { width: 100%; justify-content: space-between; margin-top: 8px; }
-    .action-bar { flex-direction: column; gap: 10px; }
-    .action-bar .action-left, .action-bar .action-right { width: 100%; }
     .purchased-info .pi-grid { grid-template-columns: 1fr 1fr; }
   }
 
@@ -153,7 +156,6 @@
     .summary-cards { grid-template-columns: 1fr; }
     .view-toggle button { font-size: 10px; padding: 8px 6px; }
     .detail-grid { grid-template-columns: 1fr; }
-    .purchased-info .pi-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -169,7 +171,7 @@
   <div class="view-toggle">
     <button class="active" onclick="switchView('list')">Indents List</button>
     <button onclick="switchView('form')">Raise Indent</button>
-    <button onclick="switchView('detail')">Admin Approval</button>
+    <button onclick="switchView('detail')">Approval</button>
     <button onclick="switchView('purchase')">Purchase Update</button>
   </div>
 
@@ -246,7 +248,7 @@
         <div class="indent-row">
           <div>
             <div class="indent-no">HLC/PI/2026/0018</div>
-            <div class="indent-meta">08-MAR-2026 &bull; Raised by RAJU &bull; 4 items</div>
+            <div class="indent-meta">08-MAR-2026 &bull; Proposed by RAJU &bull; Raised by SURESH &bull; 4 items</div>
             <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
               <span class="badge badge-urgent">URGENT</span>
               <span style="font-size: 11px; color: #78716c; padding-top: 3px;">DG SET / PLANT / SITE</span>
@@ -262,13 +264,13 @@
       </div>
     </div>
 
-    <!-- Approved — ready for purchase -->
+    <!-- Approved -->
     <div class="card indent-card status-approved" onclick="switchView('purchase')">
       <div class="card-body" style="padding: 14px 20px;">
         <div class="indent-row">
           <div>
             <div class="indent-no">HLC/PI/2026/0017</div>
-            <div class="indent-meta">06-MAR-2026 &bull; Raised by RAJU &bull; 3 items &bull; Approved by ADMIN</div>
+            <div class="indent-meta">06-MAR-2026 &bull; Proposed by RAJU &bull; Raised by SURESH &bull; Approved by ADMIN</div>
             <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
               <span class="badge badge-normal">NORMAL</span>
               <span style="font-size: 11px; color: #78716c; padding-top: 3px;">OFFICE / SITE - FDR KK ROAD</span>
@@ -291,7 +293,7 @@
         <div class="indent-row">
           <div>
             <div class="indent-no">HLC/PI/2026/0015</div>
-            <div class="indent-meta">02-MAR-2026 &bull; Raised by RAJU &bull; 5 items &bull; ₹ 3,250 purchased</div>
+            <div class="indent-meta">02-MAR-2026 &bull; Proposed by RAJU &bull; Raised by SURESH &bull; ₹ 3,250 purchased</div>
             <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
               <span class="badge badge-urgent">URGENT</span>
               <span class="badge badge-normal">NORMAL</span>
@@ -314,8 +316,8 @@
         <div class="indent-row">
           <div>
             <div class="indent-no">HLC/PI/2026/0012</div>
-            <div class="indent-meta">25-FEB-2026 &bull; Raised by RAJU &bull; 2 items &bull; ₹ 1,840 total</div>
-            <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
+            <div class="indent-meta">25-FEB-2026 &bull; Proposed by RAJU &bull; Raised by SURESH &bull; ₹ 1,840 total</div>
+            <div style="margin-top: 6px; display: flex; gap: 6px;">
               <span class="badge badge-low">LOW</span>
               <span style="font-size: 11px; color: #78716c; padding-top: 3px;">PLANT</span>
             </div>
@@ -336,7 +338,7 @@
         <div class="indent-row">
           <div>
             <div class="indent-no">HLC/PI/2026/0010</div>
-            <div class="indent-meta">20-FEB-2026 &bull; Raised by RAJU &bull; 1 item &bull; Rejected by ADMIN</div>
+            <div class="indent-meta">20-FEB-2026 &bull; Proposed by RAJU &bull; Raised by SURESH &bull; Rejected by ADMIN</div>
             <div style="margin-top: 6px;">
               <span style="font-size: 12px; color: #991b1b;">Reason: NOT REQUIRED AT THIS TIME</span>
             </div>
@@ -364,7 +366,7 @@
         <span class="badge badge-pending">NEW</span>
       </div>
       <div class="card-body">
-        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+        <div class="form-grid cols-4" style="margin-bottom: 16px;">
           <div class="form-group">
             <label>Date</label>
             <input type="date" value="2026-03-08" />
@@ -375,8 +377,14 @@
             <span class="hint">Auto-generated on save</span>
           </div>
           <div class="form-group">
+            <label>Proposed By</label>
+            <input type="text" placeholder="WHO PROPOSED THIS" value="RAJU" />
+            <span class="hint">Person who identified the need</span>
+          </div>
+          <div class="form-group">
             <label>Raised By</label>
-            <input type="text" value="RAJU" />
+            <input type="text" placeholder="WHO IS RAISING" value="SURESH" />
+            <span class="hint">Person creating this indent</span>
           </div>
         </div>
         <div class="form-group">
@@ -411,31 +419,17 @@
               <td><input type="number" value="2" style="width:60px" /></td>
               <td>
                 <select style="width:75px">
-                  <option selected>NOS</option>
-                  <option>KG</option>
-                  <option>METERS</option>
-                  <option>LITERS</option>
-                  <option>SET</option>
-                  <option>PAIR</option>
-                  <option>BOX</option>
+                  <option selected>NOS</option><option>KG</option><option>METERS</option><option>LITERS</option><option>SET</option><option>PAIR</option><option>BOX</option>
                 </select>
               </td>
               <td>
                 <select style="width:100%">
-                  <option selected>DG SET</option>
-                  <option>PLANT</option>
-                  <option>OFFICE</option>
-                  <option>SITE - FDR KK ROAD</option>
-                  <option>SITE - NH44 KM252</option>
-                  <option>EQUIPMENT REPAIR</option>
-                  <option>OTHER</option>
+                  <option selected>DG SET</option><option>PLANT</option><option>OFFICE</option><option>SITE - FDR KK ROAD</option><option>SITE - NH44 KM252</option><option>EQUIPMENT REPAIR</option><option>OTHER</option>
                 </select>
               </td>
               <td>
                 <select style="width:100%">
-                  <option selected value="urgent" style="color:#dc2626;">⚡ URGENT</option>
-                  <option value="normal">NORMAL</option>
-                  <option value="low">LOW</option>
+                  <option selected value="urgent">⚡ URGENT</option><option value="normal">NORMAL</option><option value="low">LOW</option>
                 </select>
               </td>
               <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
@@ -443,32 +437,15 @@
             <tr>
               <td><span class="row-num">2</span></td>
               <td><input type="text" value="BEARING 6205 2RS" /></td>
-              <td><input type="number" value="4" style="width:60px" /></td>
+              <td><input type="number" value="12" style="width:60px" /></td>
               <td>
-                <select style="width:75px">
-                  <option selected>NOS</option>
-                  <option>KG</option>
-                  <option>METERS</option>
-                  <option>LITERS</option>
-                  <option>SET</option>
-                </select>
+                <select style="width:75px"><option selected>NOS</option><option>KG</option><option>METERS</option><option>LITERS</option><option>SET</option></select>
               </td>
               <td>
-                <select style="width:100%">
-                  <option>DG SET</option>
-                  <option selected>PLANT</option>
-                  <option>OFFICE</option>
-                  <option>SITE - FDR KK ROAD</option>
-                  <option>EQUIPMENT REPAIR</option>
-                  <option>OTHER</option>
-                </select>
+                <select style="width:100%"><option>DG SET</option><option selected>PLANT</option><option>OFFICE</option><option>SITE - FDR KK ROAD</option><option>EQUIPMENT REPAIR</option><option>OTHER</option></select>
               </td>
               <td>
-                <select style="width:100%">
-                  <option value="urgent">⚡ URGENT</option>
-                  <option selected value="normal">NORMAL</option>
-                  <option value="low">LOW</option>
-                </select>
+                <select style="width:100%"><option value="urgent">⚡ URGENT</option><option selected value="normal">NORMAL</option><option value="low">LOW</option></select>
               </td>
               <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
             </tr>
@@ -477,30 +454,13 @@
               <td><input type="text" value="MOBIL GEAR OIL 80W90" /></td>
               <td><input type="number" value="5" style="width:60px" /></td>
               <td>
-                <select style="width:75px">
-                  <option>NOS</option>
-                  <option>KG</option>
-                  <option>METERS</option>
-                  <option selected>LITERS</option>
-                  <option>SET</option>
-                </select>
+                <select style="width:75px"><option>NOS</option><option>KG</option><option>METERS</option><option selected>LITERS</option><option>SET</option></select>
               </td>
               <td>
-                <select style="width:100%">
-                  <option>DG SET</option>
-                  <option selected>PLANT</option>
-                  <option>OFFICE</option>
-                  <option>SITE - FDR KK ROAD</option>
-                  <option>EQUIPMENT REPAIR</option>
-                  <option>OTHER</option>
-                </select>
+                <select style="width:100%"><option>DG SET</option><option selected>PLANT</option><option>OFFICE</option><option>SITE - FDR KK ROAD</option><option>EQUIPMENT REPAIR</option><option>OTHER</option></select>
               </td>
               <td>
-                <select style="width:100%">
-                  <option value="urgent">⚡ URGENT</option>
-                  <option selected value="normal">NORMAL</option>
-                  <option value="low">LOW</option>
-                </select>
+                <select style="width:100%"><option value="urgent">⚡ URGENT</option><option selected value="normal">NORMAL</option><option value="low">LOW</option></select>
               </td>
               <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
             </tr>
@@ -509,30 +469,13 @@
               <td><input type="text" value="MEASURING TAPE 30M" /></td>
               <td><input type="number" value="1" style="width:60px" /></td>
               <td>
-                <select style="width:75px">
-                  <option selected>NOS</option>
-                  <option>KG</option>
-                  <option>METERS</option>
-                  <option>LITERS</option>
-                  <option>SET</option>
-                </select>
+                <select style="width:75px"><option selected>NOS</option><option>KG</option><option>METERS</option><option>LITERS</option><option>SET</option></select>
               </td>
               <td>
-                <select style="width:100%">
-                  <option>DG SET</option>
-                  <option>PLANT</option>
-                  <option>OFFICE</option>
-                  <option selected>SITE - FDR KK ROAD</option>
-                  <option>EQUIPMENT REPAIR</option>
-                  <option>OTHER</option>
-                </select>
+                <select style="width:100%"><option>DG SET</option><option>PLANT</option><option>OFFICE</option><option selected>SITE - FDR KK ROAD</option><option>EQUIPMENT REPAIR</option><option>OTHER</option></select>
               </td>
               <td>
-                <select style="width:100%">
-                  <option value="urgent">⚡ URGENT</option>
-                  <option value="normal">NORMAL</option>
-                  <option selected value="low">LOW</option>
-                </select>
+                <select style="width:100%"><option value="urgent">⚡ URGENT</option><option value="normal">NORMAL</option><option selected value="low">LOW</option></select>
               </td>
               <td><button class="delete-btn" onclick="deleteRow(this)">✕</button></td>
             </tr>
@@ -547,12 +490,12 @@
 
   </div>
 
-  <!-- ===================== ADMIN APPROVAL VIEW ===================== -->
+  <!-- ===================== APPROVAL VIEW ===================== -->
   <div class="view" id="view-detail">
 
     <div class="page-header">
       <button class="back-btn" onclick="switchView('list')">← BACK</button>
-      <h2>Indent Detail — Admin Approval</h2>
+      <h2>Approval</h2>
     </div>
 
     <div class="card">
@@ -567,8 +510,12 @@
             <div class="di-value">08-MAR-2026</div>
           </div>
           <div class="detail-item">
-            <div class="di-label">Raised By</div>
+            <div class="di-label">Proposed By</div>
             <div class="di-value">RAJU</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Raised By</div>
+            <div class="di-value">SURESH</div>
           </div>
           <div class="detail-item">
             <div class="di-label">Total Items</div>
@@ -591,7 +538,8 @@
 
     <div class="card">
       <div class="card-header">
-        <h3>Items Requested</h3>
+        <h3>Items — Review & Approve Quantities</h3>
+        <div style="font-size: 11px; color: #78716c;">Admin can reduce qty per item if needed</div>
       </div>
       <div class="card-body" style="padding: 12px 16px;">
 
@@ -599,10 +547,21 @@
           <div class="idc-header">
             <div>
               <div class="idc-name">1. V-BELT B62 FOR DG SET</div>
-              <div class="idc-meta">Qty: 2 NOS &bull; For: DG SET</div>
+              <div class="idc-meta">For: DG SET</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-urgent">URGENT</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 8px 12px; background: #f0fdf4; border-radius: 6px;">
+            <div style="font-size: 13px;">
+              <span style="color: #78716c;">Intended:</span> <strong>2 NOS</strong>
+            </div>
+            <div style="color: #d6d3d1;">→</div>
+            <div style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #059669; font-weight: 600;">Approve Qty:</span>
+              <input class="approval-input" type="number" value="2" min="0" max="2" />
+              <span style="color: #78716c; font-size: 12px;">NOS</span>
             </div>
           </div>
         </div>
@@ -611,10 +570,22 @@
           <div class="idc-header">
             <div>
               <div class="idc-name">2. BEARING 6205 2RS</div>
-              <div class="idc-meta">Qty: 4 NOS &bull; For: PLANT</div>
+              <div class="idc-meta">For: PLANT</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-normal">NORMAL</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 8px 12px; background: #fffbeb; border-radius: 6px;">
+            <div style="font-size: 13px;">
+              <span style="color: #78716c;">Intended:</span> <strong>12 NOS</strong>
+            </div>
+            <div style="color: #d6d3d1;">→</div>
+            <div style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #059669; font-weight: 600;">Approve Qty:</span>
+              <input class="approval-input" type="number" value="6" min="0" max="12" style="border-color: #f59e0b; color: #d97706;" />
+              <span style="color: #78716c; font-size: 12px;">NOS</span>
+              <span style="font-size: 11px; color: #d97706; font-weight: 600;">(Reduced from 12)</span>
             </div>
           </div>
         </div>
@@ -623,10 +594,21 @@
           <div class="idc-header">
             <div>
               <div class="idc-name">3. MOBIL GEAR OIL 80W90</div>
-              <div class="idc-meta">Qty: 5 LITERS &bull; For: PLANT</div>
+              <div class="idc-meta">For: PLANT</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-normal">NORMAL</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 8px 12px; background: #f0fdf4; border-radius: 6px;">
+            <div style="font-size: 13px;">
+              <span style="color: #78716c;">Intended:</span> <strong>5 LITERS</strong>
+            </div>
+            <div style="color: #d6d3d1;">→</div>
+            <div style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #059669; font-weight: 600;">Approve Qty:</span>
+              <input class="approval-input" type="number" value="5" min="0" max="5" />
+              <span style="color: #78716c; font-size: 12px;">LITERS</span>
             </div>
           </div>
         </div>
@@ -635,28 +617,46 @@
           <div class="idc-header">
             <div>
               <div class="idc-name">4. MEASURING TAPE 30M</div>
-              <div class="idc-meta">Qty: 1 NOS &bull; For: SITE - FDR KK ROAD</div>
+              <div class="idc-meta">For: SITE - FDR KK ROAD</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-low">LOW</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 8px 12px; background: #f0fdf4; border-radius: 6px;">
+            <div style="font-size: 13px;">
+              <span style="color: #78716c;">Intended:</span> <strong>1 NOS</strong>
+            </div>
+            <div style="color: #d6d3d1;">→</div>
+            <div style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #059669; font-weight: 600;">Approve Qty:</span>
+              <input class="approval-input" type="number" value="1" min="0" max="1" />
+              <span style="color: #78716c; font-size: 12px;">NOS</span>
             </div>
           </div>
         </div>
 
       </div>
 
-      <div class="action-bar">
-        <div class="action-left">
-          <button class="btn btn-danger" onclick="alert('Indent rejected. Manager will be notified.')">✕ REJECT</button>
+      <div class="card-body" style="padding: 0 20px 16px; border-top: none;">
+        <div class="form-group">
+          <label>Approval Remarks (Optional)</label>
+          <textarea placeholder="REASON FOR PARTIAL APPROVAL OR ANY NOTES...">APPROVE 6 BEARINGS ONLY, REMAINING CAN BE INDENTED NEXT MONTH</textarea>
         </div>
-        <div class="action-right">
-          <button class="btn btn-success" onclick="alert('Indent approved! Purchaser can now procure items.'); switchView('purchase');">✓ APPROVE INDENT</button>
+      </div>
+
+      <div class="action-bar">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-danger" onclick="alert('Indent rejected.')">✕ REJECT</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-success" onclick="alert('Indent approved with modified quantities!'); switchView('purchase');">✓ APPROVE INDENT</button>
         </div>
       </div>
     </div>
 
     <div style="text-align: center; padding: 12px; color: #78716c; font-size: 12px; font-style: italic;">
-      Admin PIN required to approve or reject
+      PIN required to approve or reject
     </div>
 
   </div>
@@ -681,8 +681,12 @@
             <div class="di-value">02-MAR-2026</div>
           </div>
           <div class="detail-item">
-            <div class="di-label">Raised By</div>
+            <div class="di-label">Proposed By</div>
             <div class="di-value">RAJU</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Raised By</div>
+            <div class="di-value">SURESH</div>
           </div>
           <div class="detail-item">
             <div class="di-label">Approved By</div>
@@ -710,68 +714,90 @@
       </div>
       <div class="card-body" style="padding: 12px 16px;">
 
-        <!-- Item 1: Purchased -->
+        <!-- Item 1: Purchased — full qty approved -->
         <div class="item-detail-card" style="border-left: 3px solid #10b981;">
           <div class="idc-header">
             <div>
               <div class="idc-name">1. FAN BELT A42 FOR GENERATOR</div>
-              <div class="idc-meta">Required: 2 NOS &bull; For: DG SET</div>
+              <div class="idc-meta">For: DG SET</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-urgent">URGENT</span>
               <span class="badge badge-item-purchased">PURCHASED</span>
             </div>
           </div>
-          <div class="purchased-info" style="background: #f0fdf4;">
+          <div class="qty-compare">
+            <span>Intended: <strong>2 NOS</strong></span>
+            <span class="qty-arrow">→</span>
+            <span>Approved: <strong class="qty-approved">2 NOS</strong></span>
+            <span class="qty-arrow">→</span>
+            <span>Bought: <strong style="color: #059669;">2 NOS</strong></span>
+          </div>
+          <div class="purchased-info" style="background: #f0fdf4; margin-top: 6px;">
             <div class="pi-grid">
-              <div><span>Qty Bought:</span> <strong>2 NOS</strong></div>
               <div><span>Vendor:</span> <strong>SRI SAI BEARINGS</strong></div>
               <div><span>Bill No:</span> <strong>SSB/1842</strong></div>
-              <div><span>Rate:</span> <strong>₹ 240</strong> &bull; <span>Amt:</span> <strong>₹ 480</strong></div>
+              <div><span>Rate:</span> <strong>₹ 240</strong></div>
+              <div><span>Amount:</span> <strong>₹ 480</strong></div>
             </div>
           </div>
         </div>
 
-        <!-- Item 2: Purchased -->
+        <!-- Item 2: Purchased — admin reduced qty from 12 to 6 -->
         <div class="item-detail-card" style="border-left: 3px solid #10b981;">
           <div class="idc-header">
             <div>
-              <div class="idc-name">2. HYDRAULIC OIL 68</div>
-              <div class="idc-meta">Required: 20 LITERS &bull; For: PLANT</div>
+              <div class="idc-name">2. BEARING 6205 2RS</div>
+              <div class="idc-meta">For: PLANT</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-normal">NORMAL</span>
               <span class="badge badge-item-purchased">PURCHASED</span>
             </div>
           </div>
-          <div class="purchased-info" style="background: #f0fdf4;">
+          <div class="qty-compare">
+            <span>Intended: <span class="qty-intended">12 NOS</span></span>
+            <span class="qty-arrow">→</span>
+            <span>Approved: <strong class="qty-approved">6 NOS</strong></span>
+            <span style="font-size: 11px; color: #d97706;">(Reduced)</span>
+            <span class="qty-arrow">→</span>
+            <span>Bought: <strong style="color: #059669;">6 NOS</strong></span>
+          </div>
+          <div class="purchased-info" style="background: #f0fdf4; margin-top: 6px;">
             <div class="pi-grid">
-              <div><span>Qty Bought:</span> <strong>20 LTR</strong></div>
-              <div><span>Vendor:</span> <strong>BALAJI OIL TRADERS</strong></div>
-              <div><span>Bill No:</span> <strong>BOT/0392</strong></div>
-              <div><span>Rate:</span> <strong>₹ 120/L</strong> &bull; <span>Amt:</span> <strong>₹ 2,400</strong></div>
+              <div><span>Vendor:</span> <strong>BALAJI BEARINGS</strong></div>
+              <div><span>Bill No:</span> <strong>BB/0392</strong></div>
+              <div><span>Rate:</span> <strong>₹ 400</strong></div>
+              <div><span>Amount:</span> <strong>₹ 2,400</strong></div>
             </div>
           </div>
         </div>
 
-        <!-- Item 3: Partial purchase -->
+        <!-- Item 3: Partial purchase by purchaser -->
         <div class="item-detail-card" style="border-left: 3px solid #f59e0b;">
           <div class="idc-header">
             <div>
               <div class="idc-name">3. WELDING ROD 3.15MM</div>
-              <div class="idc-meta">Required: 10 KG &bull; For: EQUIPMENT REPAIR</div>
+              <div class="idc-meta">For: EQUIPMENT REPAIR</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-normal">NORMAL</span>
-              <span class="badge badge-item-partial">PARTIAL — 5 OF 10 KG</span>
+              <span class="badge badge-item-partial">PARTIAL</span>
             </div>
           </div>
-          <div class="purchased-info" style="background: #fffbeb;">
+          <div class="qty-compare">
+            <span>Intended: <strong>10 KG</strong></span>
+            <span class="qty-arrow">→</span>
+            <span>Approved: <strong class="qty-approved">10 KG</strong></span>
+            <span class="qty-arrow">→</span>
+            <span>Bought: <strong style="color: #d97706;">5 KG</strong></span>
+          </div>
+          <div class="purchased-info" style="background: #fffbeb; margin-top: 6px;">
             <div class="pi-grid">
-              <div><span>Qty Bought:</span> <strong>5 KG</strong></div>
               <div><span>Vendor:</span> <strong>KUMAR HARDWARE</strong></div>
               <div><span>Bill No:</span> <strong>KH/2241</strong></div>
-              <div><span>Rate:</span> <strong>₹ 74/KG</strong> &bull; <span>Amt:</span> <strong>₹ 370</strong></div>
+              <div><span>Rate:</span> <strong>₹ 74/KG</strong></div>
+              <div><span>Amount:</span> <strong>₹ 370</strong></div>
             </div>
             <div class="pi-reason" style="color: #92400e;">
               <strong>Reason:</strong> ONLY 5 KG AVAILABLE IN STOCK, REMAINING WILL BE AVAILABLE TOMORROW
@@ -784,31 +810,43 @@
           <div class="idc-header">
             <div>
               <div class="idc-name">4. DEPTH GAUGE DIGITAL</div>
-              <div class="idc-meta">Required: 1 NOS &bull; For: SITE - FDR KK ROAD</div>
+              <div class="idc-meta">For: SITE - FDR KK ROAD</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-low">LOW</span>
               <span class="badge badge-item-not">NOT PURCHASED</span>
             </div>
           </div>
-          <div class="purchased-info" style="background: #fef2f2;">
+          <div class="qty-compare">
+            <span>Intended: <strong>1 NOS</strong></span>
+            <span class="qty-arrow">→</span>
+            <span>Approved: <strong class="qty-approved">1 NOS</strong></span>
+            <span class="qty-arrow">→</span>
+            <span style="color: #ef4444; font-weight: 600;">Not Purchased</span>
+          </div>
+          <div class="purchased-info" style="background: #fef2f2; margin-top: 6px;">
             <div class="pi-reason" style="color: #991b1b;">
               <strong>Reason:</strong> NOT AVAILABLE LOCALLY, NEED TO ORDER ONLINE — WILL TAKE 3-4 DAYS
             </div>
           </div>
         </div>
 
-        <!-- Item 5: Pending — editable purchase form -->
+        <!-- Item 5: Pending — editable -->
         <div class="item-detail-card" style="border-left: 3px solid #d6d3d1;">
           <div class="idc-header">
             <div>
               <div class="idc-name">5. GREASE GUN</div>
-              <div class="idc-meta">Required: 1 NOS &bull; For: PLANT</div>
+              <div class="idc-meta">For: PLANT</div>
             </div>
             <div class="idc-badges">
               <span class="badge badge-normal">NORMAL</span>
               <span class="badge badge-item-pending">PENDING</span>
             </div>
+          </div>
+          <div class="qty-compare">
+            <span>Intended: <strong>1 NOS</strong></span>
+            <span class="qty-arrow">→</span>
+            <span>Approved: <strong class="qty-approved">1 NOS</strong></span>
           </div>
           <div class="purchase-update">
             <div class="pu-header">Update Purchase Status</div>
@@ -825,6 +863,7 @@
               <div class="form-group">
                 <label>Qty Purchased</label>
                 <input type="number" placeholder="0" />
+                <span class="hint">Max approved: 1 NOS</span>
               </div>
             </div>
             <div class="form-grid cols-2" style="margin-bottom: 10px;">
@@ -861,12 +900,12 @@
       </div>
 
       <div class="action-bar">
-        <div class="action-left">
+        <div>
           <div style="font-size: 13px; color: #78716c;">
             Total Purchased: <strong style="color: #1c1917; font-size: 16px;">₹ 3,250</strong>
           </div>
         </div>
-        <div class="action-right">
+        <div style="display: flex; gap: 8px;">
           <button class="btn btn-outline" onclick="window.print()">PRINT</button>
         </div>
       </div>

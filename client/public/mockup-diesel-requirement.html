@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Diesel Requirement — Design Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  body { background: #f5f5f4; color: #1c1917; min-height: 100vh; }
+
+  .top-bar { background: #1c1917; color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .top-bar h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .top-bar .mockup-badge { background: #d97706; color: white; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+  .view-toggle { display: flex; gap: 0; margin-bottom: 20px; border-radius: 8px; overflow: hidden; border: 1px solid #d6d3d1; }
+  .view-toggle button { flex: 1; padding: 10px 16px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; }
+  .view-toggle button.active { background: #d97706; color: white; }
+  .view-toggle button:not(.active) { background: white; color: #78716c; }
+  .view-toggle button:not(.active):hover { background: #fafaf9; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .page-header h2 { font-size: 20px; font-weight: 700; flex: 1; }
+  .back-btn { background: none; border: 1px solid #d6d3d1; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #57534e; }
+
+  .card { background: white; border-radius: 12px; border: 1px solid #e7e5e4; margin-bottom: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card-header { padding: 14px 20px; border-bottom: 1px solid #e7e5e4; display: flex; justify-content: space-between; align-items: center; }
+  .card-header h3 { font-size: 15px; font-weight: 600; }
+  .card-body { padding: 20px; }
+
+  .form-grid { display: grid; gap: 14px; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 11px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select, .form-group textarea {
+    border: 1px solid #d6d3d1; border-radius: 6px; padding: 8px 12px; font-size: 14px;
+    text-transform: uppercase; background: white; color: #1c1917; width: 100%;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: #d97706; box-shadow: 0 0 0 2px rgba(217,119,6,0.15); }
+  .form-group textarea { resize: vertical; min-height: 50px; }
+  .form-group .hint { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; }
+  .badge-pending { background: #fef3c7; color: #92400e; }
+  .badge-approved { background: #d1fae5; color: #065f46; }
+  .badge-purchased { background: #dbeafe; color: #1e40af; }
+  .badge-rejected { background: #fee2e2; color: #991b1b; }
+
+  .btn { border: none; border-radius: 6px; padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.3px; transition: all 0.15s; }
+  .btn-primary { background: #d97706; color: white; }
+  .btn-primary:hover { background: #b45309; }
+  .btn-success { background: #059669; color: white; }
+  .btn-success:hover { background: #047857; }
+  .btn-danger { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .btn-outline { background: white; border: 1px solid #d6d3d1; color: #57534e; }
+  .btn-outline:hover { background: #fafaf9; }
+  .btn-sm { padding: 5px 12px; font-size: 11px; }
+
+  .status-steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+  .step { display: inline-flex; align-items: center; gap: 4px; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid #e7e5e4; color: #a8a29e; text-transform: uppercase; letter-spacing: 0.3px; }
+  .step.active { border-color: #d97706; background: #fffbeb; color: #92400e; }
+  .step.done { border-color: #10b981; background: #d1fae5; color: #065f46; }
+  .step-arrow { color: #d6d3d1; font-size: 14px; }
+
+  .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .summary-card { background: white; border: 1px solid #e7e5e4; border-radius: 10px; padding: 14px 16px; text-align: center; }
+  .summary-card .sc-label { font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-card .sc-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .summary-card .sc-sub { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+
+  .day-card { border-left: 4px solid #d97706; cursor: pointer; transition: all 0.15s; }
+  .day-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+  .day-card.status-approved { border-left-color: #10b981; }
+  .day-card.status-purchased { border-left-color: #3b82f6; }
+  .day-card.status-rejected { border-left-color: #ef4444; }
+  .day-card .day-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .day-card .day-date { font-weight: 700; font-size: 15px; text-transform: uppercase; }
+  .day-card .day-meta { font-size: 12px; color: #78716c; margin-top: 3px; }
+  .day-card .day-right { display: flex; align-items: center; gap: 14px; }
+  .day-card .diesel-qty { font-weight: 700; font-size: 17px; color: #1c1917; }
+
+  .equip-table { width: 100%; border-collapse: collapse; }
+  .equip-table th { text-align: left; font-size: 10px; font-weight: 700; color: #78716c; text-transform: uppercase; padding: 10px 8px; border-bottom: 2px solid #e7e5e4; letter-spacing: 0.5px; white-space: nowrap; }
+  .equip-table th.right { text-align: right; }
+  .equip-table td { padding: 10px 8px; border-bottom: 1px solid #f5f5f4; vertical-align: middle; font-size: 13px; }
+  .equip-table td.right { text-align: right; font-weight: 600; }
+  .equip-table tbody tr:hover { background: #fafaf9; }
+  .equip-table tfoot td { font-weight: 700; font-size: 14px; border-top: 2px solid #d97706; padding: 12px 8px; }
+  .equip-table input {
+    border: 1px solid #e7e5e4; border-radius: 4px; padding: 6px 8px; font-size: 13px;
+    width: 80px; text-align: center; text-transform: uppercase; background: #fafaf9;
+  }
+  .equip-table input:focus { outline: none; border-color: #d97706; background: white; }
+
+  .delete-btn { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+
+  .footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; }
+  .section-label { font-size: 11px; font-weight: 700; color: #d97706; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+  .detail-item .di-label { font-size: 10px; font-weight: 600; color: #78716c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .detail-item .di-value { font-size: 15px; font-weight: 600; margin-top: 2px; text-transform: uppercase; }
+
+  .action-bar { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid #e7e5e4; background: #fafaf9; justify-content: space-between; align-items: center; }
+
+  .comparison-positive { color: #059669; }
+  .comparison-negative { color: #dc2626; }
+  .comparison-neutral { color: #78716c; }
+
+  .report-table { width: 100%; border-collapse: collapse; }
+  .report-table th { text-align: left; font-size: 10px; font-weight: 700; color: #78716c; text-transform: uppercase; padding: 10px 8px; border-bottom: 2px solid #e7e5e4; letter-spacing: 0.5px; white-space: nowrap; }
+  .report-table th.right { text-align: right; }
+  .report-table td { padding: 10px 8px; border-bottom: 1px solid #f5f5f4; font-size: 13px; }
+  .report-table td.right { text-align: right; }
+  .report-table tbody tr:hover { background: #fafaf9; }
+  .report-table tfoot td { font-weight: 700; border-top: 2px solid #d97706; padding: 12px 8px; }
+
+  @media (max-width: 768px) {
+    .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
+    .summary-cards { grid-template-columns: 1fr 1fr; }
+    .detail-grid { grid-template-columns: 1fr 1fr; }
+    .day-card .day-row { flex-direction: column; align-items: flex-start; }
+    .day-card .day-right { width: 100%; justify-content: space-between; margin-top: 8px; }
+  }
+
+  @media (max-width: 480px) {
+    .summary-cards { grid-template-columns: 1fr; }
+    .view-toggle button { font-size: 10px; padding: 8px 4px; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>SITELOG — HIGH LANE CONSTRUCTIONS</h1>
+  <span class="mockup-badge">Design Mockup</span>
+</div>
+
+<div class="container">
+
+  <div class="view-toggle">
+    <button class="active" onclick="switchView('list')">Requirements List</button>
+    <button onclick="switchView('form')">Raise Requirement</button>
+    <button onclick="switchView('detail')">Approval</button>
+    <button onclick="switchView('update')">Purchase Update</button>
+    <button onclick="switchView('report')">Comparison Report</button>
+  </div>
+
+  <!-- ===================== LIST VIEW ===================== -->
+  <div class="view active" id="view-list">
+
+    <div class="page-header">
+      <button class="back-btn">← BACK TO PLANT</button>
+      <h2>Daily Diesel Requirement</h2>
+      <button class="btn btn-primary" onclick="switchView('form')">+ RAISE REQUIREMENT</button>
+    </div>
+
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="sc-label">This Month</div>
+        <div class="sc-value">22</div>
+        <div class="sc-sub">Requirements raised</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Total Planned</div>
+        <div class="sc-value" style="color:#d97706;">8,450 L</div>
+        <div class="sc-sub">Diesel required</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Total Purchased</div>
+        <div class="sc-value" style="color:#3b82f6;">7,800 L</div>
+        <div class="sc-sub">Actually bought</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Pending</div>
+        <div class="sc-value" style="color:#f59e0b;">2</div>
+        <div class="sc-sub">Awaiting approval</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="form-grid cols-3">
+          <div class="form-group">
+            <label>Date From</label>
+            <input type="date" value="2026-03-01" />
+          </div>
+          <div class="form-group">
+            <label>Date To</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select>
+              <option>ALL STATUS</option>
+              <option>PENDING APPROVAL</option>
+              <option>APPROVED</option>
+              <option>PURCHASED</option>
+              <option>REJECTED</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today — pending -->
+    <div class="card day-card" onclick="switchView('detail')">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="day-row">
+          <div>
+            <div class="day-date">08-MAR-2026 (TODAY)</div>
+            <div class="day-meta">Raised by RAJU &bull; 6 equipment/DGs</div>
+          </div>
+          <div class="day-right">
+            <div style="text-align: right;">
+              <div class="diesel-qty" style="color: #d97706;">420 L</div>
+              <div style="font-size: 11px; color: #78716c;">Planned</div>
+            </div>
+            <span class="badge badge-pending">PENDING</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Yesterday — approved, purchased -->
+    <div class="card day-card status-purchased" onclick="switchView('update')">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="day-row">
+          <div>
+            <div class="day-date">07-MAR-2026</div>
+            <div class="day-meta">Raised by RAJU &bull; 6 equipment/DGs &bull; Approved by ADMIN</div>
+          </div>
+          <div class="day-right">
+            <div style="text-align: right;">
+              <div class="diesel-qty" style="color: #3b82f6;">380 L</div>
+              <div style="font-size: 11px; color: #78716c;">Planned: 400 L &bull; Bought: 380 L</div>
+            </div>
+            <span class="badge badge-purchased">PURCHASED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Earlier — approved, purchased -->
+    <div class="card day-card status-purchased">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="day-row">
+          <div>
+            <div class="day-date">06-MAR-2026</div>
+            <div class="day-meta">Raised by RAJU &bull; 5 equipment/DGs &bull; Approved by ADMIN</div>
+          </div>
+          <div class="day-right">
+            <div style="text-align: right;">
+              <div class="diesel-qty" style="color: #3b82f6;">350 L</div>
+              <div style="font-size: 11px; color: #78716c;">Planned: 350 L &bull; Bought: 350 L</div>
+            </div>
+            <span class="badge badge-purchased">PURCHASED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Approved, not yet purchased -->
+    <div class="card day-card status-approved">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="day-row">
+          <div>
+            <div class="day-date">05-MAR-2026</div>
+            <div class="day-meta">Raised by RAJU &bull; 4 equipment/DGs &bull; Approved by ADMIN</div>
+          </div>
+          <div class="day-right">
+            <div style="text-align: right;">
+              <div class="diesel-qty" style="color: #059669;">310 L</div>
+              <div style="font-size: 11px; color: #78716c;">Approved, not yet bought</div>
+            </div>
+            <span class="badge badge-approved">APPROVED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== RAISE REQUIREMENT ===================== -->
+  <div class="view" id="view-form">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Raise Diesel Requirement</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Requirement Details</h3>
+        <span class="badge badge-pending">NEW</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group">
+            <label>Raised By</label>
+            <input type="text" value="RAJU" />
+          </div>
+          <div class="form-group">
+            <label>Remarks</label>
+            <input type="text" placeholder="E.G., HEAVY WORK DAY" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Equipment / DG — Diesel Required</h3>
+        <button class="btn btn-outline btn-sm" onclick="addEquipRow()">+ ADD ROW</button>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="equip-table" id="equipTable">
+          <thead>
+            <tr>
+              <th style="width:5%">#</th>
+              <th style="width:35%">Equipment / DG</th>
+              <th style="width:20%">Planned Work / Purpose</th>
+              <th style="width:12%">Est. Hours</th>
+              <th style="width:10%">Norm (L/hr)</th>
+              <th class="right" style="width:14%">Diesel Req (L)</th>
+              <th style="width:4%"></th>
+            </tr>
+          </thead>
+          <tbody id="equipBody">
+            <tr>
+              <td>1</td>
+              <td>
+                <select style="width:100%">
+                  <option selected>JCB 3DX - KUMAR EARTH MOVERS</option>
+                  <option>TIPPER AP39-TG4521</option>
+                  <option>VIBRATORY ROLLER</option>
+                  <option>40-30 KVA GENERATOR</option>
+                  <option>125 KVA GENERATOR</option>
+                  <option>WMM PLANT</option>
+                </select>
+              </td>
+              <td><input type="text" value="EXCAVATION" style="width:100%" /></td>
+              <td><input type="number" value="8" /></td>
+              <td style="text-align: center; color: #78716c;">4.0</td>
+              <td class="right" style="background: #fffbeb; font-weight: 700;">32</td>
+              <td><button class="delete-btn">✕</button></td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>
+                <select style="width:100%">
+                  <option>JCB 3DX - KUMAR EARTH MOVERS</option>
+                  <option selected>TIPPER AP39-TG4521</option>
+                  <option>VIBRATORY ROLLER</option>
+                  <option>40-30 KVA GENERATOR</option>
+                  <option>125 KVA GENERATOR</option>
+                  <option>WMM PLANT</option>
+                </select>
+              </td>
+              <td><input type="text" value="SAND TRANSPORT" style="width:100%" /></td>
+              <td><input type="number" value="10" /></td>
+              <td style="text-align: center; color: #78716c;">6.0</td>
+              <td class="right" style="background: #fffbeb; font-weight: 700;">60</td>
+              <td><button class="delete-btn">✕</button></td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>
+                <select style="width:100%">
+                  <option>JCB 3DX - KUMAR EARTH MOVERS</option>
+                  <option>TIPPER AP39-TG4521</option>
+                  <option selected>VIBRATORY ROLLER</option>
+                  <option>40-30 KVA GENERATOR</option>
+                  <option>125 KVA GENERATOR</option>
+                  <option>WMM PLANT</option>
+                </select>
+              </td>
+              <td><input type="text" value="COMPACTION" style="width:100%" /></td>
+              <td><input type="number" value="6" /></td>
+              <td style="text-align: center; color: #78716c;">8.0</td>
+              <td class="right" style="background: #fffbeb; font-weight: 700;">48</td>
+              <td><button class="delete-btn">✕</button></td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>
+                <select style="width:100%">
+                  <option>JCB 3DX - KUMAR EARTH MOVERS</option>
+                  <option>TIPPER AP39-TG4521</option>
+                  <option>VIBRATORY ROLLER</option>
+                  <option selected>40-30 KVA GENERATOR</option>
+                  <option>125 KVA GENERATOR</option>
+                  <option>WMM PLANT</option>
+                </select>
+              </td>
+              <td><input type="text" value="PLANT POWER" style="width:100%" /></td>
+              <td><input type="number" value="18" /></td>
+              <td style="text-align: center; color: #78716c;">4.0</td>
+              <td class="right" style="background: #fffbeb; font-weight: 700;">72</td>
+              <td><button class="delete-btn">✕</button></td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>
+                <select style="width:100%">
+                  <option>JCB 3DX - KUMAR EARTH MOVERS</option>
+                  <option>TIPPER AP39-TG4521</option>
+                  <option>VIBRATORY ROLLER</option>
+                  <option>40-30 KVA GENERATOR</option>
+                  <option selected>125 KVA GENERATOR</option>
+                  <option>WMM PLANT</option>
+                </select>
+              </td>
+              <td><input type="text" value="OFFICE / CAMP" style="width:100%" /></td>
+              <td><input type="number" value="24" /></td>
+              <td style="text-align: center; color: #78716c;">3.5</td>
+              <td class="right" style="background: #fffbeb; font-weight: 700;">84</td>
+              <td><button class="delete-btn">✕</button></td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td>
+                <select style="width:100%">
+                  <option>JCB 3DX - KUMAR EARTH MOVERS</option>
+                  <option>TIPPER AP39-TG4521</option>
+                  <option>VIBRATORY ROLLER</option>
+                  <option>40-30 KVA GENERATOR</option>
+                  <option>125 KVA GENERATOR</option>
+                  <option selected>WMM PLANT</option>
+                </select>
+              </td>
+              <td><input type="text" value="WMM PRODUCTION" style="width:100%" /></td>
+              <td><input type="number" value="8" /></td>
+              <td style="text-align: center; color: #78716c;">15.5</td>
+              <td class="right" style="background: #fffbeb; font-weight: 700;">124</td>
+              <td><button class="delete-btn">✕</button></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style="background: #fffbeb;">
+              <td colspan="5" style="text-align: right; padding-right: 16px; font-size: 15px;">TOTAL DIESEL REQUIRED</td>
+              <td class="right" style="font-size: 18px; font-weight: 800; color: #d97706;">420 L</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="footer">
+        <button class="btn btn-outline" onclick="switchView('list')">CANCEL</button>
+        <button class="btn btn-primary" onclick="alert('Diesel requirement submitted for approval!'); switchView('list');">SUBMIT FOR APPROVAL</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== APPROVAL VIEW ===================== -->
+  <div class="view" id="view-detail">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Approval</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>08-MAR-2026 — Diesel Requirement</h3>
+        <span class="badge badge-pending">PENDING APPROVAL</span>
+      </div>
+      <div class="card-body">
+        <div class="detail-grid" style="margin-bottom: 16px;">
+          <div class="detail-item">
+            <div class="di-label">Date</div>
+            <div class="di-value">08-MAR-2026</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Raised By</div>
+            <div class="di-value">RAJU</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Equipment</div>
+            <div class="di-value">6 ITEMS</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Total Required</div>
+            <div class="di-value" style="color: #d97706;">420 L</div>
+          </div>
+        </div>
+
+        <div class="section-label">Workflow Status</div>
+        <div class="status-steps">
+          <span class="step active">● RAISED</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ APPROVED</span>
+          <span class="step-arrow">→</span>
+          <span class="step">○ PURCHASED</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Equipment Breakdown</h3>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="equip-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Equipment / DG</th>
+              <th>Purpose</th>
+              <th>Est. Hours</th>
+              <th>Norm (L/hr)</th>
+              <th class="right">Diesel (L)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><strong>JCB 3DX</strong><br><span style="font-size:11px;color:#78716c;">KUMAR EARTH MOVERS</span></td>
+              <td>EXCAVATION</td>
+              <td>8</td>
+              <td>4.0</td>
+              <td class="right">32</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><strong>TIPPER AP39-TG4521</strong></td>
+              <td>SAND TRANSPORT</td>
+              <td>10</td>
+              <td>6.0</td>
+              <td class="right">60</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><strong>VIBRATORY ROLLER</strong></td>
+              <td>COMPACTION</td>
+              <td>6</td>
+              <td>8.0</td>
+              <td class="right">48</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><strong>40-30 KVA GENERATOR</strong></td>
+              <td>PLANT POWER</td>
+              <td>18</td>
+              <td>4.0</td>
+              <td class="right">72</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td><strong>125 KVA GENERATOR</strong></td>
+              <td>OFFICE / CAMP</td>
+              <td>24</td>
+              <td>3.5</td>
+              <td class="right">84</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td><strong>WMM PLANT</strong></td>
+              <td>WMM PRODUCTION</td>
+              <td>8</td>
+              <td>15.5</td>
+              <td class="right">124</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style="background: #fffbeb;">
+              <td colspan="5" style="text-align: right; padding-right: 16px;">TOTAL</td>
+              <td class="right" style="font-size: 16px; color: #d97706;">420 L</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="action-bar">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-danger" onclick="alert('Requirement rejected.')">✕ REJECT</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-success" onclick="alert('Diesel requirement approved!'); switchView('update');">✓ APPROVE</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align: center; padding: 12px; color: #78716c; font-size: 12px; font-style: italic;">
+      PIN required to approve or reject
+    </div>
+
+  </div>
+
+  <!-- ===================== PURCHASE UPDATE VIEW ===================== -->
+  <div class="view" id="view-update">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Purchase Update — 07-MAR-2026</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>07-MAR-2026 — Diesel Requirement</h3>
+        <span class="badge badge-approved">APPROVED</span>
+      </div>
+      <div class="card-body">
+        <div class="detail-grid" style="margin-bottom: 16px;">
+          <div class="detail-item">
+            <div class="di-label">Total Planned</div>
+            <div class="di-value" style="color: #d97706;">400 L</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Raised By</div>
+            <div class="di-value">RAJU</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Approved By</div>
+            <div class="di-value">ADMIN</div>
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Status</div>
+            <div class="di-value" style="color: #059669;">APPROVED</div>
+          </div>
+        </div>
+
+        <div class="section-label">Workflow Status</div>
+        <div class="status-steps">
+          <span class="step done">✓ RAISED</span>
+          <span class="step-arrow">→</span>
+          <span class="step done">✓ APPROVED</span>
+          <span class="step-arrow">→</span>
+          <span class="step active">● PURCHASING</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Update Purchase Details</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label>Qty Purchased (Liters)</label>
+            <input type="number" value="380" style="font-size: 18px; font-weight: 700; text-align: center;" />
+            <span class="hint">Planned: 400 L</span>
+          </div>
+          <div class="form-group">
+            <label>Fuel Station / Supplier</label>
+            <input type="text" value="HP PETROL PUMP, KURNOOL" />
+          </div>
+          <div class="form-group">
+            <label>Bill No.</label>
+            <input type="text" value="HP/KNL/28456" />
+          </div>
+        </div>
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label>Rate per Liter (₹)</label>
+            <input type="number" value="89.50" />
+          </div>
+          <div class="form-group">
+            <label>Total Amount (₹)</label>
+            <input type="number" value="34010" disabled style="background: #f5f5f4; font-weight: 700;" />
+            <span class="hint">Auto: 380 × ₹89.50</span>
+          </div>
+          <div class="form-group">
+            <label>Purchased At</label>
+            <input type="time" value="07:30" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Remarks</label>
+          <textarea placeholder="REASON IF LESS OR MORE THAN PLANNED...">PURCHASED 380L INSTEAD OF 400L — TANK CAPACITY REACHED, WILL GET REMAINING TOMORROW</textarea>
+        </div>
+      </div>
+      <div class="footer">
+        <button class="btn btn-outline" onclick="switchView('list')">CANCEL</button>
+        <button class="btn btn-primary" onclick="alert('Purchase updated!'); switchView('list');">SAVE PURCHASE UPDATE</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== COMPARISON REPORT ===================== -->
+  <div class="view" id="view-report">
+
+    <div class="page-header">
+      <button class="back-btn" onclick="switchView('list')">← BACK</button>
+      <h2>Diesel — Planned vs Purchased vs Actual</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="padding: 14px 20px;">
+        <div class="form-grid cols-3">
+          <div class="form-group">
+            <label>Date From</label>
+            <input type="date" value="2026-03-01" />
+          </div>
+          <div class="form-group">
+            <label>Date To</label>
+            <input type="date" value="2026-03-08" />
+          </div>
+          <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-outline" style="width: 100%;">GENERATE REPORT</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary-cards" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="summary-card">
+        <div class="sc-label">Total Planned</div>
+        <div class="sc-value" style="color:#d97706;">2,680 L</div>
+        <div class="sc-sub">7 days</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Total Purchased</div>
+        <div class="sc-value" style="color:#3b82f6;">2,510 L</div>
+        <div class="sc-sub">93.7% of planned</div>
+      </div>
+      <div class="summary-card">
+        <div class="sc-label">Total Actual Issued</div>
+        <div class="sc-value" style="color:#059669;">2,480 L</div>
+        <div class="sc-sub">From equipment logs</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Date-wise Comparison</h3>
+        <div style="font-size: 11px; color: #78716c;">Actual issued = sum of diesel from DPR equipment logs + Plant equipment usage</div>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="right">Planned (L)</th>
+              <th class="right">Purchased (L)</th>
+              <th class="right">Actual Issued (L)</th>
+              <th class="right">Planned vs Purchased</th>
+              <th class="right">Purchased vs Issued</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>08-MAR</strong></td>
+              <td class="right">420</td>
+              <td class="right" style="color: #78716c;">—</td>
+              <td class="right" style="color: #78716c;">—</td>
+              <td class="right comparison-neutral">Pending</td>
+              <td class="right comparison-neutral">—</td>
+            </tr>
+            <tr>
+              <td><strong>07-MAR</strong></td>
+              <td class="right">400</td>
+              <td class="right">380</td>
+              <td class="right">365</td>
+              <td class="right comparison-negative">-20 L (5%↓)</td>
+              <td class="right comparison-positive">+15 L surplus</td>
+            </tr>
+            <tr>
+              <td><strong>06-MAR</strong></td>
+              <td class="right">350</td>
+              <td class="right">350</td>
+              <td class="right">342</td>
+              <td class="right comparison-positive">0 (exact)</td>
+              <td class="right comparison-positive">+8 L surplus</td>
+            </tr>
+            <tr>
+              <td><strong>05-MAR</strong></td>
+              <td class="right">310</td>
+              <td class="right">310</td>
+              <td class="right">318</td>
+              <td class="right comparison-positive">0 (exact)</td>
+              <td class="right comparison-negative">-8 L deficit</td>
+            </tr>
+            <tr>
+              <td><strong>04-MAR</strong></td>
+              <td class="right">380</td>
+              <td class="right">400</td>
+              <td class="right">375</td>
+              <td class="right comparison-positive">+20 L (5%↑)</td>
+              <td class="right comparison-positive">+25 L surplus</td>
+            </tr>
+            <tr>
+              <td><strong>03-MAR</strong></td>
+              <td class="right">420</td>
+              <td class="right">400</td>
+              <td class="right">410</td>
+              <td class="right comparison-negative">-20 L (5%↓)</td>
+              <td class="right comparison-negative">-10 L deficit</td>
+            </tr>
+            <tr>
+              <td><strong>02-MAR</strong></td>
+              <td class="right">340</td>
+              <td class="right">340</td>
+              <td class="right">332</td>
+              <td class="right comparison-positive">0 (exact)</td>
+              <td class="right comparison-positive">+8 L surplus</td>
+            </tr>
+            <tr>
+              <td><strong>01-MAR</strong></td>
+              <td class="right">380</td>
+              <td class="right">380</td>
+              <td class="right">388</td>
+              <td class="right comparison-positive">0 (exact)</td>
+              <td class="right comparison-negative">-8 L deficit</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style="background: #fffbeb;">
+              <td><strong>TOTAL</strong></td>
+              <td class="right" style="color: #d97706;">3,000</td>
+              <td class="right" style="color: #3b82f6;">2,560</td>
+              <td class="right" style="color: #059669;">2,530</td>
+              <td class="right comparison-negative">-440 L (14.7%↓)</td>
+              <td class="right comparison-positive">+30 L surplus</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Equipment-wise Diesel — 07-MAR-2026</h3>
+        <div style="font-size: 11px; color: #78716c;">Click any date above to see equipment breakdown</div>
+      </div>
+      <div class="card-body" style="padding: 0; overflow-x: auto;">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Equipment / DG</th>
+              <th class="right">Planned (L)</th>
+              <th class="right">Actual Issued (L)</th>
+              <th class="right">Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>JCB 3DX</strong></td>
+              <td class="right">32</td>
+              <td class="right">28</td>
+              <td class="right comparison-positive">-4 (used less)</td>
+            </tr>
+            <tr>
+              <td><strong>TIPPER AP39-TG4521</strong></td>
+              <td class="right">55</td>
+              <td class="right">62</td>
+              <td class="right comparison-negative">+7 (used more)</td>
+            </tr>
+            <tr>
+              <td><strong>VIBRATORY ROLLER</strong></td>
+              <td class="right">40</td>
+              <td class="right">38</td>
+              <td class="right comparison-positive">-2 (used less)</td>
+            </tr>
+            <tr>
+              <td><strong>40-30 KVA GENERATOR</strong></td>
+              <td class="right">72</td>
+              <td class="right">68</td>
+              <td class="right comparison-positive">-4 (used less)</td>
+            </tr>
+            <tr>
+              <td><strong>125 KVA GENERATOR</strong></td>
+              <td class="right">84</td>
+              <td class="right">85</td>
+              <td class="right comparison-negative">+1 (used more)</td>
+            </tr>
+            <tr>
+              <td><strong>WMM PLANT</strong></td>
+              <td class="right">117</td>
+              <td class="right">84</td>
+              <td class="right comparison-positive">-33 (used less)</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style="background: #fffbeb;">
+              <td><strong>TOTAL</strong></td>
+              <td class="right" style="color: #d97706;">400</td>
+              <td class="right" style="color: #059669;">365</td>
+              <td class="right comparison-positive">-35 L (8.8% less)</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="action-bar">
+        <div style="font-size: 12px; color: #78716c;">
+          Actual issued data pulled from DPR Equipment Logs and Plant Equipment Usage records
+        </div>
+        <div>
+          <button class="btn btn-outline btn-sm" onclick="window.print()">PRINT REPORT</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+function switchView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  const labels = { list: 0, form: 1, detail: 2, update: 3, report: 4 };
+  document.querySelectorAll('.view-toggle button')[labels[id]].classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function addEquipRow() {
+  const tbody = document.getElementById('equipBody');
+  const rowCount = tbody.rows.length + 1;
+  const row = tbody.insertRow();
+  row.innerHTML = `
+    <td>${rowCount}</td>
+    <td><select style="width:100%"><option>JCB 3DX - KUMAR EARTH MOVERS</option><option>TIPPER AP39-TG4521</option><option>VIBRATORY ROLLER</option><option>40-30 KVA GENERATOR</option><option>125 KVA GENERATOR</option><option>WMM PLANT</option></select></td>
+    <td><input type="text" placeholder="PURPOSE" style="width:100%" /></td>
+    <td><input type="number" value="0" /></td>
+    <td style="text-align:center;color:#78716c;">—</td>
+    <td class="right" style="background:#fffbeb;font-weight:700;">0</td>
+    <td><button class="delete-btn" onclick="this.closest('tr').remove()">✕</button></td>
+  `;
+}
+</script>
+
+</body>
+</html>
