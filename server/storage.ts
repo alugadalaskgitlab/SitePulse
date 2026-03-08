@@ -345,6 +345,7 @@ export interface IStorage {
   updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
   deleteVendorBill(id: number): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string): Promise<Partial<InsertVendorBillItem>[]>;
+  getVendorNames(): Promise<string[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -4773,6 +4774,8 @@ export class DatabaseStorage implements IStorage {
         items = await tx.insert(vendorBillItems).values(
           data.items.map(item => ({
             billId: bill.id,
+            date: item.date ?? null,
+            category: item.category ?? null,
             description: item.description.toUpperCase(),
             qty: item.qty,
             unit: item.unit?.toUpperCase() || item.unit,
@@ -4814,6 +4817,8 @@ export class DatabaseStorage implements IStorage {
         items = await tx.insert(vendorBillItems).values(
           data.items.map(item => ({
             billId: id,
+            date: item.date ?? null,
+            category: item.category ?? null,
             description: item.description.toUpperCase(),
             qty: item.qty,
             unit: item.unit?.toUpperCase() || item.unit,
@@ -4883,85 +4888,250 @@ export class DatabaseStorage implements IStorage {
 
   async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string): Promise<Partial<InsertVendorBillItem>[]> {
     const vendorUpper = vendorName.toUpperCase();
+    const bt = billType.toLowerCase();
     const items: Partial<InsertVendorBillItem>[] = [];
 
-    if (billType.toLowerCase() === "equipment") {
-      const equipment = await db.select()
+    const entryTypeUnit = (entryType: string | null) => {
+      switch ((entryType || "").toLowerCase()) {
+        case "hourly": return "HRS";
+        case "daily": return "DAYS";
+        case "trip_based": return "TRIPS";
+        case "monthly": return "MONTHS";
+        default: return "HRS";
+      }
+    };
+
+    const calcQty = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; numberOfTrips?: number | null; hoursOrKmRun?: number | null; entryType?: string | null }) => {
+      const et = (row.entryType || "").toLowerCase();
+      if (et === "trip_based" && row.numberOfTrips) return row.numberOfTrips;
+      if (et === "daily") return 1;
+      if (et === "monthly") return 1;
+      if (row.hoursWorked && row.hoursWorked > 0) return row.hoursWorked;
+      if (row.hoursOrKmRun && row.hoursOrKmRun > 0) return row.hoursOrKmRun;
+      if (row.startTime && row.endTime) {
+        const [sh, sm] = row.startTime.split(":").map(Number);
+        const [eh, em] = row.endTime.split(":").map(Number);
+        if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+          const diff = (eh * 60 + em - sh * 60 - sm) / 60;
+          if (diff > 0) return Math.round(diff * 100) / 100;
+        }
+      }
+      return 0;
+    };
+
+    if (bt === "equipment" || bt === "all") {
+      const hiredEquipment = await db.select()
         .from(equipmentMaster)
         .where(and(
-          eq(equipmentMaster.vendorName, vendorUpper),
+          sql`UPPER(${equipmentMaster.vendorName}) = ${vendorUpper}`,
           eq(equipmentMaster.ownership, "hired"),
         ));
 
-      if (equipment.length > 0) {
-        const equipmentIds = equipment.map(e => e.id);
-        const usageRecords = await db.select()
+      if (hiredEquipment.length > 0) {
+        const eqIds = hiredEquipment.map(e => e.id);
+        const eqMap = new Map(hiredEquipment.map(e => [e.id, e.name]));
+
+        const dprLogs = await db.select({
+          date: dprs.date,
+          machine: equipmentLogs.machine,
+          entryType: equipmentLogs.entryType,
+          hoursWorked: equipmentLogs.hoursWorked,
+          startTime: equipmentLogs.startTime,
+          endTime: equipmentLogs.endTime,
+          numberOfTrips: equipmentLogs.numberOfTrips,
+          equipmentId: equipmentLogs.equipmentId,
+        })
+        .from(equipmentLogs)
+        .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+        .where(and(
+          inArray(equipmentLogs.equipmentId, eqIds),
+          gte(dprs.date, periodFrom),
+          lte(dprs.date, periodTo),
+          eq(dprs.isSuperseded, false),
+        ));
+
+        for (const row of dprLogs) {
+          const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType });
+          if (qty > 0) {
+            items.push({
+              date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+              category: "equipment",
+              description: `${eqMap.get(row.equipmentId!) || row.machine} (SITE)`,
+              qty,
+              unit: entryTypeUnit(row.entryType),
+              source: "auto",
+              equipmentId: row.equipmentId,
+            });
+          }
+        }
+
+        const plantUsage = await db.select()
           .from(equipmentUsage)
           .where(and(
-            inArray(equipmentUsage.equipmentId, equipmentIds),
+            inArray(equipmentUsage.equipmentId, eqIds),
             gte(equipmentUsage.date, periodFrom),
             lte(equipmentUsage.date, periodTo),
           ));
 
-        const usageByEquipment = new Map<number, { totalHours: number; name: string }>();
-        for (const eq of equipment) {
-          usageByEquipment.set(eq.id, { totalHours: 0, name: eq.name });
-        }
-        for (const u of usageRecords) {
-          const existing = usageByEquipment.get(u.equipmentId);
-          if (existing) {
-            existing.totalHours += (u.hoursOrKmRun || 0);
-          }
-        }
-
-        for (const [eqId, data] of usageByEquipment.entries()) {
-          if (data.totalHours > 0) {
+        for (const row of plantUsage) {
+          const et = row.entryType || "time_meter";
+          const qty = calcQty({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: et });
+          if (qty > 0) {
             items.push({
-              description: data.name,
-              qty: data.totalHours,
-              unit: "HRS",
+              date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+              category: "equipment",
+              description: `${eqMap.get(row.equipmentId) || "EQUIPMENT"} (PLANT)`,
+              qty,
+              unit: entryTypeUnit(et),
               source: "auto",
-              equipmentId: eqId,
+              equipmentId: row.equipmentId,
             });
           }
         }
       }
-    } else if (billType.toLowerCase() === "material") {
-      const receipts = await db.select()
-        .from(materialReceipts)
-        .where(and(
-          eq(materialReceipts.supplier, vendorUpper),
-          gte(materialReceipts.date, periodFrom),
-          lte(materialReceipts.date, periodTo),
-        ));
+    }
 
-      const materialIds = [...new Set(receipts.map(r => r.materialId))];
-      const materials = materialIds.length > 0
-        ? await db.select().from(plantMaterials).where(inArray(plantMaterials.id, materialIds))
-        : [];
-      const materialMap = new Map(materials.map(m => [m.id, m.name]));
+    if (bt === "material" || bt === "all") {
+      const dprMaterials = await db.select({
+        date: dprs.date,
+        material: materialLogs.material,
+        quantity: materialLogs.quantity,
+        uom: materialLogs.uom,
+        supplier: materialLogs.supplier,
+      })
+      .from(materialLogs)
+      .innerJoin(dprs, eq(dprs.id, materialLogs.dprId))
+      .where(and(
+        eq(materialLogs.type, "Received"),
+        sql`UPPER(${materialLogs.supplier}) = ${vendorUpper}`,
+        gte(dprs.date, periodFrom),
+        lte(dprs.date, periodTo),
+        eq(dprs.isSuperseded, false),
+      ));
 
-      const grouped = new Map<number, { qty: number; uom: string }>();
-      for (const r of receipts) {
-        const existing = grouped.get(r.materialId);
-        if (existing) {
-          existing.qty += (r.quantity || 0);
-        } else {
-          grouped.set(r.materialId, { qty: r.quantity || 0, uom: r.uom });
+      for (const row of dprMaterials) {
+        if (row.quantity && row.quantity > 0) {
+          items.push({
+            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+            category: "material",
+            description: `${(row.material || "MATERIAL").toUpperCase()} (SITE)`,
+            qty: row.quantity,
+            unit: row.uom || "NOS",
+            source: "auto",
+          });
         }
       }
 
-      for (const [matId, data] of grouped.entries()) {
+      const siteTrips = await db.select()
+        .from(siteMaterialTrips)
+        .where(and(
+          sql`UPPER(${siteMaterialTrips.supplier}) = ${vendorUpper}`,
+          gte(siteMaterialTrips.date, periodFrom),
+          lte(siteMaterialTrips.date, periodTo),
+        ));
+
+      for (const row of siteTrips) {
+        if (row.quantity && row.quantity > 0) {
+          items.push({
+            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+            category: "material",
+            description: `${(row.material || "MATERIAL").toUpperCase()} (SITE TRIP)`,
+            qty: row.quantity,
+            unit: row.uom || "NOS",
+            source: "auto",
+          });
+        }
+      }
+
+      const plantReceipts = await db.select({
+        date: materialReceipts.date,
+        materialId: materialReceipts.materialId,
+        quantity: materialReceipts.quantity,
+        uom: materialReceipts.uom,
+        materialName: plantMaterials.name,
+      })
+      .from(materialReceipts)
+      .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
+      .where(and(
+        sql`UPPER(${materialReceipts.supplier}) = ${vendorUpper}`,
+        gte(materialReceipts.date, periodFrom),
+        lte(materialReceipts.date, periodTo),
+      ));
+
+      for (const row of plantReceipts) {
+        if (row.quantity && row.quantity > 0) {
+          items.push({
+            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+            category: "material",
+            description: `${(row.materialName || "MATERIAL").toUpperCase()} (PLANT)`,
+            qty: row.quantity,
+            unit: row.uom || "NOS",
+            source: "auto",
+          });
+        }
+      }
+    }
+
+    if (bt === "transport" || bt === "all") {
+      const dispatches = await db.select()
+        .from(truckDispatches)
+        .where(and(
+          sql`UPPER(${truckDispatches.ownerName}) = ${vendorUpper}`,
+          gte(truckDispatches.date, periodFrom),
+          lte(truckDispatches.date, periodTo),
+        ));
+
+      for (const row of dispatches) {
         items.push({
-          description: materialMap.get(matId) || `MATERIAL #${matId}`,
-          qty: data.qty,
-          unit: data.uom,
+          date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+          category: "transport",
+          description: `${(row.truckNumber || "TRUCK").toUpperCase()} → ${(row.deliveryLocation || "").toUpperCase()} (${row.loadWeight || 0} MT)`,
+          qty: row.loadWeight || 0,
+          unit: "MT",
           source: "auto",
         });
       }
     }
 
+    items.sort((a, b) => {
+      const dateComp = (a.date || "").localeCompare(b.date || "");
+      if (dateComp !== 0) return dateComp;
+      const catOrder: Record<string, number> = { equipment: 1, material: 2, transport: 3 };
+      return (catOrder[a.category || ""] || 9) - (catOrder[b.category || ""] || 9);
+    });
+
     return items;
+  }
+
+  async getVendorNames(): Promise<string[]> {
+    const names = new Set<string>();
+
+    const eqVendors = await db.select({ name: equipmentMaster.vendorName })
+      .from(equipmentMaster)
+      .where(sql`${equipmentMaster.vendorName} IS NOT NULL AND ${equipmentMaster.vendorName} != ''`);
+    for (const r of eqVendors) { if (r.name) names.add(r.name.toUpperCase()); }
+
+    const mrSuppliers = await db.select({ name: materialReceipts.supplier })
+      .from(materialReceipts)
+      .where(sql`${materialReceipts.supplier} IS NOT NULL AND ${materialReceipts.supplier} != ''`);
+    for (const r of mrSuppliers) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    const mlSuppliers = await db.select({ name: materialLogs.supplier })
+      .from(materialLogs)
+      .where(sql`${materialLogs.supplier} IS NOT NULL AND ${materialLogs.supplier} != ''`);
+    for (const r of mlSuppliers) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    const smtSuppliers = await db.select({ name: siteMaterialTrips.supplier })
+      .from(siteMaterialTrips)
+      .where(sql`${siteMaterialTrips.supplier} IS NOT NULL AND ${siteMaterialTrips.supplier} != ''`);
+    for (const r of smtSuppliers) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    const tdOwners = await db.select({ name: truckDispatches.ownerName })
+      .from(truckDispatches)
+      .where(sql`${truckDispatches.ownerName} IS NOT NULL AND ${truckDispatches.ownerName} != ''`);
+    for (const r of tdOwners) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    return [...names].sort();
   }
 
   async getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]> {

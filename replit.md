@@ -59,9 +59,11 @@ Preferred communication style: Simple, everyday language.
 - **Daily Diesel Requirements**: Per-equipment diesel planning and procurement tool (does NOT affect stock). Features: equipment dropdown from master, estimated hours/norm/planned qty, editable approval qty per equipment, purchase tracking, comparison report (planned vs purchased vs actual issued from equipment_logs/equipment_usage).
   - Tables: `diesel_requirements`, `diesel_requirement_items`
   - Routes: `/api/diesel-requirements`, `/plant/diesel-requirements`
-- **Vendor Bills**: Invoice tracking with 4-step workflow (Draft → Verified → Approved → Paid). Bill number format: `HLC/VB/YYYY/NNNN`. Types: equipment/material/other. Features: auto-pull line items from DPR/Plant records for vendor+period, source tags (AUTO/MANUAL), PIN-gated status advancement.
-  - Tables: `vendor_bills`, `vendor_bill_items`
-  - Routes: `/api/vendor-bills`, `/plant/vendor-bills`
+- **Vendor Bills**: Comprehensive date-wise billing system with 4-step workflow (Draft → Verified → Approved → Paid). Bill number format: `HLC/VB/YYYY/NNNN`. Bill types: equipment / material / transport / all / other. Auto-pulls date-wise line items from ALL vendor data sources for a given vendor+period. Each line item has date, category badge (EQUIP/MATL/TRNS), description, qty, unit, rate (editable), and auto-calculated amount. PIN-gated status advancement (manager or admin).
+  - **Data Sources**: Site DPR equipment_logs (hired equipment), Plant equipment_usage (hired), Site DPR material_logs (type=Received), site_material_trips, plant material_receipts, truck_dispatches (transport)
+  - **Vendor Names API**: Aggregated from equipment_master.vendor_name, material sources' supplier fields, truck_dispatches.owner_name
+  - Tables: `vendor_bills`, `vendor_bill_items` (with `date` and `category` columns)
+  - Routes: `/api/vendor-bills`, `/api/vendor-bills/vendor-names`, `/api/vendor-bills/auto-items`, `/plant/vendor-bills`
 
 ### UI/UX & Features
 - **UI Enhancements**: Responsive design using shadcn/ui.

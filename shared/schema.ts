@@ -925,6 +925,8 @@ export const vendorBills = pgTable("vendor_bills", {
 export const vendorBillItems = pgTable("vendor_bill_items", {
   id: serial("id").primaryKey(),
   billId: integer("bill_id").notNull(),
+  date: text("date"),
+  category: text("category"),
   description: text("description").notNull(),
   qty: real("qty"),
   unit: text("unit"),

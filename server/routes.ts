@@ -2179,6 +2179,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-bills/vendor-names", async (req, res) => {
+    try {
+      const names = await storage.getVendorNames();
+      res.json(names);
+    } catch (err) {
+      console.error("Error fetching vendor names:", err);
+      res.status(500).json({ message: "Failed to fetch vendor names" });
+    }
+  });
+
   app.get("/api/vendor-bills/auto-items", async (req, res) => {
     try {
       const vendorName = req.query.vendorName as string;
