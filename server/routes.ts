@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
+import PDFDocument from 'pdfkit';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 
@@ -1839,6 +1840,23 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-indents/report", async (req, res) => {
+    try {
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        purchaseStatus: req.query.purchaseStatus as string | undefined,
+        purpose: req.query.purpose as string | undefined,
+        vendor: req.query.vendor as string | undefined,
+      };
+      const report = await storage.getProcurementReport(filters);
+      res.json(report);
+    } catch (err) {
+      console.error("Error fetching procurement report:", err);
+      res.status(500).json({ message: "Failed to fetch procurement report" });
+    }
+  });
+
   app.get("/api/purchase-indents/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -1947,9 +1965,10 @@ export async function registerRoutes(
         rate: z.number().optional(),
         amount: z.number().optional(),
         purchaseRemarks: z.string().optional(),
+        actionBy: z.string().optional(),
       });
-      const purchaseData = updateSchema.parse(req.body);
-      const item = await storage.updatePurchaseItemStatus(itemId, purchaseData);
+      const { actionBy, ...purchaseData } = updateSchema.parse(req.body);
+      const item = await storage.updatePurchaseItemStatus(itemId, purchaseData, actionBy || "SYSTEM");
       if (!item) {
         return res.status(404).json({ message: "Purchase indent item not found" });
       }
@@ -1960,6 +1979,81 @@ export async function registerRoutes(
       }
       console.error("Error updating purchase indent item:", err);
       res.status(500).json({ message: "Failed to update purchase indent item" });
+    }
+  });
+
+  app.patch("/api/purchase-indent-items/:id/cancel", async (req, res) => {
+    try {
+      const itemId = Number(req.params.id);
+      const { pin, reason } = req.body;
+
+      if (!pin || typeof pin !== "string") {
+        return res.status(400).json({ message: "PIN is required" });
+      }
+      if (!reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ message: "Cancellation reason is required" });
+      }
+
+      const isAdmin = await storage.verifyPin("admin", pin);
+      const isManager = await storage.verifyPin("manager", pin);
+      if (!isAdmin && !isManager) {
+        return res.status(403).json({ message: "Invalid PIN" });
+      }
+
+      const cancelledBy = isAdmin ? "ADMIN" : "MANAGER";
+      const item = await storage.cancelPurchaseItem(itemId, cancelledBy, reason);
+      if (!item) {
+        return res.status(404).json({ message: "Purchase indent item not found" });
+      }
+      res.json(item);
+    } catch (err: any) {
+      if (err?.message?.startsWith("Cannot cancel")) {
+        return res.status(400).json({ message: err.message });
+      }
+      console.error("Error cancelling purchase indent item:", err);
+      res.status(500).json({ message: "Failed to cancel purchase indent item" });
+    }
+  });
+
+  app.patch("/api/purchase-indents/:id/force-close", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, reason } = req.body;
+
+      if (!pin || typeof pin !== "string") {
+        return res.status(400).json({ message: "PIN is required" });
+      }
+      if (!reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ message: "Reason is required" });
+      }
+
+      const isAdmin = await storage.verifyPin("admin", pin);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Admin PIN required for force close" });
+      }
+
+      const indent = await storage.forceCloseIndent(id, "ADMIN", reason);
+      if (!indent) {
+        return res.status(404).json({ message: "Purchase indent not found" });
+      }
+      res.json(indent);
+    } catch (err: any) {
+      if (err?.message?.startsWith("Cannot force close")) {
+        return res.status(400).json({ message: err.message });
+      }
+      console.error("Error force closing purchase indent:", err);
+      res.status(500).json({ message: "Failed to force close purchase indent" });
+    }
+  });
+
+  app.get("/api/purchase-indent-items/:id/history", async (req, res) => {
+    try {
+      const itemId = Number(req.params.id);
+      const history = await storage.getItemHistory(itemId);
+      res.json(history);
+    } catch (err) {
+      console.error("Error fetching item history:", err);
+      res.status(500).json({ message: "Failed to fetch item history" });
     }
   });
 
@@ -2233,6 +2327,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-bills/discover-vendors", async (req, res) => {
+    try {
+      const billType = req.query.billType as string;
+      const periodFrom = req.query.periodFrom as string;
+      const periodTo = req.query.periodTo as string;
+      if (!billType || !periodFrom || !periodTo) {
+        return res.status(400).json({ message: "billType, periodFrom, and periodTo are required" });
+      }
+      const vendors = await storage.discoverVendors(billType, periodFrom, periodTo);
+      res.json(vendors);
+    } catch (err) {
+      console.error("Error discovering vendors:", err);
+      res.status(500).json({ message: "Failed to discover vendors" });
+    }
+  });
+
   app.get("/api/vendor-bills/auto-items", async (req, res) => {
     try {
       const vendorName = req.query.vendorName as string;
@@ -2332,6 +2442,135 @@ export async function registerRoutes(
       }
       console.error("Error updating vendor bill status:", err);
       res.status(500).json({ message: "Failed to update vendor bill status" });
+    }
+  });
+
+  app.get("/api/vendor-bills/:id/pdf", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const bill = await storage.getVendorBill(id);
+      if (!bill) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+      if (!["verified", "approved", "paid"].includes(bill.status)) {
+        return res.status(400).json({ message: "PDF export is only available for verified, approved, or paid bills" });
+      }
+
+      const getBillTypeLabel = (type: string) => {
+        const map: Record<string, string> = { equipment: "EQUIPMENT HIRE", material: "MATERIAL SUPPLY", transport: "MIX TRANSPORT", all: "ALL", other: "OTHER / MISCELLANEOUS" };
+        return map[type.toLowerCase()] || type.toUpperCase();
+      };
+      const getCategoryLabel = (cat: string) => {
+        const map: Record<string, string> = { equipment: "EQUIP", material: "MATL", transport: "TRNS" };
+        return map[cat] || "OTHER";
+      };
+      const fmtCurrency = (amt: number | null | undefined) => {
+        if (amt == null) return "0";
+        return amt.toLocaleString("en-IN");
+      };
+
+      const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="VendorBill-${bill.billNo}.pdf"`);
+        res.send(pdfBuffer);
+      });
+
+      const pageW = 515;
+      const amber = "#d97706";
+
+      doc.fontSize(16).font("Helvetica-Bold").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
+      doc.moveDown(0.3);
+      doc.fontSize(9).font("Helvetica").fillColor("#666").text("VENDOR BILL", { align: "center" });
+      doc.moveDown(0.5);
+
+      doc.moveTo(40, doc.y).lineTo(40 + pageW, doc.y).strokeColor(amber).lineWidth(2).stroke();
+      doc.moveDown(0.5);
+
+      doc.fillColor("#000").fontSize(10).font("Helvetica-Bold").text(`Bill No: ${bill.billNo}`, 40, doc.y, { continued: true });
+      doc.font("Helvetica").text(`          Date: ${bill.billDate}`, { continued: true });
+      doc.text(`          Status: ${bill.status.toUpperCase()}`);
+      doc.moveDown(0.3);
+      doc.font("Helvetica-Bold").text(`Vendor: ${bill.vendorName}`);
+      doc.moveDown(0.2);
+      doc.font("Helvetica").fontSize(9);
+      doc.text(`Bill Type: ${getBillTypeLabel(bill.billType)}${bill.periodFrom && bill.periodTo ? `     Period: ${bill.periodFrom} to ${bill.periodTo}` : ""}`);
+      doc.moveDown(0.8);
+
+      const colWidths = [25, 55, 40, 180, 40, 35, 60, 80];
+      const headers = ["#", "Date", "Type", "Description", "Qty", "Unit", "Rate", "Amount"];
+      const tableX = 40;
+      let y = doc.y;
+
+      doc.fillColor("#fff").rect(tableX, y, pageW, 18).fill(amber);
+      doc.fillColor("#fff").fontSize(8).font("Helvetica-Bold");
+      let cx = tableX;
+      headers.forEach((h, i) => {
+        const align = i >= 6 ? "right" : "left";
+        const offset = align === "right" ? colWidths[i] - 4 : 4;
+        doc.text(h, cx + offset, y + 5, { width: colWidths[i] - 8, align, lineBreak: false });
+        cx += colWidths[i];
+      });
+      y += 18;
+
+      doc.fillColor("#000").font("Helvetica").fontSize(7);
+      bill.items.forEach((item: any, idx: number) => {
+        if (y > 750) {
+          doc.addPage();
+          y = 40;
+        }
+        const bgColor = idx % 2 === 0 ? "#fff" : "#f9f9f9";
+        doc.fillColor(bgColor).rect(tableX, y, pageW, 16).fill();
+
+        const rowData = [
+          String(idx + 1),
+          item.date || "-",
+          item.category ? getCategoryLabel(item.category) : "-",
+          item.description || "",
+          String(item.qty || 0),
+          item.unit || "",
+          fmtCurrency(item.rate),
+          fmtCurrency(item.amount),
+        ];
+        doc.fillColor("#333").fontSize(7);
+        cx = tableX;
+        rowData.forEach((cell, i) => {
+          const align = i >= 6 ? "right" : "left";
+          const offset = align === "right" ? colWidths[i] - 4 : 4;
+          const w = colWidths[i] - 8;
+          doc.text(cell.substring(0, 60), cx + offset, y + 4, { width: w, align, lineBreak: false });
+          cx += colWidths[i];
+        });
+        y += 16;
+      });
+
+      doc.fillColor(amber).rect(tableX, y, pageW, 20).fill();
+      doc.fillColor("#fff").fontSize(9).font("Helvetica-Bold");
+      doc.text("TOTAL", tableX + 4, y + 5, { width: pageW - colWidths[7] - 8, align: "right" });
+      doc.text(fmtCurrency(bill.totalAmount), tableX + pageW - colWidths[7] + 4, y + 5, { width: colWidths[7] - 8, align: "right" });
+      y += 20;
+
+      if (bill.notes) {
+        doc.moveDown(1);
+        doc.fillColor("#000").fontSize(8).font("Helvetica-Bold").text("Notes:", 40, y + 10);
+        doc.font("Helvetica").text(bill.notes, 40, y + 22, { width: pageW });
+      }
+
+      const pages = doc.bufferedPageRange();
+      for (let i = 0; i < pages.count; i++) {
+        doc.switchToPage(i);
+        doc.fillColor("#999").fontSize(7).font("Helvetica");
+        doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, 40, 800, { width: pageW / 2, align: "left" });
+        doc.text(`Page ${i + 1} of ${pages.count}`, 40 + pageW / 2, 800, { width: pageW / 2, align: "right" });
+      }
+
+      doc.end();
+    } catch (err) {
+      console.error("Error generating vendor bill PDF:", err);
+      res.status(500).json({ message: "Failed to generate PDF" });
     }
   });
 

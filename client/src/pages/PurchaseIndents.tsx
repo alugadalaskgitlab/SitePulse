@@ -9,14 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { PurchaseIndentWithItems, PurchaseIndentItem } from "@shared/schema";
+import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry } from "@shared/schema";
 
-type ViewMode = "list" | "form" | "detail" | "purchase";
+type ViewMode = "list" | "form" | "detail" | "purchase" | "report";
 
 const PURPOSE_OPTIONS = [
   "DG SET", "PLANT", "OFFICE", "SITE", "EQUIPMENT REPAIR", "VEHICLE MAINTENANCE", "OTHER"
@@ -79,9 +79,69 @@ function getItemStatusBadge(status: string | null) {
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300">PARTIAL</Badge>;
     case "not_purchased":
       return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300">NOT PURCHASED</Badge>;
+    case "cancelled":
+      return <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600">CANCELLED</Badge>;
     default:
       return <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-300">PENDING</Badge>;
   }
+}
+
+function isTerminalStatus(status: string | null): boolean {
+  const s = (status || "").toLowerCase();
+  return ["purchased", "partial", "not_purchased", "cancelled"].includes(s);
+}
+
+function ItemHistoryTimeline({ itemId }: { itemId: number }) {
+  const { data: history, isLoading } = useQuery<PurchaseIndentItemHistoryEntry[]>({
+    queryKey: ["/api/purchase-indent-items", itemId, "history"],
+    queryFn: () => fetch(`/api/purchase-indent-items/${itemId}/history`).then(r => r.json()),
+  });
+
+  if (isLoading) return <div className="py-2"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>;
+  if (!history || history.length === 0) return <p className="text-xs text-muted-foreground py-2">NO HISTORY ENTRIES</p>;
+
+  const getActionColor = (action: string) => {
+    switch (action.toUpperCase()) {
+      case "PURCHASED": return "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300";
+      case "PARTIAL": return "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300";
+      case "NOT_PURCHASED": return "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300";
+      case "CANCELLED": return "bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-400";
+      default: return "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300";
+    }
+  };
+
+  return (
+    <div className="space-y-2 py-2" data-testid={`history-timeline-${itemId}`}>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+        <Clock className="w-3 h-3" /> HISTORY
+      </p>
+      <div className="relative pl-4 border-l-2 border-muted space-y-3">
+        {history.map((entry) => (
+          <div key={entry.id} className="relative" data-testid={`history-entry-${entry.id}`}>
+            <div className="absolute -left-[1.3rem] w-2.5 h-2.5 rounded-full bg-muted-foreground border-2 border-background" />
+            <div className="text-xs space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${getActionColor(entry.action)}`}>
+                  {entry.action.toUpperCase().replace("_", " ")}
+                </Badge>
+                <span className="text-muted-foreground">
+                  {entry.actionAt ? format(new Date(entry.actionAt), "dd-MMM-yyyy HH:mm").toUpperCase() : "-"}
+                </span>
+                <span className="font-semibold">BY {entry.actionBy}</span>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-muted-foreground">
+                {entry.qtyValue != null && <span>QTY: <strong className="text-foreground">{entry.qtyValue}</strong></span>}
+                {entry.vendor && <span>VENDOR: <strong className="text-foreground">{entry.vendor}</strong></span>}
+                {entry.billNo && <span>BILL: <strong className="text-foreground">{entry.billNo}</strong></span>}
+                {entry.amount != null && <span>AMT: <strong className="text-foreground">{"\u20B9"}{entry.amount.toLocaleString("en-IN")}</strong></span>}
+              </div>
+              {entry.notes && <p className="text-muted-foreground italic">{entry.notes}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function StatusSteps({ status }: { status: string }) {
@@ -151,13 +211,26 @@ export default function PurchaseIndents() {
   ]);
 
   const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAction, setPinAction] = useState<"approve" | "reject" | null>(null);
+  const [pinAction, setPinAction] = useState<"approve" | "reject" | "cancel_item" | "force_close" | null>(null);
   const [approvalRemarks, setApprovalRemarks] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [approvedQtys, setApprovedQtys] = useState<Record<number, number>>({});
   const [savedPin, setSavedPin] = useState("");
 
   const [purchaseUpdates, setPurchaseUpdates] = useState<Record<number, PurchaseUpdateData>>({});
+
+  const [cancelItemId, setCancelItemId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showForceCloseConfirm, setShowForceCloseConfirm] = useState(false);
+  const [forceCloseReason, setForceCloseReason] = useState("");
+  const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<number>>(new Set());
+
+  const [reportFilterDateFrom, setReportFilterDateFrom] = useState("");
+  const [reportFilterDateTo, setReportFilterDateTo] = useState("");
+  const [reportFilterStatus, setReportFilterStatus] = useState("all");
+  const [reportFilterPurpose, setReportFilterPurpose] = useState("all");
+  const [reportFilterVendor, setReportFilterVendor] = useState("");
 
   const { data: indents, isLoading } = useQuery<PurchaseIndentWithItems[]>({
     queryKey: ["/api/purchase-indents"],
@@ -231,6 +304,120 @@ export default function PurchaseIndents() {
       toast({ title: "Failed to update purchase status", description: err.message, variant: "destructive" });
     },
   });
+
+  const cancelItemMutation = useMutation({
+    mutationFn: ({ itemId, data }: { itemId: number; data: any }) =>
+      apiRequest("PATCH", `/api/purchase-indent-items/${itemId}/cancel`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      }
+      setShowCancelConfirm(false);
+      setCancelItemId(null);
+      setCancelReason("");
+      toast({ title: "Item cancelled successfully" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to cancel item", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const forceCloseMutation = useMutation({
+    mutationFn: (data: any) =>
+      apiRequest("PATCH", `/api/purchase-indents/${selectedIndentId}/force-close`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      }
+      setShowForceCloseConfirm(false);
+      setForceCloseReason("");
+      toast({ title: "Indent force closed successfully" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to force close indent", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const reportQueryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (reportFilterDateFrom) params.set("dateFrom", reportFilterDateFrom);
+    if (reportFilterDateTo) params.set("dateTo", reportFilterDateTo);
+    if (reportFilterStatus !== "all") params.set("purchaseStatus", reportFilterStatus);
+    if (reportFilterPurpose !== "all") params.set("purpose", reportFilterPurpose);
+    if (reportFilterVendor.trim()) params.set("vendor", reportFilterVendor.trim());
+    return params.toString();
+  }, [reportFilterDateFrom, reportFilterDateTo, reportFilterStatus, reportFilterPurpose, reportFilterVendor]);
+
+  const { data: reportData, isLoading: isLoadingReport } = useQuery<{
+    items: Array<{
+      itemId: number;
+      indentId: number;
+      indentNo: string;
+      indentDate: string;
+      description: string;
+      purpose: string;
+      priority: string;
+      qty: number;
+      approvedQty: number | null;
+      qtyPurchased: number | null;
+      purchaseStatus: string | null;
+      vendor: string | null;
+      amount: number | null;
+      uom: string;
+      cancelledBy: string | null;
+      cancelledAt: string | null;
+    }>;
+    summary: {
+      totalItems: number;
+      fulfillmentRate: number;
+      totalSpend: number;
+      pending: number;
+      purchased: number;
+      partial: number;
+      cancelled: number;
+      notPurchased: number;
+    };
+  }>({
+    queryKey: ["/api/purchase-indents/report", reportQueryParams],
+    queryFn: () => fetch(`/api/purchase-indents/report?${reportQueryParams}`).then(r => r.json()),
+    enabled: view === "report",
+  });
+
+  const toggleHistoryItem = (itemId: number) => {
+    setExpandedHistoryItems(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const handleCancelItem = (pin: string) => {
+    if (!cancelItemId || !cancelReason.trim()) {
+      toast({ title: "Please enter a cancellation reason", variant: "destructive" });
+      return;
+    }
+    cancelItemMutation.mutate({
+      itemId: cancelItemId,
+      data: { pin, reason: cancelReason.toUpperCase() },
+    });
+  };
+
+  const handleForceClose = (pin: string) => {
+    if (!forceCloseReason.trim()) {
+      toast({ title: "Please enter a reason for force closing", variant: "destructive" });
+      return;
+    }
+    forceCloseMutation.mutate({
+      pin,
+      reason: forceCloseReason.toUpperCase(),
+    });
+  };
 
   const resetForm = () => {
     setFormDate(format(new Date(), "yyyy-MM-dd"));
@@ -321,6 +508,10 @@ export default function PurchaseIndents() {
         pin,
         reason: rejectionReason.toUpperCase(),
       });
+    } else if (pinAction === "cancel_item") {
+      handleCancelItem(pin);
+    } else if (pinAction === "force_close") {
+      handleForceClose(pin);
     }
   };
 
@@ -385,6 +576,10 @@ export default function PurchaseIndents() {
     }
   };
 
+  const hasUnfulfilledItems = (items: PurchaseIndentItem[]) => {
+    return items.some(i => !isTerminalStatus(i.purchaseStatus));
+  };
+
   const getItemPurchaseCount = (items: PurchaseIndentItem[]) => {
     const purchased = items.filter(i => (i.purchaseStatus || "").toLowerCase() === "purchased").length;
     return { purchased, total: items.length };
@@ -398,10 +593,83 @@ export default function PurchaseIndents() {
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       {showPinAuth && (
         <PinAuth
-          targetRole="any"
+          targetRole={pinAction === "force_close" ? "admin" : "any"}
           onSuccess={handlePinSuccess}
-          onClose={() => setShowPinAuth(false)}
+          onClose={() => { setShowPinAuth(false); setPinAction(null); }}
         />
+      )}
+
+      {showCancelConfirm && (
+        <Card className="border-red-200 dark:border-red-800">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Ban className="w-5 h-5 text-red-500" />
+              <p className="font-bold text-red-600 uppercase">CANCEL ITEM</p>
+            </div>
+            <p className="text-sm text-muted-foreground">THIS ACTION CANNOT BE UNDONE. THE ITEM WILL BE MARKED AS CANCELLED.</p>
+            <div>
+              <Label className="text-xs uppercase">REASON FOR CANCELLATION</Label>
+              <Textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value.toUpperCase())}
+                placeholder="ENTER REASON FOR CANCELLING THIS ITEM..."
+                data-testid="input-cancel-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setShowCancelConfirm(false); setCancelItemId(null); setCancelReason(""); }} data-testid="button-cancel-dismiss">
+                DISMISS
+              </Button>
+              <Button
+                variant="outline"
+                className="text-red-600 border-red-300"
+                disabled={!cancelReason.trim() || cancelItemMutation.isPending}
+                onClick={() => { setPinAction("cancel_item"); setShowPinAuth(true); }}
+                data-testid="button-confirm-cancel"
+              >
+                {cancelItemMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}
+                CONFIRM CANCEL
+              </Button>
+            </div>
+            <p className="text-xs text-center text-muted-foreground italic">PIN REQUIRED (MANAGER/ADMIN)</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {showForceCloseConfirm && (
+        <Card className="border-amber-200 dark:border-amber-800">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Lock className="w-5 h-5 text-amber-500" />
+              <p className="font-bold text-amber-600 uppercase">FORCE CLOSE INDENT</p>
+            </div>
+            <p className="text-sm text-muted-foreground">ALL REMAINING UNFULFILLED ITEMS WILL BE CANCELLED AND THE INDENT WILL BE MARKED AS COMPLETED.</p>
+            <div>
+              <Label className="text-xs uppercase">REASON FOR FORCE CLOSING</Label>
+              <Textarea
+                value={forceCloseReason}
+                onChange={(e) => setForceCloseReason(e.target.value.toUpperCase())}
+                placeholder="ENTER REASON FOR FORCE CLOSING THIS INDENT..."
+                data-testid="input-force-close-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setShowForceCloseConfirm(false); setForceCloseReason(""); }} data-testid="button-force-close-dismiss">
+                DISMISS
+              </Button>
+              <Button
+                className="bg-amber-600 text-white"
+                disabled={!forceCloseReason.trim() || forceCloseMutation.isPending}
+                onClick={() => { setPinAction("force_close"); setShowPinAuth(true); }}
+                data-testid="button-confirm-force-close"
+              >
+                {forceCloseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Lock className="w-4 h-4 mr-1" />}
+                FORCE CLOSE
+              </Button>
+            </div>
+            <p className="text-xs text-center text-muted-foreground italic">ADMIN PIN REQUIRED</p>
+          </CardContent>
+        </Card>
       )}
 
       <div className="flex items-center gap-4 flex-wrap">
@@ -418,12 +686,17 @@ export default function PurchaseIndents() {
           <p className="text-sm text-muted-foreground">RAISE, APPROVE & TRACK PURCHASE REQUESTS</p>
         </div>
         {view === "list" && (
-          <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-indent">
-            <Plus className="w-4 h-4 mr-1" /> RAISE INDENT
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => setView("report")} data-testid="button-report">
+              <BarChart3 className="w-4 h-4 mr-1" /> REPORT
+            </Button>
+            <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-indent">
+              <Plus className="w-4 h-4 mr-1" /> RAISE INDENT
+            </Button>
+          </div>
         )}
         {view !== "list" && (
-          <Button variant="outline" onClick={() => { setView("list"); setSelectedIndentId(null); }} data-testid="button-back-to-list">
+          <Button variant="outline" onClick={() => { setView("list"); setSelectedIndentId(null); setExpandedHistoryItems(new Set()); }} data-testid="button-back-to-list">
             BACK TO LIST
           </Button>
         )}
@@ -896,6 +1169,20 @@ export default function PurchaseIndents() {
                             </>
                           )}
                         </div>
+                        <div className="mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-muted-foreground"
+                            onClick={() => toggleHistoryItem(item.id)}
+                            data-testid={`button-detail-toggle-history-${item.id}`}
+                          >
+                            <Clock className="w-3 h-3 mr-1" />
+                            {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                            HISTORY
+                          </Button>
+                          {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
+                        </div>
                       </Card>
                     ))}
                     {selectedIndent.status === "rejected" && selectedIndent.rejectionReason && (
@@ -965,6 +1252,18 @@ export default function PurchaseIndents() {
                 </CardContent>
               </Card>
 
+              {selectedIndent.status === "approved" && hasUnfulfilledItems(selectedIndent.items) && (
+                <div className="flex justify-end">
+                  <Button
+                    className="bg-amber-600 text-white"
+                    onClick={() => setShowForceCloseConfirm(true)}
+                    data-testid="button-force-close"
+                  >
+                    <Lock className="w-4 h-4 mr-1" /> FORCE CLOSE INDENT
+                  </Button>
+                </div>
+              )}
+
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base uppercase">ITEMS - PURCHASE STATUS</CardTitle>
@@ -976,9 +1275,12 @@ export default function PurchaseIndents() {
                   {selectedIndent.items.map((item, index) => {
                     const itemStatus = (item.purchaseStatus || "").toLowerCase();
                     const isPending = !item.purchaseStatus;
+                    const isCancelled = itemStatus === "cancelled";
+                    const canCancel = !isTerminalStatus(item.purchaseStatus);
                     const borderColor = itemStatus === "purchased" ? "border-l-emerald-500" :
                       itemStatus === "partial" ? "border-l-amber-500" :
                       itemStatus === "not_purchased" ? "border-l-red-500" :
+                      itemStatus === "cancelled" ? "border-l-gray-400" :
                       "border-l-muted";
                     const update = purchaseUpdates[item.id];
 
@@ -1041,6 +1343,48 @@ export default function PurchaseIndents() {
                             </p>
                           </div>
                         )}
+
+                        {isCancelled && (
+                          <div className="mt-2 p-3 rounded-md bg-gray-100 dark:bg-gray-800">
+                            <p className="text-xs text-gray-600 dark:text-gray-400">
+                              <strong>CANCELLED</strong>
+                              {item.cancelledBy && <> BY {item.cancelledBy}</>}
+                              {item.cancelledAt && <> ON {item.cancelledAt}</>}
+                            </p>
+                            {item.purchaseRemarks && (
+                              <p className="text-xs text-gray-500 mt-1">REASON: {item.purchaseRemarks}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {canCancel && (
+                          <div className="mt-2 flex justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 border-red-300"
+                              onClick={(e) => { e.stopPropagation(); setCancelItemId(item.id); setShowCancelConfirm(true); }}
+                              data-testid={`button-cancel-item-${item.id}`}
+                            >
+                              <Ban className="w-3 h-3 mr-1" /> CANCEL ITEM
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-muted-foreground"
+                            onClick={() => toggleHistoryItem(item.id)}
+                            data-testid={`button-toggle-history-${item.id}`}
+                          >
+                            <Clock className="w-3 h-3 mr-1" />
+                            {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                            HISTORY
+                          </Button>
+                          {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
+                        </div>
 
                         {isPending && (
                           <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
@@ -1159,6 +1503,160 @@ export default function PurchaseIndents() {
               </CardContent>
             </Card>
           )}
+        </>
+      )}
+
+      {view === "report" && (
+        <>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">FILTERS</p>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div>
+                  <Label className="text-xs uppercase">DATE FROM</Label>
+                  <Input type="date" value={reportFilterDateFrom} onChange={(e) => setReportFilterDateFrom(e.target.value)} data-testid="report-filter-date-from" />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">DATE TO</Label>
+                  <Input type="date" value={reportFilterDateTo} onChange={(e) => setReportFilterDateTo(e.target.value)} data-testid="report-filter-date-to" />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">PURCHASE STATUS</Label>
+                  <Select value={reportFilterStatus} onValueChange={setReportFilterStatus}>
+                    <SelectTrigger data-testid="report-filter-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">ALL STATUS</SelectItem>
+                      <SelectItem value="purchased">PURCHASED</SelectItem>
+                      <SelectItem value="partial">PARTIAL</SelectItem>
+                      <SelectItem value="cancelled">CANCELLED</SelectItem>
+                      <SelectItem value="not_purchased">NOT PURCHASED</SelectItem>
+                      <SelectItem value="pending">PENDING</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">PURPOSE</Label>
+                  <Select value={reportFilterPurpose} onValueChange={setReportFilterPurpose}>
+                    <SelectTrigger data-testid="report-filter-purpose">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">ALL PURPOSE</SelectItem>
+                      {PURPOSE_OPTIONS.map(p => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">VENDOR</Label>
+                  <Input
+                    value={reportFilterVendor}
+                    onChange={(e) => setReportFilterVendor(e.target.value.toUpperCase())}
+                    placeholder="SEARCH VENDOR..."
+                    data-testid="report-filter-vendor"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {isLoadingReport ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : reportData ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card data-testid="report-card-total">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL ITEMS</p>
+                    <p className="text-2xl font-bold mt-1" data-testid="report-text-total">{reportData.summary.totalItems}</p>
+                  </CardContent>
+                </Card>
+                <Card data-testid="report-card-fulfilled">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FULFILLED %</p>
+                    <p className="text-2xl font-bold mt-1 text-emerald-600" data-testid="report-text-fulfilled">{reportData.summary.fulfillmentRate.toFixed(1)}%</p>
+                  </CardContent>
+                </Card>
+                <Card data-testid="report-card-spend">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL SPEND</p>
+                    <p className="text-2xl font-bold mt-1" data-testid="report-text-spend">{"\u20B9"} {reportData.summary.totalSpend.toLocaleString("en-IN")}</p>
+                  </CardContent>
+                </Card>
+                <Card data-testid="report-card-pending">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PENDING ITEMS</p>
+                    <p className="text-2xl font-bold mt-1 text-amber-600" data-testid="report-text-pending">{reportData.summary.pending}</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {reportData.items.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-muted-foreground">
+                    <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p className="font-semibold">NO ITEMS FOUND</p>
+                    <p className="text-sm mt-1">ADJUST FILTERS TO SEE RESULTS</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" data-testid="report-table">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="text-left p-3 font-semibold uppercase">INDENT NO</th>
+                            <th className="text-left p-3 font-semibold uppercase">DATE</th>
+                            <th className="text-left p-3 font-semibold uppercase">ITEM</th>
+                            <th className="text-left p-3 font-semibold uppercase">PURPOSE</th>
+                            <th className="text-left p-3 font-semibold uppercase">PRIORITY</th>
+                            <th className="text-right p-3 font-semibold uppercase">INTENDED</th>
+                            <th className="text-right p-3 font-semibold uppercase">APPROVED</th>
+                            <th className="text-right p-3 font-semibold uppercase">PURCHASED</th>
+                            <th className="text-center p-3 font-semibold uppercase">STATUS</th>
+                            <th className="text-left p-3 font-semibold uppercase">VENDOR</th>
+                            <th className="text-right p-3 font-semibold uppercase">AMOUNT</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.items.map((item) => (
+                            <tr
+                              key={item.itemId}
+                              className="border-b hover-elevate cursor-pointer"
+                              onClick={() => {
+                                setSelectedIndentId(item.indentId);
+                                setView("purchase");
+                                setPurchaseUpdates({});
+                              }}
+                              data-testid={`report-row-${item.itemId}`}
+                            >
+                              <td className="p-3 font-semibold">{item.indentNo}</td>
+                              <td className="p-3">{format(new Date(item.indentDate + "T00:00:00"), "dd-MMM-yy").toUpperCase()}</td>
+                              <td className="p-3 max-w-[200px] truncate" title={item.description}>{item.description}</td>
+                              <td className="p-3">{item.purpose}</td>
+                              <td className="p-3">{getPriorityBadge(item.priority)}</td>
+                              <td className="p-3 text-right">{item.qty} {item.uom}</td>
+                              <td className="p-3 text-right">{item.approvedQty != null ? `${item.approvedQty} ${item.uom}` : "-"}</td>
+                              <td className="p-3 text-right">{item.qtyPurchased != null ? `${item.qtyPurchased} ${item.uom}` : "-"}</td>
+                              <td className="p-3 text-center">{getItemStatusBadge(item.purchaseStatus)}</td>
+                              <td className="p-3">{item.vendor || "-"}</td>
+                              <td className="p-3 text-right">{item.amount != null ? `${"\u20B9"}${item.amount.toLocaleString("en-IN")}` : "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : null}
         </>
       )}
     </div>

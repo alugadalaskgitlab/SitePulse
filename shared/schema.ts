@@ -811,25 +811,49 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   rate: real("rate"),
   amount: real("amount"),
   purchaseRemarks: text("purchase_remarks"),
+  cancelledBy: text("cancelled_by"),
+  cancelledAt: text("cancelled_at"),
+});
+
+export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull(),
+  action: text("action").notNull(),
+  actionBy: text("action_by").notNull(),
+  actionAt: timestamp("action_at").defaultNow(),
+  notes: text("notes"),
+  qtyValue: real("qty_value"),
+  vendor: text("vendor"),
+  billNo: text("bill_no"),
+  rate: real("rate"),
+  amount: real("amount"),
 });
 
 export const purchaseIndentsRelations = relations(purchaseIndents, ({ many }) => ({
   items: many(purchaseIndentItems),
 }));
 
-export const purchaseIndentItemsRelations = relations(purchaseIndentItems, ({ one }) => ({
+export const purchaseIndentItemsRelations = relations(purchaseIndentItems, ({ one, many }) => ({
   indent: one(purchaseIndents, { fields: [purchaseIndentItems.indentId], references: [purchaseIndents.id] }),
+  history: many(purchaseIndentItemHistory),
+}));
+
+export const purchaseIndentItemHistoryRelations = relations(purchaseIndentItemHistory, ({ one }) => ({
+  item: one(purchaseIndentItems, { fields: [purchaseIndentItemHistory.itemId], references: [purchaseIndentItems.id] }),
 }));
 
 export const insertPurchaseIndentSchema = createInsertSchema(purchaseIndents).omit({ id: true, createdAt: true });
 export const insertPurchaseIndentItemSchema = createInsertSchema(purchaseIndentItems).omit({ id: true });
+export const insertPurchaseIndentItemHistorySchema = createInsertSchema(purchaseIndentItemHistory).omit({ id: true, actionAt: true });
 export type PurchaseIndent = typeof purchaseIndents.$inferSelect;
 export type PurchaseIndentItem = typeof purchaseIndentItems.$inferSelect;
+export type PurchaseIndentItemHistoryEntry = typeof purchaseIndentItemHistory.$inferSelect;
 export type InsertPurchaseIndent = z.infer<typeof insertPurchaseIndentSchema>;
 export type InsertPurchaseIndentItem = z.infer<typeof insertPurchaseIndentItemSchema>;
+export type InsertPurchaseIndentItemHistory = z.infer<typeof insertPurchaseIndentItemHistorySchema>;
 
 export type PurchaseIndentWithItems = PurchaseIndent & {
-  items: PurchaseIndentItem[];
+  items: (PurchaseIndentItem & { history?: PurchaseIndentItemHistoryEntry[] })[];
 };
 
 export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.extend({

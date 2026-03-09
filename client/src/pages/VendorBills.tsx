@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -193,6 +193,8 @@ export default function VendorBills() {
     },
   });
 
+  const [showVendorDiscovery, setShowVendorDiscovery] = useState(false);
+
   const [vendorSearch, setVendorSearch] = useState("");
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
   const vendorInputRef = useRef<HTMLInputElement>(null);
@@ -201,6 +203,23 @@ export default function VendorBills() {
     if (!vendorSearch) return vendorNames;
     return vendorNames.filter(n => n.includes(vendorSearch.toUpperCase()));
   }, [vendorNames, vendorSearch]);
+
+  interface DiscoveredVendor {
+    vendorName: string;
+    recordCount: number;
+    categories: string[];
+    existingBill: { id: number; billNo: string; status: string } | null;
+  }
+
+  const discoverUrl = periodFrom && periodTo && billType !== "other"
+    ? `/api/vendor-bills/discover-vendors?billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
+    : null;
+
+  const { data: discoveredVendors, isFetching: discoveryLoading } = useQuery<DiscoveredVendor[]>({
+    queryKey: ["/api/vendor-bills/discover-vendors", billType, periodFrom, periodTo],
+    queryFn: () => discoverUrl ? fetch(discoverUrl).then(r => r.json()) : Promise.resolve([]),
+    enabled: !!discoverUrl && showVendorDiscovery,
+  });
 
   const autoItemsUrl = vendorName && periodFrom && periodTo && billType !== "other"
     ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${entryTypeFilter && entryTypeFilter !== "all" ? `&entryTypeFilter=${encodeURIComponent(entryTypeFilter)}` : ""}`
@@ -279,6 +298,25 @@ export default function VendorBills() {
     setEditingBillId(null);
     setVendorSearch("");
     setShowVendorDropdown(false);
+    setShowVendorDiscovery(false);
+  };
+
+  const handleSelectDiscoveredVendor = (vendor: DiscoveredVendor) => {
+    setVendorName(vendor.vendorName);
+    setVendorSearch(vendor.vendorName);
+    setShowVendorDiscovery(false);
+  };
+
+  const handleEditExistingBill = (billId: number) => {
+    const bill = bills?.find(b => b.id === billId);
+    if (bill) {
+      loadBillForEdit(bill);
+      setShowVendorDiscovery(false);
+    } else {
+      setSelectedBillId(billId);
+      setView("detail");
+      setShowVendorDiscovery(false);
+    }
   };
 
   const loadBillForEdit = (bill: VendorBillWithItems) => {
@@ -457,6 +495,12 @@ export default function VendorBills() {
     });
   }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus]);
 
+  const escHtml = (str: string) => {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  };
+
   const handlePrint = (bill: VendorBillWithItems) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -464,13 +508,13 @@ export default function VendorBills() {
       return;
     }
     const rows = bill.items.map((item: any, i: number) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${item.date || "-"}</td>
-        <td>${item.category ? getCategoryLabel(item.category).toUpperCase() : "-"}</td>
-        <td>${item.description}</td>
-        <td>${item.qty || 0}</td>
-        <td>${item.unit || ""}</td>
+      <tr class="${i % 2 === 0 ? "even" : "odd"}">
+        <td style="text-align:center">${i + 1}</td>
+        <td>${escHtml(item.date || "-")}</td>
+        <td style="text-align:center">${item.category ? escHtml(getCategoryLabel(item.category).toUpperCase()) : "-"}</td>
+        <td>${escHtml(item.description)}</td>
+        <td style="text-align:center">${item.qty || 0}</td>
+        <td style="text-align:center">${item.unit || ""}</td>
         <td style="text-align:right">${formatCurrency(item.rate)}</td>
         <td style="text-align:right">${formatCurrency(item.amount)}</td>
       </tr>
@@ -479,20 +523,45 @@ export default function VendorBills() {
     printWindow.document.write(`
       <!DOCTYPE html><html><head><title>Vendor Bill - ${bill.billNo}</title>
       <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        h1 { font-size: 18px; } .meta { font-size: 12px; color: #666; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
-        th { background: #f59e0b; color: white; }
-        .total { font-weight: bold; font-size: 13px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
+        .header { text-align: center; margin-bottom: 16px; border-bottom: 3px solid #d97706; padding-bottom: 12px; }
+        .header h1 { font-size: 20px; letter-spacing: 2px; margin-bottom: 2px; }
+        .header .subtitle { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; font-size: 11px; }
+        .meta-grid .item { padding: 4px 0; }
+        .meta-grid .label { color: #888; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+        .meta-grid .value { font-weight: bold; font-size: 12px; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #d97706; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border: 1px solid #ddd; padding: 5px 6px; text-align: left; font-size: 10px; }
+        th { background: #d97706; color: white; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+        tr.odd { background: #fefce8; }
+        .total-row { background: #d97706 !important; }
+        .total-row td { color: white; font-weight: bold; font-size: 12px; border-color: #b45309; }
+        .notes { margin-top: 16px; padding: 8px 12px; background: #fffbeb; border-left: 3px solid #d97706; font-size: 11px; }
+        .notes strong { font-size: 10px; text-transform: uppercase; color: #92400e; }
+        .footer { margin-top: 20px; font-size: 8px; color: #aaa; text-align: center; border-top: 1px solid #eee; padding-top: 8px; }
+        @media print { body { padding: 12px; } }
       </style></head><body>
-      <h1>VENDOR BILL - ${bill.billNo}</h1>
-      <p class="meta">Vendor: ${bill.vendorName} | Type: ${getBillTypeLabel(bill.billType)} | Date: ${bill.billDate}${bill.periodFrom && bill.periodTo ? ` | Period: ${bill.periodFrom} to ${bill.periodTo}` : ""}</p>
-      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr></thead>
+      <div class="header">
+        <h1>HIGH LANE CONSTRUCTIONS</h1>
+        <div class="subtitle">Vendor Bill</div>
+      </div>
+      <div class="meta-grid">
+        <div class="item"><div class="label">Bill Number</div><div class="value">${escHtml(bill.billNo)}</div></div>
+        <div class="item"><div class="label">Bill Date</div><div class="value">${escHtml(bill.billDate)}</div></div>
+        <div class="item"><div class="label">Vendor</div><div class="value">${escHtml(bill.vendorName)}</div></div>
+        <div class="item"><div class="label">Bill Type</div><div class="value">${escHtml(getBillTypeLabel(bill.billType))}</div></div>
+        ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(bill.periodFrom)} to ${escHtml(bill.periodTo)}</div></div>` : ""}
+        <div class="item"><div class="label">Status</div><div class="value"><span class="status-badge">${escHtml(bill.status.toUpperCase())}</span></div></div>
+      </div>
+      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Qty</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr class="total"><td colspan="7" style="text-align:right">TOTAL</td><td style="text-align:right">${formatCurrency(bill.totalAmount)}</td></tr></tfoot>
+      <tfoot><tr class="total-row"><td colspan="7" style="text-align:right">TOTAL</td><td style="text-align:right">${formatCurrency(bill.totalAmount)}</td></tr></tfoot>
       </table>
-      ${bill.notes ? `<p style="margin-top:16px"><strong>Notes:</strong> ${bill.notes}</p>` : ""}
+      ${bill.notes ? `<div class="notes"><strong>Notes / Remarks:</strong><br/>${escHtml(bill.notes)}</div>` : ""}
+      <div class="footer">Generated on ${new Date().toLocaleString("en-IN")} | HIGH LANE CONSTRUCTIONS</div>
       </body></html>
     `);
     printWindow.document.close();
@@ -641,12 +710,116 @@ export default function VendorBills() {
               </div>
             )}
 
+            {periodFrom && periodTo && billType !== "other" && !vendorName && (
+              <div className="border-t pt-4">
+                <Button
+                  variant="default"
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => setShowVendorDiscovery(true)}
+                  disabled={discoveryLoading}
+                  data-testid="button-show-vendors"
+                >
+                  {discoveryLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                  SHOW AVAILABLE VENDORS
+                </Button>
+              </div>
+            )}
+
             <div className="border-t pt-4">
               <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Bill Status</p>
               {renderStatusSteps("draft")}
             </div>
           </CardContent>
         </Card>
+
+        {showVendorDiscovery && periodFrom && periodTo && billType !== "other" && (
+          <Card data-testid="card-vendor-discovery">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base">AVAILABLE VENDORS</CardTitle>
+              <Button variant="ghost" size="icon" onClick={() => setShowVendorDiscovery(false)} data-testid="button-close-discovery">
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {discoveryLoading ? (
+                <div className="flex items-center justify-center py-8 gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
+                  <span className="text-sm text-muted-foreground">Scanning records...</span>
+                </div>
+              ) : !discoveredVendors || discoveredVendors.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm" data-testid="text-no-vendors">
+                  No records found for this type and period
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {discoveredVendors.map((vendor) => (
+                    <div
+                      key={vendor.vendorName}
+                      className="flex items-center justify-between gap-3 p-3 border rounded-md flex-wrap"
+                      data-testid={`row-vendor-${vendor.vendorName}`}
+                    >
+                      <div className="flex flex-col gap-1 min-w-0 flex-1">
+                        <span className="font-semibold text-sm truncate" data-testid={`text-vendor-name-${vendor.vendorName}`}>
+                          {vendor.vendorName}
+                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
+                            {vendor.recordCount} record{vendor.recordCount !== 1 ? "s" : ""}
+                          </span>
+                          {vendor.categories.map(cat => (
+                            <Badge
+                              key={cat}
+                              variant="outline"
+                              className={`text-[10px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}
+                              data-testid={`badge-cat-${vendor.vendorName}-${cat}`}
+                            >
+                              {getCategoryLabel(cat)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {vendor.existingBill ? (
+                          <>
+                            <Badge
+                              variant={getStatusBadgeVariant(vendor.existingBill.status)}
+                              className={`text-xs uppercase ${getStatusColor(vendor.existingBill.status)}`}
+                              data-testid={`badge-bill-status-${vendor.vendorName}`}
+                            >
+                              {vendor.existingBill.status} - {vendor.existingBill.billNo}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditExistingBill(vendor.existingBill!.id)}
+                              data-testid={`button-edit-bill-${vendor.vendorName}`}
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              EDIT
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-muted-foreground">NO BILL</span>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleSelectDiscoveredVendor(vendor)}
+                              data-testid={`button-select-vendor-${vendor.vendorName}`}
+                            >
+                              <PlusCircle className="w-3 h-3 mr-1" />
+                              SELECT &amp; CREATE
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {vendorName && periodFrom && periodTo && billType !== "other" && (
           <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
@@ -890,6 +1063,21 @@ export default function VendorBills() {
             <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
           </div>
           <div className="flex gap-2 flex-wrap">
+            {["verified", "approved", "paid"].includes(bill.status) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const link = document.createElement("a");
+                  link.href = `/api/vendor-bills/${bill.id}/pdf`;
+                  link.download = `VendorBill-${bill.billNo}.pdf`;
+                  link.click();
+                }}
+                data-testid="button-export-pdf"
+              >
+                <Download className="w-4 h-4 mr-1" /> EXPORT PDF
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>

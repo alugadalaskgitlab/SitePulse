@@ -100,8 +100,10 @@ import {
   type InsertDieselRequirementItem,
   purchaseIndents,
   purchaseIndentItems,
+  purchaseIndentItemHistory,
   type PurchaseIndent,
   type PurchaseIndentItem,
+  type PurchaseIndentItemHistoryEntry,
   type PurchaseIndentWithItems,
   type CreatePurchaseIndentRequest,
   personnel,
@@ -122,7 +124,7 @@ import {
   vendorAliases,
   type VendorAlias,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
 
 export interface IStorage {
@@ -328,7 +330,11 @@ export interface IStorage {
   createPurchaseIndent(data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems>;
   approvePurchaseIndent(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string, remarks?: string): Promise<PurchaseIndentWithItems | undefined>;
   rejectPurchaseIndent(id: number, reason: string, rejectedBy: string): Promise<PurchaseIndentWithItems | undefined>;
-  updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }): Promise<PurchaseIndentItem | undefined>;
+  updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }, actionBy?: string): Promise<PurchaseIndentItem | undefined>;
+  cancelPurchaseItem(itemId: number, cancelledBy: string, reason: string): Promise<PurchaseIndentItem | undefined>;
+  forceCloseIndent(indentId: number, closedBy: string, reason: string): Promise<PurchaseIndentWithItems | undefined>;
+  getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]>;
+  getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -352,6 +358,13 @@ export interface IStorage {
   addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
   deleteVendorAlias(id: number): Promise<boolean>;
   resolveVendorAliases(vendorName: string): Promise<string[]>;
+
+  discoverVendors(billType: string, periodFrom: string, periodTo: string): Promise<{
+    vendorName: string;
+    recordCount: number;
+    categories: string[];
+    existingBill: { id: number; billNo: string; status: string } | null;
+  }[]>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -4583,7 +4596,7 @@ export class DatabaseStorage implements IStorage {
   async getPurchaseIndent(id: number): Promise<PurchaseIndentWithItems | undefined> {
     const indent = await db.query.purchaseIndents.findFirst({
       where: eq(purchaseIndents.id, id),
-      with: { items: true },
+      with: { items: { with: { history: { orderBy: desc(purchaseIndentItemHistory.actionAt) } } } },
     });
     return indent as PurchaseIndentWithItems | undefined;
   }
@@ -4678,7 +4691,23 @@ export class DatabaseStorage implements IStorage {
     return result as PurchaseIndentWithItems | undefined;
   }
 
-  async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }): Promise<PurchaseIndentItem | undefined> {
+  private async checkAndCompleteIndent(indentId: number): Promise<void> {
+    const allItems = await db.select().from(purchaseIndentItems)
+      .where(eq(purchaseIndentItems.indentId, indentId));
+
+    const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
+    const allTerminal = allItems.every(item =>
+      item.purchaseStatus && terminalStatuses.includes(item.purchaseStatus.toUpperCase())
+    );
+
+    if (allTerminal && allItems.length > 0) {
+      await db.update(purchaseIndents)
+        .set({ status: "completed" })
+        .where(eq(purchaseIndents.id, indentId));
+    }
+  }
+
+  async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }, actionBy?: string): Promise<PurchaseIndentItem | undefined> {
     const updates: any = { ...purchaseData };
     if (updates.vendor) updates.vendor = updates.vendor.toUpperCase();
     if (updates.billNo) updates.billNo = updates.billNo.toUpperCase();
@@ -4692,21 +4721,172 @@ export class DatabaseStorage implements IStorage {
 
     if (!updatedItem) return undefined;
 
-    const indentId = updatedItem.indentId;
+    if (updates.purchaseStatus && actionBy) {
+      await db.insert(purchaseIndentItemHistory).values({
+        itemId,
+        action: updates.purchaseStatus.toUpperCase(),
+        actionBy: actionBy.toUpperCase(),
+        notes: updates.purchaseRemarks || null,
+        qtyValue: updates.qtyPurchased || null,
+        vendor: updates.vendor || null,
+        billNo: updates.billNo || null,
+        rate: updates.rate || null,
+        amount: updates.amount || null,
+      });
+    }
+
+    await this.checkAndCompleteIndent(updatedItem.indentId);
+
+    return updatedItem;
+  }
+
+  async cancelPurchaseItem(itemId: number, cancelledBy: string, reason: string): Promise<PurchaseIndentItem | undefined> {
+    const [existingItem] = await db.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId));
+    if (!existingItem) return undefined;
+    const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
+    if (existingItem.purchaseStatus && terminalStatuses.includes(existingItem.purchaseStatus.toUpperCase())) {
+      throw new Error(`Cannot cancel item with status: ${existingItem.purchaseStatus}`);
+    }
+
+    const now = new Date().toISOString();
+    const [updatedItem] = await db.update(purchaseIndentItems)
+      .set({
+        purchaseStatus: "CANCELLED",
+        purchaseRemarks: reason.toUpperCase(),
+        cancelledBy: cancelledBy.toUpperCase(),
+        cancelledAt: now,
+      })
+      .where(eq(purchaseIndentItems.id, itemId))
+      .returning();
+
+    if (!updatedItem) return undefined;
+
+    await db.insert(purchaseIndentItemHistory).values({
+      itemId,
+      action: "CANCELLED",
+      actionBy: cancelledBy.toUpperCase(),
+      notes: reason.toUpperCase(),
+      qtyValue: null,
+      vendor: null,
+      billNo: null,
+      rate: null,
+      amount: null,
+    });
+
+    await this.checkAndCompleteIndent(updatedItem.indentId);
+
+    return updatedItem;
+  }
+
+  async forceCloseIndent(indentId: number, closedBy: string, reason: string): Promise<PurchaseIndentWithItems | undefined> {
+    const [indent] = await db.select().from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
+    if (!indent) return undefined;
+    if (indent.status === "completed" || indent.status === "rejected" || indent.status === "pending") {
+      throw new Error(`Cannot force close indent with status: ${indent.status}`);
+    }
+
     const allItems = await db.select().from(purchaseIndentItems)
       .where(eq(purchaseIndentItems.indentId, indentId));
 
-    const allPurchased = allItems.every(item =>
-      item.purchaseStatus === "PURCHASED" || item.purchaseStatus === "purchased"
-    );
+    const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
+    const now = new Date().toISOString();
 
-    if (allPurchased && allItems.length > 0) {
-      await db.update(purchaseIndents)
-        .set({ status: "completed" })
-        .where(eq(purchaseIndents.id, indentId));
+    for (const item of allItems) {
+      if (!item.purchaseStatus || !terminalStatuses.includes(item.purchaseStatus.toUpperCase())) {
+        await db.update(purchaseIndentItems)
+          .set({
+            purchaseStatus: "CANCELLED",
+            purchaseRemarks: `FORCE CLOSED: ${reason.toUpperCase()}`,
+            cancelledBy: closedBy.toUpperCase(),
+            cancelledAt: now,
+          })
+          .where(eq(purchaseIndentItems.id, item.id));
+
+        await db.insert(purchaseIndentItemHistory).values({
+          itemId: item.id,
+          action: "CANCELLED",
+          actionBy: closedBy.toUpperCase(),
+          notes: `FORCE CLOSED: ${reason.toUpperCase()}`,
+          qtyValue: null,
+          vendor: null,
+          billNo: null,
+          rate: null,
+          amount: null,
+        });
+      }
     }
 
-    return updatedItem;
+    await db.update(purchaseIndents)
+      .set({ status: "completed" })
+      .where(eq(purchaseIndents.id, indentId));
+
+    return this.getPurchaseIndent(indentId);
+  }
+
+  async getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]> {
+    const history = await db.select().from(purchaseIndentItemHistory)
+      .where(eq(purchaseIndentItemHistory.itemId, itemId))
+      .orderBy(desc(purchaseIndentItemHistory.actionAt));
+    return history;
+  }
+
+  async getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }> {
+    let conditions: any[] = [];
+    if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(purchaseIndents.date, filters.dateTo));
+    if (filters?.purpose) conditions.push(eq(purchaseIndentItems.purpose, filters.purpose.toUpperCase()));
+    if (filters?.vendor) conditions.push(ilike(purchaseIndentItems.vendor, `%${filters.vendor}%`));
+
+    const rows = await db.select({
+      itemId: purchaseIndentItems.id,
+      indentId: purchaseIndentItems.indentId,
+      indentNo: purchaseIndents.indentNo,
+      indentDate: purchaseIndents.date,
+      indentStatus: purchaseIndents.status,
+      description: purchaseIndentItems.description,
+      purpose: purchaseIndentItems.purpose,
+      priority: purchaseIndentItems.priority,
+      qty: purchaseIndentItems.qty,
+      uom: purchaseIndentItems.uom,
+      approvedQty: purchaseIndentItems.approvedQty,
+      purchaseStatus: purchaseIndentItems.purchaseStatus,
+      qtyPurchased: purchaseIndentItems.qtyPurchased,
+      vendor: purchaseIndentItems.vendor,
+      billNo: purchaseIndentItems.billNo,
+      rate: purchaseIndentItems.rate,
+      amount: purchaseIndentItems.amount,
+      purchaseRemarks: purchaseIndentItems.purchaseRemarks,
+      cancelledBy: purchaseIndentItems.cancelledBy,
+      cancelledAt: purchaseIndentItems.cancelledAt,
+    })
+    .from(purchaseIndentItems)
+    .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(purchaseIndents.date), purchaseIndentItems.id);
+
+    let filteredRows = rows;
+    if (filters?.purchaseStatus) {
+      if (filters.purchaseStatus === "pending") {
+        filteredRows = rows.filter(r => !r.purchaseStatus);
+      } else {
+        filteredRows = rows.filter(r => r.purchaseStatus?.toUpperCase() === filters.purchaseStatus!.toUpperCase());
+      }
+    }
+
+    const totalItems = filteredRows.length;
+    const purchased = filteredRows.filter(r => r.purchaseStatus?.toUpperCase() === "PURCHASED").length;
+    const partial = filteredRows.filter(r => r.purchaseStatus?.toUpperCase() === "PARTIAL").length;
+    const cancelled = filteredRows.filter(r => r.purchaseStatus?.toUpperCase() === "CANCELLED").length;
+    const notPurchased = filteredRows.filter(r => r.purchaseStatus?.toUpperCase() === "NOT_PURCHASED").length;
+    const pending = filteredRows.filter(r => !r.purchaseStatus).length;
+    const totalSpend = filteredRows.reduce((sum, r) => sum + (r.amount || 0), 0);
+    const fulfilled = purchased + partial;
+    const fulfillmentRate = totalItems > 0 ? Math.round((fulfilled / totalItems) * 100) : 0;
+
+    return {
+      items: filteredRows,
+      summary: { totalItems, purchased, partial, cancelled, notPurchased, pending, totalSpend, fulfillmentRate },
+    };
   }
 
   // ============================================
@@ -5534,6 +5714,196 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return [...names];
+  }
+
+  async discoverVendors(billType: string, periodFrom: string, periodTo: string): Promise<{
+    vendorName: string;
+    recordCount: number;
+    categories: string[];
+    existingBill: { id: number; billNo: string; status: string } | null;
+  }[]> {
+    const bt = billType.toLowerCase();
+    const vendorRecords = new Map<string, { count: number; categories: Set<string> }>();
+
+    const allAliases = await db.select().from(vendorAliases);
+    const aliasToCanonical = new Map<string, string>();
+    for (const a of allAliases) {
+      aliasToCanonical.set(a.alias.toUpperCase().trim(), a.canonicalName.toUpperCase().trim());
+    }
+
+    const resolveCanonical = (name: string): string => {
+      const upper = name.toUpperCase().trim();
+      return aliasToCanonical.get(upper) || upper;
+    };
+
+    const addRecord = (rawName: string, category: string) => {
+      if (!rawName || !rawName.trim()) return;
+      const canonical = resolveCanonical(rawName);
+      const existing = vendorRecords.get(canonical) || { count: 0, categories: new Set<string>() };
+      existing.count++;
+      existing.categories.add(category);
+      vendorRecords.set(canonical, existing);
+    };
+
+    if (bt === "equipment" || bt === "all") {
+      const hiredEquipment = await db.select()
+        .from(equipmentMaster)
+        .where(and(
+          eq(equipmentMaster.ownership, "hired"),
+          sql`${equipmentMaster.vendorName} IS NOT NULL AND ${equipmentMaster.vendorName} != ''`,
+        ));
+
+      if (hiredEquipment.length > 0) {
+        const eqIdToVendor = new Map(hiredEquipment.map(e => [e.id, e.vendorName!]));
+        const eqIds = hiredEquipment.map(e => e.id);
+
+        const dprLogs = await db.select({
+          equipmentId: equipmentLogs.equipmentId,
+        })
+        .from(equipmentLogs)
+        .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+        .where(and(
+          inArray(equipmentLogs.equipmentId, eqIds),
+          gte(dprs.date, periodFrom),
+          lte(dprs.date, periodTo),
+          eq(dprs.isSuperseded, false),
+        ));
+
+        for (const row of dprLogs) {
+          const vendor = eqIdToVendor.get(row.equipmentId!);
+          if (vendor) addRecord(vendor, "equipment");
+        }
+
+        const plantUsage = await db.select({
+          equipmentId: equipmentUsage.equipmentId,
+        })
+        .from(equipmentUsage)
+        .where(and(
+          inArray(equipmentUsage.equipmentId, eqIds),
+          gte(equipmentUsage.date, periodFrom),
+          lte(equipmentUsage.date, periodTo),
+        ));
+
+        for (const row of plantUsage) {
+          const vendor = eqIdToVendor.get(row.equipmentId);
+          if (vendor) addRecord(vendor, "equipment");
+        }
+      }
+    }
+
+    if (bt === "material" || bt === "all") {
+      const dprMaterials = await db.select({
+        supplier: materialLogs.supplier,
+      })
+      .from(materialLogs)
+      .innerJoin(dprs, eq(dprs.id, materialLogs.dprId))
+      .where(and(
+        eq(materialLogs.type, "Received"),
+        sql`${materialLogs.supplier} IS NOT NULL AND ${materialLogs.supplier} != ''`,
+        gte(dprs.date, periodFrom),
+        lte(dprs.date, periodTo),
+        eq(dprs.isSuperseded, false),
+      ));
+
+      for (const row of dprMaterials) {
+        if (row.supplier) addRecord(row.supplier, "material");
+      }
+
+      const siteTrips = await db.select({
+        supplier: siteMaterialTrips.supplier,
+      })
+      .from(siteMaterialTrips)
+      .where(and(
+        sql`${siteMaterialTrips.supplier} IS NOT NULL AND ${siteMaterialTrips.supplier} != ''`,
+        gte(siteMaterialTrips.date, periodFrom),
+        lte(siteMaterialTrips.date, periodTo),
+      ));
+
+      for (const row of siteTrips) {
+        if (row.supplier) addRecord(row.supplier, "material");
+      }
+
+      const plantReceipts = await db.select({
+        supplier: materialReceipts.supplier,
+      })
+      .from(materialReceipts)
+      .where(and(
+        sql`${materialReceipts.supplier} IS NOT NULL AND ${materialReceipts.supplier} != ''`,
+        gte(materialReceipts.date, periodFrom),
+        lte(materialReceipts.date, periodTo),
+      ));
+
+      for (const row of plantReceipts) {
+        if (row.supplier) addRecord(row.supplier, "material");
+      }
+    }
+
+    if (bt === "transport" || bt === "all") {
+      const dispatches = await db.select({
+        ownerName: truckDispatches.ownerName,
+      })
+      .from(truckDispatches)
+      .where(and(
+        sql`${truckDispatches.ownerName} IS NOT NULL AND ${truckDispatches.ownerName} != ''`,
+        gte(truckDispatches.date, periodFrom),
+        lte(truckDispatches.date, periodTo),
+      ));
+
+      for (const row of dispatches) {
+        if (row.ownerName) addRecord(row.ownerName, "transport");
+      }
+    }
+
+    const existingBills = await db.select({
+      id: vendorBills.id,
+      vendorName: vendorBills.vendorName,
+      billNo: vendorBills.billNo,
+      billType: vendorBills.billType,
+      status: vendorBills.status,
+      periodFrom: vendorBills.periodFrom,
+      periodTo: vendorBills.periodTo,
+    })
+    .from(vendorBills);
+
+    const results: {
+      vendorName: string;
+      recordCount: number;
+      categories: string[];
+      existingBill: { id: number; billNo: string; status: string } | null;
+    }[] = [];
+
+    for (const [canonical, data] of Array.from(vendorRecords.entries())) {
+      const vendorVariantsArr = [canonical];
+      for (const a of allAliases) {
+        if (a.canonicalName.toUpperCase().trim() === canonical) {
+          vendorVariantsArr.push(a.alias.toUpperCase().trim());
+        }
+      }
+
+      let matchedBill: { id: number; billNo: string; status: string } | null = null;
+      for (const bill of existingBills) {
+        const billVendorUpper = bill.vendorName.toUpperCase().trim();
+        const billTypeMatch = bt === "all" || bill.billType.toLowerCase() === bt || bill.billType.toLowerCase() === "all";
+        if (vendorVariantsArr.includes(billVendorUpper) && billTypeMatch) {
+          const hasOverlap = bill.periodFrom && bill.periodTo &&
+            bill.periodFrom <= periodTo && bill.periodTo >= periodFrom;
+          if (hasOverlap || (!bill.periodFrom && !bill.periodTo)) {
+            matchedBill = { id: bill.id, billNo: bill.billNo, status: bill.status };
+            break;
+          }
+        }
+      }
+
+      results.push({
+        vendorName: canonical,
+        recordCount: data.count,
+        categories: Array.from(data.categories),
+        existingBill: matchedBill,
+      });
+    }
+
+    results.sort((a, b) => b.recordCount - a.recordCount);
+    return results;
   }
 }
 

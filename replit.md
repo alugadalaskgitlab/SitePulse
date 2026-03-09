@@ -53,9 +53,14 @@ Preferred communication style: Simple, everyday language.
 - **Material Returns**: System for returning issued materials back to plant stock, linked to original issues.
 
 ### Procurement & Finance Module
-- **Purchase Indents**: Multi-item purchase request system with partial quantity approval workflow. Indent number format: `HLC/PI/YYYY/NNNN`. Statuses: pending → approved → completed (auto when all items purchased) or rejected. Features: proposedBy/raisedBy fields, per-item approval with adjustable quantities, purchase tracking (vendor, bill, rate, amount per item).
-  - Tables: `purchase_indents`, `purchase_indent_items`
-  - Routes: `/api/purchase-indents`, `/plant/purchase-indents`
+- **Purchase Indents**: Multi-item purchase request system with partial quantity approval workflow. Indent number format: `HLC/PI/YYYY/NNNN`. Statuses: pending → approved → completed (auto when all items have terminal status) or rejected. Features: proposedBy/raisedBy fields, per-item approval with adjustable quantities, purchase tracking (vendor, bill, rate, amount per item).
+  - **Item Cancellation**: Individual items can be cancelled (PIN-gated manager/admin) with mandatory reason. Cancelled items show grey badge with who/when/why.
+  - **Force Close**: Admin can force-close an indent, cancelling all remaining unfulfilled items at once (PIN-gated admin only).
+  - **Item History**: `purchase_indent_item_history` table tracks every status change (PURCHASED, PARTIAL, NOT_PURCHASED, CANCELLED) with who, when, vendor, qty, amount, and notes. Expandable timeline UI per item.
+  - **Auto-Complete Logic**: Indent auto-completes when ALL items have terminal status (PURCHASED, PARTIAL, NOT_PURCHASED, or CANCELLED).
+  - **Procurement Report**: Filterable report view showing all items across indents with summary cards (Total Items, Fulfilled %, Total Spend, Pending). Filters: date range, status, purpose, vendor. Clickable rows navigate to indent detail.
+  - Tables: `purchase_indents`, `purchase_indent_items`, `purchase_indent_item_history`
+  - Routes: `/api/purchase-indents`, `/api/purchase-indents/report`, `/api/purchase-indent-items/:id/cancel`, `/api/purchase-indent-items/:id/history`, `/api/purchase-indents/:id/force-close`, `/plant/purchase-indents`
 - **Daily Diesel Requirements**: Per-equipment diesel planning and procurement tool (does NOT affect stock). Features: equipment dropdown from master, estimated hours/norm/planned qty, editable approval qty per equipment, purchase tracking, comparison report (planned vs purchased vs actual issued from equipment_logs/equipment_usage).
   - Tables: `diesel_requirements`, `diesel_requirement_items`
   - Routes: `/api/diesel-requirements`, `/plant/diesel-requirements`
@@ -67,8 +72,11 @@ Preferred communication style: Simple, everyday language.
   - **Diesel Indicator**: Amber badge with fuel icon shown on equipment rows that have diesel issued, in both form and detail views.
   - **Rate Shortcuts**: "Apply Rate to Similar" button copies rate to matching equipment rows (same equipmentId + entry type) that have rate = 0.
   - **Vendor Names API**: Aggregated from equipment_master.vendor_name, material sources' supplier fields, truck_dispatches.owner_name, deduplicated via vendor aliases.
+  - **Vendor Discovery**: `GET /api/vendor-bills/discover-vendors` shows available vendors for a bill type + period with record counts, category badges, and existing bill status indicator. Replaces blind vendor selection.
+  - **PDF Export**: `GET /api/vendor-bills/:id/pdf` generates downloadable PDF (pdfkit) with company header, bill details table, line items, and totals. Only for verified/approved/paid bills.
+  - **Enhanced Print**: Professional print layout with company header, structured bill details, styled table, and footer.
   - Tables: `vendor_bills`, `vendor_bill_items` (with `date` and `category` columns), `vendor_aliases`
-  - Routes: `/api/vendor-bills`, `/api/vendor-bills/vendor-names`, `/api/vendor-bills/auto-items`, `/api/vendor-aliases`, `/plant/vendor-bills`
+  - Routes: `/api/vendor-bills`, `/api/vendor-bills/vendor-names`, `/api/vendor-bills/auto-items`, `/api/vendor-bills/discover-vendors`, `/api/vendor-bills/:id/pdf`, `/api/vendor-aliases`, `/plant/vendor-bills`
 
 ### UI/UX & Features
 - **UI Enhancements**: Responsive design using shadcn/ui.
@@ -89,6 +97,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Export Functionality
 - `xlsx` (Excel generation)
+- `pdfkit` (PDF generation for vendor bills)
 
 ### UI Libraries
 - Radix UI
