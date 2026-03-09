@@ -4743,8 +4743,8 @@ export class DatabaseStorage implements IStorage {
   async cancelPurchaseItem(itemId: number, cancelledBy: string, reason: string): Promise<PurchaseIndentItem | undefined> {
     const [existingItem] = await db.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId));
     if (!existingItem) return undefined;
-    const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
-    if (existingItem.purchaseStatus && terminalStatuses.includes(existingItem.purchaseStatus.toUpperCase())) {
+    const uncancellableStatuses = ["PURCHASED", "NOT_PURCHASED", "CANCELLED"];
+    if (existingItem.purchaseStatus && uncancellableStatuses.includes(existingItem.purchaseStatus.toUpperCase())) {
       throw new Error(`Cannot cancel item with status: ${existingItem.purchaseStatus}`);
     }
 
@@ -4788,11 +4788,11 @@ export class DatabaseStorage implements IStorage {
     const allItems = await db.select().from(purchaseIndentItems)
       .where(eq(purchaseIndentItems.indentId, indentId));
 
-    const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
+    const skipStatuses = ["PURCHASED", "NOT_PURCHASED", "CANCELLED"];
     const now = new Date().toISOString();
 
     for (const item of allItems) {
-      if (!item.purchaseStatus || !terminalStatuses.includes(item.purchaseStatus.toUpperCase())) {
+      if (!item.purchaseStatus || !skipStatuses.includes(item.purchaseStatus.toUpperCase())) {
         await db.update(purchaseIndentItems)
           .set({
             purchaseStatus: "CANCELLED",

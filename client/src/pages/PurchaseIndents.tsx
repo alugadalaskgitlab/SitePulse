@@ -91,6 +91,11 @@ function isTerminalStatus(status: string | null): boolean {
   return ["purchased", "partial", "not_purchased", "cancelled"].includes(s);
 }
 
+function canCancelItem(status: string | null): boolean {
+  const s = (status || "").toLowerCase();
+  return !["purchased", "not_purchased", "cancelled"].includes(s);
+}
+
 function ItemHistoryTimeline({ itemId }: { itemId: number }) {
   const { data: history, isLoading } = useQuery<PurchaseIndentItemHistoryEntry[]>({
     queryKey: ["/api/purchase-indent-items", itemId, "history"],
@@ -577,7 +582,7 @@ export default function PurchaseIndents() {
   };
 
   const hasUnfulfilledItems = (items: PurchaseIndentItem[]) => {
-    return items.some(i => !isTerminalStatus(i.purchaseStatus));
+    return items.some(i => canCancelItem(i.purchaseStatus));
   };
 
   const getItemPurchaseCount = (items: PurchaseIndentItem[]) => {
@@ -1276,7 +1281,7 @@ export default function PurchaseIndents() {
                     const itemStatus = (item.purchaseStatus || "").toLowerCase();
                     const isPending = !item.purchaseStatus;
                     const isCancelled = itemStatus === "cancelled";
-                    const canCancel = !isTerminalStatus(item.purchaseStatus);
+                    const canCancel = canCancelItem(item.purchaseStatus);
                     const borderColor = itemStatus === "purchased" ? "border-l-emerald-500" :
                       itemStatus === "partial" ? "border-l-amber-500" :
                       itemStatus === "not_purchased" ? "border-l-red-500" :
