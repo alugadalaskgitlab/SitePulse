@@ -1875,6 +1875,7 @@ export async function registerRoutes(
     try {
       const input = createPurchaseIndentRequestSchema.parse(req.body);
       const indent = await storage.createPurchaseIndent(input);
+      sendPushToAll("New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
       res.status(201).json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1912,6 +1913,7 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
+      sendPushToAll("Indent Approved", `${indent.indentNo} approved by ${approvedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1947,6 +1949,7 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
+      sendPushToAll("Indent Rejected", `${indent.indentNo} rejected by ${rejectedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       console.error("Error rejecting purchase indent:", err);
@@ -1971,6 +1974,9 @@ export async function registerRoutes(
       const item = await storage.updatePurchaseItemStatus(itemId, purchaseData, actionBy || "SYSTEM");
       if (!item) {
         return res.status(404).json({ message: "Purchase indent item not found" });
+      }
+      if (purchaseData.purchaseStatus) {
+        sendPushToAll("Purchase Update", `Item "${item.description}" - ${purchaseData.purchaseStatus.toUpperCase()}${purchaseData.vendor ? ` from ${purchaseData.vendor.toUpperCase()}` : ""}`, "/plant/purchase-indents").catch(() => {});
       }
       res.json(item);
     } catch (err) {
@@ -2005,6 +2011,7 @@ export async function registerRoutes(
       if (!item) {
         return res.status(404).json({ message: "Purchase indent item not found" });
       }
+      sendPushToAll("Item Cancelled", `"${item.description}" cancelled by ${cancelledBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(item);
     } catch (err: any) {
       if (err?.message?.startsWith("Cannot cancel")) {
@@ -2036,6 +2043,7 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
+      sendPushToAll("Indent Force Closed", `${indent.indentNo} force closed by ADMIN`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err: any) {
       if (err?.message?.startsWith("Cannot force close")) {
@@ -2043,6 +2051,44 @@ export async function registerRoutes(
       }
       console.error("Error force closing purchase indent:", err);
       res.status(500).json({ message: "Failed to force close purchase indent" });
+    }
+  });
+
+  app.put("/api/purchase-indents/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, ...data } = req.body;
+      if (!pin) return res.status(403).json({ message: "PIN required to edit indent" });
+      const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
+      if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+
+      const validatedData = createPurchaseIndentRequestSchema.parse(data);
+      const indent = await storage.updatePurchaseIndent(id, validatedData);
+      if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
+      res.json(indent);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err?.message?.startsWith("Cannot edit")) return res.status(400).json({ message: err.message });
+      console.error("Error updating purchase indent:", err);
+      res.status(500).json({ message: "Failed to update purchase indent" });
+    }
+  });
+
+  app.delete("/api/purchase-indents/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin } = req.body;
+      if (!pin) return res.status(403).json({ message: "Admin PIN required to delete indent" });
+      const isAdmin = await storage.verifyPin("admin", pin);
+      if (!isAdmin) return res.status(403).json({ message: "Invalid admin PIN" });
+
+      const deleted = await storage.deletePurchaseIndent(id);
+      if (!deleted) return res.status(404).json({ message: "Purchase indent not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      if (err?.message?.startsWith("Cannot delete")) return res.status(400).json({ message: err.message });
+      console.error("Error deleting purchase indent:", err);
+      res.status(500).json({ message: "Failed to delete purchase indent" });
     }
   });
 
@@ -2125,6 +2171,7 @@ export async function registerRoutes(
     try {
       const input = createDieselRequirementRequestSchema.parse(req.body);
       const requirement = await storage.createDieselRequirement(input);
+      sendPushToAll("New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
       res.status(201).json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2162,6 +2209,7 @@ export async function registerRoutes(
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
+      sendPushToAll("Diesel Approved", `${requirement.date} - ${requirement.totalApproved} L approved by ${approvedBy}`, "/plant/diesel-requirements").catch(() => {});
       res.json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2197,6 +2245,7 @@ export async function registerRoutes(
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
+      sendPushToAll("Diesel Rejected", `${requirement.date} rejected by ${rejectedBy}`, "/plant/diesel-requirements").catch(() => {});
       res.json(requirement);
     } catch (err) {
       console.error("Error rejecting diesel requirement:", err);
@@ -2228,6 +2277,44 @@ export async function registerRoutes(
       }
       console.error("Error updating diesel purchase:", err);
       res.status(500).json({ message: "Failed to update diesel purchase" });
+    }
+  });
+
+  app.put("/api/diesel-requirements/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin, ...data } = req.body;
+      if (!pin) return res.status(403).json({ message: "PIN required to edit diesel requirement" });
+      const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
+      if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+
+      const validatedData = createDieselRequirementRequestSchema.parse(data);
+      const requirement = await storage.updateDieselRequirement(id, validatedData);
+      if (!requirement) return res.status(404).json({ message: "Diesel requirement not found" });
+      res.json(requirement);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err?.message?.startsWith("Cannot edit")) return res.status(400).json({ message: err.message });
+      console.error("Error updating diesel requirement:", err);
+      res.status(500).json({ message: "Failed to update diesel requirement" });
+    }
+  });
+
+  app.delete("/api/diesel-requirements/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin } = req.body;
+      if (!pin) return res.status(403).json({ message: "Admin PIN required to delete diesel requirement" });
+      const isAdmin = await storage.verifyPin("admin", pin);
+      if (!isAdmin) return res.status(403).json({ message: "Invalid admin PIN" });
+
+      const deleted = await storage.deleteDieselRequirement(id);
+      if (!deleted) return res.status(404).json({ message: "Diesel requirement not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      if (err?.message?.startsWith("Cannot delete")) return res.status(400).json({ message: err.message });
+      console.error("Error deleting diesel requirement:", err);
+      res.status(500).json({ message: "Failed to delete diesel requirement" });
     }
   });
 
@@ -2379,6 +2466,7 @@ export async function registerRoutes(
     try {
       const input = createVendorBillRequestSchema.parse(req.body);
       const bill = await storage.createVendorBill(input);
+      sendPushToAll("New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
       res.status(201).json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2457,6 +2545,7 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
+      sendPushToAll("Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2534,8 +2623,8 @@ export async function registerRoutes(
         ? [20, 52, 30, 160, 35, 28, 55, 55, 80]
         : [22, 58, 35, 195, 40, 30, 55, 80];
       const headers = hasLeadDist
-        ? ["#", "Date", "Type", "Description", "Qty", "Unit", "Lead KM", "Rate (₹)", "Amount (₹)"]
-        : ["#", "Date", "Type", "Description", "Qty", "Unit", "Rate (₹)", "Amount (₹)"];
+        ? ["#", "Date", "Type", "Description", "Qty", "Unit", "Lead KM", "Rate (Rs.)", "Amount (Rs.)"]
+        : ["#", "Date", "Type", "Description", "Qty", "Unit", "Rate (Rs.)", "Amount (Rs.)"];
       const rateColIdx = hasLeadDist ? 7 : 6;
       const descColIdx = 3;
       let y = doc.y;
@@ -2611,7 +2700,7 @@ export async function registerRoutes(
       doc.fillColor(amber).rect(tableX, y, pageW, summaryH).fill();
       doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
       doc.text("TOTAL AMOUNT", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
-      doc.text(`₹ ${fmtCurrency(bill.totalAmount)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
+      doc.text(`Rs. ${fmtCurrency(bill.totalAmount)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
       y += summaryH;
 
       if (bill.notes) {

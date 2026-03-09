@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2, Pencil, AlertTriangle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -35,11 +35,7 @@ interface ApprovalItem {
 export default function DieselRequirements() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
-  const searchString = useSearch();
-  const urlParams = new URLSearchParams(searchString || window.location.search);
-  const urlTab = urlParams.get("tab");
-  const urlRole = urlParams.get("role");
-  const backLink = appendOrigin(`/plant/dashboard${urlTab ? `?tab=${urlTab}${urlRole ? `&role=${urlRole}` : ""}` : ""}`);
+  const backLink = appendOrigin("/plant/dashboard");
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -55,9 +51,12 @@ export default function DieselRequirements() {
     { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", plannedQty: "" },
   ]);
 
+  const [editId, setEditId] = useState<number | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([]);
   const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAction, setPinAction] = useState<"approve" | "reject" | null>(null);
+  const [pinAction, setPinAction] = useState<"approve" | "reject" | "edit" | "delete" | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [storedPin, setStoredPin] = useState("");
 
@@ -82,8 +81,10 @@ export default function DieselRequirements() {
     return qs ? `?${qs}` : "";
   };
 
+  const queryString = buildQueryString();
   const { data: requirements, isLoading } = useQuery<DieselRequirementWithItems[]>({
-    queryKey: ["/api/diesel-requirements" + buildQueryString()],
+    queryKey: ["/api/diesel-requirements", queryString],
+    queryFn: () => fetch(`/api/diesel-requirements${queryString}`).then(r => r.json()),
   });
 
   const { data: summary } = useQuery<{ total: number; pending: number; approved: number; rejected: number }>({
@@ -169,6 +170,38 @@ export default function DieselRequirements() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/diesel-requirements/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] });
+      toast({ title: "Diesel requirement updated successfully" });
+      resetForm();
+      setEditId(null);
+      setView("list");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, pin }: { id: number; pin: string }) =>
+      apiRequest("DELETE", `/api/diesel-requirements/${id}`, { pin }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] });
+      toast({ title: "Diesel requirement deleted successfully" });
+      setShowDeleteConfirm(false);
+      setSelectedId(null);
+      setView("list");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
     setFormDate(format(new Date(), "yyyy-MM-dd"));
     setFormRaisedBy("");
@@ -226,14 +259,20 @@ export default function DieselRequirements() {
         norm: parseFloat(i.norm) || null,
         plannedQty: parseFloat(i.plannedQty) || 0,
       }));
-    createMutation.mutate({
+    const payload = {
       date: formDate,
       raisedBy: formRaisedBy.toUpperCase(),
       totalPlanned: formTotal,
       status: "pending",
       remarks: formRemarks.toUpperCase() || null,
       items,
-    });
+    };
+
+    if (editId) {
+      editMutation.mutate({ id: editId, data: { ...payload, pin: storedPin } });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const openDetail = (req: DieselRequirementWithItems) => {
@@ -268,6 +307,22 @@ export default function DieselRequirements() {
         return;
       }
       rejectMutation.mutate({ id: selectedId, pin, reason: rejectionReason.toUpperCase() });
+    } else if (pinAction === "edit" && selectedId && selectedRequirement) {
+      setEditId(selectedId);
+      setFormDate(selectedRequirement.date);
+      setFormRaisedBy(selectedRequirement.raisedBy);
+      setFormRemarks(selectedRequirement.remarks || "");
+      setFormItems(selectedRequirement.items.map(item => ({
+        equipmentId: item.equipmentId,
+        equipmentName: item.equipmentName,
+        purpose: item.purpose || "",
+        estHours: item.estHours != null ? String(item.estHours) : "",
+        norm: item.norm != null ? String(item.norm) : "",
+        plannedQty: String(item.plannedQty),
+      })));
+      setView("form");
+    } else if (pinAction === "delete" && selectedId) {
+      deleteMutation.mutate({ id: selectedId, pin });
     }
     setPinAction(null);
   };
@@ -375,10 +430,38 @@ export default function DieselRequirements() {
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       {showPinAuth && (
         <PinAuth
-          targetRole="any"
+          targetRole={pinAction === "delete" ? "admin" : "any"}
           onSuccess={handlePinSuccess}
           onClose={() => { setShowPinAuth(false); setPinAction(null); }}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <Card className="border-red-200 dark:border-red-800">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              <p className="font-bold text-red-600 uppercase">DELETE DIESEL REQUIREMENT</p>
+            </div>
+            <p className="text-sm text-muted-foreground">THIS WILL PERMANENTLY DELETE THE DIESEL REQUIREMENT AND ALL ITS ITEMS. THIS ACTION CANNOT BE UNDONE.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} data-testid="button-delete-dismiss">
+                CANCEL
+              </Button>
+              <Button
+                variant="outline"
+                className="text-red-600 border-red-300"
+                disabled={deleteMutation.isPending}
+                onClick={() => { setPinAction("delete"); setShowPinAuth(true); }}
+                data-testid="button-confirm-delete"
+              >
+                {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                DELETE PERMANENTLY
+              </Button>
+            </div>
+            <p className="text-xs text-center text-muted-foreground italic">ADMIN PIN REQUIRED</p>
+          </CardContent>
+        </Card>
       )}
 
       {view === "list" && (
@@ -539,16 +622,20 @@ export default function DieselRequirements() {
       {view === "form" && (
         <>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setView("list")} data-testid="button-back-form">
+            <Button variant="ghost" size="icon" onClick={() => { setView("list"); setEditId(null); }} data-testid="button-back-form">
               <ChevronLeft className="w-5 h-5" />
             </Button>
-            <h2 className="text-xl font-bold" data-testid="text-form-title">RAISE DIESEL REQUIREMENT</h2>
+            <h2 className="text-xl font-bold" data-testid="text-form-title">{editId ? "EDIT DIESEL REQUIREMENT" : "RAISE DIESEL REQUIREMENT"}</h2>
           </div>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-base">REQUIREMENT DETAILS</CardTitle>
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-300 dark:border-amber-700">NEW</Badge>
+              {editId ? (
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-blue-300 dark:border-blue-700">EDITING</Badge>
+              ) : (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-300 dark:border-amber-700">NEW</Badge>
+              )}
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -658,14 +745,14 @@ export default function DieselRequirements() {
               </table>
             </CardContent>
             <div className="flex justify-end gap-2 p-4 border-t">
-              <Button variant="outline" onClick={() => setView("list")} data-testid="button-cancel">CANCEL</Button>
+              <Button variant="outline" onClick={() => { setView("list"); setEditId(null); }} data-testid="button-cancel">CANCEL</Button>
               <Button
                 onClick={handleSubmit}
-                disabled={createMutation.isPending || !formRaisedBy || formItems.every((i) => !i.equipmentName)}
+                disabled={createMutation.isPending || editMutation.isPending || !formRaisedBy || formItems.every((i) => !i.equipmentName)}
                 data-testid="button-submit"
               >
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                SUBMIT FOR APPROVAL
+                {(createMutation.isPending || editMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                {editId ? "UPDATE REQUIREMENT" : "SUBMIT FOR APPROVAL"}
               </Button>
             </div>
           </Card>
@@ -690,7 +777,31 @@ export default function DieselRequirements() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
-                  {getStatusBadge(selectedRequirement.status)}
+                  <div className="flex items-center gap-2">
+                    {selectedRequirement.status === "pending" && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-600 border-blue-300"
+                          onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                          data-testid="button-edit-requirement"
+                        >
+                          <Pencil className="w-3 h-3 mr-1" /> EDIT
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 border-red-300"
+                          onClick={() => setShowDeleteConfirm(true)}
+                          data-testid="button-delete-requirement"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                        </Button>
+                      </>
+                    )}
+                    {getStatusBadge(selectedRequirement.status)}
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

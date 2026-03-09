@@ -54,16 +54,18 @@ Preferred communication style: Simple, everyday language.
 
 ### Procurement & Finance Module
 - **Purchase Indents**: Multi-item purchase request system with partial quantity approval workflow. Indent number format: `HLC/PI/YYYY/NNNN`. Statuses: pending → approved → completed (auto when all items have terminal status) or rejected. Features: proposedBy/raisedBy fields, per-item approval with adjustable quantities, purchase tracking (vendor, bill, rate, amount per item).
+  - **Edit/Delete (Pending)**: Manager/Admin can edit pending indents (PIN-gated, re-opens form pre-filled). Admin can delete pending indents (PIN-gated, confirmation dialog). Non-pending indents cannot be edited/deleted.
   - **Item Cancellation**: Individual items can be cancelled (PIN-gated manager/admin) with mandatory reason. Cancelled items show grey badge with who/when/why.
   - **Force Close**: Admin can force-close an indent, cancelling all remaining unfulfilled items at once (PIN-gated admin only).
   - **Item History**: `purchase_indent_item_history` table tracks every status change (PURCHASED, PARTIAL, NOT_PURCHASED, CANCELLED) with who, when, vendor, qty, amount, and notes. Expandable timeline UI per item.
   - **Auto-Complete Logic**: Indent auto-completes when ALL items have terminal status (PURCHASED, PARTIAL, NOT_PURCHASED, or CANCELLED).
   - **Procurement Report**: Filterable report view showing all items across indents with summary cards (Total Items, Fulfilled %, Total Spend, Pending). Filters: date range, status, purpose, vendor. Clickable rows navigate to indent detail.
   - Tables: `purchase_indents`, `purchase_indent_items`, `purchase_indent_item_history`
-  - Routes: `/api/purchase-indents`, `/api/purchase-indents/report`, `/api/purchase-indent-items/:id/cancel`, `/api/purchase-indent-items/:id/history`, `/api/purchase-indents/:id/force-close`, `/plant/purchase-indents`
+  - Routes: `/api/purchase-indents`, `/api/purchase-indents/report`, `/api/purchase-indent-items/:id/cancel`, `/api/purchase-indent-items/:id/history`, `/api/purchase-indents/:id/force-close`, `PUT /api/purchase-indents/:id`, `DELETE /api/purchase-indents/:id`, `/plant/purchase-indents`
 - **Daily Diesel Requirements**: Per-equipment diesel planning and procurement tool (does NOT affect stock). Features: equipment dropdown from master (shows owner info), estimated hours/norm/planned qty (rounded UP to whole numbers via Math.ceil), editable approval qty per equipment, purchase tracking, comparison report (planned vs purchased vs actual issued from equipment_logs/equipment_usage).
+  - **Edit/Delete (Pending)**: Manager/Admin can edit pending requirements (PIN-gated, re-opens form pre-filled). Admin can delete pending requirements (PIN-gated, confirmation dialog).
   - Tables: `diesel_requirements`, `diesel_requirement_items`
-  - Routes: `/api/diesel-requirements`, `/plant/diesel-requirements`
+  - Routes: `/api/diesel-requirements`, `PUT /api/diesel-requirements/:id`, `DELETE /api/diesel-requirements/:id`, `/plant/diesel-requirements`
 - **Vendor Bills**: Comprehensive date-wise billing system with 4-step workflow (Draft → Verified → Approved → Paid). Bill number format: `HLC/VB/YYYY/NNNN`. Bill types: equipment / material / transport / all / other. Auto-pulls date-wise line items from ALL vendor data sources for a given vendor+period. Each line item has date, category badge (EQUIP/MATL/TRNS), description with entry type/hours/diesel info, qty, unit, rate (editable), and auto-calculated amount. PIN-gated status advancement (manager or admin). Transport billing uses per-trip distance-based calculation: amount = leadDistance × 2 (round trip) × rate per km.
   - **Data Sources**: Site DPR equipment_logs (hired equipment + unlinked equipment matched by vendor name in machine text), Plant equipment_usage (hired), Site DPR material_logs (type=Received), site_material_trips, plant material_receipts, truck_dispatches (transport)
   - **Vendor Alias System**: `vendor_aliases` table maps alternate vendor name spellings to canonical names (e.g., NARSIMULU = NARASIMHULU). Auto-pull uses all name variants when matching. Vendor names list is deduplicated via aliases. PIN-gated (admin) management UI via settings button on list page.
@@ -87,8 +89,8 @@ Preferred communication style: Simple, everyday language.
   - Routes: `/api/admin/exportable-tables`, `/api/admin/export-data`, `/api/admin/import-data`, `/plant/data-sync`
 
 ### Plant Module Tab Structure
-- **Operations**: Material receipts, issues, returns, dispatches, equipment usage
-- **Management** (PIN-gated): Stock & ledger cards + Procurement cards (Purchase Indents, Diesel Requirements, Vendor Bills) + Admin tools (Data Export/Import)
+- **Operations**: Material receipts, issues, returns, dispatches, equipment usage, Purchase Indents, Diesel Requirements
+- **Management** (PIN-gated): Stock & ledger cards + Vendor Bills + Admin tools (Data Export/Import)
 - **Masters** (PIN-gated): Parties, materials, mix templates, equipment master, sites, personnel
 
 ### UI/UX & Features

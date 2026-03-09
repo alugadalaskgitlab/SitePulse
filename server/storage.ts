@@ -335,6 +335,8 @@ export interface IStorage {
   forceCloseIndent(indentId: number, closedBy: string, reason: string): Promise<PurchaseIndentWithItems | undefined>;
   getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]>;
   getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }>;
+  updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined>;
+  deletePurchaseIndent(id: number): Promise<boolean>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -344,6 +346,8 @@ export interface IStorage {
   rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
   updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined>;
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
+  updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined>;
+  deleteDieselRequirement(id: number): Promise<boolean>;
 
   // Vendor Bills
   getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]>;
@@ -4823,6 +4827,62 @@ export class DatabaseStorage implements IStorage {
     return this.getPurchaseIndent(indentId);
   }
 
+  async updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return undefined;
+    if (existing.status !== "pending") {
+      throw new Error(`Cannot edit indent with status: ${existing.status}`);
+    }
+
+    return await db.transaction(async (tx) => {
+      await tx.update(purchaseIndents)
+        .set({
+          date: data.date,
+          proposedBy: data.proposedBy.toUpperCase(),
+          raisedBy: data.raisedBy.toUpperCase(),
+          remarks: data.remarks?.toUpperCase() || data.remarks,
+        })
+        .where(eq(purchaseIndents.id, id));
+
+      await tx.delete(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, id));
+
+      let items: PurchaseIndentItem[] = [];
+      if (data.items?.length) {
+        items = await tx.insert(purchaseIndentItems).values(
+          data.items.map(item => ({
+            indentId: id,
+            description: item.description.toUpperCase(),
+            qty: item.qty,
+            uom: item.uom.toUpperCase(),
+            purpose: item.purpose.toUpperCase(),
+            priority: item.priority || "normal",
+          }))
+        ).returning();
+      }
+
+      const [updatedIndent] = await tx.select().from(purchaseIndents).where(eq(purchaseIndents.id, id));
+      return { ...updatedIndent, items };
+    });
+  }
+
+  async deletePurchaseIndent(id: number): Promise<boolean> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return false;
+    if (existing.status !== "pending") {
+      throw new Error(`Cannot delete indent with status: ${existing.status}`);
+    }
+
+    await db.transaction(async (tx) => {
+      const itemIds = existing.items.map(i => i.id);
+      if (itemIds.length > 0) {
+        await tx.delete(purchaseIndentItemHistory).where(inArray(purchaseIndentItemHistory.itemId, itemIds));
+      }
+      await tx.delete(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, id));
+      await tx.delete(purchaseIndents).where(eq(purchaseIndents.id, id));
+    });
+    return true;
+  }
+
   async getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]> {
     const history = await db.select().from(purchaseIndentItemHistory)
       .where(eq(purchaseIndentItemHistory.itemId, itemId))
@@ -5576,6 +5636,59 @@ export class DatabaseStorage implements IStorage {
       with: { items: true },
     });
     return result as DieselRequirementWithItems | undefined;
+  }
+
+  async updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined> {
+    const existing = await this.getDieselRequirement(id);
+    if (!existing) return undefined;
+    if (existing.status !== "pending") {
+      throw new Error(`Cannot edit diesel requirement with status: ${existing.status}`);
+    }
+
+    return await db.transaction(async (tx) => {
+      await tx.update(dieselRequirements)
+        .set({
+          date: data.date,
+          raisedBy: data.raisedBy.toUpperCase(),
+          totalPlanned: data.totalPlanned,
+          remarks: data.remarks?.toUpperCase() || data.remarks,
+        })
+        .where(eq(dieselRequirements.id, id));
+
+      await tx.delete(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
+
+      let items: DieselRequirementItem[] = [];
+      if (data.items?.length) {
+        items = await tx.insert(dieselRequirementItems).values(
+          data.items.map(item => ({
+            requirementId: id,
+            equipmentId: item.equipmentId,
+            equipmentName: item.equipmentName.toUpperCase(),
+            purpose: item.purpose?.toUpperCase() || item.purpose,
+            estHours: item.estHours,
+            norm: item.norm,
+            plannedQty: item.plannedQty,
+          }))
+        ).returning();
+      }
+
+      const [updated] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id));
+      return { ...updated, items };
+    });
+  }
+
+  async deleteDieselRequirement(id: number): Promise<boolean> {
+    const existing = await this.getDieselRequirement(id);
+    if (!existing) return false;
+    if (existing.status !== "pending") {
+      throw new Error(`Cannot delete diesel requirement with status: ${existing.status}`);
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
+      await tx.delete(dieselRequirements).where(eq(dieselRequirements.id, id));
+    });
+    return true;
   }
 
   async getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]> {

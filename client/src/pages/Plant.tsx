@@ -250,6 +250,36 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      <Link href={appendOrigin("/plant/purchase-indents")}>
+        <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Purchase Indents</h3>
+              <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href={appendOrigin("/plant/diesel-requirements")}>
+        <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+              <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
     </div>
   );
 }
@@ -418,36 +448,6 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Procurement & Finance</h3>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link href={appendRoleAndTab("/plant/purchase-indents")}>
-          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">Purchase Indents</h3>
-                <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href={appendRoleAndTab("/plant/diesel-requirements")}>
-          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
-                <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-
         <Link href={appendRoleAndTab("/plant/vendor-bills")}>
           <Card className="hover-elevate cursor-pointer h-full" data-testid="card-vendor-bills">
             <CardContent className="p-6 flex items-center gap-4">
