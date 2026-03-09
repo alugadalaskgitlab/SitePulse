@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Download, Upload, Loader2, CheckCircle, AlertCircle, FileJson } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,7 +16,11 @@ type SyncMode = "menu" | "export" | "import";
 export default function DataSync() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString || window.location.search);
+  const urlTab = urlParams.get("tab");
+  const urlRole = urlParams.get("role");
+  const backLink = appendOrigin(`/plant/dashboard${urlTab ? `?tab=${urlTab}${urlRole ? `&role=${urlRole}` : ""}` : ""}`);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<SyncMode>("menu");

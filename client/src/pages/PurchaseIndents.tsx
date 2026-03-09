@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -197,7 +197,11 @@ function StatusSteps({ status }: { status: string }) {
 export default function PurchaseIndents() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString || window.location.search);
+  const urlTab = urlParams.get("tab");
+  const urlRole = urlParams.get("role");
+  const backLink = appendOrigin(`/plant/dashboard${urlTab ? `?tab=${urlTab}${urlRole ? `&role=${urlRole}` : ""}` : ""}`);
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);

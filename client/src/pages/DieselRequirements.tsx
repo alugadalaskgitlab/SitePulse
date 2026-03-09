@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -35,7 +35,11 @@ interface ApprovalItem {
 export default function DieselRequirements() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString || window.location.search);
+  const urlTab = urlParams.get("tab");
+  const urlRole = urlParams.get("role");
+  const backLink = appendOrigin(`/plant/dashboard${urlTab ? `?tab=${urlTab}${urlRole ? `&role=${urlRole}` : ""}` : ""}`);
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
