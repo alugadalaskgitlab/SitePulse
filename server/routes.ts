@@ -2741,6 +2741,20 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/reset-sequences", async (req, res) => {
+    try {
+      const { pin } = req.body;
+      if (!pin) return res.status(400).json({ message: "PIN required" });
+      const isValid = await storage.verifyPin("admin", pin);
+      if (!isValid) return res.status(403).json({ message: "Invalid admin PIN" });
+      await storage.resetAllSequences();
+      res.json({ success: true, message: "All sequences reset successfully" });
+    } catch (err) {
+      console.error("Error resetting sequences:", err);
+      res.status(500).json({ message: "Failed to reset sequences" });
+    }
+  });
+
   app.post("/api/admin/import-data", async (req, res) => {
     try {
       const { data, pin } = req.body;

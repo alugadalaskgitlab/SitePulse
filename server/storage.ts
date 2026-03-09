@@ -6061,7 +6061,33 @@ export class DatabaseStorage implements IStorage {
       if (data.diesel_requirements.items) await upsertRows(dieselRequirementItems, data.diesel_requirements.items, "diesel_requirement_items");
     }
 
+    await this.resetAllSequences();
+
     return { imported, skipped, errors };
+  }
+
+  async resetAllSequences(): Promise<void> {
+    const tables = [
+      "dprs", "progress_entries", "equipment_logs", "material_logs", "labour_logs",
+      "plant_reports", "parties", "plant_materials", "material_opening_stocks",
+      "mix_types", "mix_templates", "mix_template_components",
+      "equipment_master", "material_receipts", "truck_dispatches",
+      "equipment_usage", "generator_logs", "ldo_logs",
+      "stock_ledger", "material_issues", "material_returns", "site_material_trips",
+      "stock_balances", "vendor_bills", "vendor_bill_items", "vendor_aliases",
+      "notifications", "push_subscriptions", "app_settings", "personnel", "personnel_assignments",
+      "purchase_indents", "purchase_indent_items", "purchase_indent_item_history",
+      "diesel_requirements", "diesel_requirement_items", "sites",
+      "ldo_flow_meter_readings"
+    ];
+    for (const table of tables) {
+      try {
+        await db.execute(sql.raw(
+          `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM "${table}"), 1))`
+        ));
+      } catch (_e) {
+      }
+    }
   }
 }
 
