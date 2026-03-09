@@ -2392,7 +2392,29 @@ export async function registerRoutes(
   app.put("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const input = createVendorBillRequestSchema.parse(req.body);
+      const { pin, ...billData } = req.body;
+      const input = createVendorBillRequestSchema.parse(billData);
+
+      const existing = await storage.getVendorBill(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+
+      if (existing.status === "paid") {
+        return res.status(400).json({ message: "Paid bills cannot be edited" });
+      }
+
+      if (existing.status === "verified" || existing.status === "approved") {
+        if (!pin) {
+          return res.status(403).json({ message: "Admin PIN required to edit verified/approved bills" });
+        }
+        const isAdmin = await storage.verifyPin("admin", pin);
+        if (!isAdmin) {
+          return res.status(403).json({ message: "Invalid admin PIN" });
+        }
+        input.status = "draft";
+      }
+
       const bill = await storage.updateVendorBill(id, input);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
@@ -2523,8 +2545,7 @@ export async function registerRoutes(
       let cx = tableX;
       headers.forEach((h, i) => {
         const align = i >= rateColIdx ? "right" : "left";
-        const offset = align === "right" ? colWidths[i] - 4 : 4;
-        doc.text(h, cx + offset, y + 5, { width: colWidths[i] - 8, align, lineBreak: false });
+        doc.text(h, cx + 4, y + 5, { width: colWidths[i] - 8, align, lineBreak: false });
         cx += colWidths[i];
       });
       y += 20;
@@ -2560,12 +2581,11 @@ export async function registerRoutes(
         cx = tableX;
         rowData.forEach((cell, i) => {
           const align = i >= rateColIdx ? "right" : "left";
-          const offset = align === "right" ? colWidths[i] - 4 : 4;
           const w = colWidths[i] - 8;
           if (i === descColIdx) {
-            doc.text(cell, cx + offset, y + 4, { width: w, align, lineBreak: true });
+            doc.text(cell, cx + 4, y + 4, { width: w, align, lineBreak: true });
           } else {
-            doc.text(cell, cx + offset, y + 4, { width: w, align, lineBreak: false });
+            doc.text(cell, cx + 4, y + 4, { width: w, align, lineBreak: false });
           }
           cx += colWidths[i];
         });
@@ -2640,14 +2660,102 @@ export async function registerRoutes(
   app.delete("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
+      const pin = req.body?.pin as string | undefined;
+
+      const bill = await storage.getVendorBill(id);
+      if (!bill) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+
+      if (bill.status === "paid") {
+        return res.status(400).json({ message: "Paid bills cannot be deleted" });
+      }
+
+      if (bill.status === "verified" || bill.status === "approved") {
+        if (!pin) {
+          return res.status(403).json({ message: "Admin PIN required to delete verified/approved bills" });
+        }
+        const isAdmin = await storage.verifyPin("admin", pin);
+        if (!isAdmin) {
+          return res.status(403).json({ message: "Invalid admin PIN" });
+        }
+      }
+
       const deleted = await storage.deleteVendorBill(id);
       if (!deleted) {
-        return res.status(404).json({ message: "Vendor bill not found or not in draft status" });
+        return res.status(400).json({ message: "Bill cannot be deleted" });
       }
       res.json({ success: true });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error deleting vendor bill:", err);
-      res.status(500).json({ message: "Failed to delete vendor bill" });
+      res.status(500).json({ message: err?.message || "Failed to delete vendor bill" });
+    }
+  });
+
+  const EXPORTABLE_TABLES: Record<string, string> = {
+    equipment_master: "Equipment Master",
+    vendor_aliases: "Vendor Aliases",
+    parties: "Parties",
+    plant_materials: "Plant Materials",
+    mix_templates: "Mix Templates & Components",
+    equipment_usage: "Plant Equipment Usage",
+    truck_dispatches: "Truck Dispatches",
+    material_receipts: "Material Receipts",
+    material_issues: "Material Issues",
+    dprs: "DPRs (with all sub-tables)",
+    stock_ledger: "Stock Ledger",
+    stock_balances: "Stock Balances",
+    vendor_bills: "Vendor Bills",
+    purchase_indents: "Purchase Indents",
+    diesel_requirements: "Diesel Requirements",
+    sites: "Sites",
+  };
+
+  app.get("/api/admin/exportable-tables", async (_req, res) => {
+    res.json(EXPORTABLE_TABLES);
+  });
+
+  app.post("/api/admin/export-data", async (req, res) => {
+    try {
+      const { tables, pin } = req.body;
+      if (!pin) return res.status(400).json({ message: "PIN required" });
+      const isValid = await storage.verifyPin("admin", pin);
+      if (!isValid) return res.status(403).json({ message: "Invalid admin PIN" });
+      if (!tables || !Array.isArray(tables) || tables.length === 0) {
+        return res.status(400).json({ message: "No tables selected" });
+      }
+
+      const exportData: Record<string, any> = { _exportedAt: new Date().toISOString(), _version: 1 };
+
+      for (const table of tables) {
+        const data = await storage.exportTable(table);
+        if (data !== null) {
+          exportData[table] = data;
+        }
+      }
+
+      res.json(exportData);
+    } catch (err) {
+      console.error("Error exporting data:", err);
+      res.status(500).json({ message: "Failed to export data" });
+    }
+  });
+
+  app.post("/api/admin/import-data", async (req, res) => {
+    try {
+      const { data, pin } = req.body;
+      if (!pin) return res.status(400).json({ message: "PIN required" });
+      const isValid = await storage.verifyPin("admin", pin);
+      if (!isValid) return res.status(403).json({ message: "Invalid admin PIN" });
+      if (!data || typeof data !== "object") {
+        return res.status(400).json({ message: "Invalid import data" });
+      }
+
+      const results = await storage.importData(data);
+      res.json(results);
+    } catch (err) {
+      console.error("Error importing data:", err);
+      res.status(500).json({ message: "Failed to import data" });
     }
   });
 

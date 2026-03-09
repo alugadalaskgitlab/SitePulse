@@ -4983,8 +4983,7 @@ export class DatabaseStorage implements IStorage {
     if (!existing) return undefined;
 
     return await db.transaction(async (tx) => {
-      const [updated] = await tx.update(vendorBills)
-        .set({
+      const setData: any = {
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
           vendorName: data.vendorName.toUpperCase(),
@@ -4993,7 +4992,18 @@ export class DatabaseStorage implements IStorage {
           notes: data.notes?.toUpperCase() || data.notes,
           totalAmount: data.totalAmount,
           paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
-        })
+        };
+      if (data.status) {
+        setData.status = data.status;
+        if (data.status === "draft") {
+          setData.verifiedBy = null;
+          setData.verifiedAt = null;
+          setData.approvedBy = null;
+          setData.approvedAt = null;
+        }
+      }
+      const [updated] = await tx.update(vendorBills)
+        .set(setData)
         .where(eq(vendorBills.id, id))
         .returning();
 
@@ -5062,8 +5072,8 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getVendorBill(id);
     if (!existing) return false;
 
-    if (existing.status !== "draft") {
-      throw new Error("Only draft bills can be deleted");
+    if (existing.status === "paid") {
+      throw new Error("Paid bills cannot be deleted");
     }
 
     await db.transaction(async (tx) => {
@@ -5907,6 +5917,140 @@ export class DatabaseStorage implements IStorage {
 
     results.sort((a, b) => b.recordCount - a.recordCount);
     return results;
+  }
+
+  async exportTable(tableName: string): Promise<any | null> {
+    switch (tableName) {
+      case "equipment_master":
+        return db.select().from(equipmentMaster);
+      case "vendor_aliases":
+        return db.select().from(vendorAliases);
+      case "parties":
+        return db.select().from(parties);
+      case "plant_materials":
+        return db.select().from(plantMaterials);
+      case "mix_templates": {
+        const templates = await db.select().from(mixTemplates);
+        const components = await db.select().from(mixTemplateComponents);
+        return { templates, components };
+      }
+      case "equipment_usage":
+        return db.select().from(equipmentUsage);
+      case "truck_dispatches":
+        return db.select().from(truckDispatches);
+      case "material_receipts":
+        return db.select().from(materialReceipts);
+      case "material_issues":
+        return db.select().from(materialIssues);
+      case "dprs": {
+        const dprRows = await db.select().from(dprs);
+        const progress = await db.select().from(progressEntries);
+        const eqLogs = await db.select().from(equipmentLogs);
+        const matLogs = await db.select().from(materialLogs);
+        const labLogs = await db.select().from(labourLogs);
+        return { dprs: dprRows, progressEntries: progress, equipmentLogs: eqLogs, materialLogs: matLogs, labourLogs: labLogs };
+      }
+      case "stock_ledger":
+        return db.select().from(stockLedger);
+      case "stock_balances":
+        return db.select().from(stockBalances);
+      case "vendor_bills": {
+        const bills = await db.select().from(vendorBills);
+        const items = await db.select().from(vendorBillItems);
+        return { bills, items };
+      }
+      case "purchase_indents": {
+        const indents = await db.select().from(purchaseIndents);
+        const items = await db.select().from(purchaseIndentItems);
+        const history = await db.select().from(purchaseIndentItemHistory);
+        return { indents, items, history };
+      }
+      case "diesel_requirements": {
+        const reqs = await db.select().from(dieselRequirements);
+        const items = await db.select().from(dieselRequirementItems);
+        return { requirements: reqs, items };
+      }
+      case "sites":
+        return db.select().from(sites);
+      default:
+        return null;
+    }
+  }
+
+  async importData(data: Record<string, any>): Promise<{ imported: string[]; skipped: string[]; errors: string[] }> {
+    const imported: string[] = [];
+    const skipped: string[] = [];
+    const errors: string[] = [];
+
+    const upsertRows = async (table: any, rows: any[], tableName: string) => {
+      if (!rows || !Array.isArray(rows) || rows.length === 0) {
+        skipped.push(tableName);
+        return;
+      }
+      try {
+        for (const row of rows) {
+          const { id, ...rest } = row;
+          if (id) {
+            const existing = await db.select().from(table).where(eq(table.id, id)).limit(1);
+            if (existing.length > 0) {
+              await db.update(table).set(rest).where(eq(table.id, id));
+            } else {
+              await db.insert(table).values(row).onConflictDoNothing();
+            }
+          } else {
+            await db.insert(table).values(rest).onConflictDoNothing();
+          }
+        }
+        imported.push(`${tableName} (${rows.length} rows)`);
+      } catch (err: any) {
+        errors.push(`${tableName}: ${err.message}`);
+      }
+    };
+
+    if (data.parties) await upsertRows(parties, data.parties, "parties");
+    if (data.sites) await upsertRows(sites, data.sites, "sites");
+    if (data.plant_materials) await upsertRows(plantMaterials, data.plant_materials, "plant_materials");
+    if (data.equipment_master) await upsertRows(equipmentMaster, data.equipment_master, "equipment_master");
+    if (data.vendor_aliases) await upsertRows(vendorAliases, data.vendor_aliases, "vendor_aliases");
+
+    if (data.mix_templates) {
+      if (data.mix_templates.templates) await upsertRows(mixTemplates, data.mix_templates.templates, "mix_templates");
+      if (data.mix_templates.components) await upsertRows(mixTemplateComponents, data.mix_templates.components, "mix_template_components");
+    }
+
+    if (data.material_receipts) await upsertRows(materialReceipts, data.material_receipts, "material_receipts");
+    if (data.material_issues) await upsertRows(materialIssues, data.material_issues, "material_issues");
+    if (data.truck_dispatches) await upsertRows(truckDispatches, data.truck_dispatches, "truck_dispatches");
+    if (data.equipment_usage) await upsertRows(equipmentUsage, data.equipment_usage, "equipment_usage");
+
+    if (data.dprs) {
+      if (data.dprs.dprs) await upsertRows(dprs, data.dprs.dprs, "dprs");
+      if (data.dprs.progressEntries) await upsertRows(progressEntries, data.dprs.progressEntries, "progress_entries");
+      if (data.dprs.equipmentLogs) await upsertRows(equipmentLogs, data.dprs.equipmentLogs, "equipment_logs");
+      if (data.dprs.materialLogs) await upsertRows(materialLogs, data.dprs.materialLogs, "material_logs");
+      if (data.dprs.labourLogs) await upsertRows(labourLogs, data.dprs.labourLogs, "labour_logs");
+    }
+
+    if (data.stock_ledger) await upsertRows(stockLedger, data.stock_ledger, "stock_ledger");
+    if (data.stock_balances) await upsertRows(stockBalances, data.stock_balances, "stock_balances");
+
+    if (data.vendor_bills) {
+      if (data.vendor_bills.bills) await upsertRows(vendorBills, data.vendor_bills.bills, "vendor_bills");
+      if (data.vendor_bills.items) await upsertRows(vendorBillItems, data.vendor_bills.items, "vendor_bill_items");
+    }
+
+    if (data.purchase_indents) {
+      if (data.purchase_indents.indents) await upsertRows(purchaseIndents, data.purchase_indents.indents, "purchase_indents");
+      if (data.purchase_indents.items) await upsertRows(purchaseIndentItems, data.purchase_indents.items, "purchase_indent_items");
+      if (data.purchase_indents.history) await upsertRows(purchaseIndentItemHistory, data.purchase_indents.history, "purchase_indent_item_history");
+    }
+
+    if (data.diesel_requirements) {
+      if (data.diesel_requirements.requirements) await upsertRows(dieselRequirements, data.diesel_requirements.requirements, "diesel_requirements");
+      if (data.diesel_requirements.items) await upsertRows(dieselRequirementItems, data.diesel_requirements.items, "diesel_requirement_items");
+    }
+
+    return { imported, skipped, errors };
   }
 }
 

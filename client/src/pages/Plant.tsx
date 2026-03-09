@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
@@ -76,7 +76,7 @@ export default function Plant() {
         return newMap;
       });
       setActiveTab(pendingTab);
-      const tabNames: Record<string, string> = { masters: "Masters", stock: "Stock Details" };
+      const tabNames: Record<string, string> = { masters: "Masters", stock: "Management" };
       toast({ title: `${tabNames[pendingTab] || pendingTab} unlocked`, description: role === "manager" ? "View and add only" : "Full access" });
     }
     setShowPinAuth(false);
@@ -118,9 +118,9 @@ export default function Plant() {
             <Truck className="w-4 h-4" />
             <span className="hidden sm:inline">Operations</span>
           </TabsTrigger>
-          <TabsTrigger value="stock" className="gap-2" data-testid="tab-stock">
+          <TabsTrigger value="stock" className="gap-2" data-testid="tab-management">
             <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Stock Details</span>
+            <span className="hidden sm:inline">Management</span>
           </TabsTrigger>
           <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
             <Settings className="w-4 h-4" />
@@ -140,9 +140,9 @@ export default function Plant() {
               <CardContent className="text-center">
                 <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
-                <p className="text-muted-foreground mb-4">Enter Manager or Admin PIN to access Stock Details</p>
+                <p className="text-muted-foreground mb-4">Enter Manager or Admin PIN to access Management</p>
                 <Button onClick={() => handleTabChange("stock")} data-testid="button-unlock-stock">
-                  <Lock className="w-4 h-4 mr-2" /> Unlock Stock Details
+                  <Lock className="w-4 h-4 mr-2" /> Unlock Management
                 </Button>
               </CardContent>
             </Card>
@@ -250,54 +250,6 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <div className="col-span-1 md:col-span-3 mt-2">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Procurement & Finance</h3>
-      </div>
-
-      <Link href={appendOrigin("/plant/purchase-indents")}>
-        <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Purchase Indents</h3>
-              <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      <Link href={appendOrigin("/plant/diesel-requirements")}>
-        <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
-              <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      <Link href={appendOrigin("/plant/vendor-bills")}>
-        <Card className="hover-elevate cursor-pointer h-full" data-testid="card-vendor-bills">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
-              <Receipt className="w-7 h-7 text-teal-600 dark:text-teal-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Vendor Bills</h3>
-              <p className="text-sm text-muted-foreground">Track and process vendor invoices with workflow</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
     </div>
   );
 }
@@ -461,6 +413,80 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </Card>
       </Link>
       </div>
+
+      <div className="mt-2">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Procurement & Finance</h3>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link href={appendRoleAndTab("/plant/purchase-indents")}>
+          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Purchase Indents</h3>
+                <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={appendRoleAndTab("/plant/diesel-requirements")}>
+          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+                <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={appendRoleAndTab("/plant/vendor-bills")}>
+          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-vendor-bills">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                <Receipt className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Vendor Bills</h3>
+                <p className="text-sm text-muted-foreground">Track and process vendor invoices with workflow</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
+      {unlockedRole === "admin" && (
+        <>
+          <div className="mt-2">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin Tools</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Link href={appendRoleAndTab("/plant/data-sync")}>
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="card-data-sync">
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center">
+                    <ArrowRightLeft className="w-7 h-7 text-slate-600 dark:text-slate-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">Data Export / Import</h3>
+                    <p className="text-sm text-muted-foreground">Transfer data between development and production</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </>
+      )}
     </div>
   );
 }

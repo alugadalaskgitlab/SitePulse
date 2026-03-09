@@ -61,7 +61,7 @@ Preferred communication style: Simple, everyday language.
   - **Procurement Report**: Filterable report view showing all items across indents with summary cards (Total Items, Fulfilled %, Total Spend, Pending). Filters: date range, status, purpose, vendor. Clickable rows navigate to indent detail.
   - Tables: `purchase_indents`, `purchase_indent_items`, `purchase_indent_item_history`
   - Routes: `/api/purchase-indents`, `/api/purchase-indents/report`, `/api/purchase-indent-items/:id/cancel`, `/api/purchase-indent-items/:id/history`, `/api/purchase-indents/:id/force-close`, `/plant/purchase-indents`
-- **Daily Diesel Requirements**: Per-equipment diesel planning and procurement tool (does NOT affect stock). Features: equipment dropdown from master, estimated hours/norm/planned qty, editable approval qty per equipment, purchase tracking, comparison report (planned vs purchased vs actual issued from equipment_logs/equipment_usage).
+- **Daily Diesel Requirements**: Per-equipment diesel planning and procurement tool (does NOT affect stock). Features: equipment dropdown from master (shows owner info), estimated hours/norm/planned qty (rounded UP to whole numbers via Math.ceil), editable approval qty per equipment, purchase tracking, comparison report (planned vs purchased vs actual issued from equipment_logs/equipment_usage).
   - Tables: `diesel_requirements`, `diesel_requirement_items`
   - Routes: `/api/diesel-requirements`, `/plant/diesel-requirements`
 - **Vendor Bills**: Comprehensive date-wise billing system with 4-step workflow (Draft → Verified → Approved → Paid). Bill number format: `HLC/VB/YYYY/NNNN`. Bill types: equipment / material / transport / all / other. Auto-pulls date-wise line items from ALL vendor data sources for a given vendor+period. Each line item has date, category badge (EQUIP/MATL/TRNS), description with entry type/hours/diesel info, qty, unit, rate (editable), and auto-calculated amount. PIN-gated status advancement (manager or admin). Transport billing uses per-trip distance-based calculation: amount = leadDistance × 2 (round trip) × rate per km.
@@ -76,8 +76,20 @@ Preferred communication style: Simple, everyday language.
   - **Transport Billing**: Transport items use distance-based billing. `leadDistance` column on `vendor_bill_items` stores one-way KM. Amount = leadDistance × 2 × rate (₹/km). Auto-items from truck_dispatches set qty=1, unit=TRIP. Label: "TRANSPORT" (not "MIX TRANSPORT").
   - **PDF Export**: `GET /api/vendor-bills/:id/pdf` generates downloadable PDF (pdfkit) with company header, bill details table, line items, summary totals (items count, qty, amount), and signature blocks (company + vendor). Only for verified/approved/paid bills. Dynamic column widths with description text wrapping.
   - **Enhanced Print**: Professional print layout with company header, structured bill details, styled table, summary totals, signature blocks, and footer. Print-optimized font sizes and dark colors for legibility on paper.
+  - **Edit/Delete for Verified/Approved**: Admin can edit or delete verified/approved bills (PIN-gated). Editing auto-reverts status to draft. Paid bills cannot be edited/deleted.
+  - **Filter Clear Buttons**: Individual (x) clear buttons for each filter + "CLEAR FILTERS" button to reset all.
   - Tables: `vendor_bills`, `vendor_bill_items` (with `date`, `category`, `leadDistance` columns), `vendor_aliases`
   - Routes: `/api/vendor-bills`, `/api/vendor-bills/vendor-names`, `/api/vendor-bills/auto-items`, `/api/vendor-bills/discover-vendors`, `/api/vendor-bills/:id/pdf`, `/api/vendor-aliases`, `/plant/vendor-bills`
+
+### Data Management
+- **Data Export/Import**: Admin-only tool for transferring data between development and production environments. Export selected tables as JSON file, import back with upsert logic (update existing by ID, insert new). Available from Management tab (admin only).
+  - Exportable tables: equipment_master, vendor_aliases, parties, plant_materials, mix_templates, equipment_usage, truck_dispatches, material_receipts, material_issues, dprs (with sub-tables), stock_ledger, stock_balances, vendor_bills, purchase_indents, diesel_requirements, sites
+  - Routes: `/api/admin/exportable-tables`, `/api/admin/export-data`, `/api/admin/import-data`, `/plant/data-sync`
+
+### Plant Module Tab Structure
+- **Operations**: Material receipts, issues, returns, dispatches, equipment usage
+- **Management** (PIN-gated): Stock & ledger cards + Procurement cards (Purchase Indents, Diesel Requirements, Vendor Bills) + Admin tools (Data Export/Import)
+- **Masters** (PIN-gated): Parties, materials, mix templates, equipment master, sites, personnel
 
 ### UI/UX & Features
 - **UI Enhancements**: Responsive design using shadcn/ui.

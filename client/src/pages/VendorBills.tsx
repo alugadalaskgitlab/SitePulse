@@ -131,6 +131,11 @@ export default function VendorBills() {
   const [entryTypeFilter, setEntryTypeFilter] = useState("all");
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
+  const [pendingEditAction, setPendingEditAction] = useState<{ bill: VendorBillWithItems } | null>(null);
+  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number } | null>(null);
+  const [showEditPinAuth, setShowEditPinAuth] = useState(false);
+  const [showDeletePinAuth, setShowDeletePinAuth] = useState(false);
+  const [adminPinForUpdate, setAdminPinForUpdate] = useState<string | null>(null);
   const [showAliasDialog, setShowAliasDialog] = useState(false);
   const [showAliasPinAuth, setShowAliasPinAuth] = useState(false);
   const [aliasCanonical, setAliasCanonical] = useState("");
@@ -246,12 +251,13 @@ export default function VendorBills() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PUT", `/api/vendor-bills/${id}`, data),
+    mutationFn: ({ id, data, pin }: { id: number; data: any; pin?: string | null }) => apiRequest("PUT", `/api/vendor-bills/${id}`, pin ? { ...data, pin } : data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Vendor bill updated successfully" });
       resetForm();
       setEditingBillId(null);
+      setAdminPinForUpdate(null);
       setView("list");
     },
     onError: (err: Error) => {
@@ -275,10 +281,11 @@ export default function VendorBills() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/vendor-bills/${id}`),
+    mutationFn: ({ id, pin }: { id: number; pin?: string }) => apiRequest("DELETE", `/api/vendor-bills/${id}`, pin ? { pin } : undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Bill deleted" });
+      setSelectedBillId(null);
       setView("list");
     },
     onError: (err: Error) => {
@@ -297,6 +304,7 @@ export default function VendorBills() {
     setEntryTypeFilter("all");
     setLineItems([{ date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
     setEditingBillId(null);
+    setAdminPinForUpdate(null);
     setVendorSearch("");
     setShowVendorDropdown(false);
     setShowVendorDiscovery(false);
@@ -467,7 +475,7 @@ export default function VendorBills() {
     };
 
     if (editingBillId) {
-      updateMutation.mutate({ id: editingBillId, data });
+      updateMutation.mutate({ id: editingBillId, data, pin: adminPinForUpdate });
     } else {
       createMutation.mutate(data);
     }
@@ -497,6 +505,41 @@ export default function VendorBills() {
         pin: _pin,
       });
       setPendingStatusAction(null);
+    }
+  };
+
+  const handleEditPinSuccess = (_role: "manager" | "admin", _pin: string) => {
+    setShowEditPinAuth(false);
+    if (pendingEditAction) {
+      setAdminPinForUpdate(_pin);
+      loadBillForEdit(pendingEditAction.bill);
+      setPendingEditAction(null);
+    }
+  };
+
+  const handleDeletePinSuccess = (_role: "manager" | "admin", _pin: string) => {
+    setShowDeletePinAuth(false);
+    if (pendingDeleteAction) {
+      deleteMutation.mutate({ id: pendingDeleteAction.billId, pin: _pin });
+      setPendingDeleteAction(null);
+    }
+  };
+
+  const handleEditBill = (bill: VendorBillWithItems) => {
+    if (bill.status === "verified" || bill.status === "approved") {
+      setPendingEditAction({ bill });
+      setShowEditPinAuth(true);
+    } else {
+      loadBillForEdit(bill);
+    }
+  };
+
+  const handleDeleteBill = (bill: VendorBillWithItems) => {
+    if (bill.status === "verified" || bill.status === "approved") {
+      setPendingDeleteAction({ billId: bill.id });
+      setShowDeletePinAuth(true);
+    } else {
+      deleteMutation.mutate({ id: bill.id });
     }
   };
 
@@ -905,13 +948,13 @@ export default function VendorBills() {
                   <th className="px-2 py-2 text-left w-28">Date</th>
                   <th className="px-2 py-2 text-center w-16">Type</th>
                   <th className="px-2 py-2 text-left">Description</th>
-                  <th className="px-2 py-2 text-left w-20">Qty</th>
+                  <th className="px-2 py-2 text-left w-24">Qty</th>
                   <th className="px-2 py-2 text-left w-20">Unit</th>
                   {(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) && (
                     <th className="px-2 py-2 text-left w-24">Lead (KM)</th>
                   )}
                   <th className="px-2 py-2 text-left w-24">Rate</th>
-                  <th className="px-2 py-2 text-right w-28">Amount</th>
+                  <th className="px-2 py-2 text-right w-32">Amount</th>
                   <th className="px-2 py-2 w-10"></th>
                 </tr>
               </thead>
@@ -1145,9 +1188,9 @@ export default function VendorBills() {
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>
-            {bill.status === "draft" && (
-              <Button size="sm" onClick={() => loadBillForEdit(bill)} data-testid="button-edit-bill">
-                EDIT
+            {bill.status !== "paid" && (
+              <Button size="sm" onClick={() => handleEditBill(bill)} data-testid="button-edit-bill">
+                <Edit className="w-4 h-4 mr-1" /> EDIT
               </Button>
             )}
           </div>
@@ -1202,17 +1245,17 @@ export default function VendorBills() {
                   {statusMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
                   MARK AS {nextStatus.toUpperCase()}
                 </Button>
-                {bill.status === "draft" && (
+                {bill.status !== "paid" && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="text-destructive"
-                    onClick={() => deleteMutation.mutate(bill.id)}
+                    onClick={() => handleDeleteBill(bill)}
                     disabled={deleteMutation.isPending}
                     data-testid="button-delete-bill"
                   >
                     {deleteMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
-                    DELETE BILL
+                    <Trash2 className="w-3 h-3 mr-1" /> DELETE BILL
                   </Button>
                 )}
               </div>
@@ -1235,13 +1278,13 @@ export default function VendorBills() {
                   <th className="px-2 py-2 text-left w-24">Date</th>
                   <th className="px-2 py-2 text-center w-16">Type</th>
                   <th className="px-2 py-2 text-left">Description</th>
-                  <th className="px-2 py-2 text-left w-16">Qty</th>
+                  <th className="px-2 py-2 text-left w-24">Qty</th>
                   <th className="px-2 py-2 text-left w-16">Unit</th>
                   {bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) && (
                     <th className="px-2 py-2 text-left w-24">Lead (KM)</th>
                   )}
                   <th className="px-2 py-2 text-right w-24">Rate</th>
-                  <th className="px-2 py-2 text-right w-28">Amount</th>
+                  <th className="px-2 py-2 text-right w-32">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -1318,6 +1361,22 @@ export default function VendorBills() {
             onClose={() => { setShowPinAuth(false); setPendingStatusAction(null); }}
           />
         )}
+
+        {showEditPinAuth && (
+          <PinAuth
+            targetRole="admin"
+            onSuccess={handleEditPinSuccess}
+            onClose={() => { setShowEditPinAuth(false); setPendingEditAction(null); }}
+          />
+        )}
+
+        {showDeletePinAuth && (
+          <PinAuth
+            targetRole="admin"
+            onSuccess={handleDeletePinSuccess}
+            onClose={() => { setShowDeletePinAuth(false); setPendingDeleteAction(null); }}
+          />
+        )}
       </div>
     );
   }
@@ -1385,42 +1444,83 @@ export default function VendorBills() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-xs uppercase">Date From</Label>
-              <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
+              <div className="relative">
+                <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
+                {filterDateFrom && (
+                  <Button size="icon" variant="ghost" className="absolute right-0 top-0 h-full w-8" onClick={() => setFilterDateFrom("")} data-testid="button-clear-date-from">
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
             </div>
             <div>
               <Label className="text-xs uppercase">Date To</Label>
-              <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
+              <div className="relative">
+                <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
+                {filterDateTo && (
+                  <Button size="icon" variant="ghost" className="absolute right-0 top-0 h-full w-8" onClick={() => setFilterDateTo("")} data-testid="button-clear-date-to">
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
             </div>
             <div>
               <Label className="text-xs uppercase">Vendor</Label>
-              <Select value={filterVendor} onValueChange={setFilterVendor}>
-                <SelectTrigger data-testid="filter-vendor">
-                  <SelectValue placeholder="ALL VENDORS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ALL VENDORS</SelectItem>
-                  {vendorNames.map(name => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1">
+                <Select value={filterVendor} onValueChange={setFilterVendor}>
+                  <SelectTrigger data-testid="filter-vendor" className="flex-1">
+                    <SelectValue placeholder="ALL VENDORS" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ALL VENDORS</SelectItem>
+                    {vendorNames.map(name => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {filterVendor !== "all" && (
+                  <Button size="icon" variant="ghost" onClick={() => setFilterVendor("all")} data-testid="button-clear-vendor">
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
             </div>
             <div>
               <Label className="text-xs uppercase">Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger data-testid="filter-status">
-                  <SelectValue placeholder="ALL STATUS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ALL STATUS</SelectItem>
-                  <SelectItem value="draft">DRAFT</SelectItem>
-                  <SelectItem value="verified">VERIFIED</SelectItem>
-                  <SelectItem value="approved">APPROVED</SelectItem>
-                  <SelectItem value="paid">PAID</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1">
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger data-testid="filter-status" className="flex-1">
+                    <SelectValue placeholder="ALL STATUS" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ALL STATUS</SelectItem>
+                    <SelectItem value="draft">DRAFT</SelectItem>
+                    <SelectItem value="verified">VERIFIED</SelectItem>
+                    <SelectItem value="approved">APPROVED</SelectItem>
+                    <SelectItem value="paid">PAID</SelectItem>
+                  </SelectContent>
+                </Select>
+                {filterStatus !== "all" && (
+                  <Button size="icon" variant="ghost" onClick={() => setFilterStatus("all")} data-testid="button-clear-status">
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
+          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all") && (
+            <div className="flex justify-end mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); }}
+                data-testid="button-clear-all-filters"
+              >
+                <X className="w-3 h-3 mr-1" />
+                CLEAR FILTERS
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

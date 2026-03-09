@@ -188,18 +188,18 @@ export default function DieselRequirements() {
     if (field === "equipmentId") {
       const eq = equipment?.find((e) => e.id === Number(value));
       if (eq) {
-        updated[index].equipmentName = eq.name + (eq.registrationNumber ? ` - ${eq.registrationNumber}` : "");
+        updated[index].equipmentName = eq.name + (eq.registrationNumber ? ` (${eq.registrationNumber})` : "") + ` | ${(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}`;
         updated[index].norm = String(eq.consumptionNorm || "");
         const hours = parseFloat(updated[index].estHours) || 0;
         const norm = eq.consumptionNorm || 0;
-        updated[index].plannedQty = hours && norm ? String(Math.round(hours * norm * 100) / 100) : "";
+        updated[index].plannedQty = hours && norm ? String(Math.ceil(hours * norm)) : "";
       }
     }
 
     if (field === "estHours" || field === "norm") {
       const hours = parseFloat(field === "estHours" ? String(value) : updated[index].estHours) || 0;
       const norm = parseFloat(field === "norm" ? String(value) : updated[index].norm) || 0;
-      updated[index].plannedQty = hours && norm ? String(Math.round(hours * norm * 100) / 100) : "";
+      updated[index].plannedQty = hours && norm ? String(Math.ceil(hours * norm)) : "";
     }
 
     setFormItems(updated);
@@ -599,7 +599,7 @@ export default function DieselRequirements() {
                           <SelectContent>
                             {equipment?.filter(e => e.isActive === 1).map((eq) => (
                               <SelectItem key={eq.id} value={String(eq.id)}>
-                                {eq.name}{eq.registrationNumber ? ` - ${eq.registrationNumber}` : ""}
+                                {eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} | {(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}
                               </SelectItem>
                             ))}
                           </SelectContent>
