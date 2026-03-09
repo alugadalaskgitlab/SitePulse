@@ -4969,6 +4969,7 @@ export class DatabaseStorage implements IStorage {
             amount: item.amount,
             source: item.source || "manual",
             equipmentId: item.equipmentId,
+            leadDistance: item.leadDistance ?? null,
           }))
         ).returning();
       }
@@ -5012,6 +5013,7 @@ export class DatabaseStorage implements IStorage {
             amount: item.amount,
             source: item.source || "manual",
             equipmentId: item.equipmentId,
+            leadDistance: item.leadDistance ?? null,
           }))
         ).returning();
       }
@@ -5373,9 +5375,10 @@ export class DatabaseStorage implements IStorage {
           date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
           category: "transport",
           description: `${(row.truckNumber || "TRUCK").toUpperCase()} → ${(row.deliveryLocation || "").toUpperCase()} (${row.loadWeight || 0} MT)`,
-          qty: row.loadWeight || 0,
-          unit: "MT",
+          qty: 1,
+          unit: "TRIP",
           source: "auto",
+          leadDistance: null,
         });
       }
     }

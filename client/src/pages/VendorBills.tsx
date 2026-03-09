@@ -29,17 +29,18 @@ interface LineItem {
   amount: number;
   source: string;
   equipmentId: number | null;
+  leadDistance: number | null;
 }
 
 const BILL_TYPES = [
   { value: "equipment", label: "EQUIPMENT HIRE" },
   { value: "material", label: "MATERIAL SUPPLY" },
-  { value: "transport", label: "MIX TRANSPORT" },
+  { value: "transport", label: "TRANSPORT" },
   { value: "all", label: "ALL" },
   { value: "other", label: "OTHER / MISCELLANEOUS" },
 ];
 
-const LINE_ITEM_UNITS = ["HRS", "DAYS", "TRIPS", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "MONTHS"];
+const LINE_ITEM_UNITS = ["HRS", "DAYS", "TRIP", "TRIPS", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "MONTHS", "KM"];
 
 function getCategoryBadgeClass(category: string) {
   switch (category) {
@@ -124,7 +125,7 @@ export default function VendorBills() {
   const [periodTo, setPeriodTo] = useState("");
   const [notes, setNotes] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
-    { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null },
+    { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
   ]);
 
   const [entryTypeFilter, setEntryTypeFilter] = useState("all");
@@ -294,7 +295,7 @@ export default function VendorBills() {
     setPeriodTo("");
     setNotes("");
     setEntryTypeFilter("all");
-    setLineItems([{ date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null }]);
+    setLineItems([{ date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
     setEditingBillId(null);
     setVendorSearch("");
     setShowVendorDropdown(false);
@@ -339,6 +340,7 @@ export default function VendorBills() {
         amount: item.amount || 0,
         source: item.source || "manual",
         equipmentId: item.equipmentId || null,
+        leadDistance: item.leadDistance ?? null,
       }))
     );
     setEditingBillId(bill.id);
@@ -357,6 +359,7 @@ export default function VendorBills() {
         amount: (item.qty || 0) * (item.rate || 0),
         source: "auto",
         equipmentId: item.equipmentId || null,
+        leadDistance: item.leadDistance ?? null,
       }));
       setLineItems(mapped);
       toast({ title: `${mapped.length} items auto-populated from records` });
@@ -366,7 +369,7 @@ export default function VendorBills() {
   const addLineItem = () => {
     setLineItems(prev => [
       ...prev,
-      { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null },
+      { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
     ]);
   };
 
@@ -374,12 +377,22 @@ export default function VendorBills() {
     setLineItems(prev => prev.filter((_, i) => i !== index));
   };
 
+  const calcAmount = (item: LineItem) => {
+    if (item.category === "transport" && item.leadDistance && item.leadDistance > 0) {
+      return item.leadDistance * 2 * (item.rate || 0);
+    }
+    return (item.qty || 0) * (item.rate || 0);
+  };
+
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
     setLineItems(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      if (field === "qty" || field === "rate") {
-        updated[index].amount = (updated[index].qty || 0) * (updated[index].rate || 0);
+      if (field === "category" && value !== "transport") {
+        updated[index].leadDistance = null;
+      }
+      if (field === "qty" || field === "rate" || field === "leadDistance" || field === "category") {
+        updated[index].amount = calcAmount(updated[index]);
       }
       return updated;
     });
@@ -402,7 +415,9 @@ export default function VendorBills() {
         const sameType = sourceEntryType && itemEntryType === sourceEntryType;
         if (sameEquipment && sameType) {
           if (!updated[i].rate || updated[i].rate === 0) {
-            updated[i] = { ...updated[i], rate: source.rate, amount: (updated[i].qty || 0) * source.rate };
+            const newItem = { ...updated[i], rate: source.rate };
+            newItem.amount = calcAmount(newItem);
+            updated[i] = newItem;
             applied++;
           } else {
             skipped++;
@@ -447,6 +462,7 @@ export default function VendorBills() {
         amount: item.amount,
         source: item.source,
         equipmentId: item.equipmentId,
+        leadDistance: item.leadDistance,
       })),
     };
 
@@ -507,6 +523,7 @@ export default function VendorBills() {
       toast({ title: "Please allow pop-ups to print", variant: "destructive" });
       return;
     }
+    const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
     const rows = bill.items.map((item: any, i: number) => `
       <tr class="${i % 2 === 0 ? "even" : "odd"}">
         <td style="text-align:center">${i + 1}</td>
@@ -515,34 +532,44 @@ export default function VendorBills() {
         <td>${escHtml(item.description)}</td>
         <td style="text-align:center">${item.qty || 0}</td>
         <td style="text-align:center">${item.unit || ""}</td>
+        ${hasLeadDistance ? `<td style="text-align:center">${item.leadDistance ? `${item.leadDistance} (RT: ${item.leadDistance * 2})` : "-"}</td>` : ""}
         <td style="text-align:right">${formatCurrency(item.rate)}</td>
         <td style="text-align:right">${formatCurrency(item.amount)}</td>
       </tr>
     `).join("");
 
+    const totalQty = bill.items.reduce((s: number, it: any) => s + (it.qty || 0), 0);
+    const totalItems = bill.items.length;
+
     printWindow.document.write(`
       <!DOCTYPE html><html><head><title>Vendor Bill - ${bill.billNo}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
+        body { font-family: Arial, sans-serif; padding: 24px; color: #000; }
         .header { text-align: center; margin-bottom: 16px; border-bottom: 3px solid #d97706; padding-bottom: 12px; }
-        .header h1 { font-size: 20px; letter-spacing: 2px; margin-bottom: 2px; }
-        .header .subtitle { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; font-size: 11px; }
+        .header h1 { font-size: 22px; letter-spacing: 2px; margin-bottom: 4px; color: #000; }
+        .header .subtitle { font-size: 14px; color: #333; text-transform: uppercase; letter-spacing: 1px; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
         .meta-grid .item { padding: 4px 0; }
-        .meta-grid .label { color: #888; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
-        .meta-grid .value { font-weight: bold; font-size: 12px; }
-        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #d97706; color: white; }
+        .meta-grid .label { color: #333; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; font-weight: bold; }
+        .meta-grid .value { font-weight: bold; font-size: 13px; color: #000; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #d97706; color: white; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { border: 1px solid #ddd; padding: 5px 6px; text-align: left; font-size: 10px; }
-        th { background: #d97706; color: white; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
-        tr.odd { background: #fefce8; }
+        th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; font-size: 12px; color: #000; }
+        th { background: #d97706; color: white; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+        tr.odd { background: #f9f9f9; }
+        .summary-row td { font-weight: bold; font-size: 12px; background: #f5f5f5; color: #000; border-color: #999; }
         .total-row { background: #d97706 !important; }
-        .total-row td { color: white; font-weight: bold; font-size: 12px; border-color: #b45309; }
-        .notes { margin-top: 16px; padding: 8px 12px; background: #fffbeb; border-left: 3px solid #d97706; font-size: 11px; }
-        .notes strong { font-size: 10px; text-transform: uppercase; color: #92400e; }
-        .footer { margin-top: 20px; font-size: 8px; color: #aaa; text-align: center; border-top: 1px solid #eee; padding-top: 8px; }
-        @media print { body { padding: 12px; } }
+        .total-row td { color: white; font-weight: bold; font-size: 13px; border-color: #b45309; }
+        .notes { margin-top: 16px; padding: 10px 14px; background: #fffbeb; border-left: 3px solid #d97706; font-size: 12px; color: #000; }
+        .notes strong { font-size: 11px; text-transform: uppercase; color: #92400e; }
+        .signatures { margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-start; page-break-inside: avoid; }
+        .sig-block { width: 220px; text-align: center; }
+        .sig-block.vendor { margin-top: 30px; }
+        .sig-line { border-top: 1px solid #000; margin-top: 50px; padding-top: 6px; font-size: 11px; color: #000; }
+        .sig-label { font-size: 11px; font-weight: bold; color: #000; }
+        .footer { margin-top: 30px; font-size: 10px; color: #555; text-align: center; border-top: 1px solid #ccc; padding-top: 8px; }
+        @media print { body { padding: 12px; } .signatures { page-break-inside: avoid; } }
       </style></head><body>
       <div class="header">
         <h1>HIGH LANE CONSTRUCTIONS</h1>
@@ -556,11 +583,24 @@ export default function VendorBills() {
         ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(bill.periodFrom)} to ${escHtml(bill.periodTo)}</div></div>` : ""}
         <div class="item"><div class="label">Status</div><div class="value"><span class="status-badge">${escHtml(bill.status.toUpperCase())}</span></div></div>
       </div>
-      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Qty</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
+      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr class="total-row"><td colspan="7" style="text-align:right">TOTAL</td><td style="text-align:right">${formatCurrency(bill.totalAmount)}</td></tr></tfoot>
+      <tfoot>
+        <tr class="summary-row"><td colspan="${hasLeadDistance ? 5 : 4}" style="text-align:right">TOTAL ITEMS: ${totalItems}</td><td style="text-align:center">${totalQty}</td><td colspan="${hasLeadDistance ? 4 : 3}"></td></tr>
+        <tr class="total-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">TOTAL AMOUNT</td><td style="text-align:right">${formatCurrency(bill.totalAmount)}</td></tr>
+      </tfoot>
       </table>
       ${bill.notes ? `<div class="notes"><strong>Notes / Remarks:</strong><br/>${escHtml(bill.notes)}</div>` : ""}
+      <div class="signatures">
+        <div class="sig-block vendor">
+          <div class="sig-label">Vendor Acknowledgement</div>
+          <div class="sig-line">${escHtml(bill.vendorName)}</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-label">For HIGH LANE CONSTRUCTIONS</div>
+          <div class="sig-line">Authorized Signatory</div>
+        </div>
+      </div>
       <div class="footer">Generated on ${new Date().toLocaleString("en-IN")} | HIGH LANE CONSTRUCTIONS</div>
       </body></html>
     `);
@@ -867,6 +907,9 @@ export default function VendorBills() {
                   <th className="px-2 py-2 text-left">Description</th>
                   <th className="px-2 py-2 text-left w-20">Qty</th>
                   <th className="px-2 py-2 text-left w-20">Unit</th>
+                  {(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) && (
+                    <th className="px-2 py-2 text-left w-24">Lead (KM)</th>
+                  )}
                   <th className="px-2 py-2 text-left w-24">Rate</th>
                   <th className="px-2 py-2 text-right w-28">Amount</th>
                   <th className="px-2 py-2 w-10"></th>
@@ -956,6 +999,27 @@ export default function VendorBills() {
                         </SelectContent>
                       </Select>
                     </td>
+                    {(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) && (
+                      <td className="px-2 py-1.5">
+                        {item.category === "transport" ? (
+                          <div className="space-y-0.5">
+                            <Input
+                              type="number"
+                              value={item.leadDistance || ""}
+                              onChange={e => updateLineItem(idx, "leadDistance", parseFloat(e.target.value) || 0)}
+                              placeholder="ONE-WAY KM"
+                              className="text-xs h-8"
+                              data-testid={`input-item-lead-${idx}`}
+                            />
+                            {item.leadDistance && item.leadDistance > 0 && (
+                              <span className="text-[10px] text-muted-foreground">RT: {item.leadDistance * 2} KM</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1">
                         <Input
@@ -992,7 +1056,7 @@ export default function VendorBills() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
-                  <td colSpan={7} className="px-2 py-3 text-right font-bold text-base">TOTAL</td>
+                  <td colSpan={(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) ? 8 : 7} className="px-2 py-3 text-right font-bold text-base">TOTAL</td>
                   <td className="px-2 py-3 text-right font-bold text-base" data-testid="text-total-amount">{formatCurrency(totalAmount)}</td>
                   <td></td>
                 </tr>
@@ -1173,6 +1237,9 @@ export default function VendorBills() {
                   <th className="px-2 py-2 text-left">Description</th>
                   <th className="px-2 py-2 text-left w-16">Qty</th>
                   <th className="px-2 py-2 text-left w-16">Unit</th>
+                  {bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) && (
+                    <th className="px-2 py-2 text-left w-24">Lead (KM)</th>
+                  )}
                   <th className="px-2 py-2 text-right w-24">Rate</th>
                   <th className="px-2 py-2 text-right w-28">Amount</th>
                 </tr>
@@ -1211,6 +1278,13 @@ export default function VendorBills() {
                     </td>
                     <td className="px-2 py-2 text-xs">{item.qty}</td>
                     <td className="px-2 py-2 text-xs">{item.unit}</td>
+                    {bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) && (
+                      <td className="px-2 py-2 text-xs">
+                        {item.leadDistance && item.leadDistance > 0 ? (
+                          <span>{item.leadDistance} <span className="text-muted-foreground">(RT: {item.leadDistance * 2})</span></span>
+                        ) : "-"}
+                      </td>
+                    )}
                     <td className="px-2 py-2 text-right text-xs">{formatCurrency(item.rate)}</td>
                     <td className="px-2 py-2 text-right font-semibold bg-amber-50 dark:bg-amber-900/20 text-xs" data-testid={`text-detail-item-amount-${idx}`}>
                       {formatCurrency(item.amount)}
@@ -1220,7 +1294,7 @@ export default function VendorBills() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
-                  <td colSpan={6} className="px-2 py-3 text-right font-bold">TOTAL</td>
+                  <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-3 text-right font-bold">TOTAL</td>
                   <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>{formatCurrency(bill.totalAmount)}</td>
                 </tr>
               </tfoot>

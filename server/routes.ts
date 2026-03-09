@@ -2457,7 +2457,7 @@ export async function registerRoutes(
       }
 
       const getBillTypeLabel = (type: string) => {
-        const map: Record<string, string> = { equipment: "EQUIPMENT HIRE", material: "MATERIAL SUPPLY", transport: "MIX TRANSPORT", all: "ALL", other: "OTHER / MISCELLANEOUS" };
+        const map: Record<string, string> = { equipment: "EQUIPMENT HIRE", material: "MATERIAL SUPPLY", transport: "TRANSPORT", all: "ALL", other: "OTHER / MISCELLANEOUS" };
         return map[type.toLowerCase()] || type.toUpperCase();
       };
       const getCategoryLabel = (cat: string) => {
@@ -2481,88 +2481,151 @@ export async function registerRoutes(
 
       const pageW = 515;
       const amber = "#d97706";
+      const tableX = 40;
 
-      doc.fontSize(16).font("Helvetica-Bold").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
-      doc.moveDown(0.3);
-      doc.fontSize(9).font("Helvetica").fillColor("#666").text("VENDOR BILL", { align: "center" });
+      doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
+      doc.moveDown(0.2);
+      doc.fontSize(11).font("Helvetica").fillColor("#333").text("VENDOR BILL", { align: "center" });
       doc.moveDown(0.5);
 
       doc.moveTo(40, doc.y).lineTo(40 + pageW, doc.y).strokeColor(amber).lineWidth(2).stroke();
       doc.moveDown(0.5);
 
-      doc.fillColor("#000").fontSize(10).font("Helvetica-Bold").text(`Bill No: ${bill.billNo}`, 40, doc.y, { continued: true });
-      doc.font("Helvetica").text(`          Date: ${bill.billDate}`, { continued: true });
-      doc.text(`          Status: ${bill.status.toUpperCase()}`);
+      const metaY = doc.y;
+      doc.fillColor("#000").fontSize(11).font("Helvetica-Bold");
+      doc.text(`Bill No: ${bill.billNo}`, 40, metaY);
+      doc.text(`Date: ${bill.billDate}`, 300, metaY);
       doc.moveDown(0.3);
-      doc.font("Helvetica-Bold").text(`Vendor: ${bill.vendorName}`);
+      doc.text(`Vendor: ${bill.vendorName}`, 40);
+      const statusY = doc.y;
+      doc.text(`Status: ${bill.status.toUpperCase()}`, 300, statusY - 14);
       doc.moveDown(0.2);
-      doc.font("Helvetica").fontSize(9);
-      doc.text(`Bill Type: ${getBillTypeLabel(bill.billType)}${bill.periodFrom && bill.periodTo ? `     Period: ${bill.periodFrom} to ${bill.periodTo}` : ""}`);
+      doc.font("Helvetica").fontSize(10).fillColor("#000");
+      doc.text(`Bill Type: ${getBillTypeLabel(bill.billType)}`, 40);
+      if (bill.periodFrom && bill.periodTo) {
+        doc.text(`Period: ${bill.periodFrom} to ${bill.periodTo}`, 300, doc.y - 14);
+      }
       doc.moveDown(0.8);
 
-      const colWidths = [25, 55, 40, 180, 40, 35, 60, 80];
-      const headers = ["#", "Date", "Type", "Description", "Qty", "Unit", "Rate", "Amount"];
-      const tableX = 40;
+      const hasLeadDist = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
+      const colWidths = hasLeadDist
+        ? [20, 52, 30, 160, 35, 28, 55, 55, 80]
+        : [22, 58, 35, 195, 40, 30, 55, 80];
+      const headers = hasLeadDist
+        ? ["#", "Date", "Type", "Description", "Qty", "Unit", "Lead KM", "Rate (₹)", "Amount (₹)"]
+        : ["#", "Date", "Type", "Description", "Qty", "Unit", "Rate (₹)", "Amount (₹)"];
+      const rateColIdx = hasLeadDist ? 7 : 6;
+      const descColIdx = 3;
       let y = doc.y;
 
-      doc.fillColor("#fff").rect(tableX, y, pageW, 18).fill(amber);
-      doc.fillColor("#fff").fontSize(8).font("Helvetica-Bold");
+      doc.fillColor("#fff").rect(tableX, y, pageW, 20).fill(amber);
+      doc.fillColor("#fff").fontSize(9).font("Helvetica-Bold");
       let cx = tableX;
       headers.forEach((h, i) => {
-        const align = i >= 6 ? "right" : "left";
+        const align = i >= rateColIdx ? "right" : "left";
         const offset = align === "right" ? colWidths[i] - 4 : 4;
         doc.text(h, cx + offset, y + 5, { width: colWidths[i] - 8, align, lineBreak: false });
         cx += colWidths[i];
       });
-      y += 18;
+      y += 20;
 
-      doc.fillColor("#000").font("Helvetica").fontSize(7);
+      doc.fillColor("#000").font("Helvetica").fontSize(9);
       bill.items.forEach((item: any, idx: number) => {
-        if (y > 750) {
+        const desc = item.description || "";
+        const descHeight = doc.heightOfString(desc, { width: colWidths[descColIdx] - 8, fontSize: 9 });
+        const rowH = Math.max(18, descHeight + 8);
+
+        if (y + rowH > 720) {
           doc.addPage();
           y = 40;
         }
-        const bgColor = idx % 2 === 0 ? "#fff" : "#f9f9f9";
-        doc.fillColor(bgColor).rect(tableX, y, pageW, 16).fill();
+        const bgColor = idx % 2 === 0 ? "#fff" : "#f5f5f5";
+        doc.fillColor(bgColor).rect(tableX, y, pageW, rowH).fill();
 
-        const rowData = [
-          String(idx + 1),
-          item.date || "-",
-          item.category ? getCategoryLabel(item.category) : "-",
-          item.description || "",
-          String(item.qty || 0),
-          item.unit || "",
-          fmtCurrency(item.rate),
-          fmtCurrency(item.amount),
-        ];
-        doc.fillColor("#333").fontSize(7);
+        const rowData = hasLeadDist
+          ? [
+              String(idx + 1), item.date || "-",
+              item.category ? getCategoryLabel(item.category) : "-", desc,
+              String(item.qty || 0), item.unit || "",
+              item.leadDistance ? `${item.leadDistance} (${item.leadDistance * 2})` : "-",
+              fmtCurrency(item.rate), fmtCurrency(item.amount),
+            ]
+          : [
+              String(idx + 1), item.date || "-",
+              item.category ? getCategoryLabel(item.category) : "-", desc,
+              String(item.qty || 0), item.unit || "",
+              fmtCurrency(item.rate), fmtCurrency(item.amount),
+            ];
+        doc.fillColor("#000").fontSize(9);
         cx = tableX;
         rowData.forEach((cell, i) => {
-          const align = i >= 6 ? "right" : "left";
+          const align = i >= rateColIdx ? "right" : "left";
           const offset = align === "right" ? colWidths[i] - 4 : 4;
           const w = colWidths[i] - 8;
-          doc.text(cell.substring(0, 60), cx + offset, y + 4, { width: w, align, lineBreak: false });
+          if (i === descColIdx) {
+            doc.text(cell, cx + offset, y + 4, { width: w, align, lineBreak: true });
+          } else {
+            doc.text(cell, cx + offset, y + 4, { width: w, align, lineBreak: false });
+          }
           cx += colWidths[i];
         });
-        y += 16;
+        y += rowH;
       });
 
-      doc.fillColor(amber).rect(tableX, y, pageW, 20).fill();
-      doc.fillColor("#fff").fontSize(9).font("Helvetica-Bold");
-      doc.text("TOTAL", tableX + 4, y + 5, { width: pageW - colWidths[7] - 8, align: "right" });
-      doc.text(fmtCurrency(bill.totalAmount), tableX + pageW - colWidths[7] + 4, y + 5, { width: colWidths[7] - 8, align: "right" });
-      y += 20;
+      doc.strokeColor("#999").lineWidth(0.5);
+      doc.moveTo(tableX, y).lineTo(tableX + pageW, y).stroke();
+
+      const totalQty = bill.items.reduce((s: number, it: any) => s + (it.qty || 0), 0);
+      const totalItems = bill.items.length;
+
+      const summaryH = 22;
+      if (y + summaryH * 2 > 720) { doc.addPage(); y = 40; }
+
+      doc.fillColor("#f5f5f5").rect(tableX, y, pageW, summaryH).fill();
+      doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
+      doc.text(`TOTAL ITEMS: ${totalItems}`, tableX + 4, y + 6, { width: 200 });
+      doc.text(`TOTAL QTY: ${totalQty}`, tableX + 200, y + 6, { width: 150 });
+      y += summaryH;
+
+      const amtColW = colWidths[colWidths.length - 1];
+      doc.fillColor(amber).rect(tableX, y, pageW, summaryH).fill();
+      doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
+      doc.text("TOTAL AMOUNT", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
+      doc.text(`₹ ${fmtCurrency(bill.totalAmount)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
+      y += summaryH;
 
       if (bill.notes) {
-        doc.moveDown(1);
-        doc.fillColor("#000").fontSize(8).font("Helvetica-Bold").text("Notes:", 40, y + 10);
-        doc.font("Helvetica").text(bill.notes, 40, y + 22, { width: pageW });
+        if (y + 40 > 720) { doc.addPage(); y = 40; }
+        y += 10;
+        doc.fillColor("#000").fontSize(10).font("Helvetica-Bold").text("Notes / Remarks:", 40, y);
+        y += 14;
+        doc.font("Helvetica").fontSize(10).text(bill.notes, 40, y, { width: pageW });
+        y = doc.y + 10;
       }
+
+      if (y + 120 > 720) { doc.addPage(); y = 40; }
+      y += 40;
+
+      doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
+      doc.text("For HIGH LANE CONSTRUCTIONS", tableX + pageW - 200, y, { width: 200, align: "center" });
+      doc.moveDown(3);
+      const compSignY = doc.y;
+      doc.moveTo(tableX + pageW - 200, compSignY).lineTo(tableX + pageW, compSignY).strokeColor("#000").lineWidth(0.5).stroke();
+      doc.fontSize(9).font("Helvetica").fillColor("#000");
+      doc.text("Authorized Signatory", tableX + pageW - 200, compSignY + 4, { width: 200, align: "center" });
+
+      const vendorSignY = compSignY + 30;
+      doc.fontSize(10).font("Helvetica-Bold").fillColor("#000");
+      doc.text("Vendor Acknowledgement", tableX, vendorSignY - 40, { width: 200, align: "center" });
+      doc.moveDown(2.5);
+      doc.moveTo(tableX, vendorSignY).lineTo(tableX + 200, vendorSignY).strokeColor("#000").lineWidth(0.5).stroke();
+      doc.fontSize(9).font("Helvetica").fillColor("#000");
+      doc.text(bill.vendorName, tableX, vendorSignY + 4, { width: 200, align: "center" });
 
       const pages = doc.bufferedPageRange();
       for (let i = 0; i < pages.count; i++) {
         doc.switchToPage(i);
-        doc.fillColor("#999").fontSize(7).font("Helvetica");
+        doc.fillColor("#555").fontSize(8).font("Helvetica");
         doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, 40, 800, { width: pageW / 2, align: "left" });
         doc.text(`Page ${i + 1} of ${pages.count}`, 40 + pageW / 2, 800, { width: pageW / 2, align: "right" });
       }
