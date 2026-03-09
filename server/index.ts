@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { initPush } from "./push";
+import { storage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -65,6 +66,13 @@ app.use((req, res, next) => {
 (async () => {
   initPush();
   await registerRoutes(httpServer, app);
+
+  try {
+    await storage.resetAllSequences();
+    console.log("Startup: All database sequences reset successfully");
+  } catch (e) {
+    console.error("Startup: Failed to reset sequences:", e);
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

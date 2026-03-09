@@ -129,7 +129,7 @@ export default function VendorBills() {
   const [periodTo, setPeriodTo] = useState("");
   const [notes, setNotes] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
-    { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
+    { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
   ]);
 
   const [entryTypeFilter, setEntryTypeFilter] = useState("all");
@@ -306,7 +306,7 @@ export default function VendorBills() {
     setPeriodTo("");
     setNotes("");
     setEntryTypeFilter("all");
-    setLineItems([{ date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
+    setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
     setEditingBillId(null);
     setAdminPinForUpdate(null);
     setVendorSearch("");
@@ -378,10 +378,20 @@ export default function VendorBills() {
     }
   };
 
+  const getDefaultCategory = () => {
+    if (billType === "transport" || billType === "equipment" || billType === "material") return billType;
+    return "other";
+  };
+
+  const getDefaultUnit = () => {
+    if (billType === "transport") return "TRIP";
+    return "HRS";
+  };
+
   const addLineItem = () => {
     setLineItems(prev => [
       ...prev,
-      { date: "", category: "other", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
+      { date: "", category: getDefaultCategory(), description: "", qty: 0, unit: getDefaultUnit(), rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
     ]);
   };
 
@@ -710,7 +720,21 @@ export default function VendorBills() {
               </div>
               <div>
                 <Label className="text-xs uppercase">Bill Type</Label>
-                <Select value={billType} onValueChange={setBillType}>
+                <Select value={billType} onValueChange={(val) => {
+                  setBillType(val);
+                  const newCat = (val === "transport" || val === "equipment" || val === "material") ? val : "other";
+                  const newUnit = val === "transport" ? "TRIP" : undefined;
+                  setLineItems(prev => prev.map(item => {
+                    if (item.source === "manual") {
+                      const updated = { ...item, category: newCat };
+                      if (newUnit) updated.unit = newUnit;
+                      if (newCat !== "transport") updated.leadDistance = null;
+                      updated.amount = calcAmount(updated);
+                      return updated;
+                    }
+                    return item;
+                  }));
+                }}>
                   <SelectTrigger data-testid="select-bill-type">
                     <SelectValue />
                   </SelectTrigger>
