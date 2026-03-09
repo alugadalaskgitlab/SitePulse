@@ -5982,13 +5982,24 @@ export class DatabaseStorage implements IStorage {
     const skipped: string[] = [];
     const errors: string[] = [];
 
+    const convertDateStrings = (obj: any) => {
+      const result = { ...obj };
+      for (const key of Object.keys(result)) {
+        if (typeof result[key] === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(result[key])) {
+          result[key] = new Date(result[key]);
+        }
+      }
+      return result;
+    };
+
     const upsertRows = async (table: any, rows: any[], tableName: string) => {
       if (!rows || !Array.isArray(rows) || rows.length === 0) {
         skipped.push(tableName);
         return;
       }
       try {
-        for (const row of rows) {
+        for (const rawRow of rows) {
+          const row = convertDateStrings(rawRow);
           const { id, ...rest } = row;
           if (id) {
             const existing = await db.select().from(table).where(eq(table.id, id)).limit(1);
