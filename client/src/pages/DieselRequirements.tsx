@@ -430,7 +430,7 @@ export default function DieselRequirements() {
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       {showPinAuth && (
         <PinAuth
-          targetRole={pinAction === "delete" ? "admin" : "any"}
+          targetRole={pinAction === "delete" ? "admin" : (pinAction === "edit" && selectedRequirement && selectedRequirement.status !== "pending") ? "admin" : "any"}
           onSuccess={handlePinSuccess}
           onClose={() => { setShowPinAuth(false); setPinAction(null); }}
         />
@@ -778,28 +778,26 @@ export default function DieselRequirements() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2">
-                    {selectedRequirement.status === "pending" && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-600 border-blue-300"
-                          onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
-                          data-testid="button-edit-requirement"
-                        >
-                          <Pencil className="w-3 h-3 mr-1" /> EDIT
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 border-red-300"
-                          onClick={() => setShowDeleteConfirm(true)}
-                          data-testid="button-delete-requirement"
-                        >
-                          <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                        </Button>
-                      </>
-                    )}
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300"
+                        onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                        data-testid="button-edit-requirement"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> EDIT
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-300"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        data-testid="button-delete-requirement"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                      </Button>
+                    </>
                     {getStatusBadge(selectedRequirement.status)}
                   </div>
                 </CardHeader>
@@ -992,7 +990,27 @@ export default function DieselRequirements() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
-                  {getStatusBadge(selectedRequirement.status)}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-600 border-blue-300"
+                      onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                      data-testid="button-edit-requirement-update"
+                    >
+                      <Pencil className="w-3 h-3 mr-1" /> EDIT
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-300"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      data-testid="button-delete-requirement-update"
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                    </Button>
+                    {getStatusBadge(selectedRequirement.status)}
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

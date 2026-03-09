@@ -2059,8 +2059,17 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin, ...data } = req.body;
       if (!pin) return res.status(403).json({ message: "PIN required to edit indent" });
-      const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
-      if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+
+      const existing = await storage.getPurchaseIndent(id);
+      if (!existing) return res.status(404).json({ message: "Purchase indent not found" });
+
+      if (existing.status !== "pending") {
+        const isAdmin = await storage.verifyPin("admin", pin);
+        if (!isAdmin) return res.status(403).json({ message: "Admin PIN required to edit non-pending indent" });
+      } else {
+        const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
+        if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+      }
 
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
@@ -2285,8 +2294,17 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin, ...data } = req.body;
       if (!pin) return res.status(403).json({ message: "PIN required to edit diesel requirement" });
-      const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
-      if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+
+      const existing = await storage.getDieselRequirement(id);
+      if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
+
+      if (existing.status !== "pending") {
+        const isAdmin = await storage.verifyPin("admin", pin);
+        if (!isAdmin) return res.status(403).json({ message: "Admin PIN required to edit non-pending diesel requirement" });
+      } else {
+        const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
+        if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+      }
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);

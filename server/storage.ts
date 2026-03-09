@@ -4830,20 +4830,34 @@ export class DatabaseStorage implements IStorage {
   async updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
-    if (existing.status !== "pending") {
+    if (existing.status === "completed") {
       throw new Error(`Cannot edit indent with status: ${existing.status}`);
     }
 
     return await db.transaction(async (tx) => {
+      const updateFields: any = {
+        date: data.date,
+        proposedBy: data.proposedBy.toUpperCase(),
+        raisedBy: data.raisedBy.toUpperCase(),
+        remarks: data.remarks?.toUpperCase() || data.remarks,
+      };
+
+      if (existing.status !== "pending") {
+        updateFields.status = "pending";
+        updateFields.approvedBy = null;
+        updateFields.approvedAt = null;
+        updateFields.approvalRemarks = null;
+        updateFields.rejectionReason = null;
+      }
+
       await tx.update(purchaseIndents)
-        .set({
-          date: data.date,
-          proposedBy: data.proposedBy.toUpperCase(),
-          raisedBy: data.raisedBy.toUpperCase(),
-          remarks: data.remarks?.toUpperCase() || data.remarks,
-        })
+        .set(updateFields)
         .where(eq(purchaseIndents.id, id));
 
+      const existingItemIds = existing.items.map(i => i.id);
+      if (existingItemIds.length > 0) {
+        await tx.delete(purchaseIndentItemHistory).where(inArray(purchaseIndentItemHistory.itemId, existingItemIds));
+      }
       await tx.delete(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, id));
 
       let items: PurchaseIndentItem[] = [];
@@ -4868,7 +4882,7 @@ export class DatabaseStorage implements IStorage {
   async deletePurchaseIndent(id: number): Promise<boolean> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return false;
-    if (existing.status !== "pending") {
+    if (existing.status === "completed") {
       throw new Error(`Cannot delete indent with status: ${existing.status}`);
     }
 
@@ -5641,18 +5655,32 @@ export class DatabaseStorage implements IStorage {
   async updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return undefined;
-    if (existing.status !== "pending") {
-      throw new Error(`Cannot edit diesel requirement with status: ${existing.status}`);
-    }
 
     return await db.transaction(async (tx) => {
+      const updateFields: any = {
+        date: data.date,
+        raisedBy: data.raisedBy.toUpperCase(),
+        totalPlanned: data.totalPlanned,
+        remarks: data.remarks?.toUpperCase() || data.remarks,
+      };
+
+      if (existing.status !== "pending") {
+        updateFields.status = "pending";
+        updateFields.totalApproved = null;
+        updateFields.approvedBy = null;
+        updateFields.approvedAt = null;
+        updateFields.rejectionReason = null;
+        updateFields.qtyPurchased = null;
+        updateFields.supplier = null;
+        updateFields.billNo = null;
+        updateFields.rate = null;
+        updateFields.amount = null;
+        updateFields.purchasedAt = null;
+        updateFields.purchaseRemarks = null;
+      }
+
       await tx.update(dieselRequirements)
-        .set({
-          date: data.date,
-          raisedBy: data.raisedBy.toUpperCase(),
-          totalPlanned: data.totalPlanned,
-          remarks: data.remarks?.toUpperCase() || data.remarks,
-        })
+        .set(updateFields)
         .where(eq(dieselRequirements.id, id));
 
       await tx.delete(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
@@ -5680,9 +5708,6 @@ export class DatabaseStorage implements IStorage {
   async deleteDieselRequirement(id: number): Promise<boolean> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return false;
-    if (existing.status !== "pending") {
-      throw new Error(`Cannot delete diesel requirement with status: ${existing.status}`);
-    }
 
     await db.transaction(async (tx) => {
       await tx.delete(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
