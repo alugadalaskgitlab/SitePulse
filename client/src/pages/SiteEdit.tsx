@@ -867,8 +867,14 @@ export default function SiteEdit() {
                   </SelectContent>
                 </Select>
                 {entry.equipmentId && entry.vehicleNo && (
-                  <p className="text-xs text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
+                  <p className="text-xs text-muted-foreground mt-1" data-testid={`text-equipment-reg-${idx}`}>Reg: {entry.vehicleNo}</p>
                 )}
+                {entry.equipmentId && (() => {
+                  const selEquip = activeEquipment.find(e => e.id === entry.equipmentId) || equipmentMaster?.find(e => e.id === entry.equipmentId);
+                  if (!selEquip) return null;
+                  const ownerLabel = selEquip.ownership === "hired" ? `HIRED: ${selEquip.vendorName || "VENDOR"}` : "HLC OWN";
+                  return <p className="text-xs text-muted-foreground mt-0.5" data-testid={`text-equipment-owner-${idx}`}>{ownerLabel}</p>;
+                })()}
                 {(() => {
                   const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
                   if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;

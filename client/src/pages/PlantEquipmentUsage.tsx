@@ -519,7 +519,7 @@ export default function PlantEquipmentUsage() {
       const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
       return {
         Date: entry.date,
-        Equipment: equip?.name || "Unknown",
+        Equipment: `${equip?.name || "Unknown"}${(equip as any)?.registrationNumber ? ` - ${(equip as any).registrationNumber}` : ""}${(equip as any)?.ownership === "hired" ? ` (HIRED${(equip as any)?.vendorName ? `: ${(equip as any).vendorName}` : ""})` : (equip as any)?.ownership === "owned" ? " (HLC OWN)" : ""}`,
         "Opening Reading": entry.openingReading,
         "Closing Reading": entry.closingReading,
         "Hours/KM Run": entry.hoursOrKmRun?.toFixed(3) || (isTripBased ? "-" : "0"),
@@ -1149,7 +1149,7 @@ export default function PlantEquipmentUsage() {
                   <SelectItem value="all">All Equipment</SelectItem>
                   {equipment?.map((equip) => (
                     <SelectItem key={equip.id} value={String(equip.id)}>
-                      {equip.name}
+                      {equip.name}{(equip as any).registrationNumber ? ` - ${(equip as any).registrationNumber}` : ""}{(equip as any).ownership === "hired" ? ` (HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""})` : (equip as any).ownership === "owned" ? " (HLC OWN)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1361,6 +1361,11 @@ export default function PlantEquipmentUsage() {
                                 <span className="font-medium">{equip?.name || "Unknown"}</span>
                                 {(equip as any)?.registrationNumber && (
                                   <span className="text-sm text-muted-foreground block">{(equip as any).registrationNumber}</span>
+                                )}
+                                {equip && (
+                                  <span className="text-sm text-muted-foreground block">
+                                    {(equip as any).ownership === "hired" ? `HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""}` : (equip as any).ownership === "owned" ? "HLC OWN" : ""}
+                                  </span>
                                 )}
                                 {(entry as any).entryType === "hourly" && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>

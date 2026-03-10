@@ -35,7 +35,7 @@ import {
   Clock,
   Pencil,
 } from "lucide-react";
-import type { SiteMaterialTrip } from "@shared/schema";
+import type { SiteMaterialTrip, EquipmentMasterType } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -220,6 +220,28 @@ export default function SiteDashboard() {
     });
     return Array.from(materials).sort();
   }, [dprsWithDetails]);
+
+  const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const getEquipmentOwnerInfo = (equipItem: any): string => {
+    if (equipItem.equipmentId && equipmentMaster) {
+      const master = equipmentMaster.find((m) => m.id === equipItem.equipmentId);
+      if (master) {
+        if (master.ownership === "hired") {
+          return `HIRED: ${master.vendorName || "Unknown"}`;
+        }
+        return "HLC OWN";
+      }
+    }
+    return "";
+  };
 
   // Materials Received tab data
   const buildMaterialTripsUrl = () => {
@@ -406,6 +428,8 @@ export default function SiteDashboard() {
           Date: format(new Date(dpr.date), "dd/MM/yyyy"),
           Site: getBaseSiteName(dpr.site),
           Machine: e.machine || "",
+          "Vehicle No": e.vehicleNo || "",
+          Owner: getEquipmentOwnerInfo(e),
           Operator: e.operator || "",
           Task: e.task || "",
           "Start Time": e.startTime || "",
@@ -563,6 +587,8 @@ export default function SiteDashboard() {
             : (e.startTime && e.endTime ? `Time: ${e.startTime}-${e.endTime}` : "-");
           return [
             e.machine || "",
+            e.vehicleNo || "",
+            getEquipmentOwnerInfo(e),
             e.operator || "",
             readingSource,
             hours?.toFixed(3) || "-",
@@ -572,7 +598,7 @@ export default function SiteDashboard() {
         
         autoTable(doc, {
           startY: yPos,
-          head: [["Machine", "Operator", "Reading", "Hours", "Diesel"]],
+          head: [["Machine", "Vehicle No", "Owner", "Operator", "Reading", "Hours", "Diesel"]],
           body: equipRows,
           theme: 'grid',
           headStyles: { fillColor: [100, 100, 100], fontSize: 7 },
@@ -727,7 +753,7 @@ export default function SiteDashboard() {
           <div class="section">
             <div class="section-title">Equipment Log</div>
             <table>
-              <tr><th>Machine</th><th>Operator</th><th>Reading</th><th>Hours</th><th>Diesel</th></tr>
+              <tr><th>Machine</th><th>Vehicle No</th><th>Owner</th><th>Operator</th><th>Reading</th><th>Hours</th><th>Diesel</th></tr>
               ${dpr.equipment.map((e: any) => {
                 const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
                 const readingSource = e.openingReading != null && e.closingReading != null 
@@ -736,6 +762,8 @@ export default function SiteDashboard() {
                 return `
                   <tr>
                     <td>${e.machine || ""}</td>
+                    <td>${e.vehicleNo || "-"}</td>
+                    <td>${getEquipmentOwnerInfo(e)}</td>
                     <td>${e.operator || ""}</td>
                     <td>${readingSource}</td>
                     <td>${hours?.toFixed(3) || "-"}</td>

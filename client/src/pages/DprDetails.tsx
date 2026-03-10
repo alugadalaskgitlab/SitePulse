@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PinAuth } from "@/components/PinAuth";
 import { useAccess } from "@/lib/access-context";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { EquipmentMasterType } from "@shared/schema";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -21,6 +22,14 @@ export default function DprDetails() {
   const { data: dpr, isLoading, error } = useDpr(id);
   const { access, canEdit, canDelete } = useAccess();
   const { toast } = useToast();
+
+  const { data: equipmentList = [] } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true");
+      return res.json();
+    },
+  });
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");
@@ -335,9 +344,30 @@ export default function DprDetails() {
                       };
                       const hours = calculateHours(item.startTime, item.endTime);
                       
+                      const masterEquip = item.equipmentId ? equipmentList.find((e: EquipmentMasterType) => e.id === item.equipmentId) : null;
+                      const ownerLabel = masterEquip
+                        ? masterEquip.ownership === "hired"
+                          ? `HIRED: ${masterEquip.vendorName || "Unknown Vendor"}`
+                          : "HLC OWN"
+                        : null;
+                      
                       return (
                         <TableRow key={i} data-testid={`row-equipment-${i}`}>
-                          <TableCell className="font-medium">{item.machine}</TableCell>
+                          <TableCell className="font-medium">
+                            <div>
+                              <span>{item.machine}</span>
+                              {item.vehicleNo && (
+                                <p className="text-xs text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>
+                                  Reg: {item.vehicleNo}
+                                </p>
+                              )}
+                              {ownerLabel && (
+                                <p className="text-xs text-muted-foreground" data-testid={`text-owner-info-${i}`}>
+                                  {ownerLabel}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>{item.operator || '-'}</TableCell>
                           <TableCell className="text-sm">{item.task || '-'}</TableCell>
                           <TableCell>{item.startTime || '-'}</TableCell>

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
-import type { Personnel } from "@shared/schema";
+import type { Personnel, EquipmentMasterType } from "@shared/schema";
 
 interface PreviewData {
   date: string;
@@ -31,6 +31,11 @@ interface SitePreviewProps {
 export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: SitePreviewProps) {
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
+  });
+
+  const { data: equipmentList } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment", { includeInactive: true }],
+    queryFn: () => fetch("/api/plant-module/equipment?includeInactive=true").then(r => r.json()),
   });
 
   const getPersonnelNames = (ids: number[] | undefined) => {
@@ -223,11 +228,27 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   return (
                   <TableRow key={i}>
                     <TableCell className="font-medium">
-                      {item.machine}
-                      {et === "hourly" && <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">HOURLY</Badge>}
-                      {et === "daily" && <Badge variant="outline" className="ml-1 text-[10px] bg-amber-50 text-amber-700 border-amber-200">DAILY HIRE</Badge>}
-                      {et === "monthly" && <Badge variant="outline" className="ml-1 text-[10px] bg-purple-50 text-purple-700 border-purple-200">MONTHLY HIRE</Badge>}
-                      {isTripBased && <Badge variant="outline" className="ml-1 text-[10px] bg-green-50 text-green-700 border-green-200">TRIP BASED</Badge>}
+                      <div>
+                        {item.machine}
+                        {et === "hourly" && <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">HOURLY</Badge>}
+                        {et === "daily" && <Badge variant="outline" className="ml-1 text-[10px] bg-amber-50 text-amber-700 border-amber-200">DAILY HIRE</Badge>}
+                        {et === "monthly" && <Badge variant="outline" className="ml-1 text-[10px] bg-purple-50 text-purple-700 border-purple-200">MONTHLY HIRE</Badge>}
+                        {isTripBased && <Badge variant="outline" className="ml-1 text-[10px] bg-green-50 text-green-700 border-green-200">TRIP BASED</Badge>}
+                      </div>
+                      {item.vehicleNo && (
+                        <div className="text-xs text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>Reg: {item.vehicleNo}</div>
+                      )}
+                      {(() => {
+                        const equip = item.equipmentId && equipmentList ? equipmentList.find(e => e.id === item.equipmentId) : null;
+                        if (equip) {
+                          return (
+                            <div className="text-xs text-muted-foreground" data-testid={`text-owner-info-${i}`}>
+                              {equip.ownership === "hired" ? `HIRED: ${equip.vendorName || "Unknown Vendor"}` : "HLC OWN"}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </TableCell>
                     <TableCell>{item.operator || '-'}</TableCell>
                     <TableCell className="text-sm">{item.task || '-'}</TableCell>
