@@ -2625,6 +2625,15 @@ export async function registerRoutes(
         const map: Record<string, string> = { equipment: "EQUIP", material: "MATL", transport: "TRNS" };
         return map[cat] || "OTHER";
       };
+      const fmtDate = (dateStr: string | null | undefined) => {
+        if (!dateStr) return "-";
+        try {
+          const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+          const d = new Date(dateStr + (dateStr.length === 10 ? "T00:00:00" : ""));
+          if (Number.isNaN(d.getTime())) return dateStr;
+          return `${String(d.getDate()).padStart(2, "0")}-${months[d.getMonth()]}-${d.getFullYear()}`;
+        } catch { return dateStr; }
+      };
       const fmtCurrency = (amt: number | null | undefined) => {
         if (amt == null) return "0.00";
         return Number(amt).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2659,7 +2668,7 @@ export async function registerRoutes(
       const metaY = doc.y;
       doc.fillColor("#000").fontSize(11).font("Helvetica-Bold");
       doc.text(`Bill No: ${bill.billNo}`, 40, metaY);
-      doc.text(`Date: ${bill.billDate}`, 300, metaY);
+      doc.text(`Date: ${fmtDate(bill.billDate)}`, 300, metaY);
       doc.moveDown(0.3);
       doc.text(`Vendor: ${bill.vendorName}`, 40);
       const statusY = doc.y;
@@ -2668,7 +2677,7 @@ export async function registerRoutes(
       doc.font("Helvetica").fontSize(10).fillColor("#000");
       doc.text(`Bill Type: ${getBillTypeLabel(bill.billType)}`, 40);
       if (bill.periodFrom && bill.periodTo) {
-        doc.text(`Period: ${bill.periodFrom} to ${bill.periodTo}`, 300, doc.y - 14);
+        doc.text(`Period: ${fmtDate(bill.periodFrom)} to ${fmtDate(bill.periodTo)}`, 300, doc.y - 14);
       }
       doc.moveDown(0.8);
 
@@ -2707,14 +2716,14 @@ export async function registerRoutes(
 
         const rowData = hasLeadDist
           ? [
-              String(idx + 1), item.date || "-",
+              String(idx + 1), fmtDate(item.date),
               item.category ? getCategoryLabel(item.category) : "-", desc,
               fmtQty(item.qty), item.unit || "",
               item.leadDistance ? `${fmtQty(item.leadDistance)} (${fmtQty(item.leadDistance * 2)})` : "-",
               fmtCurrency(item.rate), fmtCurrency(item.amount),
             ]
           : [
-              String(idx + 1), item.date || "-",
+              String(idx + 1), fmtDate(item.date),
               item.category ? getCategoryLabel(item.category) : "-", desc,
               fmtQty(item.qty), item.unit || "",
               fmtCurrency(item.rate), fmtCurrency(item.amount),

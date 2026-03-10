@@ -17,6 +17,15 @@ import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 
+const formatDate = (dateStr: string | null | undefined) => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr + (dateStr.length === 10 ? "T00:00:00" : ""));
+    if (Number.isNaN(d.getTime())) return dateStr;
+    return format(d, "dd-MMM-yyyy").toUpperCase();
+  } catch { return dateStr; }
+};
+
 type ViewMode = "list" | "form" | "detail";
 
 interface LineItem {
@@ -718,7 +727,7 @@ export default function VendorBills() {
     const renderPrintRow = (item: any, i: number) => `
       <tr class="${i % 2 === 0 ? "even" : "odd"}">
         <td style="text-align:center">${i + 1}</td>
-        <td>${escHtml(item.date || "-")}</td>
+        <td>${escHtml(formatDate(item.date))}</td>
         <td style="text-align:center">${item.category ? escHtml(getCategoryLabel(item.category).toUpperCase()) : "-"}</td>
         <td>${escHtml(item.description)}</td>
         <td style="text-align:center">${formatQty(item.qty)}</td>
@@ -785,10 +794,10 @@ export default function VendorBills() {
       </div>
       <div class="meta-grid">
         <div class="item"><div class="label">Bill Number</div><div class="value">${escHtml(bill.billNo)}</div></div>
-        <div class="item"><div class="label">Bill Date</div><div class="value">${escHtml(bill.billDate)}</div></div>
+        <div class="item"><div class="label">Bill Date</div><div class="value">${escHtml(formatDate(bill.billDate))}</div></div>
         <div class="item"><div class="label">Vendor</div><div class="value">${escHtml(bill.vendorName)}</div></div>
         <div class="item"><div class="label">Bill Type</div><div class="value">${escHtml(getBillTypeLabel(bill.billType))}</div></div>
-        ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(bill.periodFrom)} to ${escHtml(bill.periodTo)}</div></div>` : ""}
+        ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(formatDate(bill.periodFrom))} to ${escHtml(formatDate(bill.periodTo))}</div></div>` : ""}
         <div class="item"><div class="label">Status</div><div class="value"><span class="status-badge">${escHtml(bill.status.toUpperCase())}</span></div></div>
       </div>
       <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
@@ -1076,12 +1085,12 @@ export default function VendorBills() {
               <div className="text-sm text-blue-800 dark:text-blue-200 flex flex-wrap items-center gap-2">
                 <span>
                   {billType === "all"
-                    ? `All billable records for ${vendorName} (${periodFrom} to ${periodTo}) — equipment, materials & transport.`
+                    ? `All billable records for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) — equipment, materials & transport.`
                     : billType === "equipment"
-                    ? `Equipment usage for ${vendorName} (${periodFrom} to ${periodTo}) from DPR & Plant records.`
+                    ? `Equipment usage for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR & Plant records.`
                     : billType === "material"
-                    ? `Material receipts for ${vendorName} (${periodFrom} to ${periodTo}) from DPR & Plant records.`
-                    : `Transport dispatches for ${vendorName} (${periodFrom} to ${periodTo}) from truck dispatch records.`}
+                    ? `Material receipts for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR & Plant records.`
+                    : `Transport dispatches for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from truck dispatch records.`}
                 </span>
                 <Button
                   variant="outline"
@@ -1126,7 +1135,7 @@ export default function VendorBills() {
                   <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
                   <td className="px-2 py-1.5">
                     {item.source === "auto" ? (
-                      <span className="text-xs font-mono" data-testid={`text-item-date-${idx}`}>{item.date}</span>
+                      <span className="text-xs font-mono" data-testid={`text-item-date-${idx}`}>{formatDate(item.date)}</span>
                     ) : (
                       <Input
                         type="date"
@@ -1535,7 +1544,7 @@ export default function VendorBills() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase">Bill Date</p>
-                <p className="text-sm font-semibold" data-testid="text-bill-date">{bill.billDate}</p>
+                <p className="text-sm font-semibold" data-testid="text-bill-date">{formatDate(bill.billDate)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase">Bill Type</p>
@@ -1544,7 +1553,7 @@ export default function VendorBills() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase">Period</p>
                 <p className="text-sm font-semibold" data-testid="text-period">
-                  {bill.periodFrom && bill.periodTo ? `${bill.periodFrom} to ${bill.periodTo}` : "-"}
+                  {bill.periodFrom && bill.periodTo ? `${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}` : "-"}
                 </p>
               </div>
             </div>
@@ -1603,7 +1612,7 @@ export default function VendorBills() {
               const renderDetailRow = (item: any, idx: number) => (
                 <tr key={item.id || idx} className="border-b">
                   <td className="px-2 py-2 text-muted-foreground text-xs">{idx + 1}</td>
-                  <td className="px-2 py-2 text-xs font-mono" data-testid={`text-detail-item-date-${idx}`}>{item.date || "-"}</td>
+                  <td className="px-2 py-2 text-xs font-mono" data-testid={`text-detail-item-date-${idx}`}>{formatDate(item.date)}</td>
                   <td className="px-2 py-2 text-center">
                     {item.category ? (
                       <Badge
@@ -1925,7 +1934,7 @@ export default function VendorBills() {
                     <p className="font-bold text-sm uppercase truncate" data-testid={`text-bill-vendor-${bill.id}`}>{bill.vendorName}</p>
                     <p className="text-xs text-muted-foreground" data-testid={`text-bill-meta-${bill.id}`}>
                       {bill.billNo} &bull; {getBillTypeLabel(bill.billType)}
-                      {bill.periodFrom && bill.periodTo && ` \u2022 ${bill.periodFrom} to ${bill.periodTo}`}
+                      {bill.periodFrom && bill.periodTo && ` \u2022 ${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
