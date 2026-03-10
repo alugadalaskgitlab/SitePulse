@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, DollarSign } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -496,27 +496,40 @@ export default function VendorBills() {
     });
   };
 
-  const uniqueEquipmentGroups = useMemo(() => {
-    const groups: Record<string, { equipmentId: number; equipmentName: string; entryType: string; category: string; count: number }> = {};
+  const uniqueRateGroups = useMemo(() => {
+    const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; count: number }> = {};
     lineItems.forEach(item => {
-      if (!item.equipmentId) return;
-      const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-      const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
-      const key = `${item.equipmentId}_${entryType}`;
-      if (!groups[key]) {
-        const nameMatch = item.description.match(/^(.+?)\s*(?:-\s*)?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-        const equipmentName = nameMatch ? nameMatch[1].trim() : item.description.split(" - ")[0] || item.description;
-        groups[key] = { equipmentId: item.equipmentId, equipmentName, entryType, category: item.category, count: 0 };
+      if (item.equipmentId) {
+        const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+        const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
+        const key = `eq_${item.equipmentId}_${entryType}`;
+        if (!groups[key]) {
+          const nameMatch = item.description.match(/^(.+?)\s*(?:-\s*)?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+          const groupName = nameMatch ? nameMatch[1].trim() : item.description.split(" - ")[0] || item.description;
+          groups[key] = { equipmentId: item.equipmentId, groupName, entryType, category: item.category, count: 0 };
+        }
+        groups[key].count++;
+      } else if (item.description.trim()) {
+        const descKey = item.description.trim().toUpperCase();
+        const key = `desc_${item.category}_${descKey}`;
+        if (!groups[key]) {
+          groups[key] = { equipmentId: null, groupName: item.description.trim(), entryType: item.unit || "", category: item.category, count: 0 };
+        }
+        groups[key].count++;
       }
-      groups[key].count++;
     });
     return Object.entries(groups).map(([key, val]) => ({ key, ...val }));
   }, [lineItems]);
 
   const openSetRatesDialog = () => {
     const initialRates: Record<string, { rate: number; leadDistance: number }> = {};
-    uniqueEquipmentGroups.forEach(group => {
-      const existing = lineItems.find(item => item.equipmentId === group.equipmentId && item.description.includes(group.entryType) && item.rate > 0);
+    uniqueRateGroups.forEach(group => {
+      let existing: LineItem | undefined;
+      if (group.equipmentId) {
+        existing = lineItems.find(item => item.equipmentId === group.equipmentId && item.description.includes(group.entryType) && item.rate > 0);
+      } else {
+        existing = lineItems.find(item => !item.equipmentId && item.category === group.category && item.description.trim().toUpperCase() === group.groupName.toUpperCase() && item.rate > 0);
+      }
       initialRates[group.key] = {
         rate: existing?.rate || 0,
         leadDistance: existing?.leadDistance || 0,
@@ -532,10 +545,15 @@ export default function VendorBills() {
       const updated = [...prev];
       for (let i = 0; i < updated.length; i++) {
         const item = updated[i];
-        if (!item.equipmentId) continue;
-        const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-        const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
-        const key = `${item.equipmentId}_${entryType}`;
+        let key: string;
+        if (item.equipmentId) {
+          const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+          const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
+          key = `eq_${item.equipmentId}_${entryType}`;
+        } else {
+          const descKey = item.description.trim().toUpperCase();
+          key = `desc_${item.category}_${descKey}`;
+        }
         const rateData = bulkRates[key];
         if (rateData && rateData.rate > 0) {
           const newItem = { ...item, rate: rateData.rate };
@@ -1076,9 +1094,9 @@ export default function VendorBills() {
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">LINE ITEMS</CardTitle>
             <div className="flex gap-2 flex-wrap">
-              {uniqueEquipmentGroups.length > 0 && (
+              {uniqueRateGroups.length > 0 && (
                 <Button variant="outline" size="sm" onClick={openSetRatesDialog} data-testid="button-set-rates">
-                  <DollarSign className="w-4 h-4 mr-1" /> SET RATES
+                  <span className="font-bold mr-1">₹</span> SET RATES
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={addLineItem} data-testid="button-add-item">
@@ -1237,7 +1255,7 @@ export default function VendorBills() {
               );
 
               return (
-                <table className="w-full text-sm" style={{ minWidth: 800 }}>
+                <table className="w-full text-sm" style={{ minWidth: 900 }}>
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground uppercase">
                       <th className="px-2 py-2 text-left w-8">#</th>
@@ -1246,9 +1264,9 @@ export default function VendorBills() {
                       <th className="px-2 py-2 text-left">Description</th>
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-20">Unit</th>
-                      {hasLead && <th className="px-2 py-2 text-left w-24">Lead (KM)</th>}
-                      <th className="px-2 py-2 text-left w-24">Rate</th>
-                      <th className="px-2 py-2 text-right w-32">Amount</th>
+                      {hasLead && <th className="px-2 py-2 text-left w-28">Lead (KM)</th>}
+                      <th className="px-2 py-2 text-left w-32">Rate (₹)</th>
+                      <th className="px-2 py-2 text-right w-36">Amount (₹)</th>
                       <th className="px-2 py-2 w-10"></th>
                     </tr>
                   </thead>
@@ -1361,13 +1379,13 @@ export default function VendorBills() {
         <Dialog open={showSetRatesDialog} onOpenChange={setShowSetRatesDialog}>
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>SET RATES FOR EQUIPMENT</DialogTitle>
+              <DialogTitle>SET RATES</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {(["equipment", "transport", "other"] as const).map(cat => {
-                const catGroups = uniqueEquipmentGroups.filter(g => g.category === cat);
+              {(["equipment", "material", "transport", "other"] as const).map(cat => {
+                const catGroups = uniqueRateGroups.filter(g => g.category === cat);
                 if (catGroups.length === 0) return null;
-                const catLabel = cat === "equipment" ? "EQUIPMENT" : cat === "transport" ? "TRANSPORT" : "OTHER";
+                const catLabel = cat === "equipment" ? "EQUIPMENT" : cat === "material" ? "MATERIAL" : cat === "transport" ? "TRANSPORT" : "OTHER";
                 return (
                   <div key={cat} className="space-y-3">
                     <div className="flex items-center gap-2 border-b pb-1">
@@ -1380,16 +1398,16 @@ export default function VendorBills() {
                       <div key={group.key} className="border rounded-md p-3 space-y-2">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div>
-                            <p className="text-sm font-semibold" data-testid={`text-rate-equip-${group.key}`}>{group.equipmentName}</p>
+                            <p className="text-sm font-semibold" data-testid={`text-rate-group-${group.key}`}>{group.groupName}</p>
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-muted-foreground">{group.entryType}</span>
-                              <span className="text-xs text-muted-foreground">({group.count} rows)</span>
+                              <span className="text-xs text-muted-foreground">({group.count} row{group.count !== 1 ? "s" : ""})</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                           <div className="flex-1 min-w-[120px]">
-                            <Label className="text-xs uppercase">Rate</Label>
+                            <Label className="text-xs uppercase">Rate (₹)</Label>
                             <Input
                               type="number"
                               step="0.01"
@@ -1622,7 +1640,7 @@ export default function VendorBills() {
               );
 
               return (
-                <table className="w-full text-sm" style={{ minWidth: 700 }}>
+                <table className="w-full text-sm" style={{ minWidth: 800 }}>
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground uppercase">
                       <th className="px-2 py-2 text-left w-8">#</th>
@@ -1631,9 +1649,9 @@ export default function VendorBills() {
                       <th className="px-2 py-2 text-left">Description</th>
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-16">Unit</th>
-                      {hasLead && <th className="px-2 py-2 text-left w-24">Lead (KM)</th>}
-                      <th className="px-2 py-2 text-right w-24">Rate</th>
-                      <th className="px-2 py-2 text-right w-32">Amount</th>
+                      {hasLead && <th className="px-2 py-2 text-left w-28">Lead (KM)</th>}
+                      <th className="px-2 py-2 text-right w-32">Rate (₹)</th>
+                      <th className="px-2 py-2 text-right w-36">Amount (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
