@@ -4881,9 +4881,6 @@ export class DatabaseStorage implements IStorage {
   async deletePurchaseIndent(id: number): Promise<boolean> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return false;
-    if (existing.status === "completed") {
-      throw new Error(`Cannot delete indent with status: ${existing.status}`);
-    }
 
     await db.transaction(async (tx) => {
       const itemIds = existing.items.map(i => i.id);

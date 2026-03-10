@@ -1114,27 +1114,25 @@ export default function PurchaseIndents() {
                   <CardTitle className="text-base uppercase" data-testid="text-detail-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2">
                     {selectedIndent.status !== "completed" && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-600 border-blue-300"
-                          onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
-                          data-testid="button-edit-indent"
-                        >
-                          <Pencil className="w-3 h-3 mr-1" /> EDIT
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 border-red-300"
-                          onClick={() => setShowDeleteConfirm(true)}
-                          data-testid="button-delete-indent"
-                        >
-                          <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                        </Button>
-                      </>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300"
+                        onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                        data-testid="button-edit-indent"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> EDIT
+                      </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-300"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      data-testid="button-delete-indent"
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                    </Button>
                     {getStatusBadge(selectedIndent.status)}
                   </div>
                 </CardHeader>
@@ -1347,27 +1345,25 @@ export default function PurchaseIndents() {
                   <CardTitle className="text-base uppercase" data-testid="text-purchase-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2">
                     {selectedIndent.status !== "completed" && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-600 border-blue-300"
-                          onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
-                          data-testid="button-edit-indent-purchase"
-                        >
-                          <Pencil className="w-3 h-3 mr-1" /> EDIT
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 border-red-300"
-                          onClick={() => setShowDeleteConfirm(true)}
-                          data-testid="button-delete-indent-purchase"
-                        >
-                          <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                        </Button>
-                      </>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300"
+                        onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                        data-testid="button-edit-indent-purchase"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> EDIT
+                      </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-300"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      data-testid="button-delete-indent-purchase"
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                    </Button>
                     {getStatusBadge(selectedIndent.status)}
                   </div>
                 </CardHeader>
