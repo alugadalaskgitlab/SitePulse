@@ -35,9 +35,10 @@ Preferred communication style: Simple, everyday language.
 - Personnel Master for tracking roles per activity.
 
 ### Authentication & Access Control
-- **Role-Based**: Engineer (view), Manager (edit), Admin (full control).
+- **Role-Based**: Engineer (view), Manager (add + edit), Admin (full control including delete + export).
 - **PIN-Based**: Client-side PIN authentication for elevated access.
 - **Admin PINs**: Stored in `app_settings` table.
+- **Masters Access**: Manager can view, add, and edit entries in all master sections. Delete and export require Admin PIN.
 
 ### Build System
 - **Development**: `tsx` and Vite dev server.

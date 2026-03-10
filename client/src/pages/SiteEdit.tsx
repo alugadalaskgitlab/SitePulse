@@ -861,7 +861,7 @@ export default function SiteEdit() {
                   <SelectContent>
                     {activeEquipment.map((eq) => (
                       <SelectItem key={eq.id} value={String(eq.id)}>
-                        {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} - {eq.equipmentType || "Equipment"}
+                        {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : "HLC OWN"}
                       </SelectItem>
                     ))}
                   </SelectContent>

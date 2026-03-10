@@ -497,7 +497,7 @@ function MastersTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
     <div className="space-y-6">
       {isManager && (
         <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
-          Manager access: You can view and add new entries. Editing and exports are disabled.
+          Manager access: You can view, add, and edit entries. Deleting and exports require Admin PIN.
         </div>
       )}
       <PartyMaster isManagerMode={isManager} />
@@ -512,8 +512,7 @@ function MastersTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
 function PartyMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
   const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  // Manager mode disables edit/delete/export
-  const canEdit = !isManagerMode && globalCanEdit;
+  const canEdit = globalCanEdit;
   const canDelete = !isManagerMode && globalCanDelete;
   const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -686,7 +685,7 @@ function PartyMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
 function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
   const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = !isManagerMode && globalCanEdit;
+  const canEdit = globalCanEdit;
   const canDelete = !isManagerMode && globalCanDelete;
   const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1142,7 +1141,7 @@ type MixTemplateComponent = {
 function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
   const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = !isManagerMode && globalCanEdit;
+  const canEdit = globalCanEdit;
   const canDelete = !isManagerMode && globalCanDelete;
   const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1544,7 +1543,7 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
 function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
   const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = !isManagerMode && globalCanEdit;
+  const canEdit = globalCanEdit;
   const canDelete = !isManagerMode && globalCanDelete;
   const canExport = !isManagerMode;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1818,7 +1817,7 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
 function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boolean }) {
   const { toast } = useToast();
   const { canEdit: globalCanEdit } = useAccess();
-  const canEdit = !isManagerMode && globalCanEdit;
+  const canEdit = globalCanEdit;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Personnel | null>(null);
   const [name, setName] = useState("");
