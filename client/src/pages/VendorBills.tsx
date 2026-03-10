@@ -146,6 +146,7 @@ export default function VendorBills() {
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
   const [pendingEditAction, setPendingEditAction] = useState<{ bill: VendorBillWithItems } | null>(null);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditPinAuth, setShowEditPinAuth] = useState(false);
   const [showDeletePinAuth, setShowDeletePinAuth] = useState(false);
   const [adminPinForUpdate, setAdminPinForUpdate] = useState<string | null>(null);
@@ -296,11 +297,12 @@ export default function VendorBills() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin?: string }) => apiRequest("DELETE", `/api/vendor-bills/${id}`, pin ? { pin } : undefined),
+    mutationFn: ({ id, pin }: { id: number; pin: string }) => apiRequest("DELETE", `/api/vendor-bills/${id}`, { pin }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Bill deleted" });
       setSelectedBillId(null);
+      setShowDeleteConfirm(false);
       setView("list");
     },
     onError: (err: Error) => {
@@ -685,12 +687,8 @@ export default function VendorBills() {
   };
 
   const handleDeleteBill = (bill: VendorBillWithItems) => {
-    if (bill.status === "verified" || bill.status === "approved") {
-      setPendingDeleteAction({ billId: bill.id });
-      setShowDeletePinAuth(true);
-    } else {
-      deleteMutation.mutate({ id: bill.id });
-    }
+    setPendingDeleteAction({ billId: bill.id });
+    setShowDeleteConfirm(true);
   };
 
   const filteredBills = useMemo(() => {
@@ -1754,6 +1752,30 @@ export default function VendorBills() {
           />
         )}
 
+        {showDeleteConfirm && (
+          <Dialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) { setShowDeleteConfirm(false); setPendingDeleteAction(null); } }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="text-red-600">DELETE VENDOR BILL</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">THIS WILL PERMANENTLY DELETE THIS VENDOR BILL AND ALL ITS LINE ITEMS. THIS ACTION CANNOT BE UNDONE.</p>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setPendingDeleteAction(null); }} data-testid="button-delete-dismiss">
+                  CANCEL
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => { setShowDeleteConfirm(false); setShowDeletePinAuth(true); }}
+                  data-testid="button-confirm-delete"
+                >
+                  {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                  DELETE PERMANENTLY
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
         {showDeletePinAuth && (
           <PinAuth
             targetRole="admin"

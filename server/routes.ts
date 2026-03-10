@@ -2883,14 +2883,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Paid bills cannot be deleted" });
       }
 
-      if (bill.status === "verified" || bill.status === "approved") {
-        if (!pin) {
-          return res.status(403).json({ message: "Admin PIN required to delete verified/approved bills" });
-        }
-        const isAdmin = await storage.verifyPin("admin", pin);
-        if (!isAdmin) {
-          return res.status(403).json({ message: "Invalid admin PIN" });
-        }
+      if (!pin) {
+        return res.status(403).json({ message: "Admin PIN required to delete bills" });
+      }
+      const isAdmin = await storage.verifyPin("admin", pin);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Invalid admin PIN" });
       }
 
       const deleted = await storage.deleteVendorBill(id);
