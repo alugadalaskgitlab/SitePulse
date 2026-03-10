@@ -1236,6 +1236,14 @@ export default function PlantDispatches() {
                               <div>
                                 <span className="text-muted-foreground text-sm block">Truck</span>
                                 <span className="font-medium">{dispatch.truckNumber}</span>
+                                {dispatch.transportEquipmentId && (() => {
+                                  const eq = equipmentList?.find(e => e.id === dispatch.transportEquipmentId);
+                                  if (!eq) return null;
+                                  const ownerInfo = eq.ownershipStatus === "hired" && eq.vendorName ? `HIRED: ${eq.vendorName}` : "HLC OWN";
+                                  return (
+                                    <span className="text-xs text-muted-foreground block">{eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} — {ownerInfo}</span>
+                                  );
+                                })()}
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">Load</span>

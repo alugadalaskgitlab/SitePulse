@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,12 +60,6 @@ function getCategoryLabel(category: string) {
   }
 }
 
-const ENTRY_TYPE_FILTERS = [
-  { value: "all", label: "ALL ENTRY TYPES" },
-  { value: "daily_hourly", label: "DAILY & HOURLY" },
-  { value: "trip_based", label: "TRIP BASED" },
-  { value: "monthly", label: "MONTHLY" },
-];
 
 function extractDiesel(description: string): number {
   const match = description.match(/DIESEL:\s*(\d+(?:\.\d+)?)L/i);
@@ -95,8 +89,13 @@ function getStatusColor(status: string) {
 }
 
 function formatCurrency(amount: number | null | undefined) {
-  if (amount == null) return "0";
-  return amount.toLocaleString("en-IN");
+  if (amount == null) return "0.00";
+  return Number(amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatQty(qty: number | null | undefined) {
+  if (qty == null) return "0.00";
+  return Number(qty).toFixed(2);
 }
 
 function getBillTypeLabel(type: string) {
@@ -134,7 +133,6 @@ export default function VendorBills() {
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
 
-  const [entryTypeFilter, setEntryTypeFilter] = useState("all");
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
   const [pendingEditAction, setPendingEditAction] = useState<{ bill: VendorBillWithItems } | null>(null);
@@ -236,11 +234,11 @@ export default function VendorBills() {
   });
 
   const autoItemsUrl = vendorName && periodFrom && periodTo && billType !== "other"
-    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${entryTypeFilter && entryTypeFilter !== "all" ? `&entryTypeFilter=${encodeURIComponent(entryTypeFilter)}` : ""}`
+    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
     : null;
 
   const { data: autoItems, isFetching: autoItemsLoading } = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo, entryTypeFilter],
+    queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo],
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
   });
@@ -309,7 +307,6 @@ export default function VendorBills() {
     setPeriodFrom("");
     setPeriodTo("");
     setNotes("");
-    setEntryTypeFilter("all");
     setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
@@ -685,19 +682,42 @@ export default function VendorBills() {
       return;
     }
     const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
-    const rows = bill.items.map((item: any, i: number) => `
+    const catSubs = computeCategorySubTotals(bill.items);
+    const shouldGroup = catSubs.length > 1;
+    const printCategories = ["equipment", "material", "transport", "other"];
+    const printCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+    const colCount = hasLeadDistance ? 9 : 8;
+    const labelColCount = hasLeadDistance ? 8 : 7;
+
+    const renderPrintRow = (item: any, i: number) => `
       <tr class="${i % 2 === 0 ? "even" : "odd"}">
         <td style="text-align:center">${i + 1}</td>
         <td>${escHtml(item.date || "-")}</td>
         <td style="text-align:center">${item.category ? escHtml(getCategoryLabel(item.category).toUpperCase()) : "-"}</td>
         <td>${escHtml(item.description)}</td>
-        <td style="text-align:center">${item.qty || 0}</td>
+        <td style="text-align:center">${formatQty(item.qty)}</td>
         <td style="text-align:center">${item.unit || ""}</td>
-        ${hasLeadDistance ? `<td style="text-align:center">${item.leadDistance ? `${item.leadDistance} (RT: ${item.leadDistance * 2})` : "-"}</td>` : ""}
+        ${hasLeadDistance ? `<td style="text-align:center">${item.leadDistance ? `${formatQty(item.leadDistance)} (RT: ${formatQty(item.leadDistance * 2)})` : "-"}</td>` : ""}
         <td style="text-align:right">${formatCurrency(item.rate)}</td>
         <td style="text-align:right">${formatCurrency(item.amount)}</td>
       </tr>
-    `).join("");
+    `;
+
+    let rows = "";
+    if (shouldGroup) {
+      for (const cat of printCategories) {
+        const catItems = bill.items.filter((it: any) => it.category === cat).map((item: any, origIdx: number) => ({
+          item, origIdx: bill.items.indexOf(item)
+        }));
+        if (catItems.length === 0) continue;
+        const catTotal = catItems.reduce((sum: number, { item }: any) => sum + (item.amount || 0), 0);
+        rows += `<tr class="cat-header"><td colspan="${colCount}" style="background:#f0f0f0;font-weight:bold;font-size:12px;text-transform:uppercase;letter-spacing:1px;padding:8px;">${printCatLabels[cat]} (${catItems.length} items)</td></tr>`;
+        rows += catItems.map(({ item, origIdx }: any) => renderPrintRow(item, origIdx)).join("");
+        rows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${printCatLabels[cat]} Sub-total</td><td style="text-align:right">Rs. ${formatCurrency(catTotal)}</td></tr>`;
+      }
+    } else {
+      rows = bill.items.map((item: any, i: number) => renderPrintRow(item, i)).join("");
+    }
 
     const totalQty = bill.items.reduce((s: number, it: any) => s + (it.qty || 0), 0);
     const totalItems = bill.items.length;
@@ -719,6 +739,7 @@ export default function VendorBills() {
         th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; font-size: 12px; color: #000; }
         th { background: #d97706; color: white; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
         tr.odd { background: #f9f9f9; }
+        .cat-header td { border-left: 4px solid #d97706; }
         .summary-row td { font-weight: bold; font-size: 12px; background: #f5f5f5; color: #000; border-color: #999; }
         .total-row { background: #d97706 !important; }
         .total-row td { color: white; font-weight: bold; font-size: 13px; border-color: #b45309; }
@@ -747,18 +768,11 @@ export default function VendorBills() {
       <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        <tr class="summary-row"><td colspan="${hasLeadDistance ? 5 : 4}" style="text-align:right">TOTAL ITEMS: ${totalItems}</td><td style="text-align:center">${totalQty}</td><td colspan="${hasLeadDistance ? 4 : 3}"></td></tr>
-        ${(() => {
-          const catSubs = computeCategorySubTotals(bill.items);
-          if (catSubs.length <= 1) return "";
-          return catSubs.map(([cat, amt]: [string, number]) => `
-            <tr class="summary-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">${cat === "equipment" ? "Equipment" : cat === "material" ? "Material" : cat === "transport" ? "Transport" : "Other"} Sub-total</td><td style="text-align:right">Rs. ${formatCurrency(amt)}</td></tr>
-          `).join("");
-        })()}
-        <tr class="total-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">TOTAL AMOUNT</td><td style="text-align:right">Rs. ${formatCurrency(bill.totalAmount)}</td></tr>
+        <tr class="summary-row"><td colspan="${hasLeadDistance ? 5 : 4}" style="text-align:right">TOTAL ITEMS: ${totalItems}</td><td style="text-align:center">${formatQty(totalQty)}</td><td colspan="${hasLeadDistance ? 4 : 3}"></td></tr>
+        <tr class="total-row"><td colspan="${labelColCount}" style="text-align:right">TOTAL AMOUNT</td><td style="text-align:right">Rs. ${formatCurrency(bill.totalAmount)}</td></tr>
         ${(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 ? `
-          <tr class="summary-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">${escHtml((bill as any).adjustmentLabel || "ADJUSTMENT")}</td><td style="text-align:right">Rs. ${formatCurrency((bill as any).adjustmentAmount)}</td></tr>
-          <tr class="total-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">NET TOTAL</td><td style="text-align:right">Rs. ${formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td></tr>
+          <tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${escHtml((bill as any).adjustmentLabel || "ADJUSTMENT")}</td><td style="text-align:right">Rs. ${formatCurrency((bill as any).adjustmentAmount)}</td></tr>
+          <tr class="total-row"><td colspan="${labelColCount}" style="text-align:right">NET TOTAL</td><td style="text-align:right">Rs. ${formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td></tr>
         ` : ""}
       </tfoot>
       </table>
@@ -918,24 +932,6 @@ export default function VendorBills() {
                 <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} data-testid="input-period-to" />
               </div>
             </div>
-            {(billType === "equipment" || billType === "all") && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs uppercase">Entry Type Filter</Label>
-                  <Select value={entryTypeFilter} onValueChange={setEntryTypeFilter}>
-                    <SelectTrigger data-testid="select-entry-type-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ENTRY_TYPE_FILTERS.map(f => (
-                        <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-
             {periodFrom && periodTo && billType !== "other" && !vendorName && (
               <div className="border-t pt-4">
                 <Button
@@ -1091,179 +1087,214 @@ export default function VendorBills() {
             </div>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 800 }}>
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground uppercase">
-                  <th className="px-2 py-2 text-left w-8">#</th>
-                  <th className="px-2 py-2 text-left w-28">Date</th>
-                  <th className="px-2 py-2 text-center w-16">Type</th>
-                  <th className="px-2 py-2 text-left">Description</th>
-                  <th className="px-2 py-2 text-left w-24">Qty</th>
-                  <th className="px-2 py-2 text-left w-20">Unit</th>
-                  {(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) && (
-                    <th className="px-2 py-2 text-left w-24">Lead (KM)</th>
-                  )}
-                  <th className="px-2 py-2 text-left w-24">Rate</th>
-                  <th className="px-2 py-2 text-right w-32">Amount</th>
-                  <th className="px-2 py-2 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lineItems.map((item, idx) => (
-                  <tr key={idx} className="border-b">
-                    <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
-                    <td className="px-2 py-1.5">
-                      {item.source === "auto" ? (
-                        <span className="text-xs font-mono" data-testid={`text-item-date-${idx}`}>{item.date}</span>
-                      ) : (
-                        <Input
-                          type="date"
-                          value={item.date}
-                          onChange={e => updateLineItem(idx, "date", e.target.value)}
-                          className="text-xs h-8"
-                          data-testid={`input-item-date-${idx}`}
-                        />
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-center">
-                      {item.source === "auto" ? (
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
-                          data-testid={`badge-category-${idx}`}
-                        >
-                          {getCategoryLabel(item.category)}
-                        </Badge>
-                      ) : (
-                        <Select value={item.category} onValueChange={v => updateLineItem(idx, "category", v)}>
-                          <SelectTrigger className="h-8 text-xs" data-testid={`select-item-category-${idx}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="equipment">EQUIP</SelectItem>
-                            <SelectItem value="material">MATL</SelectItem>
-                            <SelectItem value="transport">TRNS</SelectItem>
-                            <SelectItem value="other">OTHER</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {item.source === "auto" ? (
-                        <div className="space-y-1">
-                          <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
-                          {extractDiesel(item.description) > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
-                                <Fuel className="w-3 h-3 mr-1" />
-                                {extractDiesel(item.description)}L DIESEL
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <Input
-                          value={item.description}
-                          onChange={e => updateLineItem(idx, "description", e.target.value.toUpperCase())}
-                          placeholder="ENTER DESCRIPTION"
-                          className="uppercase text-xs h-8"
-                          data-testid={`input-item-desc-${idx}`}
-                        />
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5">
+            {(() => {
+              const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
+              const totalColSpan = hasLead ? 10 : 9;
+              const labelColSpan = hasLead ? 8 : 7;
+              const categories = ["equipment", "material", "transport", "other"] as const;
+              const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+              const shouldGroup = computeCategorySubTotals(lineItems).length > 1;
+
+              const renderItemRow = (item: LineItem, idx: number) => (
+                <tr key={idx} className="border-b">
+                  <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
+                  <td className="px-2 py-1.5">
+                    {item.source === "auto" ? (
+                      <span className="text-xs font-mono" data-testid={`text-item-date-${idx}`}>{item.date}</span>
+                    ) : (
                       <Input
-                        type="number"
-                        value={item.qty || ""}
-                        onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
+                        type="date"
+                        value={item.date}
+                        onChange={e => updateLineItem(idx, "date", e.target.value)}
                         className="text-xs h-8"
-                        data-testid={`input-item-qty-${idx}`}
+                        data-testid={`input-item-date-${idx}`}
                       />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)}>
-                        <SelectTrigger className="h-8 text-xs" data-testid={`select-item-unit-${idx}`}>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    {item.source === "auto" ? (
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
+                        data-testid={`badge-category-${idx}`}
+                      >
+                        {getCategoryLabel(item.category)}
+                      </Badge>
+                    ) : (
+                      <Select value={item.category} onValueChange={v => updateLineItem(idx, "category", v)}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`select-item-category-${idx}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {LINE_ITEM_UNITS.map(u => (
-                            <SelectItem key={u} value={u}>{u}</SelectItem>
-                          ))}
+                          <SelectItem value="equipment">EQUIP</SelectItem>
+                          <SelectItem value="material">MATL</SelectItem>
+                          <SelectItem value="transport">TRNS</SelectItem>
+                          <SelectItem value="other">OTHER</SelectItem>
                         </SelectContent>
                       </Select>
-                    </td>
-                    {(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) && (
-                      <td className="px-2 py-1.5">
-                        {item.category === "transport" ? (
-                          <div className="space-y-0.5">
-                            <Input
-                              type="number"
-                              value={item.leadDistance || ""}
-                              onChange={e => updateLineItem(idx, "leadDistance", parseFloat(e.target.value) || 0)}
-                              placeholder="ONE-WAY KM"
-                              className="text-xs h-8"
-                              data-testid={`input-item-lead-${idx}`}
-                            />
-                            {item.leadDistance && item.leadDistance > 0 && (
-                              <span className="text-[10px] text-muted-foreground">RT: {item.leadDistance * 2} KM</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </td>
                     )}
-                    <td className="px-2 py-1.5">
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          value={item.rate || ""}
-                          onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
-                          className="text-xs h-8"
-                          data-testid={`input-item-rate-${idx}`}
-                        />
-                        {item.rate > 0 && item.equipmentId && item.source === "auto" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 flex-shrink-0"
-                            title="Apply rate to similar equipment rows"
-                            onClick={() => applyRateToSimilar(idx)}
-                            data-testid={`button-apply-rate-${idx}`}
-                          >
-                            <Copy className="w-3.5 h-3.5 text-blue-600" />
-                          </Button>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {item.source === "auto" ? (
+                      <div className="space-y-1">
+                        <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
+                        {extractDiesel(item.description) > 0 && (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
+                              <Fuel className="w-3 h-3 mr-1" />
+                              {extractDiesel(item.description)}L DIESEL
+                            </Badge>
+                          </div>
                         )}
                       </div>
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-semibold bg-amber-50 dark:bg-amber-900/20">
-                      <span className="text-xs" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
-                    </td>
+                    ) : (
+                      <Input
+                        value={item.description}
+                        onChange={e => updateLineItem(idx, "description", e.target.value.toUpperCase())}
+                        placeholder="ENTER DESCRIPTION"
+                        className="uppercase text-xs h-8"
+                        data-testid={`input-item-desc-${idx}`}
+                      />
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={item.qty || ""}
+                      onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
+                      className="text-xs h-8"
+                      data-testid={`input-item-qty-${idx}`}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)}>
+                      <SelectTrigger className="h-8 text-xs" data-testid={`select-item-unit-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LINE_ITEM_UNITS.map(u => (
+                          <SelectItem key={u} value={u}>{u}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  {hasLead && (
                     <td className="px-2 py-1.5">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
-                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
+                      {item.category === "transport" ? (
+                        <div className="space-y-0.5">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={item.leadDistance || ""}
+                            onChange={e => updateLineItem(idx, "leadDistance", parseFloat(e.target.value) || 0)}
+                            placeholder="ONE-WAY KM"
+                            className="text-xs h-8"
+                            data-testid={`input-item-lead-${idx}`}
+                          />
+                          {item.leadDistance && item.leadDistance > 0 && (
+                            <span className="text-[10px] text-muted-foreground">RT: {(item.leadDistance * 2).toFixed(2)} KM</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                {computeCategorySubTotals(lineItems).length > 1 && computeCategorySubTotals(lineItems).map(([cat, amt]) => (
-                  <tr key={cat} className="border-t bg-muted/30">
-                    <td colSpan={(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) ? 8 : 7} className="px-2 py-2 text-right text-xs font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
-                      {cat === "equipment" ? "Equipment" : cat === "material" ? "Material" : cat === "transport" ? "Transport" : "Other"} Sub-total
-                    </td>
-                    <td className="px-2 py-2 text-right text-xs font-semibold" data-testid={`text-subtotal-amount-${cat}`}>Rs. {formatCurrency(amt)}</td>
-                    <td></td>
-                  </tr>
-                ))}
-                <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
-                  <td colSpan={(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) ? 8 : 7} className="px-2 py-3 text-right font-bold text-base">TOTAL</td>
-                  <td className="px-2 py-3 text-right font-bold text-base" data-testid="text-total-amount">Rs. {formatCurrency(totalAmount)}</td>
-                  <td></td>
+                  )}
+                  <td className="px-2 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.rate || ""}
+                        onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
+                        className="text-xs h-8"
+                        data-testid={`input-item-rate-${idx}`}
+                      />
+                      {item.rate > 0 && item.equipmentId && item.source === "auto" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 flex-shrink-0"
+                          title="Apply rate to similar equipment rows"
+                          onClick={() => applyRateToSimilar(idx)}
+                          data-testid={`button-apply-rate-${idx}`}
+                        >
+                          <Copy className="w-3.5 h-3.5 text-blue-600" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-semibold bg-amber-50 dark:bg-amber-900/20">
+                    <span className="text-xs" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </td>
                 </tr>
-              </tfoot>
-            </table>
+              );
+
+              return (
+                <table className="w-full text-sm" style={{ minWidth: 800 }}>
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground uppercase">
+                      <th className="px-2 py-2 text-left w-8">#</th>
+                      <th className="px-2 py-2 text-left w-28">Date</th>
+                      <th className="px-2 py-2 text-center w-16">Type</th>
+                      <th className="px-2 py-2 text-left">Description</th>
+                      <th className="px-2 py-2 text-left w-24">Qty</th>
+                      <th className="px-2 py-2 text-left w-20">Unit</th>
+                      {hasLead && <th className="px-2 py-2 text-left w-24">Lead (KM)</th>}
+                      <th className="px-2 py-2 text-left w-24">Rate</th>
+                      <th className="px-2 py-2 text-right w-32">Amount</th>
+                      <th className="px-2 py-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shouldGroup ? (
+                      <>
+                        {categories.map(cat => {
+                          const catItems = lineItems.map((item, idx) => ({ item, idx })).filter(({ item }) => item.category === cat);
+                          if (catItems.length === 0) return null;
+                          const catTotal = catItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
+                          return (
+                            <Fragment key={cat}>
+                              <tr className={`${getCategoryBadgeClass(cat)} border-b`}>
+                                <td colSpan={totalColSpan} className="px-3 py-2 font-semibold text-xs uppercase tracking-wider">
+                                  <Badge variant="outline" className={`${getCategoryBadgeClass(cat)} mr-2 no-default-hover-elevate no-default-active-elevate`}>
+                                    {catLabels[cat]}
+                                  </Badge>
+                                  {catItems.length} item{catItems.length !== 1 ? "s" : ""}
+                                </td>
+                              </tr>
+                              {catItems.map(({ item, idx }) => renderItemRow(item, idx))}
+                              <tr className="border-b bg-muted/40">
+                                <td colSpan={labelColSpan} className="px-2 py-2 text-right text-xs font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
+                                  {catLabels[cat]} Sub-total
+                                </td>
+                                <td className="px-2 py-2 text-right text-xs font-semibold" data-testid={`text-subtotal-amount-${cat}`}>Rs. {formatCurrency(catTotal)}</td>
+                                <td></td>
+                              </tr>
+                            </Fragment>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      lineItems.map((item, idx) => renderItemRow(item, idx))
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+                      <td colSpan={labelColSpan} className="px-2 py-3 text-right font-bold text-base">TOTAL</td>
+                      <td className="px-2 py-3 text-right font-bold text-base" data-testid="text-total-amount">Rs. {formatCurrency(totalAmount)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
           </CardContent>
         </Card>
 
@@ -1286,6 +1317,7 @@ export default function VendorBills() {
                   <Label className="text-xs uppercase">Adjustment Amount</Label>
                   <Input
                     type="number"
+                    step="0.01"
                     value={adjustmentAmount || ""}
                     onChange={e => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
                     placeholder="Negative for deduction"
@@ -1332,46 +1364,60 @@ export default function VendorBills() {
               <DialogTitle>SET RATES FOR EQUIPMENT</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {uniqueEquipmentGroups.map(group => (
-                <div key={group.key} className="border rounded-md p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="text-sm font-semibold" data-testid={`text-rate-equip-${group.key}`}>{group.equipmentName}</p>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={`text-[10px] ${getCategoryBadgeClass(group.category)} no-default-hover-elevate no-default-active-elevate`}>
-                          {getCategoryLabel(group.category)}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">{group.entryType}</span>
-                        <span className="text-xs text-muted-foreground">({group.count} rows)</span>
-                      </div>
+              {(["equipment", "transport", "other"] as const).map(cat => {
+                const catGroups = uniqueEquipmentGroups.filter(g => g.category === cat);
+                if (catGroups.length === 0) return null;
+                const catLabel = cat === "equipment" ? "EQUIPMENT" : cat === "transport" ? "TRANSPORT" : "OTHER";
+                return (
+                  <div key={cat} className="space-y-3">
+                    <div className="flex items-center gap-2 border-b pb-1">
+                      <Badge variant="outline" className={`text-[10px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}>
+                        {catLabel}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">{catGroups.length} group{catGroups.length !== 1 ? "s" : ""}</span>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[120px]">
-                      <Label className="text-xs uppercase">Rate</Label>
-                      <Input
-                        type="number"
-                        value={bulkRates[group.key]?.rate || ""}
-                        onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], rate: parseFloat(e.target.value) || 0 } }))}
-                        placeholder="0"
-                        data-testid={`input-bulk-rate-${group.key}`}
-                      />
-                    </div>
-                    {group.category === "transport" && (
-                      <div className="flex-1 min-w-[120px]">
-                        <Label className="text-xs uppercase">Lead Distance (KM)</Label>
-                        <Input
-                          type="number"
-                          value={bulkRates[group.key]?.leadDistance || ""}
-                          onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], leadDistance: parseFloat(e.target.value) || 0 } }))}
-                          placeholder="0"
-                          data-testid={`input-bulk-lead-${group.key}`}
-                        />
+                    {catGroups.map(group => (
+                      <div key={group.key} className="border rounded-md p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div>
+                            <p className="text-sm font-semibold" data-testid={`text-rate-equip-${group.key}`}>{group.equipmentName}</p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">{group.entryType}</span>
+                              <span className="text-xs text-muted-foreground">({group.count} rows)</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex-1 min-w-[120px]">
+                            <Label className="text-xs uppercase">Rate</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={bulkRates[group.key]?.rate || ""}
+                              onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], rate: parseFloat(e.target.value) || 0 } }))}
+                              placeholder="0"
+                              data-testid={`input-bulk-rate-${group.key}`}
+                            />
+                          </div>
+                          {group.category === "transport" && (
+                            <div className="flex-1 min-w-[120px]">
+                              <Label className="text-xs uppercase">Lead Distance (KM)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={bulkRates[group.key]?.leadDistance || ""}
+                                onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], leadDistance: parseFloat(e.target.value) || 0 } }))}
+                                placeholder="0"
+                                data-testid={`input-bulk-lead-${group.key}`}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="flex justify-end gap-2 pt-2 flex-wrap">
                 <Button variant="outline" onClick={() => setShowSetRatesDialog(false)} data-testid="button-cancel-rates">
                   CANCEL
@@ -1519,99 +1565,132 @@ export default function VendorBills() {
             </span>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 700 }}>
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground uppercase">
-                  <th className="px-2 py-2 text-left w-8">#</th>
-                  <th className="px-2 py-2 text-left w-24">Date</th>
-                  <th className="px-2 py-2 text-center w-16">Type</th>
-                  <th className="px-2 py-2 text-left">Description</th>
-                  <th className="px-2 py-2 text-left w-24">Qty</th>
-                  <th className="px-2 py-2 text-left w-16">Unit</th>
-                  {bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) && (
-                    <th className="px-2 py-2 text-left w-24">Lead (KM)</th>
-                  )}
-                  <th className="px-2 py-2 text-right w-24">Rate</th>
-                  <th className="px-2 py-2 text-right w-32">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bill.items.map((item, idx) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="px-2 py-2 text-muted-foreground text-xs">{idx + 1}</td>
-                    <td className="px-2 py-2 text-xs font-mono" data-testid={`text-detail-item-date-${idx}`}>{item.date || "-"}</td>
-                    <td className="px-2 py-2 text-center">
-                      {item.category ? (
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
-                        >
-                          {getCategoryLabel(item.category)}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                          {item.source === "auto" ? "AUTO" : "-"}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-2 py-2 font-medium text-xs" data-testid={`text-detail-item-desc-${idx}`}>
-                      <div className="space-y-1">
-                        <span>{item.description}</span>
-                        {extractDiesel(item.description) > 0 && (
-                          <div className="flex items-center gap-1">
-                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate">
-                              <Fuel className="w-3 h-3 mr-1" />
-                              {extractDiesel(item.description)}L DIESEL
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-2 py-2 text-xs">{item.qty}</td>
-                    <td className="px-2 py-2 text-xs">{item.unit}</td>
-                    {bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) && (
-                      <td className="px-2 py-2 text-xs">
-                        {item.leadDistance && item.leadDistance > 0 ? (
-                          <span>{item.leadDistance} <span className="text-muted-foreground">(RT: {item.leadDistance * 2})</span></span>
-                        ) : "-"}
-                      </td>
+            {(() => {
+              const hasLead = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
+              const totalCols = hasLead ? 9 : 8;
+              const labelCols = hasLead ? 7 : 6;
+              const catSubs = computeCategorySubTotals(bill.items);
+              const shouldGroup = catSubs.length > 1;
+              const categories = ["equipment", "material", "transport", "other"] as const;
+              const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+
+              const renderDetailRow = (item: any, idx: number) => (
+                <tr key={item.id || idx} className="border-b">
+                  <td className="px-2 py-2 text-muted-foreground text-xs">{idx + 1}</td>
+                  <td className="px-2 py-2 text-xs font-mono" data-testid={`text-detail-item-date-${idx}`}>{item.date || "-"}</td>
+                  <td className="px-2 py-2 text-center">
+                    {item.category ? (
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
+                      >
+                        {getCategoryLabel(item.category)}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                        {item.source === "auto" ? "AUTO" : "-"}
+                      </Badge>
                     )}
-                    <td className="px-2 py-2 text-right text-xs">{formatCurrency(item.rate)}</td>
-                    <td className="px-2 py-2 text-right font-semibold bg-amber-50 dark:bg-amber-900/20 text-xs" data-testid={`text-detail-item-amount-${idx}`}>
-                      {formatCurrency(item.amount)}
+                  </td>
+                  <td className="px-2 py-2 font-medium text-xs" data-testid={`text-detail-item-desc-${idx}`}>
+                    <div className="space-y-1">
+                      <span>{item.description}</span>
+                      {extractDiesel(item.description) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate">
+                            <Fuel className="w-3 h-3 mr-1" />
+                            {extractDiesel(item.description)}L DIESEL
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 text-xs">{formatQty(item.qty)}</td>
+                  <td className="px-2 py-2 text-xs">{item.unit}</td>
+                  {hasLead && (
+                    <td className="px-2 py-2 text-xs">
+                      {item.leadDistance && item.leadDistance > 0 ? (
+                        <span>{formatQty(item.leadDistance)} <span className="text-muted-foreground">(RT: {formatQty(item.leadDistance * 2)})</span></span>
+                      ) : "-"}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                {computeCategorySubTotals(bill.items).length > 1 && computeCategorySubTotals(bill.items).map(([cat, amt]) => (
-                  <tr key={cat} className="border-t bg-muted/30">
-                    <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-2 text-right text-xs font-semibold uppercase">
-                      {cat === "equipment" ? "Equipment" : cat === "material" ? "Material" : cat === "transport" ? "Transport" : "Other"} Sub-total
-                    </td>
-                    <td className="px-2 py-2 text-right text-xs font-semibold" colSpan={2}>Rs. {formatCurrency(amt)}</td>
-                  </tr>
-                ))}
-                <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
-                  <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-3 text-right font-bold">TOTAL</td>
-                  <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(bill.totalAmount)}</td>
+                  )}
+                  <td className="px-2 py-2 text-right text-xs">{formatCurrency(item.rate)}</td>
+                  <td className="px-2 py-2 text-right font-semibold bg-amber-50 dark:bg-amber-900/20 text-xs" data-testid={`text-detail-item-amount-${idx}`}>
+                    {formatCurrency(item.amount)}
+                  </td>
                 </tr>
-                {(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 && (
-                  <>
-                    <tr className="bg-muted/20">
-                      <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-2 text-right text-sm font-semibold uppercase">
-                        {(bill as any).adjustmentLabel || "ADJUSTMENT"}
-                      </td>
-                      <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency((bill as any).adjustmentAmount)}</td>
+              );
+
+              return (
+                <table className="w-full text-sm" style={{ minWidth: 700 }}>
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground uppercase">
+                      <th className="px-2 py-2 text-left w-8">#</th>
+                      <th className="px-2 py-2 text-left w-24">Date</th>
+                      <th className="px-2 py-2 text-center w-16">Type</th>
+                      <th className="px-2 py-2 text-left">Description</th>
+                      <th className="px-2 py-2 text-left w-24">Qty</th>
+                      <th className="px-2 py-2 text-left w-16">Unit</th>
+                      {hasLead && <th className="px-2 py-2 text-left w-24">Lead (KM)</th>}
+                      <th className="px-2 py-2 text-right w-24">Rate</th>
+                      <th className="px-2 py-2 text-right w-32">Amount</th>
                     </tr>
-                    <tr className="border-t-2 border-amber-600 bg-amber-100 dark:bg-amber-900/30">
-                      <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-3 text-right font-bold text-base">NET TOTAL</td>
-                      <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td>
+                  </thead>
+                  <tbody>
+                    {shouldGroup ? (
+                      <>
+                        {categories.map(cat => {
+                          const catItems = bill.items.map((item: any, idx: number) => ({ item, idx })).filter(({ item }: any) => item.category === cat);
+                          if (catItems.length === 0) return null;
+                          const catTotal = catItems.reduce((sum: number, { item }: any) => sum + (item.amount || 0), 0);
+                          return (
+                            <Fragment key={cat}>
+                              <tr className={`${getCategoryBadgeClass(cat)} border-b`}>
+                                <td colSpan={totalCols} className="px-3 py-2 font-semibold text-xs uppercase tracking-wider">
+                                  <Badge variant="outline" className={`${getCategoryBadgeClass(cat)} mr-2 no-default-hover-elevate no-default-active-elevate`}>
+                                    {catLabels[cat]}
+                                  </Badge>
+                                  {catItems.length} item{catItems.length !== 1 ? "s" : ""}
+                                </td>
+                              </tr>
+                              {catItems.map(({ item, idx }: any) => renderDetailRow(item, idx))}
+                              <tr className="border-b bg-muted/40">
+                                <td colSpan={labelCols} className="px-2 py-2 text-right text-xs font-semibold uppercase">
+                                  {catLabels[cat]} Sub-total
+                                </td>
+                                <td className="px-2 py-2 text-right text-xs font-semibold" colSpan={2}>Rs. {formatCurrency(catTotal)}</td>
+                              </tr>
+                            </Fragment>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      bill.items.map((item: any, idx: number) => renderDetailRow(item, idx))
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+                      <td colSpan={labelCols} className="px-2 py-3 text-right font-bold">TOTAL</td>
+                      <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(bill.totalAmount)}</td>
                     </tr>
-                  </>
-                )}
-              </tfoot>
-            </table>
+                    {(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 && (
+                      <>
+                        <tr className="bg-muted/20">
+                          <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">
+                            {(bill as any).adjustmentLabel || "ADJUSTMENT"}
+                          </td>
+                          <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency((bill as any).adjustmentAmount)}</td>
+                        </tr>
+                        <tr className="border-t-2 border-amber-600 bg-amber-100 dark:bg-amber-900/30">
+                          <td colSpan={labelCols} className="px-2 py-3 text-right font-bold text-base">NET TOTAL</td>
+                          <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td>
+                        </tr>
+                      </>
+                    )}
+                  </tfoot>
+                </table>
+              );
+            })()}
           </CardContent>
         </Card>
 

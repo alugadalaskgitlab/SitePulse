@@ -2626,8 +2626,12 @@ export async function registerRoutes(
         return map[cat] || "OTHER";
       };
       const fmtCurrency = (amt: number | null | undefined) => {
-        if (amt == null) return "0";
-        return amt.toLocaleString("en-IN");
+        if (amt == null) return "0.00";
+        return Number(amt).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      };
+      const fmtQty = (qty: number | null | undefined) => {
+        if (qty == null) return "0.00";
+        return Number(qty).toFixed(2);
       };
 
       const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
@@ -2689,8 +2693,7 @@ export async function registerRoutes(
       });
       y += 20;
 
-      doc.fillColor("#000").font("Helvetica").fontSize(9);
-      bill.items.forEach((item: any, idx: number) => {
+      const renderPdfItemRow = (item: any, idx: number) => {
         const desc = item.description || "";
         const descHeight = doc.heightOfString(desc, { width: colWidths[descColIdx] - 8, fontSize: 9 });
         const rowH = Math.max(18, descHeight + 8);
@@ -2706,14 +2709,14 @@ export async function registerRoutes(
           ? [
               String(idx + 1), item.date || "-",
               item.category ? getCategoryLabel(item.category) : "-", desc,
-              String(item.qty || 0), item.unit || "",
-              item.leadDistance ? `${item.leadDistance} (${item.leadDistance * 2})` : "-",
+              fmtQty(item.qty), item.unit || "",
+              item.leadDistance ? `${fmtQty(item.leadDistance)} (${fmtQty(item.leadDistance * 2)})` : "-",
               fmtCurrency(item.rate), fmtCurrency(item.amount),
             ]
           : [
               String(idx + 1), item.date || "-",
               item.category ? getCategoryLabel(item.category) : "-", desc,
-              String(item.qty || 0), item.unit || "",
+              fmtQty(item.qty), item.unit || "",
               fmtCurrency(item.rate), fmtCurrency(item.amount),
             ];
         doc.fillColor("#000").fontSize(9);
@@ -2729,7 +2732,51 @@ export async function registerRoutes(
           cx += colWidths[i];
         });
         y += rowH;
+      };
+
+      const pdfCategories = ["equipment", "material", "transport", "other"];
+      const pdfCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+      const catAmounts: Record<string, number> = {};
+      bill.items.forEach((item: any) => {
+        const cat = item.category || "other";
+        catAmounts[cat] = (catAmounts[cat] || 0) + (item.amount || 0);
       });
+      const distinctCats = Object.keys(catAmounts).filter(c => catAmounts[c] !== 0);
+      const shouldGroupPdf = distinctCats.length > 1;
+
+      doc.fillColor("#000").font("Helvetica").fontSize(9);
+      if (shouldGroupPdf) {
+        for (const cat of pdfCategories) {
+          const catItems = bill.items.filter((it: any) => (it.category || "other") === cat);
+          if (catItems.length === 0) continue;
+          const catTotal = catItems.reduce((s: number, it: any) => s + (it.amount || 0), 0);
+
+          if (y + 20 > 720) { doc.addPage(); y = 40; }
+          doc.fillColor("#f0f0f0").rect(tableX, y, pageW, 20).fill();
+          doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
+          doc.text(`${pdfCatLabels[cat]} (${catItems.length} items)`, tableX + 8, y + 5, { width: pageW - 16 });
+          y += 20;
+          doc.font("Helvetica").fontSize(9);
+
+          catItems.forEach((item: any) => {
+            const origIdx = bill.items.indexOf(item);
+            renderPdfItemRow(item, origIdx);
+          });
+
+          if (y + 20 > 720) { doc.addPage(); y = 40; }
+          doc.fillColor("#f5f5f5").rect(tableX, y, pageW, 20).fill();
+          doc.fillColor("#000").fontSize(9).font("Helvetica-Bold");
+          const amtW = colWidths[colWidths.length - 1];
+          doc.text(`${pdfCatLabels[cat]} Sub-total`, tableX + 4, y + 5, { width: pageW - amtW - 8, align: "right" });
+          doc.text(`Rs. ${fmtCurrency(catTotal)}`, tableX + pageW - amtW + 4, y + 5, { width: amtW - 8, align: "right" });
+          y += 20;
+          doc.font("Helvetica").fontSize(9);
+        }
+      } else {
+        bill.items.forEach((item: any, idx: number) => {
+          renderPdfItemRow(item, idx);
+        });
+      }
 
       doc.strokeColor("#999").lineWidth(0.5);
       doc.moveTo(tableX, y).lineTo(tableX + pageW, y).stroke();
@@ -2743,7 +2790,7 @@ export async function registerRoutes(
       doc.fillColor("#f5f5f5").rect(tableX, y, pageW, summaryH).fill();
       doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
       doc.text(`TOTAL ITEMS: ${totalItems}`, tableX + 4, y + 6, { width: 200 });
-      doc.text(`TOTAL QTY: ${totalQty}`, tableX + 200, y + 6, { width: 150 });
+      doc.text(`TOTAL QTY: ${fmtQty(totalQty)}`, tableX + 200, y + 6, { width: 150 });
       y += summaryH;
 
       const amtColW = colWidths[colWidths.length - 1];
