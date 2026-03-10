@@ -48,7 +48,9 @@ Preferred communication style: Simple, everyday language.
 - Manages material receipts, mix templates, truck dispatches, and stock deductions.
 - **Party-Based Stock**: All stock is attributed to a party, with HLC as primary for common stock.
 - **Equipment Master**: Enhanced with ownership status, vendor details, and active status.
-- **Equipment Entry Types**: Supports `time_meter`, `hourly`, `daily`, `trip_based`, and `monthly` entry modes for equipment logs in both DPRs and Plant. Entry type is a billing label — all types keep time/meter/diesel fields visible for consumption tracking. Trip-based additionally shows trip count and distance fields.
+- **Equipment Entry Types**: Supports `time_meter`, `hourly`, `daily`, `trip_based`, `monthly`, and `shifting` entry modes for equipment logs in both DPRs and Plant. Entry type is a billing label — all types keep time/meter/diesel fields visible for consumption tracking. Trip-based additionally shows trip count and distance fields. Shifting/Mobilization records equipment transfers between sites with transport vehicle, from/to locations, and distance — skips diesel/meter calculations.
+- **Shifting/Mobilization**: Equipment Usage entries with entryType "shifting" store shiftFrom, shiftTo, transportEquipmentId (FK to equipment_master), and transportDistance. Display shows MOBILIZATION badge (cyan), From→To, Transport Vehicle, Distance instead of diesel columns. Vendor bill auto-items appear under transport category, matched by transport vehicle's vendor.
+- **Truck Dispatches Equipment Link**: Truck dispatches can link to Equipment Master via transportEquipmentId, with searchable combobox dropdown showing equipment name, registration, and owner info.
 - **Diesel Flow**: Diesel stock deduction from HLC stock can originate from both Plant Equipment Usage and DPR equipment logs, with overlap detection.
 - **Fuel Stock Tracking**: Includes Bitumen Stock Tracker (tank dip chart with linear interpolation), LDO Flow Meter Tracker (meter readings for consumption), and Consumption Variance Report (actual vs. template).
 - **Material Returns**: System for returning issued materials back to plant stock, linked to original issues.
@@ -81,7 +83,10 @@ Preferred communication style: Simple, everyday language.
   - **Enhanced Print**: Professional print layout with company header, structured bill details, styled table, summary totals, signature blocks, and footer. Print-optimized font sizes and dark colors for legibility on paper.
   - **Edit/Delete for Verified/Approved**: Admin can edit or delete verified/approved bills (PIN-gated). Editing auto-reverts status to draft. Paid bills cannot be edited/deleted.
   - **Filter Clear Buttons**: Individual (x) clear buttons for each filter + "CLEAR FILTERS" button to reset all.
-  - Tables: `vendor_bills`, `vendor_bill_items` (with `date`, `category`, `leadDistance` columns), `vendor_aliases`
+  - **Adjustments**: `adjustmentLabel` (text) and `adjustmentAmount` (real, default 0) on vendor_bills for deductions/additions (e.g., TDS, advance, security deposit). Net total = totalAmount + adjustmentAmount. Shown in form, detail, print, and PDF.
+  - **Sub-totals by Category**: When a bill has items in multiple categories, sub-totals (Equipment, Material, Transport, Other) are shown in form, detail, print, and PDF views.
+  - **Bulk Rate Setting**: "SET RATES" dialog lists unique equipment groups for batch rate entry. Previous bill rates auto-applied via `/api/vendor-bills/previous-rates`.
+  - Tables: `vendor_bills` (with `adjustmentLabel`, `adjustmentAmount`), `vendor_bill_items` (with `date`, `category`, `leadDistance` columns), `vendor_aliases`
   - Routes: `/api/vendor-bills`, `/api/vendor-bills/vendor-names`, `/api/vendor-bills/auto-items`, `/api/vendor-bills/discover-vendors`, `/api/vendor-bills/:id/pdf`, `/api/vendor-aliases`, `/plant/vendor-bills`
 
 ### Data Management

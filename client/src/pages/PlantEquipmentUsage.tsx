@@ -13,7 +13,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
+import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, ArrowRightLeft } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { EquipmentMasterType, EquipmentUsage } from "@shared/schema";
+import type { EquipmentMasterType, EquipmentUsage, Site } from "@shared/schema";
 import { METER_TYPES } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
@@ -55,6 +55,10 @@ export default function PlantEquipmentUsage() {
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [userModifiedOpening, setUserModifiedOpening] = useState(false);
+  const [shiftFrom, setShiftFrom] = useState("");
+  const [shiftTo, setShiftTo] = useState("");
+  const [transportEquipmentId, setTransportEquipmentId] = useState("");
+  const [transportDistance, setTransportDistance] = useState("");
   
   const [newEquipmentDialogOpen, setNewEquipmentDialogOpen] = useState(false);
   const [newEquipmentName, setNewEquipmentName] = useState("");
@@ -86,11 +90,15 @@ export default function PlantEquipmentUsage() {
     dieselBalanceInTank: string;
     dieselBalanceConfirmed: boolean;
     remarks: string;
+    shiftFrom: string;
+    shiftTo: string;
+    transportEquipmentId: string;
+    transportDistance: string;
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
 
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
@@ -114,6 +122,10 @@ export default function PlantEquipmentUsage() {
     setDieselBalanceInTank(data.dieselBalanceInTank ?? "");
     setDieselBalanceConfirmed(data.dieselBalanceConfirmed || false);
     setRemarks(data.remarks);
+    setShiftFrom(data.shiftFrom ?? "");
+    setShiftTo(data.shiftTo ?? "");
+    setTransportEquipmentId(data.transportEquipmentId ?? "");
+    setTransportDistance(data.transportDistance ?? "");
   }, []);
 
   const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<EquipmentFormData>({
@@ -145,6 +157,10 @@ export default function PlantEquipmentUsage() {
     },
   });
   const activeEquipment = equipment?.filter(e => e.isActive === 1) || [];
+
+  const { data: sitesList } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
 
   const createEquipmentMutation = useMutation({
     mutationFn: async (data: { name: string; registrationNumber?: string; meterType: string; consumptionNorm?: number; ownership?: string; vendorName?: string }) => {
@@ -232,6 +248,10 @@ export default function PlantEquipmentUsage() {
     setPreviousDieselBalance(null);
     setIsLoadingBalance(false);
     setUserModifiedOpening(false);
+    setShiftFrom("");
+    setShiftTo("");
+    setTransportEquipmentId("");
+    setTransportDistance("");
   };
 
   const openEditDialog = (entry: EquipmentUsage) => {
@@ -260,6 +280,10 @@ export default function PlantEquipmentUsage() {
     setRemarks(entry.remarks || "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);
+    setShiftFrom((entry as any).shiftFrom || "");
+    setShiftTo((entry as any).shiftTo || "");
+    setTransportEquipmentId((entry as any).transportEquipmentId ? String((entry as any).transportEquipmentId) : "");
+    setTransportDistance((entry as any).transportDistance ? String((entry as any).transportDistance) : "");
     setDialogOpen(true);
   };
 
@@ -267,7 +291,7 @@ export default function PlantEquipmentUsage() {
     setEquipmentId(value);
     setUserModifiedOpening(false);
     const selectedEquip = activeEquipment.find(e => e.id === Number(value));
-    if (selectedEquip && (selectedEquip as any).ownership !== "hired") {
+    if (selectedEquip && (selectedEquip as any).ownership !== "hired" && entryType !== "shifting") {
       setEntryType("time_meter");
       setTripBasedEntry(false);
       setNumberOfTrips("");
@@ -304,6 +328,46 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
+    if (entryType === "shifting") {
+      if (!equipmentId || !shiftFrom || !shiftTo || !transportEquipmentId) {
+        toast({ title: "Please fill in equipment, from, to, and transport vehicle", variant: "destructive" });
+        return;
+      }
+      const data = {
+        date,
+        equipmentId: parseInt(equipmentId),
+        entryType: "shifting",
+        shiftFrom: shiftFrom.toUpperCase(),
+        shiftTo: shiftTo.toUpperCase(),
+        transportEquipmentId: parseInt(transportEquipmentId),
+        transportDistance: transportDistance ? parseFloat(transportDistance) : null,
+        openingReading: null,
+        closingReading: null,
+        startTime: null,
+        endTime: null,
+        numberOfTrips: null,
+        tripDistance: null,
+        tripBasedEntry: false,
+        openingDiesel: null,
+        dieselIssued: null,
+        dieselIncluded: false,
+        dieselSource: "contractor",
+        fuelStation: null,
+        billNumber: null,
+        amountPaid: null,
+        siteName: null,
+        dieselBalanceInTank: null,
+        dieselBalanceConfirmed: false,
+        remarks: remarks.toUpperCase(),
+      };
+      if (editingUsage) {
+        updateMutation.mutate({ id: editingUsage.id, data });
+      } else {
+        createMutation.mutate(data);
+      }
+      return;
+    }
+
     const hasMeterReading = openingReading && closingReading;
     const hasTimeEntry = startTime && endTime;
     const hasTripEntry = (entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance;
@@ -512,6 +576,20 @@ export default function PlantEquipmentUsage() {
   const getExportData = () => {
     return filteredUsage.map(entry => {
       const equip = equipment?.find(e => e.id === entry.equipmentId);
+      if ((entry as any).entryType === "shifting") {
+        const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
+        const transportName = tEquip ? `${tEquip.name}${(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}` : "-";
+        return {
+          Date: entry.date,
+          Equipment: `${equip?.name || "Unknown"}${(equip as any)?.registrationNumber ? ` - ${(equip as any).registrationNumber}` : ""}`,
+          "Entry Type": "MOBILIZATION",
+          "From": (entry as any).shiftFrom || "",
+          "To": (entry as any).shiftTo || "",
+          "Transport Vehicle": transportName,
+          "Distance (km)": (entry as any).transportDistance || "-",
+          "Remarks": entry.remarks || "",
+        };
+      }
       const openingDieselVal = (entry as any).openingDiesel ?? 0;
       const dieselIssuedVal = entry.dieselIssued ?? 0;
       const consumed = entry.expectedDiesel ?? 0;
@@ -820,7 +898,7 @@ export default function PlantEquipmentUsage() {
                     Norm: {selectedEquipment.consumptionNorm} {selectedEquipment.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 )}
-                {selectedEquipment && (selectedEquipment as any).ownership === "hired" && (
+                {selectedEquipment && (
                   <div className="mt-2 py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-2">
                     <Label className="text-sm font-medium">Entry Type</Label>
                     <div className="flex items-center gap-2">
@@ -835,6 +913,12 @@ export default function PlantEquipmentUsage() {
                             setNumberOfTrips("");
                             setTripDistance("");
                           }
+                          if (val === "shifting") {
+                            setShiftFrom("");
+                            setShiftTo("");
+                            setTransportEquipmentId("");
+                            setTransportDistance("");
+                          }
                         }}
                       >
                         <SelectTrigger data-testid="select-entry-type" className="w-48">
@@ -842,15 +926,25 @@ export default function PlantEquipmentUsage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
-                          <SelectItem value="hourly">Hourly Hire</SelectItem>
-                          <SelectItem value="daily">Daily Hire</SelectItem>
-                          <SelectItem value="trip_based">Trip Based</SelectItem>
-                          <SelectItem value="monthly">Monthly Hire</SelectItem>
+                          {(selectedEquipment as any).ownership === "hired" && (
+                            <>
+                              <SelectItem value="hourly">Hourly Hire</SelectItem>
+                              <SelectItem value="daily">Daily Hire</SelectItem>
+                              <SelectItem value="trip_based">Trip Based</SelectItem>
+                              <SelectItem value="monthly">Monthly Hire</SelectItem>
+                            </>
+                          )}
+                          <SelectItem value="shifting">Shifting / Mobilization</SelectItem>
                         </SelectContent>
                       </Select>
                       {(entryType === "daily" || entryType === "monthly") && (
                         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                           {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
+                        </Badge>
+                      )}
+                      {entryType === "shifting" && (
+                        <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700">
+                          MOBILIZATION
                         </Badge>
                       )}
                     </div>
@@ -859,9 +953,81 @@ export default function PlantEquipmentUsage() {
               </div>
 
               <p className="text-sm text-muted-foreground italic">
-                {entryType === "hourly" ? "Enter time worked for hourly hire billing." : "Enter meter readings OR time."}
+                {entryType === "shifting" ? "Record equipment transfer between sites." : entryType === "hourly" ? "Enter time worked for hourly hire billing." : "Enter meter readings OR time."}
               </p>
 
+              {entryType === "shifting" && (
+                <div className="space-y-4 p-3 bg-teal-50/50 dark:bg-teal-900/10 rounded-md border border-teal-200/50 dark:border-teal-800/50">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm">From</Label>
+                      <Select value={shiftFrom} onValueChange={setShiftFrom}>
+                        <SelectTrigger data-testid="select-shift-from">
+                          <SelectValue placeholder="Origin" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PLANT">PLANT</SelectItem>
+                          {sitesList?.filter(s => s.isActive === 1).map((site) => (
+                            <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm">To</Label>
+                      <Select value={shiftTo} onValueChange={setShiftTo}>
+                        <SelectTrigger data-testid="select-shift-to">
+                          <SelectValue placeholder="Destination" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PLANT">PLANT</SelectItem>
+                          {sitesList?.filter(s => s.isActive === 1).map((site) => (
+                            <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Transport Vehicle</Label>
+                    <Select value={transportEquipmentId} onValueChange={setTransportEquipmentId}>
+                      <SelectTrigger data-testid="select-transport-vehicle">
+                        <SelectValue placeholder="Select transport vehicle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeEquipment.map((equip) => (
+                          <SelectItem key={equip.id} value={String(equip.id)}>
+                            {equip.name}{(equip as any).registrationNumber ? ` (${(equip as any).registrationNumber})` : ""} | {(equip as any).ownership === "hired" ? `HIRED: ${(equip as any).vendorName || "Unknown"}` : "HLC OWN"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {transportEquipmentId && (() => {
+                      const tEquip = activeEquipment.find(e => e.id === parseInt(transportEquipmentId));
+                      return tEquip ? (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {(tEquip as any).ownership === "hired" ? `Owner: ${(tEquip as any).vendorName || "N/A"}` : "HLC Owned Vehicle"}
+                        </p>
+                      ) : null;
+                    })()}
+                  </div>
+                  <div>
+                    <Label className="text-sm">Distance (km) - One Way</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={transportDistance}
+                      onChange={(e) => setTransportDistance(e.target.value)}
+                      placeholder="e.g., 25"
+                      data-testid="input-transport-distance"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {entryType !== "shifting" && (
+              <>
               <div className="text-sm font-semibold text-muted-foreground border-b pb-1">Morning Entry</div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -1079,6 +1245,8 @@ export default function PlantEquipmentUsage() {
                   )}
                 </>
               )}
+              </>
+              )}
 
               <div>
                 <Label>Remarks</Label>
@@ -1088,11 +1256,13 @@ export default function PlantEquipmentUsage() {
               <Button 
                 onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || (!openingReading && (!startTime || !endTime) && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance))} 
+                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || (entryType === "shifting" ? (!shiftFrom || !shiftTo || !transportEquipmentId) : (!openingReading && (!startTime || !endTime) && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance)))} 
                 data-testid="button-save-usage"
               >
                 {(createMutation.isPending || updateMutation.isPending) ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
+                ) : entryType === "shifting" ? (
+                  editingUsage ? "Update Entry" : "Save Entry"
                 ) : editingUsage ? (
                   editingUsage.openingReading != null && editingUsage.closingReading == null && closingReading ? "Complete Entry" : "Update Entry"
                 ) : (
@@ -1379,6 +1549,9 @@ export default function PlantEquipmentUsage() {
                                 {(entry as any).entryType === "trip_based" && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>
                                 )}
+                                {(entry as any).entryType === "shifting" && (
+                                  <Badge variant="outline" className="mt-1 text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>
+                                )}
                                 {isDieselIncluded && (
                                   <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>
                                 )}
@@ -1386,6 +1559,32 @@ export default function PlantEquipmentUsage() {
                                   <Badge variant="outline" className="mt-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>
                                 )}
                               </div>
+                              {(entry as any).entryType === "shifting" ? (
+                                <>
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">From → To</span>
+                                    <span className="font-medium">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">Transport Vehicle</span>
+                                    {(() => {
+                                      const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
+                                      return tEquip ? (
+                                        <>
+                                          <span className="font-medium">{tEquip.name}{(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}</span>
+                                          <span className="text-sm text-muted-foreground block">{(tEquip as any).ownership === "hired" ? `HIRED: ${(tEquip as any).vendorName || ""}` : "HLC OWN"}</span>
+                                        </>
+                                      ) : <span className="font-medium text-muted-foreground">-</span>;
+                                    })()}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">Distance</span>
+                                    <span className="font-medium">{(entry as any).transportDistance ? `${(entry as any).transportDistance} km` : "-"}</span>
+                                  </div>
+                                  <div className="col-span-2" />
+                                </>
+                              ) : (
+                              <>
                               <div>
                                 <span className="text-muted-foreground text-sm block">
                                   {isPartialEntry(entry)
@@ -1485,6 +1684,8 @@ export default function PlantEquipmentUsage() {
                                     )}
                                   </div>
                                 </>
+                              )}
+                              </>
                               )}
                             </div>
                             <div className="flex gap-2 ml-4">

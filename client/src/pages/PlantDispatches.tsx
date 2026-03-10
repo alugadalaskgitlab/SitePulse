@@ -11,7 +11,9 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -19,7 +21,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { Party, MixTemplate, TruckDispatch, MixType, Site } from "@shared/schema";
+import { cn } from "@/lib/utils";
+import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType } from "@shared/schema";
 
 export default function PlantDispatches() {
   const { toast } = useToast();
@@ -57,6 +60,8 @@ export default function PlantDispatches() {
   const [actualLdoPerTon, setActualLdoPerTon] = useState("");
   const [bitumenTankNumber, setBitumenTankNumber] = useState("1");
   const [ldoTankNumber, setLdoTankNumber] = useState("2");
+  const [transportEquipmentId, setTransportEquipmentId] = useState<number | null>(null);
+  const [truckComboOpen, setTruckComboOpen] = useState(false);
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -124,6 +129,10 @@ export default function PlantDispatches() {
     queryKey: ["/api/sites"],
   });
 
+  const { data: equipmentList } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment"],
+  });
+
   const filteredSites = useMemo(() => {
     if (!sitesList) return [];
     if (!partyId) return sitesList.filter(s => s.isActive !== 0);
@@ -185,6 +194,7 @@ export default function PlantDispatches() {
     setActualLdoPerTon("");
     setBitumenTankNumber("1");
     setLdoTankNumber("2");
+    setTransportEquipmentId(null);
     setEditingDispatch(null);
   };
 
@@ -208,6 +218,7 @@ export default function PlantDispatches() {
     }
     setBitumenTankNumber(dispatch.bitumenTankNumber ? String(dispatch.bitumenTankNumber) : "1");
     setLdoTankNumber(dispatch.ldoTankNumber ? String(dispatch.ldoTankNumber) : "2");
+    setTransportEquipmentId(dispatch.transportEquipmentId || null);
     setDialogOpen(true);
   };
 
@@ -302,6 +313,7 @@ export default function PlantDispatches() {
           adjustedBy: authenticatedRole,
           bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
           ldoTankNumber: parseInt(ldoTankNumber) || 2,
+          transportEquipmentId: transportEquipmentId || null,
         }
       });
     } else {
@@ -319,6 +331,7 @@ export default function PlantDispatches() {
         actualLdoQty: computedActualLdoQty,
         bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
         ldoTankNumber: parseInt(ldoTankNumber) || 2,
+        transportEquipmentId: transportEquipmentId || null,
       });
     }
   };
@@ -785,8 +798,90 @@ export default function PlantDispatches() {
               </div>
 
               <div>
-                <Label>Truck Number</Label>
-                <Input value={truckNumber} onChange={(e) => setTruckNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-truck-number" />
+                <Label>Truck / Vehicle</Label>
+                <Popover open={truckComboOpen} onOpenChange={setTruckComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={truckComboOpen}
+                      className="w-full justify-between font-normal"
+                      data-testid="input-truck-number"
+                    >
+                      {truckNumber || "Select or type truck number..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search or type truck number..."
+                        value={truckNumber}
+                        onValueChange={(val) => {
+                          setTruckNumber(val.toUpperCase());
+                          setTransportEquipmentId(null);
+                        }}
+                        data-testid="input-truck-search"
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          {truckNumber ? (
+                            <button
+                              className="w-full text-left px-2 py-1.5 text-sm cursor-pointer"
+                              onClick={() => {
+                                setTruckComboOpen(false);
+                              }}
+                              data-testid="button-use-custom-truck"
+                            >
+                              Use "{truckNumber}" as custom entry
+                            </button>
+                          ) : (
+                            "Type a truck number or search equipment..."
+                          )}
+                        </CommandEmpty>
+                        <CommandGroup heading="Equipment Master">
+                          {(equipmentList || [])
+                            .filter(eq => eq.isActive === 1)
+                            .filter(eq => {
+                              if (!truckNumber) return true;
+                              const search = truckNumber.toLowerCase();
+                              return (
+                                eq.name?.toLowerCase().includes(search) ||
+                                eq.registrationNumber?.toLowerCase().includes(search) ||
+                                eq.vendorName?.toLowerCase().includes(search)
+                              );
+                            })
+                            .map((eq) => (
+                              <CommandItem
+                                key={eq.id}
+                                value={`${eq.name} ${eq.registrationNumber || ""} ${eq.vendorName || ""}`}
+                                onSelect={() => {
+                                  setTruckNumber(eq.registrationNumber?.toUpperCase() || eq.name.toUpperCase());
+                                  setTransportEquipmentId(eq.id);
+                                  if (eq.vendorName && !ownerName) {
+                                    setOwnerName(eq.vendorName.toUpperCase());
+                                  }
+                                  setTruckComboOpen(false);
+                                }}
+                                data-testid={`option-equipment-${eq.id}`}
+                              >
+                                <Check className={cn("mr-2 h-4 w-4", transportEquipmentId === eq.id ? "opacity-100" : "opacity-0")} />
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""}</span>
+                                  {eq.vendorName && <span className="text-xs text-muted-foreground">{eq.vendorName}</span>}
+                                </div>
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {transportEquipmentId && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Linked to Equipment Master #{transportEquipmentId}
+                  </p>
+                )}
               </div>
 
               <div>

@@ -288,6 +288,7 @@ export const truckDispatches = pgTable("truck_dispatches", {
   adjustedAt: timestamp("adjusted_at"), // When actual was changed from theoretical
   ownerName: text("owner_name"),
   driverName: text("driver_name"),
+  transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for truck/tipper
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -297,7 +298,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   equipmentId: integer("equipment_id").notNull(),
-  entryType: text("entry_type").default("time_meter"), // time_meter, hourly, daily, trip_based, monthly
+  entryType: text("entry_type").default("time_meter"), // time_meter, hourly, daily, trip_based, monthly, shifting
   // Hour meter fields (optional if using time entry)
   openingReading: real("opening_reading"), // Hours or KM (meter) - now optional
   closingReading: real("closing_reading"), // now optional
@@ -331,6 +332,10 @@ export const equipmentUsage = pgTable("equipment_usage", {
   // Diesel balance tracking (informational, no stock adjustment)
   dieselBalanceInTank: real("diesel_balance_in_tank"), // Liters remaining in equipment tank at end of work
   dieselBalanceConfirmed: boolean("diesel_balance_confirmed").default(false), // Whether balance was physically verified
+  shiftFrom: text("shift_from"), // Origin site/location for mobilization
+  shiftTo: text("shift_to"), // Destination site/location for mobilization
+  transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for transport vehicle
+  transportDistance: real("transport_distance"), // One-way distance in km for mobilization
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -943,6 +948,8 @@ export const vendorBills = pgTable("vendor_bills", {
   approvedAt: text("approved_at"),
   paidAt: text("paid_at"),
   paymentRemarks: text("payment_remarks"),
+  adjustmentLabel: text("adjustment_label"), // Free-text description (e.g., "ADVANCE DEDUCTION", "TDS")
+  adjustmentAmount: real("adjustment_amount").default(0), // Positive = addition, negative = deduction
   createdAt: timestamp("created_at").defaultNow(),
 });
 

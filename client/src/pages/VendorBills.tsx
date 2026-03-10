@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, DollarSign } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -36,7 +36,7 @@ const BILL_TYPES = [
   { value: "equipment", label: "EQUIPMENT HIRE" },
   { value: "material", label: "MATERIAL SUPPLY" },
   { value: "transport", label: "TRANSPORT" },
-  { value: "all", label: "ALL" },
+  { value: "all", label: "All Types (Combined)" },
   { value: "other", label: "OTHER / MISCELLANEOUS" },
 ];
 
@@ -131,6 +131,8 @@ export default function VendorBills() {
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
   ]);
+  const [adjustmentLabel, setAdjustmentLabel] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
 
   const [entryTypeFilter, setEntryTypeFilter] = useState("all");
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -144,6 +146,8 @@ export default function VendorBills() {
   const [showAliasPinAuth, setShowAliasPinAuth] = useState(false);
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasValue, setAliasValue] = useState("");
+  const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
+  const [bulkRates, setBulkRates] = useState<Record<string, { rate: number; leadDistance: number }>>({});
 
   const { data: bills, isLoading } = useQuery<VendorBillWithItems[]>({
     queryKey: ["/api/vendor-bills"],
@@ -307,6 +311,8 @@ export default function VendorBills() {
     setNotes("");
     setEntryTypeFilter("all");
     setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
+    setAdjustmentLabel("");
+    setAdjustmentAmount(0);
     setEditingBillId(null);
     setAdminPinForUpdate(null);
     setVendorSearch("");
@@ -355,11 +361,13 @@ export default function VendorBills() {
         leadDistance: item.leadDistance ?? null,
       }))
     );
+    setAdjustmentLabel((bill as any).adjustmentLabel || "");
+    setAdjustmentAmount((bill as any).adjustmentAmount || 0);
     setEditingBillId(bill.id);
     setView("form");
   };
 
-  const handleAutoPopulate = () => {
+  const handleAutoPopulate = async () => {
     if (autoItems && autoItems.length > 0) {
       const mapped: LineItem[] = autoItems.map((item: any) => ({
         date: item.date || "",
@@ -373,6 +381,33 @@ export default function VendorBills() {
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
       }));
+
+      try {
+        const res = await fetch(`/api/vendor-bills/previous-rates?vendorName=${encodeURIComponent(vendorName)}`);
+        if (res.ok) {
+          const previousRates: Record<string, { rate: number; leadDistance?: number }> = await res.json();
+          let appliedCount = 0;
+          for (let i = 0; i < mapped.length; i++) {
+            const item = mapped[i];
+            if (item.rate === 0 && item.equipmentId) {
+              const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+              const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
+              const key = `${item.equipmentId}_${entryType}`;
+              const prev = previousRates[key];
+              if (prev && prev.rate > 0) {
+                mapped[i] = { ...item, rate: prev.rate, leadDistance: prev.leadDistance ?? item.leadDistance };
+                mapped[i].amount = calcAmount(mapped[i]);
+                appliedCount++;
+              }
+            }
+          }
+          if (appliedCount > 0) {
+            toast({ title: `Applied rates from previous bill for ${appliedCount} items` });
+          }
+        }
+      } catch (_e) {
+      }
+
       setLineItems(mapped);
       toast({ title: `${mapped.length} items auto-populated from records` });
     }
@@ -421,18 +456,28 @@ export default function VendorBills() {
   };
 
   const totalAmount = useMemo(() => lineItems.reduce((sum, item) => sum + (item.amount || 0), 0), [lineItems]);
+  const netTotal = useMemo(() => totalAmount + (adjustmentAmount || 0), [totalAmount, adjustmentAmount]);
+
+  const computeCategorySubTotals = (items: { category?: string | null; amount?: number | null }[]) => {
+    const cats: Record<string, number> = {};
+    items.forEach(item => {
+      const cat = item.category || "other";
+      cats[cat] = (cats[cat] || 0) + (item.amount || 0);
+    });
+    return Object.entries(cats).filter(([, amt]) => amt !== 0).sort(([a], [b]) => a.localeCompare(b));
+  };
 
   const applyRateToSimilar = (sourceIdx: number) => {
     const source = lineItems[sourceIdx];
     if (!source.rate || source.rate <= 0) return;
-    const sourceEntryType = source.description.match(/- (HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER)/)?.[1] || "";
+    const sourceEntryType = source.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/)?.[1] || "";
     let applied = 0;
     let skipped = 0;
     setLineItems(prev => {
       const updated = [...prev];
       for (let i = 0; i < updated.length; i++) {
         if (i === sourceIdx) continue;
-        const itemEntryType = updated[i].description.match(/- (HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER)/)?.[1] || "";
+        const itemEntryType = updated[i].description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/)?.[1] || "";
         const sameEquipment = source.equipmentId && updated[i].equipmentId === source.equipmentId;
         const sameType = sourceEntryType && itemEntryType === sourceEntryType;
         if (sameEquipment && sameType) {
@@ -452,6 +497,63 @@ export default function VendorBills() {
       title: applied > 0 ? `Rate applied to ${applied} row${applied > 1 ? "s" : ""}` : "No matching rows to apply",
       description: skipped > 0 ? `${skipped} row${skipped > 1 ? "s" : ""} skipped (already have rates)` : undefined,
     });
+  };
+
+  const uniqueEquipmentGroups = useMemo(() => {
+    const groups: Record<string, { equipmentId: number; equipmentName: string; entryType: string; category: string; count: number }> = {};
+    lineItems.forEach(item => {
+      if (!item.equipmentId) return;
+      const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+      const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
+      const key = `${item.equipmentId}_${entryType}`;
+      if (!groups[key]) {
+        const nameMatch = item.description.match(/^(.+?)\s*(?:-\s*)?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+        const equipmentName = nameMatch ? nameMatch[1].trim() : item.description.split(" - ")[0] || item.description;
+        groups[key] = { equipmentId: item.equipmentId, equipmentName, entryType, category: item.category, count: 0 };
+      }
+      groups[key].count++;
+    });
+    return Object.entries(groups).map(([key, val]) => ({ key, ...val }));
+  }, [lineItems]);
+
+  const openSetRatesDialog = () => {
+    const initialRates: Record<string, { rate: number; leadDistance: number }> = {};
+    uniqueEquipmentGroups.forEach(group => {
+      const existing = lineItems.find(item => item.equipmentId === group.equipmentId && item.description.includes(group.entryType) && item.rate > 0);
+      initialRates[group.key] = {
+        rate: existing?.rate || 0,
+        leadDistance: existing?.leadDistance || 0,
+      };
+    });
+    setBulkRates(initialRates);
+    setShowSetRatesDialog(true);
+  };
+
+  const applyBulkRates = () => {
+    let applied = 0;
+    setLineItems(prev => {
+      const updated = [...prev];
+      for (let i = 0; i < updated.length; i++) {
+        const item = updated[i];
+        if (!item.equipmentId) continue;
+        const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+        const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
+        const key = `${item.equipmentId}_${entryType}`;
+        const rateData = bulkRates[key];
+        if (rateData && rateData.rate > 0) {
+          const newItem = { ...item, rate: rateData.rate };
+          if (item.category === "transport" && rateData.leadDistance > 0) {
+            newItem.leadDistance = rateData.leadDistance;
+          }
+          newItem.amount = calcAmount(newItem);
+          updated[i] = newItem;
+          applied++;
+        }
+      }
+      return updated;
+    });
+    setShowSetRatesDialog(false);
+    toast({ title: `Rates applied to ${applied} item${applied !== 1 ? "s" : ""}` });
   };
 
   const handleSubmit = () => {
@@ -474,6 +576,8 @@ export default function VendorBills() {
       status: "draft",
       notes: notes ? notes.toUpperCase() : null,
       totalAmount,
+      adjustmentLabel: adjustmentLabel || null,
+      adjustmentAmount: adjustmentAmount || 0,
       items: lineItems.filter(i => i.description).map(item => ({
         date: item.date || null,
         category: item.category || null,
@@ -644,7 +748,18 @@ export default function VendorBills() {
       <tbody>${rows}</tbody>
       <tfoot>
         <tr class="summary-row"><td colspan="${hasLeadDistance ? 5 : 4}" style="text-align:right">TOTAL ITEMS: ${totalItems}</td><td style="text-align:center">${totalQty}</td><td colspan="${hasLeadDistance ? 4 : 3}"></td></tr>
-        <tr class="total-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">TOTAL AMOUNT</td><td style="text-align:right">${formatCurrency(bill.totalAmount)}</td></tr>
+        ${(() => {
+          const catSubs = computeCategorySubTotals(bill.items);
+          if (catSubs.length <= 1) return "";
+          return catSubs.map(([cat, amt]: [string, number]) => `
+            <tr class="summary-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">${cat === "equipment" ? "Equipment" : cat === "material" ? "Material" : cat === "transport" ? "Transport" : "Other"} Sub-total</td><td style="text-align:right">Rs. ${formatCurrency(amt)}</td></tr>
+          `).join("");
+        })()}
+        <tr class="total-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">TOTAL AMOUNT</td><td style="text-align:right">Rs. ${formatCurrency(bill.totalAmount)}</td></tr>
+        ${(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 ? `
+          <tr class="summary-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">${escHtml((bill as any).adjustmentLabel || "ADJUSTMENT")}</td><td style="text-align:right">Rs. ${formatCurrency((bill as any).adjustmentAmount)}</td></tr>
+          <tr class="total-row"><td colspan="${hasLeadDistance ? 8 : 7}" style="text-align:right">NET TOTAL</td><td style="text-align:right">Rs. ${formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td></tr>
+        ` : ""}
       </tfoot>
       </table>
       ${bill.notes ? `<div class="notes"><strong>Notes / Remarks:</strong><br/>${escHtml(bill.notes)}</div>` : ""}
@@ -964,9 +1079,16 @@ export default function VendorBills() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">LINE ITEMS</CardTitle>
-            <Button variant="outline" size="sm" onClick={addLineItem} data-testid="button-add-item">
-              <Plus className="w-4 h-4 mr-1" /> ADD ITEM
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              {uniqueEquipmentGroups.length > 0 && (
+                <Button variant="outline" size="sm" onClick={openSetRatesDialog} data-testid="button-set-rates">
+                  <DollarSign className="w-4 h-4 mr-1" /> SET RATES
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={addLineItem} data-testid="button-add-item">
+                <Plus className="w-4 h-4 mr-1" /> ADD ITEM
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             <table className="w-full text-sm" style={{ minWidth: 800 }}>
@@ -1126,9 +1248,18 @@ export default function VendorBills() {
                 ))}
               </tbody>
               <tfoot>
+                {computeCategorySubTotals(lineItems).length > 1 && computeCategorySubTotals(lineItems).map(([cat, amt]) => (
+                  <tr key={cat} className="border-t bg-muted/30">
+                    <td colSpan={(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) ? 8 : 7} className="px-2 py-2 text-right text-xs font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
+                      {cat === "equipment" ? "Equipment" : cat === "material" ? "Material" : cat === "transport" ? "Transport" : "Other"} Sub-total
+                    </td>
+                    <td className="px-2 py-2 text-right text-xs font-semibold" data-testid={`text-subtotal-amount-${cat}`}>Rs. {formatCurrency(amt)}</td>
+                    <td></td>
+                  </tr>
+                ))}
                 <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
                   <td colSpan={(billType === "transport" || lineItems.some(i => i.leadDistance !== null)) ? 8 : 7} className="px-2 py-3 text-right font-bold text-base">TOTAL</td>
-                  <td className="px-2 py-3 text-right font-bold text-base" data-testid="text-total-amount">{formatCurrency(totalAmount)}</td>
+                  <td className="px-2 py-3 text-right font-bold text-base" data-testid="text-total-amount">Rs. {formatCurrency(totalAmount)}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -1138,6 +1269,37 @@ export default function VendorBills() {
 
         <Card>
           <CardContent className="py-4 space-y-4">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Adjustments</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div className="md:col-span-2">
+                  <Label className="text-xs uppercase">Adjustment Description</Label>
+                  <Input
+                    value={adjustmentLabel}
+                    onChange={e => setAdjustmentLabel(e.target.value.toUpperCase())}
+                    placeholder="e.g., ADVANCE DEDUCTION, TDS, SECURITY DEPOSIT"
+                    className="uppercase"
+                    data-testid="input-adjustment-label"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">Adjustment Amount</Label>
+                  <Input
+                    type="number"
+                    value={adjustmentAmount || ""}
+                    onChange={e => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="Negative for deduction"
+                    data-testid="input-adjustment-amount"
+                  />
+                </div>
+              </div>
+              {adjustmentAmount !== 0 && (
+                <div className="flex justify-between items-center p-3 rounded-md bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700">
+                  <span className="text-sm font-semibold uppercase">{adjustmentLabel || "ADJUSTMENT"}: Rs. {formatCurrency(adjustmentAmount)}</span>
+                  <span className="text-base font-bold" data-testid="text-net-total">NET TOTAL: Rs. {formatCurrency(netTotal)}</span>
+                </div>
+              )}
+            </div>
             <div>
               <Label className="text-xs uppercase">Notes / Remarks</Label>
               <Textarea
@@ -1163,6 +1325,64 @@ export default function VendorBills() {
             </div>
           </CardContent>
         </Card>
+
+        <Dialog open={showSetRatesDialog} onOpenChange={setShowSetRatesDialog}>
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>SET RATES FOR EQUIPMENT</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {uniqueEquipmentGroups.map(group => (
+                <div key={group.key} className="border rounded-md p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold" data-testid={`text-rate-equip-${group.key}`}>{group.equipmentName}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={`text-[10px] ${getCategoryBadgeClass(group.category)} no-default-hover-elevate no-default-active-elevate`}>
+                          {getCategoryLabel(group.category)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{group.entryType}</span>
+                        <span className="text-xs text-muted-foreground">({group.count} rows)</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex-1 min-w-[120px]">
+                      <Label className="text-xs uppercase">Rate</Label>
+                      <Input
+                        type="number"
+                        value={bulkRates[group.key]?.rate || ""}
+                        onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], rate: parseFloat(e.target.value) || 0 } }))}
+                        placeholder="0"
+                        data-testid={`input-bulk-rate-${group.key}`}
+                      />
+                    </div>
+                    {group.category === "transport" && (
+                      <div className="flex-1 min-w-[120px]">
+                        <Label className="text-xs uppercase">Lead Distance (KM)</Label>
+                        <Input
+                          type="number"
+                          value={bulkRates[group.key]?.leadDistance || ""}
+                          onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], leadDistance: parseFloat(e.target.value) || 0 } }))}
+                          placeholder="0"
+                          data-testid={`input-bulk-lead-${group.key}`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-end gap-2 pt-2 flex-wrap">
+                <Button variant="outline" onClick={() => setShowSetRatesDialog(false)} data-testid="button-cancel-rates">
+                  CANCEL
+                </Button>
+                <Button onClick={applyBulkRates} data-testid="button-apply-rates">
+                  <Check className="w-4 h-4 mr-1" /> APPLY RATES
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {showPinAuth && (
           <PinAuth
@@ -1364,10 +1584,32 @@ export default function VendorBills() {
                 ))}
               </tbody>
               <tfoot>
+                {computeCategorySubTotals(bill.items).length > 1 && computeCategorySubTotals(bill.items).map(([cat, amt]) => (
+                  <tr key={cat} className="border-t bg-muted/30">
+                    <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-2 text-right text-xs font-semibold uppercase">
+                      {cat === "equipment" ? "Equipment" : cat === "material" ? "Material" : cat === "transport" ? "Transport" : "Other"} Sub-total
+                    </td>
+                    <td className="px-2 py-2 text-right text-xs font-semibold" colSpan={2}>Rs. {formatCurrency(amt)}</td>
+                  </tr>
+                ))}
                 <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
                   <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-3 text-right font-bold">TOTAL</td>
-                  <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>{formatCurrency(bill.totalAmount)}</td>
+                  <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(bill.totalAmount)}</td>
                 </tr>
+                {(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 && (
+                  <>
+                    <tr className="bg-muted/20">
+                      <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-2 text-right text-sm font-semibold uppercase">
+                        {(bill as any).adjustmentLabel || "ADJUSTMENT"}
+                      </td>
+                      <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency((bill as any).adjustmentAmount)}</td>
+                    </tr>
+                    <tr className="border-t-2 border-amber-600 bg-amber-100 dark:bg-amber-900/30">
+                      <td colSpan={bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0) ? 7 : 6} className="px-2 py-3 text-right font-bold text-base">NET TOTAL</td>
+                      <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td>
+                    </tr>
+                  </>
+                )}
               </tfoot>
             </table>
           </CardContent>

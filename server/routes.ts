@@ -2466,6 +2466,38 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-bills/previous-rates", async (req, res) => {
+    try {
+      const vendorName = req.query.vendorName as string;
+      if (!vendorName) {
+        return res.status(400).json({ message: "vendorName is required" });
+      }
+      const bills = await storage.getVendorBills();
+      const vendorBills = bills
+        .filter(b => b.vendorName.toUpperCase().trim() === vendorName.toUpperCase().trim() && b.items && b.items.length > 0)
+        .sort((a, b) => new Date(b.billDate).getTime() - new Date(a.billDate).getTime());
+      
+      const rateMap: Record<string, { rate: number; leadDistance?: number }> = {};
+      for (const bill of vendorBills) {
+        for (const item of (bill.items || [])) {
+          if (item.rate && item.rate > 0 && item.equipmentId) {
+            const etMatch = (item.description || "").match(/(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+            const rawLabel = etMatch?.[1] || "OTHER";
+            const normalizedLabel = rawLabel.replace(/\s+/g, "_").replace("/", "_");
+            const key = `${item.equipmentId}_${normalizedLabel}`;
+            if (!rateMap[key]) {
+              rateMap[key] = { rate: item.rate, leadDistance: item.leadDistance || undefined };
+            }
+          }
+        }
+      }
+      res.json(rateMap);
+    } catch (err) {
+      console.error("Error fetching previous rates:", err);
+      res.status(500).json({ message: "Failed to fetch previous rates" });
+    }
+  });
+
   app.get("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -2720,6 +2752,23 @@ export async function registerRoutes(
       doc.text("TOTAL AMOUNT", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
       doc.text(`Rs. ${fmtCurrency(bill.totalAmount)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
       y += summaryH;
+
+      const adjustmentAmount = (bill as any).adjustmentAmount || 0;
+      const adjustmentLabel = (bill as any).adjustmentLabel || "";
+      if (adjustmentAmount !== 0 || adjustmentLabel) {
+        doc.fillColor("#f0f0f0").rect(tableX, y, pageW, summaryH).fill();
+        doc.fillColor("#000").fontSize(10).font("Helvetica");
+        doc.text(adjustmentLabel || "ADJUSTMENT", tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
+        doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustmentAmount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
+        y += summaryH;
+
+        const netTotal = (bill.totalAmount || 0) + adjustmentAmount;
+        doc.fillColor("#1a1a1a").rect(tableX, y, pageW, summaryH).fill();
+        doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
+        doc.text("NET TOTAL", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
+        doc.text(`Rs. ${fmtCurrency(netTotal)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
+        y += summaryH;
+      }
 
       if (bill.notes) {
         if (y + 40 > 720) { doc.addPage(); y = 40; }

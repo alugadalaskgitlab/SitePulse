@@ -1780,68 +1780,70 @@ export class DatabaseStorage implements IStorage {
       // Get equipment to calculate expected diesel
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
       
-      // Calculate hours/km from meter readings or time entry (meter takes priority)
-      // For hour_meter: result is hours; for odometer: result is km
+      const isShifting = (usage.entryType || "").toLowerCase() === "shifting";
+      
       let hoursOrKmRun = 0;
-      const isHourMeterEquip = equipment?.meterType === "hour_meter";
-      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
-      
-      if (usage.openingReading !== null && usage.openingReading !== undefined && 
-          usage.closingReading !== null && usage.closingReading !== undefined) {
-        // Meter readings: gives hours for hour_meter, km for odometer
-        hoursOrKmRun = usage.closingReading - usage.openingReading;
-      } else if (usage.startTime && usage.endTime) {
-        // Calculate hours from time entry
-        const [startHour, startMin] = usage.startTime.split(':').map(Number);
-        const [endHour, endMin] = usage.endTime.split(':').map(Number);
-        const startMins = startHour * 60 + startMin;
-        const endMins = endHour * 60 + endMin;
-        const diff = endMins - startMins;
-        const hoursFromTime = diff > 0 ? diff / 60 : 0;
-        
-        // For hour_meter: time gives hours directly
-        // For odometer: convert hours to estimated km using average speed
-        if (isHourMeterEquip) {
-          hoursOrKmRun = hoursFromTime;
-        } else {
-          hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH; // hours × km/hr = km
-        }
-      }
-      
-      // Calculate total km from trip-based entry
-      const numberOfTrips = usage.numberOfTrips || 0;
-      const tripDistance = usage.tripDistance || 0;
-      const tripBasedEntry = usage.tripBasedEntry === true;
-      const totalKm = numberOfTrips * tripDistance * 2; // Round trip
-      
-      // Calculate expected diesel:
-      // If tripBasedEntry is true, ALWAYS use trip-based calculation (even if meter/time exists)
-      // For trip-based: convert L/hr norm to L/km using average speed
-      const norm = equipment?.consumptionNorm || 0;
-      const isHourMeter = equipment?.meterType === "hour_meter";
-      
       let expectedDiesel = 0;
-      if (tripBasedEntry) {
-        // Trip-based: ALWAYS use trip calculation when flag is true (zero if no trip data)
-        if (totalKm > 0) {
-          const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-          expectedDiesel = totalKm * normPerKm;
+      let openingDiesel = usage.openingDiesel ?? 0;
+      let dieselIssued = usage.dieselIssued || 0;
+      let closingDiesel = 0;
+      let variance = 0;
+      let numberOfTrips = usage.numberOfTrips || 0;
+      let tripDistance = usage.tripDistance || 0;
+      let tripBasedEntry = usage.tripBasedEntry === true;
+      let totalKm = 0;
+      
+      if (isShifting) {
+        hoursOrKmRun = 0;
+        expectedDiesel = 0;
+        openingDiesel = 0;
+        dieselIssued = 0;
+        closingDiesel = 0;
+        variance = 0;
+        numberOfTrips = 0;
+        tripDistance = 0;
+        tripBasedEntry = false;
+        totalKm = 0;
+      } else {
+        // Calculate hours/km from meter readings or time entry (meter takes priority)
+        const isHourMeterEquip = equipment?.meterType === "hour_meter";
+        const AVERAGE_SPEED_KMPH = 25;
+        
+        if (usage.openingReading !== null && usage.openingReading !== undefined && 
+            usage.closingReading !== null && usage.closingReading !== undefined) {
+          hoursOrKmRun = usage.closingReading - usage.openingReading;
+        } else if (usage.startTime && usage.endTime) {
+          const [startHour, startMin] = usage.startTime.split(':').map(Number);
+          const [endHour, endMin] = usage.endTime.split(':').map(Number);
+          const startMins = startHour * 60 + startMin;
+          const endMins = endHour * 60 + endMin;
+          const diff = endMins - startMins;
+          const hoursFromTime = diff > 0 ? diff / 60 : 0;
+          
+          if (isHourMeterEquip) {
+            hoursOrKmRun = hoursFromTime;
+          } else {
+            hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH;
+          }
         }
-        // else expectedDiesel stays 0 - trip-based but no trip data
-      } else if (hoursOrKmRun > 0) {
-        // Meter/time based
-        expectedDiesel = hoursOrKmRun * norm;
+        
+        totalKm = numberOfTrips * tripDistance * 2;
+        
+        const norm = equipment?.consumptionNorm || 0;
+        const isHourMeter = equipment?.meterType === "hour_meter";
+        
+        if (tripBasedEntry) {
+          if (totalKm > 0) {
+            const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+            expectedDiesel = totalKm * normPerKm;
+          }
+        } else if (hoursOrKmRun > 0) {
+          expectedDiesel = hoursOrKmRun * norm;
+        }
+        
+        closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
+        variance = dieselIssued - expectedDiesel;
       }
-      
-      // Use user-provided opening diesel, or default to 0
-      const openingDiesel = usage.openingDiesel ?? 0;
-      const dieselIssued = usage.dieselIssued || 0;
-      
-      // Calculate closing diesel balance = opening + issued - consumed
-      const closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
-      
-      // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
-      const variance = dieselIssued - expectedDiesel;
       
       const [result] = await tx.insert(equipmentUsage).values({
         ...usage,
@@ -1941,91 +1943,88 @@ export class DatabaseStorage implements IStorage {
 
   async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
     return db.transaction(async (tx) => {
-      // Get existing record
       const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
       if (!existing) return undefined;
 
       const equipmentId = usage.equipmentId ?? existing.equipmentId;
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
       
-      const openingReading = usage.openingReading ?? existing.openingReading;
-      const closingReading = usage.closingReading ?? existing.closingReading;
-      const startTime = usage.startTime ?? (existing as any).startTime;
-      const endTime = usage.endTime ?? (existing as any).endTime;
-      const newDieselIssued = usage.dieselIssued ?? existing.dieselIssued ?? 0;
-      const openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
+      const entryType = usage.entryType ?? existing.entryType ?? "time_meter";
+      const isShifting = entryType.toLowerCase() === "shifting";
+      
       const oldDieselIssued = existing.dieselIssued || 0;
       
-      // Trip-based fields - use persisted value from database if not in update
-      const numberOfTrips = usage.numberOfTrips ?? (existing as any).numberOfTrips ?? 0;
-      const tripDistance = usage.tripDistance ?? (existing as any).tripDistance ?? 0;
-      // Use explicit tripBasedEntry flag - persisted in database
-      const tripBasedEntry = usage.tripBasedEntry !== undefined 
-        ? usage.tripBasedEntry === true 
-        : (existing as any).tripBasedEntry === true;
-      const totalKm = numberOfTrips * tripDistance * 2; // Round trip
-      
-      // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
-      const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
-      const isHourMeterEquip = equipment?.meterType === "hour_meter";
-      
-      // Calculate hours/km from meter readings or time entry (meter takes priority)
-      // For hour_meter: result is hours; for odometer: result is km
       let hoursOrKmRun = 0;
-      
-      if (openingReading !== null && openingReading !== undefined && 
-          closingReading !== null && closingReading !== undefined) {
-        // Meter readings: gives hours for hour_meter, km for odometer
-        hoursOrKmRun = closingReading - openingReading;
-      } else if (startTime && endTime) {
-        // Calculate hours from time entry
-        const [startHour, startMin] = startTime.split(':').map(Number);
-        const [endHour, endMin] = endTime.split(':').map(Number);
-        const startMins = startHour * 60 + startMin;
-        const endMins = endHour * 60 + endMin;
-        const diff = endMins - startMins;
-        const hoursFromTime = diff > 0 ? diff / 60 : 0;
-        
-        // For hour_meter: time gives hours directly
-        // For odometer: convert hours to estimated km using average speed
-        if (isHourMeterEquip) {
-          hoursOrKmRun = hoursFromTime;
-        } else {
-          hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH; // hours × km/hr = km
-        }
-      }
-      
-      // Calculate expected diesel:
-      // If tripBasedEntry is true, ALWAYS use trip-based calculation (even if meter/time exists)
-      // For trip-based: convert L/hr norm to L/km using average speed
-      const norm = equipment?.consumptionNorm || 0;
-      const isHourMeter = equipment?.meterType === "hour_meter";
-      
       let expectedDiesel = 0;
-      if (tripBasedEntry) {
-        // Trip-based: ALWAYS use trip calculation when flag is true (zero if no trip data)
-        if (totalKm > 0) {
-          const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-          expectedDiesel = totalKm * normPerKm;
+      let openingDiesel = 0;
+      let newDieselIssued = 0;
+      let closingDiesel = 0;
+      let variance = 0;
+      let numberOfTrips = 0;
+      let tripDistance2 = 0;
+      let tripBasedEntry = false;
+      let totalKm = 0;
+      
+      if (isShifting) {
+        // No calculations needed for shifting/mobilization entries
+      } else {
+        const openingReading = usage.openingReading ?? existing.openingReading;
+        const closingReading = usage.closingReading ?? existing.closingReading;
+        const startTime = usage.startTime ?? (existing as any).startTime;
+        const endTime = usage.endTime ?? (existing as any).endTime;
+        newDieselIssued = usage.dieselIssued ?? existing.dieselIssued ?? 0;
+        openingDiesel = usage.openingDiesel ?? existing.openingDiesel ?? 0;
+        
+        numberOfTrips = usage.numberOfTrips ?? (existing as any).numberOfTrips ?? 0;
+        tripDistance2 = usage.tripDistance ?? (existing as any).tripDistance ?? 0;
+        tripBasedEntry = usage.tripBasedEntry !== undefined 
+          ? usage.tripBasedEntry === true 
+          : (existing as any).tripBasedEntry === true;
+        totalKm = numberOfTrips * tripDistance2 * 2;
+        
+        const AVERAGE_SPEED_KMPH = 25;
+        const isHourMeterEquip = equipment?.meterType === "hour_meter";
+        
+        if (openingReading !== null && openingReading !== undefined && 
+            closingReading !== null && closingReading !== undefined) {
+          hoursOrKmRun = closingReading - openingReading;
+        } else if (startTime && endTime) {
+          const [startHour, startMin] = startTime.split(':').map(Number);
+          const [endHour, endMin] = endTime.split(':').map(Number);
+          const startMins = startHour * 60 + startMin;
+          const endMins = endHour * 60 + endMin;
+          const diff = endMins - startMins;
+          const hoursFromTime = diff > 0 ? diff / 60 : 0;
+          
+          if (isHourMeterEquip) {
+            hoursOrKmRun = hoursFromTime;
+          } else {
+            hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH;
+          }
         }
-        // else expectedDiesel stays 0 - trip-based but no trip data
-      } else if (hoursOrKmRun > 0) {
-        // Meter/time based
-        expectedDiesel = hoursOrKmRun * norm;
+        
+        const norm = equipment?.consumptionNorm || 0;
+        const isHourMeter = equipment?.meterType === "hour_meter";
+        
+        if (tripBasedEntry) {
+          if (totalKm > 0) {
+            const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
+            expectedDiesel = totalKm * normPerKm;
+          }
+        } else if (hoursOrKmRun > 0) {
+          expectedDiesel = hoursOrKmRun * norm;
+        }
+        
+        closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
+        variance = newDieselIssued - expectedDiesel;
       }
-      
-      // Calculate closing diesel balance = opening + issued - consumed
-      const closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
-      
-      // Variance = Diesel Issued - Consumed (positive = savings, negative = wastage)
-      const variance = newDieselIssued - expectedDiesel;
       
       const [result] = await tx.update(equipmentUsage)
         .set({
           ...usage,
           hoursOrKmRun,
           numberOfTrips: numberOfTrips || null,
-          tripDistance: tripDistance || null,
+          tripDistance: tripDistance2 || null,
           totalKm: totalKm || null,
           expectedDiesel,
           openingDiesel,
@@ -5021,6 +5020,8 @@ export class DatabaseStorage implements IStorage {
         status: data.status || "draft",
         notes: data.notes?.toUpperCase() || data.notes,
         totalAmount: data.totalAmount,
+        adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
+        adjustmentAmount: (data as any).adjustmentAmount || 0,
         verifiedBy: data.verifiedBy?.toUpperCase() || data.verifiedBy,
         verifiedAt: data.verifiedAt,
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
@@ -5065,6 +5066,8 @@ export class DatabaseStorage implements IStorage {
           periodTo: data.periodTo,
           notes: data.notes?.toUpperCase() || data.notes,
           totalAmount: data.totalAmount,
+          adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
+          adjustmentAmount: (data as any).adjustmentAmount || 0,
           paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
         };
       if (data.status) {
@@ -5169,6 +5172,7 @@ export class DatabaseStorage implements IStorage {
         case "daily": return "DAILY HIRE";
         case "trip_based": return "TRIP BASED";
         case "monthly": return "MONTHLY HIRE";
+        case "shifting": return "MOBILIZATION";
         case "time_meter": return "TIME/METER";
         default: return "TIME/METER";
       }
@@ -5180,12 +5184,14 @@ export class DatabaseStorage implements IStorage {
         case "daily": return "DAYS";
         case "trip_based": return "TRIPS";
         case "monthly": return "MONTHS";
+        case "shifting": return "TRIP";
         default: return "HRS";
       }
     };
 
     const calcQty = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; numberOfTrips?: number | null; hoursOrKmRun?: number | null; entryType?: string | null }) => {
       const et = (row.entryType || "").toLowerCase();
+      if (et === "shifting") return 1;
       if (et === "trip_based" && row.numberOfTrips) return row.numberOfTrips;
       if (et === "daily") return 1;
       if (et === "monthly") return 1;
@@ -5219,9 +5225,11 @@ export class DatabaseStorage implements IStorage {
     const matchesEntryTypeFilter = (entryType: string | null) => {
       if (!entryTypeFilter || entryTypeFilter === "all") return true;
       const et = (entryType || "time_meter").toLowerCase();
+      if (et === "shifting") return entryTypeFilter === "shifting" || entryTypeFilter === "all";
       if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et);
       if (entryTypeFilter === "trip_based") return et === "trip_based";
       if (entryTypeFilter === "monthly") return et === "monthly";
+      if (entryTypeFilter === "shifting") return et === "shifting";
       return true;
     };
 
@@ -5446,6 +5454,52 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (bt === "transport" || bt === "all") {
+      // Shifting/Mobilization entries: matched by TRANSPORT vehicle's vendor
+      const shiftingTransportEquipment = await db.select()
+        .from(equipmentMaster)
+        .where(and(
+          vendorMatchSql(equipmentMaster.vendorName),
+          eq(equipmentMaster.ownership, "hired"),
+        ));
+      const transportEqIds = shiftingTransportEquipment.map(e => e.id);
+      const transportEqMap = new Map(shiftingTransportEquipment.map(e => [e.id, `${e.name}${e.registrationNumber ? ` (${e.registrationNumber})` : ''}`]));
+      
+      if (transportEqIds.length > 0) {
+        const shiftingEntries = await db.select()
+          .from(equipmentUsage)
+          .where(and(
+            inArray(equipmentUsage.transportEquipmentId, transportEqIds),
+            eq(equipmentUsage.entryType, "shifting"),
+            gte(equipmentUsage.date, periodFrom),
+            lte(equipmentUsage.date, periodTo),
+          ));
+        
+        if (shiftingEntries.length > 0) {
+          const shiftedEquipIds = [...new Set(shiftingEntries.map(e => e.equipmentId))];
+          const shiftedEquipList = await db.select().from(equipmentMaster).where(inArray(equipmentMaster.id, shiftedEquipIds));
+          const shiftedEqMap = new Map(shiftedEquipList.map(e => [e.id, `${e.name}${e.registrationNumber ? ` (${e.registrationNumber})` : ''}`]));
+          
+          for (const row of shiftingEntries) {
+            if (!matchesEntryTypeFilter("shifting")) continue;
+            const shiftedEquipName = shiftedEqMap.get(row.equipmentId) || "EQUIPMENT";
+            const transportVehicleName = row.transportEquipmentId ? transportEqMap.get(row.transportEquipmentId) || "TRANSPORT" : "TRANSPORT";
+            const shiftFrom = (row as any).shiftFrom || "?";
+            const shiftTo = (row as any).shiftTo || "?";
+            const desc = `MOBILIZATION: ${shiftedEquipName} (${shiftFrom} → ${shiftTo}) via ${transportVehicleName}`;
+            items.push({
+              date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+              category: "transport",
+              description: desc,
+              qty: 1,
+              unit: "TRIP",
+              source: "auto",
+              equipmentId: row.transportEquipmentId || row.equipmentId,
+              leadDistance: (row as any).transportDistance || null,
+            });
+          }
+        }
+      }
+
       const dispatches = await db.select()
         .from(truckDispatches)
         .where(and(
