@@ -530,6 +530,7 @@ export default function PlantEquipmentUsage() {
         "Diesel Issued": dieselIssuedVal.toFixed(3),
         "Closing Diesel": closingDieselVal.toFixed(3),
         "Expected Diesel": consumed.toFixed(3),
+        "Remarks": entry.remarks || "",
       };
     });
   };
@@ -589,9 +590,8 @@ export default function PlantEquipmentUsage() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Equipment", "Rdg/Trips", "Hrs/KM", "Open Diesel", "Issued", "Close Diesel", "Expected"]],
+        head: [["Date", "Equipment", "Rdg/Trips", "Hrs/KM", "Open Diesel", "Issued", "Close Diesel", "Expected", "Remarks"]],
         body: data.map(row => {
-          // Combine readings/trips into one column
           const rdgOrTrips = row["Trips"] !== "-" 
             ? `${row["Trips"]} trips × ${row["Trip Dist (km)"]} km`
             : `${row["Opening Reading"] || "-"} - ${row["Closing Reading"] || "-"}`;
@@ -605,6 +605,7 @@ export default function PlantEquipmentUsage() {
             row["Diesel Issued"],
             row["Closing Diesel"],
             row["Expected Diesel"],
+            row["Remarks"],
           ];
         }),
         styles: { fontSize: 8 },
@@ -689,6 +690,7 @@ export default function PlantEquipmentUsage() {
                 <th>Issued</th>
                 <th>Close Diesel</th>
                 <th>Expected</th>
+                <th>Remarks</th>
               </tr>
             </thead>
             <tbody>
@@ -707,6 +709,7 @@ export default function PlantEquipmentUsage() {
                   <td>${row["Diesel Issued"]}</td>
                   <td>${row["Closing Diesel"]}</td>
                   <td>${row["Expected Diesel"]}</td>
+                  <td>${row["Remarks"]}</td>
                 </tr>
               `}).join('')}
             </tbody>
@@ -1350,7 +1353,8 @@ export default function PlantEquipmentUsage() {
                           : (entry.expectedDiesel ?? 0);
                         const closingDieselVal = closingDieselEntry ?? (openingDieselVal + dieselIssuedVal - (entry.expectedDiesel ?? 0));
                         return (
-                          <div key={entry.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
+                          <div key={entry.id} className="p-4 rounded-lg bg-muted/50 hover-elevate">
+                          <div className="flex items-center justify-between">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-sm block">Equipment</span>
@@ -1491,6 +1495,13 @@ export default function PlantEquipmentUsage() {
                                 <Trash2 className="w-4 h-4 text-destructive" />
                               </Button>
                             </div>
+                          </div>
+                          {entry.remarks?.trim() && (
+                            <div className="pt-2 -mt-1">
+                              <span className="text-xs text-muted-foreground">Remarks: </span>
+                              <span className="text-xs font-medium">{entry.remarks}</span>
+                            </div>
+                          )}
                           </div>
                         );
                       })}
