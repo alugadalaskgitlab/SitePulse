@@ -405,6 +405,14 @@ export default function VendorBills() {
       } catch (_e) {
       }
 
+      const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, other: 3 };
+      mapped.sort((a, b) => {
+        const catA = categoryOrder[a.category] ?? 3;
+        const catB = categoryOrder[b.category] ?? 3;
+        if (catA !== catB) return catA - catB;
+        return (a.date || "").localeCompare(b.date || "");
+      });
+
       setLineItems(mapped);
       toast({ title: `${mapped.length} items auto-populated from records` });
     }
