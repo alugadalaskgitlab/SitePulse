@@ -4213,6 +4213,7 @@ export class DatabaseStorage implements IStorage {
 
     let dieselConditions: any[] = [
       eq(equipmentLogs.dieselSource, 'direct_purchase'),
+      or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
     ];
     if (filters?.dateFrom) dieselConditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) dieselConditions.push(lte(dprs.date, filters.dateTo));
@@ -4332,7 +4333,10 @@ export class DatabaseStorage implements IStorage {
       .where(tripConditions.length > 0 ? and(...tripConditions) : undefined)
       .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
 
-    const dprConditions: any[] = [eq(materialLogs.type, 'Received')];
+    const dprConditions: any[] = [
+      eq(materialLogs.type, 'Received'),
+      or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+    ];
     if (filters?.dateFrom) dprConditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
     if (filters?.material) dprConditions.push(ilike(materialLogs.material, `%${filters.material}%`));
