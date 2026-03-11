@@ -1586,8 +1586,8 @@ export default function SiteDashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === 'trip' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {trip.source === 'trip' ? 'TRIP' : 'DPR'}
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === 'trip' ? 'bg-blue-100 text-blue-700' : trip.source === 'equipment' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {trip.source === 'trip' ? 'TRIP' : trip.source === 'equipment' ? 'EQUIP' : 'DPR'}
                             </span>
                             <span className="font-medium">{trip.material}</span>
                             <span className="text-sm text-muted-foreground">
@@ -1605,10 +1605,11 @@ export default function SiteDashboard() {
                             {trip.location && <span>@ {trip.location}</span>}
                             {trip.receiptNumber && <span>#{trip.receiptNumber}</span>}
                             {trip.enteredBy && <span>by {trip.enteredBy}</span>}
+                            {trip.notes && <span className="italic">{trip.notes}</span>}
                           </div>
                         </div>
                       </div>
-                      {trip.source === 'trip' && (
+                      {trip.source === 'trip' ? (
                         <Button 
                           variant="ghost" 
                           size="icon" 
@@ -1618,7 +1619,7 @@ export default function SiteDashboard() {
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
-                      )}
+                      ) : null}
                     </div>
                   ))}
                 </div>

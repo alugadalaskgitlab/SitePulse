@@ -64,6 +64,8 @@ export const equipmentLogs = pgTable("equipment_logs", {
   fuelStation: text("fuel_station"), // Commercial pump name/location
   billNumber: text("bill_number"), // Receipt/bill number
   amountPaid: real("amount_paid"), // Total amount paid for diesel
+  // Water tanker tracking
+  waterQuantity: real("water_quantity"), // Water delivered in liters
 });
 
 // Labour Log

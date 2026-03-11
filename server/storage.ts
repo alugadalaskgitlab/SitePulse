@@ -4393,13 +4393,65 @@ export class DatabaseStorage implements IStorage {
       notes: t.notes || null,
     }));
 
+    const waterConditions: any[] = [
+      or(
+        ilike(equipmentLogs.machine, '%water%'),
+        ilike(equipmentLogs.machine, '%tanker%'),
+      ),
+      or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+    ];
+    if (filters?.dateFrom) waterConditions.push(gte(dprs.date, filters.dateFrom));
+    if (filters?.dateTo) waterConditions.push(lte(dprs.date, filters.dateTo));
+    if (filters?.material && !filters.material.toUpperCase().includes('WATER')) {
+      waterConditions.push(sql`1=0`);
+    }
+
+    const waterEntries = await db.select({
+      id: equipmentLogs.id,
+      machine: equipmentLogs.machine,
+      operator: equipmentLogs.operator,
+      vehicleNo: equipmentLogs.vehicleNo,
+      task: equipmentLogs.task,
+      numberOfTrips: equipmentLogs.numberOfTrips,
+      waterQuantity: equipmentLogs.waterQuantity,
+      startTime: equipmentLogs.startTime,
+      endTime: equipmentLogs.endTime,
+      date: dprs.date,
+      site: dprs.site,
+      engineer: dprs.engineer,
+    })
+    .from(equipmentLogs)
+    .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
+    .where(and(...waterConditions))
+    .orderBy(desc(dprs.date));
+
+    let waterResults = waterEntries
+      .filter(row => row.waterQuantity || row.numberOfTrips)
+      .map(row => ({
+        id: row.id,
+        source: "equipment" as const,
+        date: row.date,
+        site: this.getBaseSiteName(row.site),
+        material: "Water",
+        supplier: row.operator || row.machine || null,
+        quantity: row.waterQuantity || 0,
+        uom: "Liters",
+        vehicleNumber: row.vehicleNo || null,
+        location: row.task || null,
+        receiptNumber: null,
+        enteredBy: row.engineer || null,
+        time: row.startTime || null,
+        notes: row.numberOfTrips ? `${row.numberOfTrips} trip(s)` : null,
+      }));
+
     if (filters?.site) {
       const filterSite = filters.site.toUpperCase().trim();
       dprResults = dprResults.filter(r => r.site.toUpperCase().trim() === filterSite);
       tripResults = tripResults.filter(r => (r.site || '').toUpperCase().trim() === filterSite);
+      waterResults = waterResults.filter(r => r.site.toUpperCase().trim() === filterSite);
     }
 
-    const combined = [...tripResults, ...dprResults];
+    const combined = [...tripResults, ...dprResults, ...waterResults];
     combined.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     return combined;
   }

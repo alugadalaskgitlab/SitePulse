@@ -54,6 +54,7 @@ interface EquipmentEntry {
   numberOfTrips: number | null;
   tripDistance: number | null;
   totalKm: number | null;
+  waterQuantity: number | null;
 }
 
 interface LabourEntry {
@@ -251,6 +252,7 @@ export default function SiteEdit() {
           numberOfTrips: (e as any).numberOfTrips ?? null,
           tripDistance: (e as any).tripDistance ?? null,
           totalKm: (e as any).totalKm ?? null,
+          waterQuantity: (e as any).waterQuantity ?? null,
         })));
       }
 
@@ -366,7 +368,7 @@ export default function SiteEdit() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -820,6 +822,7 @@ export default function SiteEdit() {
             const isTripBased = entry.entryType === "trip_based";
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
             const calculatedTotalKm = (entry.numberOfTrips && entry.tripDistance) ? entry.numberOfTrips * entry.tripDistance * 2 : 0;
+            const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
 
             return (
             <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
@@ -1090,6 +1093,44 @@ export default function SiteEdit() {
                           setEquipment(updated);
                         }}
                         data-testid={`input-equipment-diesel-${idx}`}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {isWaterTanker && (
+                <>
+                  <p className="text-xs font-semibold text-blue-600 border-b border-blue-200 pb-1">Water Delivery</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <Label className="text-xs">Water Quantity (Liters)</Label>
+                      <Input
+                        type="number"
+                        step="1"
+                        placeholder="0"
+                        value={entry.waterQuantity ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].waterQuantity = e.target.value ? parseFloat(e.target.value) : null;
+                          setEquipment(updated);
+                        }}
+                        data-testid={`input-equipment-water-qty-${idx}`}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">No. of Trips</Label>
+                      <Input
+                        type="number"
+                        step="1"
+                        placeholder="0"
+                        value={entry.numberOfTrips ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].numberOfTrips = e.target.value ? parseInt(e.target.value) : null;
+                          setEquipment(updated);
+                        }}
+                        data-testid={`input-equipment-water-trips-${idx}`}
                       />
                     </div>
                   </div>
