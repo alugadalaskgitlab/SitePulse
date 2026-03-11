@@ -36,6 +36,8 @@ Preferred communication style: Simple, everyday language.
     - **Daily Diesel Requirements**: Tool for planning and procuring diesel per equipment, with approval workflow and comparison reports.
     - **Vendor Bills**: Date-wise billing system with a 4-step workflow (Draft → Verified → Approved → Paid). Automatically pulls line items from various vendor data sources, supports vendor aliases, grouped line items by category, distance-based transport billing, and adjustments. Enhanced with PDF export and print layouts.
 - **Authentication & Access Control**: Role-Based (Engineer, Manager, Admin) with PIN-based authentication for elevated actions. Admin PINs are stored in `app_settings`.
+- **Materials Received Report**: Combined view on Site Dashboard merging `site_material_trips` (quick trip entries) and DPR `material_logs` (type='Received') including all historical entries. API: `GET /api/materials-received`. Filters: date range, site, material name. Source badges: TRIP (blue) / DPR (amber).
+- **Site Purchases Report**: Combined view at `/site/purchases` merging DPR `site_purchases` and direct diesel purchases from `equipment_logs` (dieselSource='direct_purchase'). Source badges: PURCHASE (teal) / DIESEL (orange). Diesel entries are read-only (not editable from this report).
 - **Data Management**: Admin-only export/import tool for selected tables, facilitating data transfer between environments.
 - **UI/UX**: Responsive design, uppercase conversion for text inputs, in-app and Web Push notifications. Equipment dropdowns show detailed vendor/owner information.
 

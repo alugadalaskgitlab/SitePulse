@@ -24,6 +24,7 @@ interface SitePurchaseItem {
   date: string;
   site: string;
   engineer: string;
+  source?: "purchase" | "diesel";
 }
 
 export default function SitePurchasesReport() {
@@ -214,6 +215,7 @@ export default function SitePurchasesReport() {
                     <tr className="border-b">
                       <th className="text-left p-2 font-medium">Date</th>
                       <th className="text-left p-2 font-medium">Site</th>
+                      <th className="text-center p-2 font-medium">Source</th>
                       <th className="text-left p-2 font-medium">Item</th>
                       <th className="text-left p-2 font-medium">Vendor</th>
                       <th className="text-left p-2 font-medium">Bill No</th>
@@ -226,9 +228,14 @@ export default function SitePurchasesReport() {
                   </thead>
                   <tbody>
                     {purchases.map((p) => (
-                      <tr key={p.id} className="border-b last:border-0" data-testid={`row-purchase-${p.id}`}>
-                        <td className="p-2 whitespace-nowrap">{format(new Date(p.date), "dd-MMM-yyyy")}</td>
+                      <tr key={`${p.source || 'purchase'}-${p.id}`} className="border-b last:border-0" data-testid={`row-purchase-${p.source || 'purchase'}-${p.id}`}>
+                        <td className="p-2 whitespace-nowrap">{format(new Date(p.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase()}</td>
                         <td className="p-2">{p.site}</td>
+                        <td className="p-2 text-center">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.source === 'diesel' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {p.source === 'diesel' ? 'DIESEL' : 'PURCHASE'}
+                          </span>
+                        </td>
                         <td className="p-2">{p.itemDescription}</td>
                         <td className="p-2">{p.vendor || "-"}</td>
                         <td className="p-2">{p.billNo || "-"}</td>
@@ -237,21 +244,25 @@ export default function SitePurchasesReport() {
                         <td className="p-2 text-right">{p.amount ? p.amount.toFixed(3) : "-"}</td>
                         <td className="p-2">{p.engineer}</td>
                         <td className="p-2 text-center">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEdit(p)}
-                            data-testid={`button-edit-purchase-${p.id}`}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
+                          {p.source !== 'diesel' ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEdit(p)}
+                              data-testid={`button-edit-purchase-${p.id}`}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="border-t font-bold">
-                      <td colSpan={7} className="p-2 text-right">Total:</td>
+                      <td colSpan={8} className="p-2 text-right">Total:</td>
                       <td className="p-2 text-right">{totalAmount.toFixed(3)}</td>
                       <td colSpan={2}></td>
                     </tr>

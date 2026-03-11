@@ -306,6 +306,9 @@ export interface IStorage {
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
+
+  // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
+  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
   
   // Consumption Audit Log
   getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]>;
@@ -4199,6 +4202,7 @@ export class DatabaseStorage implements IStorage {
       .map(({ submittedAt, ...rest }) => ({
         ...rest,
         site: this.getBaseSiteName(rest.site),
+        source: "purchase" as const,
       }));
     
     // Apply site filter on base site name
@@ -4206,8 +4210,67 @@ export class DatabaseStorage implements IStorage {
       const filterSite = filters.site.toUpperCase().trim();
       filtered = filtered.filter(r => r.site.toUpperCase().trim() === filterSite);
     }
-    
-    return filtered;
+
+    let dieselConditions: any[] = [
+      eq(equipmentLogs.dieselSource, 'direct_purchase'),
+    ];
+    if (filters?.dateFrom) dieselConditions.push(gte(dprs.date, filters.dateFrom));
+    if (filters?.dateTo) dieselConditions.push(lte(dprs.date, filters.dateTo));
+
+    const dieselResults = await db.select({
+      id: equipmentLogs.id,
+      dprId: equipmentLogs.dprId,
+      machine: equipmentLogs.machine,
+      diesel: equipmentLogs.diesel,
+      fuelStation: equipmentLogs.fuelStation,
+      billNumber: equipmentLogs.billNumber,
+      amountPaid: equipmentLogs.amountPaid,
+      date: dprs.date,
+      site: dprs.site,
+      engineer: dprs.engineer,
+      submittedAt: dprs.submittedAt,
+    })
+    .from(equipmentLogs)
+    .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
+    .where(and(...dieselConditions));
+
+    const dieselLatestDprByKey = new Map<string, { dprId: number; timestamp: string }>();
+    for (const row of dieselResults) {
+      const baseSite = this.getBaseSiteName(row.site);
+      const key = `${baseSite}|${row.date}`;
+      const currentTimestamp = row.submittedAt || '';
+      const existing = dieselLatestDprByKey.get(key);
+      if (!existing || currentTimestamp > existing.timestamp) {
+        dieselLatestDprByKey.set(key, { dprId: row.dprId, timestamp: currentTimestamp });
+      }
+    }
+    const dieselLatestDprIds = new Set(Array.from(dieselLatestDprByKey.values()).map(v => v.dprId));
+
+    let dieselFiltered = dieselResults
+      .filter(r => dieselLatestDprIds.has(r.dprId) && (r.amountPaid || 0) > 0)
+      .map(row => ({
+        id: row.id,
+        dprId: row.dprId,
+        itemDescription: `DIESEL - ${row.machine || 'EQUIPMENT'}`,
+        quantity: row.diesel || null,
+        uom: "LTR" as string | null,
+        vendor: row.fuelStation || null,
+        billNo: row.billNumber || null,
+        amount: row.amountPaid || null,
+        date: row.date,
+        site: this.getBaseSiteName(row.site),
+        engineer: row.engineer,
+        source: "diesel" as const,
+      }));
+
+    if (filters?.site) {
+      const filterSite = filters.site.toUpperCase().trim();
+      dieselFiltered = dieselFiltered.filter(r => r.site.toUpperCase().trim() === filterSite);
+    }
+
+    const combined = [...filtered, ...dieselFiltered];
+    combined.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    return combined;
   }
 
   async updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any> {
@@ -4257,6 +4320,84 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSiteMaterialTrip(id: number): Promise<void> {
     await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
+  }
+
+  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<any[]> {
+    const tripConditions: any[] = [];
+    if (filters?.dateFrom) tripConditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
+    if (filters?.dateTo) tripConditions.push(lte(siteMaterialTrips.date, filters.dateTo));
+    if (filters?.material) tripConditions.push(ilike(siteMaterialTrips.material, `%${filters.material}%`));
+
+    const trips = await db.select().from(siteMaterialTrips)
+      .where(tripConditions.length > 0 ? and(...tripConditions) : undefined)
+      .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
+
+    const dprConditions: any[] = [eq(materialLogs.type, 'Received')];
+    if (filters?.dateFrom) dprConditions.push(gte(dprs.date, filters.dateFrom));
+    if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
+    if (filters?.material) dprConditions.push(ilike(materialLogs.material, `%${filters.material}%`));
+
+    const dprMaterials = await db.select({
+      id: materialLogs.id,
+      material: materialLogs.material,
+      supplier: materialLogs.supplier,
+      quantity: materialLogs.quantity,
+      uom: materialLogs.uom,
+      vehicleNumber: materialLogs.vehicleNumber,
+      location: materialLogs.location,
+      receiptNumber: materialLogs.receiptNumber,
+      date: dprs.date,
+      site: dprs.site,
+      engineer: dprs.engineer,
+    })
+    .from(materialLogs)
+    .innerJoin(dprs, eq(materialLogs.dprId, dprs.id))
+    .where(and(...dprConditions))
+    .orderBy(desc(dprs.date));
+
+    let dprResults = dprMaterials.map(row => ({
+      id: row.id,
+      source: "dpr" as const,
+      date: row.date,
+      site: this.getBaseSiteName(row.site),
+      material: row.material,
+      supplier: row.supplier || null,
+      quantity: row.quantity || 0,
+      uom: row.uom || "",
+      vehicleNumber: row.vehicleNumber || null,
+      location: row.location || null,
+      receiptNumber: row.receiptNumber || null,
+      enteredBy: row.engineer || null,
+      time: null,
+      notes: null,
+    }));
+
+    let tripResults = trips.map(t => ({
+      id: t.id,
+      source: "trip" as const,
+      date: t.date,
+      site: t.site,
+      material: t.material,
+      supplier: t.supplier || null,
+      quantity: t.quantity || 0,
+      uom: t.uom || "",
+      vehicleNumber: t.vehicleNumber || null,
+      location: t.location || null,
+      receiptNumber: t.receiptNumber || null,
+      enteredBy: t.enteredBy || null,
+      time: t.time || null,
+      notes: t.notes || null,
+    }));
+
+    if (filters?.site) {
+      const filterSite = filters.site.toUpperCase().trim();
+      dprResults = dprResults.filter(r => r.site.toUpperCase().trim() === filterSite);
+      tripResults = tripResults.filter(r => (r.site || '').toUpperCase().trim() === filterSite);
+    }
+
+    const combined = [...tripResults, ...dprResults];
+    combined.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    return combined;
   }
 
   // Consumption Audit Log

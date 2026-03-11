@@ -83,8 +83,10 @@ export default function SiteDashboard() {
   
   // Materials Received tab state
   const today = format(new Date(), "yyyy-MM-dd");
-  const [materialDateFilter, setMaterialDateFilter] = useState(today);
+  const [materialDateFrom, setMaterialDateFrom] = useState(today);
+  const [materialDateTo, setMaterialDateTo] = useState(today);
   const [materialSiteFilter, setMaterialSiteFilter] = useState("");
+  const [materialNameFilter, setMaterialNameFilter] = useState("");
   const [newMaterialEntry, setNewMaterialEntry] = useState({
     date: today,
     time: format(new Date(), "HH:mm"),
@@ -243,20 +245,19 @@ export default function SiteDashboard() {
     return "";
   };
 
-  // Materials Received tab data
-  const buildMaterialTripsUrl = () => {
+  // Materials Received tab data (combined: site_material_trips + DPR material_logs)
+  const buildMaterialsReceivedUrl = () => {
     const params = new URLSearchParams();
-    if (materialDateFilter) {
-      params.set("dateFrom", materialDateFilter);
-      params.set("dateTo", materialDateFilter);
-    }
+    if (materialDateFrom) params.set("dateFrom", materialDateFrom);
+    if (materialDateTo) params.set("dateTo", materialDateTo);
     if (materialSiteFilter) params.set("site", materialSiteFilter);
+    if (materialNameFilter) params.set("material", materialNameFilter);
     const queryString = params.toString();
-    return queryString ? `/api/site-material-trips?${queryString}` : "/api/site-material-trips";
+    return queryString ? `/api/materials-received?${queryString}` : "/api/materials-received";
   };
 
-  const { data: materialTrips, isLoading: isLoadingMaterials } = useQuery<SiteMaterialTrip[]>({
-    queryKey: [buildMaterialTripsUrl()],
+  const { data: materialTrips, isLoading: isLoadingMaterials } = useQuery<any[]>({
+    queryKey: [buildMaterialsReceivedUrl()],
     enabled: activeTab === "materials-received",
   });
 
@@ -269,7 +270,7 @@ export default function SiteDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => 
-        typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/site-material-trips')
+        typeof query.queryKey[0] === 'string' && (query.queryKey[0].startsWith('/api/site-material-trips') || query.queryKey[0].startsWith('/api/materials-received'))
       });
       toast({ title: "Material Logged", description: "Material entry has been recorded successfully." });
       setNewMaterialEntry({
@@ -299,7 +300,7 @@ export default function SiteDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => 
-        typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/site-material-trips')
+        typeof query.queryKey[0] === 'string' && (query.queryKey[0].startsWith('/api/site-material-trips') || query.queryKey[0].startsWith('/api/materials-received'))
       });
       toast({ title: "Deleted", description: "Material entry has been removed." });
     },
@@ -1348,21 +1349,30 @@ export default function SiteDashboard() {
         </TabsContent>
 
         <TabsContent value="materials-received" className="space-y-6 mt-6">
-          {/* Date and Site Filters */}
+          {/* Date Range, Site, and Material Filters */}
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-4">
                 <Filter className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filters</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">Date</Label>
+                  <Label className="text-xs">From Date</Label>
                   <Input
                     type="date"
-                    value={materialDateFilter}
-                    onChange={(e) => setMaterialDateFilter(e.target.value)}
-                    data-testid="input-material-date-filter"
+                    value={materialDateFrom}
+                    onChange={(e) => setMaterialDateFrom(e.target.value)}
+                    data-testid="input-material-date-from"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">To Date</Label>
+                  <Input
+                    type="date"
+                    value={materialDateTo}
+                    onChange={(e) => setMaterialDateTo(e.target.value)}
+                    data-testid="input-material-date-to"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1375,6 +1385,20 @@ export default function SiteDashboard() {
                       <SelectItem value="__all__">All Sites</SelectItem>
                       {uniqueSites.map(site => (
                         <SelectItem key={site} value={site}>{site}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Material</Label>
+                  <Select value={materialNameFilter || "__all__"} onValueChange={(v) => setMaterialNameFilter(v === "__all__" ? "" : v)}>
+                    <SelectTrigger data-testid="select-material-name-filter">
+                      <SelectValue placeholder="All Materials" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All Materials</SelectItem>
+                      {MATERIAL_OPTIONS.map(mat => (
+                        <SelectItem key={mat} value={mat}>{mat}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1541,7 +1565,7 @@ export default function SiteDashboard() {
             <CardContent className="p-4">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
                 <Package className="w-4 h-4" />
-                Material Entries for {format(new Date(materialDateFilter), "dd MMM yyyy")}
+                Material Entries ({materialTrips?.length || 0})
               </h3>
               {isLoadingMaterials ? (
                 <div className="flex justify-center py-8">
@@ -1550,18 +1574,21 @@ export default function SiteDashboard() {
               ) : !materialTrips || materialTrips.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No material entries for this date</p>
+                  <p>No material entries found</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {materialTrips.map(trip => (
-                    <div key={trip.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg" data-testid={`material-entry-${trip.id}`}>
+                  {materialTrips.map((trip: any) => (
+                    <div key={`${trip.source}-${trip.id}`} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg" data-testid={`material-entry-${trip.source}-${trip.id}`}>
                       <div className="flex items-center gap-4 flex-1">
                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                           <Truck className="w-5 h-5 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === 'trip' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {trip.source === 'trip' ? 'TRIP' : 'DPR'}
+                            </span>
                             <span className="font-medium">{trip.material}</span>
                             <span className="text-sm text-muted-foreground">
                               {trip.quantity} {trip.uom}
@@ -1571,23 +1598,27 @@ export default function SiteDashboard() {
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap mt-1">
+                            <span className="font-medium">{trip.date ? format(new Date(trip.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase() : ''}</span>
                             <span>{trip.site}</span>
                             {trip.time && <span>at {trip.time}</span>}
                             {trip.supplier && <span>from {trip.supplier}</span>}
                             {trip.location && <span>@ {trip.location}</span>}
                             {trip.receiptNumber && <span>#{trip.receiptNumber}</span>}
+                            {trip.enteredBy && <span>by {trip.enteredBy}</span>}
                           </div>
                         </div>
                       </div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => deleteMaterialMutation.mutate(trip.id)}
-                        disabled={deleteMaterialMutation.isPending}
-                        data-testid={`button-delete-material-${trip.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                      {trip.source === 'trip' && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => deleteMaterialMutation.mutate(trip.id)}
+                          disabled={deleteMaterialMutation.isPending}
+                          data-testid={`button-delete-material-${trip.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>

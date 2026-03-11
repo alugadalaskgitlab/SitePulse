@@ -60,6 +60,22 @@ export async function registerRoutes(
   // ============================================
 
   // Get all site material trips (with optional filters)
+  app.get("/api/materials-received", async (req, res) => {
+    try {
+      const filters = {
+        site: req.query.site as string | undefined,
+        material: req.query.material as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const results = await storage.getAllMaterialsReceived(filters);
+      res.json(results);
+    } catch (err) {
+      console.error("Error fetching materials received:", err);
+      res.status(500).json({ message: "Failed to fetch materials received" });
+    }
+  });
+
   app.get("/api/site-material-trips", async (req, res) => {
     try {
       const filters = {
