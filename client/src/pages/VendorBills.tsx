@@ -78,13 +78,13 @@ function extractDiesel(description: string): number {
 
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
 
-function getStatusBadgeVariant(status: string) {
+function getStatusBadgeClass(status: string) {
   switch (status) {
-    case "draft": return "secondary";
-    case "verified": return "default";
-    case "approved": return "default";
-    case "paid": return "default";
-    default: return "secondary";
+    case "draft": return "bg-amber-500 text-white border-amber-600";
+    case "verified": return "bg-emerald-600 text-white border-emerald-700";
+    case "approved": return "bg-indigo-600 text-white border-indigo-700";
+    case "paid": return "bg-blue-600 text-white border-blue-700";
+    default: return "bg-gray-500 text-white border-gray-600";
   }
 }
 
@@ -146,7 +146,7 @@ export default function VendorBills() {
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
   const [pendingEditAction, setPendingEditAction] = useState<{ bill: VendorBillWithItems } | null>(null);
-  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number } | null>(null);
+  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number; billNo?: string; status?: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditPinAuth, setShowEditPinAuth] = useState(false);
   const [showDeletePinAuth, setShowDeletePinAuth] = useState(false);
@@ -799,7 +799,7 @@ export default function VendorBills() {
   };
 
   const handleEditBill = (bill: VendorBillWithItems) => {
-    if (bill.status === "verified" || bill.status === "approved") {
+    if (bill.status === "verified" || bill.status === "approved" || bill.status === "paid") {
       setPendingEditAction({ bill });
       setShowEditPinAuth(true);
     } else {
@@ -808,7 +808,7 @@ export default function VendorBills() {
   };
 
   const handleDeleteBill = (bill: VendorBillWithItems) => {
-    setPendingDeleteAction({ billId: bill.id });
+    setPendingDeleteAction({ billId: bill.id, billNo: bill.billNo, status: bill.status });
     setShowDeleteConfirm(true);
   };
 
@@ -1158,8 +1158,8 @@ export default function VendorBills() {
                         {vendor.existingBill ? (
                           <>
                             <Badge
-                              variant={getStatusBadgeVariant(vendor.existingBill.status)}
-                              className={`text-xs uppercase ${getStatusColor(vendor.existingBill.status)}`}
+                              variant="outline"
+                              className={`text-xs uppercase ${getStatusBadgeClass(vendor.existingBill.status)} no-default-hover-elevate no-default-active-elevate`}
                               data-testid={`badge-bill-status-${vendor.vendorName}`}
                             >
                               {vendor.existingBill.status} - {vendor.existingBill.billNo}
@@ -1305,7 +1305,7 @@ export default function VendorBills() {
                             </Badge>
                           )}
                           {item.billedIn && (
-                            <Badge variant="outline" className="text-[10px] bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-billed-${idx}`}>
+                            <Badge variant="outline" className="text-[10px] bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-billed-${idx}`}>
                               BILLED ({item.billedIn.billNo} - {item.billedIn.billStatus.toUpperCase()})
                             </Badge>
                           )}
@@ -1665,11 +1665,9 @@ export default function VendorBills() {
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>
-            {bill.status !== "paid" && (
-              <Button size="sm" onClick={() => handleEditBill(bill)} data-testid="button-edit-bill">
-                <Edit className="w-4 h-4 mr-1" /> EDIT
-              </Button>
-            )}
+            <Button size="sm" onClick={() => handleEditBill(bill)} data-testid="button-edit-bill">
+              <Edit className="w-4 h-4 mr-1" /> EDIT
+            </Button>
           </div>
         </div>
 
@@ -1680,7 +1678,7 @@ export default function VendorBills() {
                 <p className="text-xs text-muted-foreground uppercase">Vendor</p>
                 <p className="text-xl font-bold" data-testid="text-vendor-name">{bill.vendorName}</p>
               </div>
-              <Badge variant={getStatusBadgeVariant(bill.status)} className="uppercase text-sm" data-testid="badge-bill-status">
+              <Badge variant="outline" className={`uppercase text-sm ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid="badge-bill-status">
                 {bill.status}
               </Badge>
             </div>
@@ -1711,8 +1709,8 @@ export default function VendorBills() {
               {renderStatusSteps(bill.status)}
             </div>
 
-            {nextStatus && (
-              <div className="flex gap-2 pt-2 flex-wrap">
+            <div className="flex gap-2 pt-2 flex-wrap">
+              {nextStatus && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange(bill.id, nextStatus)}
@@ -1722,21 +1720,19 @@ export default function VendorBills() {
                   {statusMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
                   MARK AS {nextStatus.toUpperCase()}
                 </Button>
-                {bill.status !== "paid" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => handleDeleteBill(bill)}
-                    disabled={deleteMutation.isPending}
-                    data-testid="button-delete-bill"
-                  >
-                    {deleteMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
-                    <Trash2 className="w-3 h-3 mr-1" /> DELETE BILL
-                  </Button>
-                )}
-              </div>
-            )}
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive"
+                onClick={() => handleDeleteBill(bill)}
+                disabled={deleteMutation.isPending}
+                data-testid="button-delete-bill"
+              >
+                {deleteMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+                <Trash2 className="w-3 h-3 mr-1" /> DELETE BILL
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -1908,6 +1904,14 @@ export default function VendorBills() {
               <DialogHeader>
                 <DialogTitle className="text-red-600">DELETE VENDOR BILL</DialogTitle>
               </DialogHeader>
+              {pendingDeleteAction?.billNo && (
+                <p className="text-sm font-semibold">Bill: {pendingDeleteAction.billNo}</p>
+              )}
+              {pendingDeleteAction?.status && ["approved", "paid"].includes(pendingDeleteAction.status) && (
+                <div className="bg-red-50 dark:bg-red-950 border border-red-300 dark:border-red-800 rounded p-3 text-sm text-red-700 dark:text-red-300">
+                  <strong>WARNING:</strong> This bill is currently <span className="uppercase font-bold">{pendingDeleteAction.status}</span>. Deleting an {pendingDeleteAction.status} bill is a significant action and may affect financial records.
+                </div>
+              )}
               <p className="text-sm text-muted-foreground">THIS WILL PERMANENTLY DELETE THIS VENDOR BILL AND ALL ITS LINE ITEMS. THIS ACTION CANNOT BE UNDONE.</p>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setPendingDeleteAction(null); }} data-testid="button-delete-dismiss">
@@ -2116,7 +2120,7 @@ export default function VendorBills() {
                       </p>
                       <p className="text-xs text-muted-foreground">{bill.items?.length || 0} line items</p>
                     </div>
-                    <Badge variant={getStatusBadgeVariant(bill.status)} className="uppercase" data-testid={`badge-bill-status-${bill.id}`}>
+                    <Badge variant="outline" className={`uppercase ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-bill-status-${bill.id}`}>
                       {bill.status}
                     </Badge>
                   </div>

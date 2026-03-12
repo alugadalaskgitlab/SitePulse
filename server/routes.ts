@@ -2554,13 +2554,9 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
-      if (existing.status === "paid") {
-        return res.status(400).json({ message: "Paid bills cannot be edited" });
-      }
-
-      if (existing.status === "verified" || existing.status === "approved") {
+      if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {
         if (!pin) {
-          return res.status(403).json({ message: "Admin PIN required to edit verified/approved bills" });
+          return res.status(403).json({ message: "Admin PIN required to edit verified/approved/paid bills" });
         }
         const isAdmin = await storage.verifyPin("admin", pin);
         if (!isAdmin) {
@@ -2893,10 +2889,6 @@ export async function registerRoutes(
       const bill = await storage.getVendorBill(id);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
-      }
-
-      if (bill.status === "paid") {
-        return res.status(400).json({ message: "Paid bills cannot be deleted" });
       }
 
       if (!pin) {

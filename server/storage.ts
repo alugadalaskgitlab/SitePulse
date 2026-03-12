@@ -5351,10 +5351,6 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getVendorBill(id);
     if (!existing) return false;
 
-    if (existing.status === "paid") {
-      throw new Error("Paid bills cannot be deleted");
-    }
-
     await db.transaction(async (tx) => {
       await tx.delete(vendorBillItems).where(eq(vendorBillItems.billId, id));
       await tx.delete(vendorBills).where(eq(vendorBills.id, id));
