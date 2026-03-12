@@ -370,6 +370,7 @@ export interface IStorage {
   resolveVendorAliases(vendorName: string): Promise<string[]>;
 
   getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]>;
+  discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[]>;
   upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
   deleteVendorRateCard(id: number): Promise<boolean>;
   checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
@@ -6515,6 +6516,234 @@ export class DatabaseStorage implements IStorage {
   async deleteVendorRateCard(id: number): Promise<boolean> {
     const result = await db.delete(vendorRateCards).where(eq(vendorRateCards.id, id)).returning();
     return result.length > 0;
+  }
+
+  async discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[]> {
+    const vendorVariants = await this.resolveVendorAliases(vendorName);
+    const vendorMatchSql = (col: any) => {
+      if (vendorVariants.length === 1) {
+        return sql`UPPER(TRIM(${col})) = ${vendorVariants[0]}`;
+      }
+      return sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
+    };
+
+    const entryTypeLabel = (et: string) => {
+      switch (et.toLowerCase()) {
+        case "hourly": return "HOURLY HIRE";
+        case "daily": return "DAILY HIRE";
+        case "trip_based": return "TRIP BASED";
+        case "monthly": return "MONTHLY HIRE";
+        case "shifting": return "MOBILIZATION";
+        case "time_meter": return "TIME/METER";
+        default: return "TIME/METER";
+      }
+    };
+    const entryTypeBillingKey = (et: string) => {
+      const label = entryTypeLabel(et);
+      return label.replace(/\s+/g, "_").replace(/\//g, "_");
+    };
+    const entryTypeUnit = (et: string) => {
+      switch (et.toLowerCase()) {
+        case "hourly": return "HRS";
+        case "daily": return "DAYS";
+        case "trip_based": return "TRIPS";
+        case "monthly": return "MONTHS";
+        case "shifting": return "TRIP";
+        default: return "HRS";
+      }
+    };
+
+    const itemMap = new Map<string, { itemKey: string; itemLabel: string; category: string; unit: string }>();
+
+    const hiredEquipment = await db.select()
+      .from(equipmentMaster)
+      .where(and(
+        vendorMatchSql(equipmentMaster.vendorName),
+        eq(equipmentMaster.ownership, "hired"),
+      ));
+
+    if (hiredEquipment.length > 0) {
+      const eqIds = hiredEquipment.map(e => e.id);
+      const eqMap = new Map(hiredEquipment.map(e => [e.id, e.name]));
+
+      const dprEntryTypes = await db.selectDistinct({
+        equipmentId: equipmentLogs.equipmentId,
+        entryType: equipmentLogs.entryType,
+      })
+      .from(equipmentLogs)
+      .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+      .where(and(
+        inArray(equipmentLogs.equipmentId, eqIds),
+        eq(dprs.isSuperseded, false),
+      ));
+
+      for (const row of dprEntryTypes) {
+        const et = row.entryType || "time_meter";
+        const key = `${row.equipmentId}_${entryTypeBillingKey(et)}`;
+        if (!itemMap.has(key)) {
+          const machineName = eqMap.get(row.equipmentId!) || "EQUIPMENT";
+          itemMap.set(key, {
+            itemKey: key,
+            itemLabel: `${machineName} - ${entryTypeLabel(et)}`,
+            category: "equipment",
+            unit: entryTypeUnit(et),
+          });
+        }
+      }
+
+      const plantEntryTypes = await db.selectDistinct({
+        equipmentId: equipmentUsage.equipmentId,
+        entryType: equipmentUsage.entryType,
+      })
+      .from(equipmentUsage)
+      .where(inArray(equipmentUsage.equipmentId, eqIds));
+
+      for (const row of plantEntryTypes) {
+        const et = row.entryType || "time_meter";
+        const key = `${row.equipmentId}_${entryTypeBillingKey(et)}`;
+        if (!itemMap.has(key)) {
+          const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
+          itemMap.set(key, {
+            itemKey: key,
+            itemLabel: `${machineName} - ${entryTypeLabel(et)}`,
+            category: "equipment",
+            unit: entryTypeUnit(et),
+          });
+        }
+      }
+    }
+
+    const dprMaterials = await db.selectDistinct({
+      material: materialLogs.material,
+      uom: materialLogs.uom,
+    })
+    .from(materialLogs)
+    .innerJoin(dprs, eq(dprs.id, materialLogs.dprId))
+    .where(and(
+      eq(materialLogs.type, "Received"),
+      vendorMatchSql(materialLogs.supplier),
+      eq(dprs.isSuperseded, false),
+    ));
+
+    for (const row of dprMaterials) {
+      const matName = (row.material || "MATERIAL").toUpperCase();
+      const key = `MAT_${matName}`;
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: matName,
+          category: "material",
+          unit: row.uom || "NOS",
+        });
+      }
+    }
+
+    const siteTrips = await db.selectDistinct({
+      material: siteMaterialTrips.material,
+      uom: siteMaterialTrips.uom,
+    })
+    .from(siteMaterialTrips)
+    .where(vendorMatchSql(siteMaterialTrips.supplier));
+
+    for (const row of siteTrips) {
+      const matName = (row.material || "MATERIAL").toUpperCase();
+      const key = `MAT_${matName}`;
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: matName,
+          category: "material",
+          unit: row.uom || "NOS",
+        });
+      }
+    }
+
+    const plantReceipts = await db.selectDistinct({
+      materialName: plantMaterials.name,
+      uom: materialReceipts.uom,
+    })
+    .from(materialReceipts)
+    .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
+    .where(vendorMatchSql(materialReceipts.supplier));
+
+    for (const row of plantReceipts) {
+      const matName = (row.materialName || "MATERIAL").toUpperCase();
+      const key = `MAT_${matName}`;
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: matName,
+          category: "material",
+          unit: row.uom || "NOS",
+        });
+      }
+    }
+
+    const transportEq = await db.select()
+      .from(equipmentMaster)
+      .where(and(
+        vendorMatchSql(equipmentMaster.vendorName),
+        eq(equipmentMaster.ownership, "hired"),
+      ));
+    const transportEqIds = transportEq.map(e => e.id);
+    if (transportEqIds.length > 0) {
+      const shiftingItems = await db.selectDistinct({
+        transportEquipmentId: equipmentUsage.transportEquipmentId,
+      })
+      .from(equipmentUsage)
+      .where(and(
+        inArray(equipmentUsage.transportEquipmentId, transportEqIds),
+        eq(equipmentUsage.entryType, "shifting"),
+      ));
+
+      for (const row of shiftingItems) {
+        if (row.transportEquipmentId) {
+          const eq = transportEq.find(e => e.id === row.transportEquipmentId);
+          const label = eq ? `${eq.name}${eq.registrationNumber ? ` (${eq.registrationNumber})` : ''}` : "TRANSPORT";
+          const key = `TRANSPORT_${row.transportEquipmentId}`;
+          if (!itemMap.has(key)) {
+            itemMap.set(key, {
+              itemKey: key,
+              itemLabel: `${label} - TRANSPORT`,
+              category: "transport",
+              unit: "KM",
+            });
+          }
+        }
+      }
+    }
+
+    const existingCards = await this.getVendorRateCards(vendorName);
+    const cardMap = new Map(existingCards.map(c => [c.itemKey.toUpperCase().trim(), c]));
+
+    for (const card of existingCards) {
+      const key = card.itemKey.toUpperCase().trim();
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: card.itemLabel || key,
+          category: card.category,
+          unit: card.unit,
+        });
+      }
+    }
+
+    const results: { itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[] = [];
+    for (const [key, item] of itemMap) {
+      const card = cardMap.get(key);
+      results.push({
+        ...item,
+        rate: card ? Number(card.rate) : null,
+        rateCardId: card ? card.id : null,
+      });
+    }
+
+    results.sort((a, b) => {
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      return a.itemLabel.localeCompare(b.itemLabel);
+    });
+
+    return results;
   }
 
   async checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {

@@ -2921,6 +2921,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-rate-cards/discover", async (req, res) => {
+    try {
+      const vendorName = (req.query.vendorName as string || "").trim();
+      if (!vendorName) {
+        return res.status(400).json({ message: "vendorName is required" });
+      }
+      const items = await storage.discoverVendorItems(vendorName);
+      res.json(items);
+    } catch (err) {
+      console.error("Error discovering vendor items:", err);
+      res.status(500).json({ message: "Failed to discover vendor items" });
+    }
+  });
+
   app.post("/api/vendor-rate-cards", async (req, res) => {
     try {
       const card = await storage.upsertVendorRateCard(req.body);
