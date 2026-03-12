@@ -76,6 +76,19 @@ function extractDiesel(description: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
+function stripSourceSuffix(desc: string): string {
+  return desc.replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
+}
+
+function canonicalMachineName(description: string): string {
+  const name = description.split(/\s*-\s*/)[0]?.trim() || "EQUIPMENT";
+  return stripSourceSuffix(name).toUpperCase().replace(/\s+/g, "_");
+}
+
+function canonicalMatName(description: string): string {
+  return stripSourceSuffix(description.trim().toUpperCase()).replace(/\s+/g, "_");
+}
+
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
 
 function getStatusBadgeClass(status: string) {
@@ -395,19 +408,38 @@ export default function VendorBills() {
         const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
         if (rcRes.ok) {
           const rateCards: any[] = await rcRes.json();
+          const cardByKey = new Map(rateCards.map((rc: any) => [`${rc.itemKey.toUpperCase()}_${rc.category}`, rc]));
           let appliedCount = 0;
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
             if (item.rate === 0) {
-              let rateKey = "";
+              let card: any = null;
               if (item.equipmentId) {
-                const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-                const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
-                rateKey = `${item.equipmentId}_${entryType}`;
+                const mn = canonicalMachineName(item.description);
+                const unit = (item.unit || "HRS").toUpperCase();
+                const newKey = `EQ_${mn}_${unit}`;
+                card = cardByKey.get(`${newKey}_${item.category}`);
+                if (!card) {
+                  const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+                  const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
+                  const oldKey = `${item.equipmentId}_${entryType}`;
+                  card = cardByKey.get(`${oldKey}_${item.category}`);
+                }
               } else {
-                rateKey = item.description.trim();
+                const unit = (item.unit || "NOS").toUpperCase();
+                if (item.category === "material") {
+                  const mn = canonicalMatName(item.description);
+                  const newKey = `MAT_${mn}_${unit}`;
+                  card = cardByKey.get(`${newKey}_${item.category}`);
+                  if (!card) {
+                    const oldKey = `MAT_${stripSourceSuffix(item.description.trim().toUpperCase())}`;
+                    card = cardByKey.get(`${oldKey}_${item.category}`);
+                  }
+                } else {
+                  const descKey = stripSourceSuffix(item.description.trim().toUpperCase());
+                  card = cardByKey.get(`${descKey}_${item.category}`);
+                }
               }
-              const card = rateCards.find((rc: any) => rc.itemKey.toUpperCase() === rateKey.toUpperCase() && rc.category === item.category);
               if (card && Number(card.rate) > 0) {
                 mapped[i] = { ...item, rate: Number(card.rate) };
                 mapped[i].amount = calcAmount(mapped[i]);
@@ -544,23 +576,24 @@ export default function VendorBills() {
   };
 
   const uniqueRateGroups = useMemo(() => {
-    const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; count: number }> = {};
+    const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; unit: string; count: number }> = {};
     lineItems.forEach(item => {
       if (item.equipmentId) {
+        const mn = canonicalMachineName(item.description);
         const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
         const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
-        const key = `eq_${item.equipmentId}_${entryType}`;
+        const unit = (item.unit || "HRS").toUpperCase();
+        const key = `eq_${mn}_${unit}`;
         if (!groups[key]) {
-          const nameMatch = item.description.match(/^(.+?)\s*(?:-\s*)?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-          const groupName = nameMatch ? nameMatch[1].trim() : item.description.split(" - ")[0] || item.description;
-          groups[key] = { equipmentId: item.equipmentId, groupName, entryType, category: item.category, count: 0 };
+          groups[key] = { equipmentId: item.equipmentId, groupName: mn.replace(/_/g, " "), entryType, category: item.category, unit, count: 0 };
         }
         groups[key].count++;
       } else if (item.description.trim()) {
-        const descKey = item.description.trim().toUpperCase();
-        const key = `desc_${item.category}_${descKey}`;
+        const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+        const unit = (item.unit || "NOS").toUpperCase();
+        const key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
         if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName: item.description.trim(), entryType: item.unit || "", category: item.category, count: 0 };
+          groups[key] = { equipmentId: null, groupName: cleanDesc, entryType: item.unit || "", category: item.category, unit, count: 0 };
         }
         groups[key].count++;
       }
@@ -579,24 +612,43 @@ export default function VendorBills() {
       } catch (_e) {}
     }
 
+    const cardByKey = new Map(rateCards.map((rc: any) => [`${rc.itemKey.toUpperCase()}_${rc.category}`, rc]));
+
     uniqueRateGroups.forEach(group => {
       let existing: LineItem | undefined;
       if (group.equipmentId) {
-        existing = lineItems.find(item => item.equipmentId === group.equipmentId && item.description.includes(group.entryType) && item.rate > 0);
+        existing = lineItems.find(item => {
+          if (!item.equipmentId) return false;
+          const mn = canonicalMachineName(item.description);
+          return mn === group.groupName.replace(/\s+/g, "_") && item.description.includes(group.entryType) && item.rate > 0;
+        });
       } else {
-        existing = lineItems.find(item => !item.equipmentId && item.category === group.category && item.description.trim().toUpperCase() === group.groupName.toUpperCase() && item.rate > 0);
+        existing = lineItems.find(item => !item.equipmentId && item.category === group.category && stripSourceSuffix(item.description.trim().toUpperCase()) === group.groupName.toUpperCase() && (item.unit || "NOS").toUpperCase() === group.unit && item.rate > 0);
       }
 
       let cardRate = 0;
       if (!existing?.rate && rateCards.length > 0) {
-        let itemKey = "";
+        let card: any = null;
         if (group.equipmentId) {
-          const entryType = (group.entryType || "OTHER").replace(/\s+/g, "_").replace(/\//g, "_");
-          itemKey = `${group.equipmentId}_${entryType}`;
+          const newKey = `EQ_${group.groupName.replace(/\s+/g, "_")}_${group.unit}`;
+          card = cardByKey.get(`${newKey}_${group.category}`);
+          if (!card) {
+            const entryType = (group.entryType || "OTHER").replace(/\s+/g, "_").replace(/\//g, "_");
+            const oldKey = `${group.equipmentId}_${entryType}`;
+            card = cardByKey.get(`${oldKey}_${group.category}`);
+          }
         } else {
-          itemKey = group.groupName.trim();
+          if (group.category === "material") {
+            const newKey = `MAT_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
+            card = cardByKey.get(`${newKey}_${group.category}`);
+            if (!card) {
+              const oldKey = `MAT_${group.groupName.trim().toUpperCase()}`;
+              card = cardByKey.get(`${oldKey}_${group.category}`);
+            }
+          } else {
+            card = cardByKey.get(`${group.groupName.trim().toUpperCase()}_${group.category}`);
+          }
         }
-        const card = rateCards.find((rc: any) => rc.itemKey.toUpperCase() === itemKey.toUpperCase() && rc.category === group.category);
         if (card) cardRate = Number(card.rate) || 0;
       }
 
@@ -617,12 +669,13 @@ export default function VendorBills() {
         const item = updated[i];
         let key: string;
         if (item.equipmentId) {
-          const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-          const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
-          key = `eq_${item.equipmentId}_${entryType}`;
+          const mn = canonicalMachineName(item.description);
+          const unit = (item.unit || "HRS").toUpperCase();
+          key = `eq_${mn}_${unit}`;
         } else {
-          const descKey = item.description.trim().toUpperCase();
-          key = `desc_${item.category}_${descKey}`;
+          const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+          const unit = (item.unit || "NOS").toUpperCase();
+          key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
         }
         const rateData = bulkRates[key];
         if (rateData && rateData.rate > 0) {
@@ -647,21 +700,18 @@ export default function VendorBills() {
         if (rd && rd.rate > 0) {
           let itemKey = "";
           if (group.equipmentId) {
-            const entryType = (group.entryType || "OTHER").replace(/\s+/g, "_").replace(/\//g, "_");
-            itemKey = `${group.equipmentId}_${entryType}`;
+            itemKey = `EQ_${group.groupName.replace(/\s+/g, "_")}_${group.unit}`;
+          } else if (group.category === "material") {
+            itemKey = `MAT_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
           } else {
-            itemKey = group.groupName.trim();
+            itemKey = group.groupName.trim().toUpperCase();
           }
-          const matchingItem = lineItems.find(li => {
-            if (group.equipmentId) return li.equipmentId === group.equipmentId && li.description.includes(group.entryType);
-            return !li.equipmentId && li.category === group.category && li.description.trim().toUpperCase() === group.groupName.toUpperCase();
-          });
           rateCardItems.push({
             vendorName: vendorName.toUpperCase(),
             category: group.category,
             itemKey: itemKey.toUpperCase(),
             itemLabel: group.groupName.toUpperCase(),
-            unit: matchingItem?.unit || "HRS",
+            unit: group.unit || "HRS",
             rate: rd.rate,
             notes: null,
           });
@@ -719,11 +769,15 @@ export default function VendorBills() {
     lineItems.filter(i => i.description && i.rate > 0).forEach(item => {
       let itemKey = "";
       if (item.equipmentId) {
-        const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-        const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
-        itemKey = `${item.equipmentId}_${entryType}`;
+        const mn = canonicalMachineName(item.description);
+        const unit = (item.unit || "HRS").toUpperCase();
+        itemKey = `EQ_${mn}_${unit}`;
+      } else if (item.category === "material") {
+        const mn = canonicalMatName(item.description);
+        const unit = (item.unit || "NOS").toUpperCase();
+        itemKey = `MAT_${mn}_${unit}`;
       } else {
-        itemKey = item.description.trim();
+        itemKey = stripSourceSuffix(item.description.trim().toUpperCase());
       }
       if (itemKey && !rateCardItems.some(rc => rc.itemKey === itemKey.toUpperCase() && rc.category === item.category)) {
         rateCardItems.push({
@@ -1566,6 +1620,7 @@ export default function VendorBills() {
                             <p className="text-sm font-semibold" data-testid={`text-rate-group-${group.key}`}>{group.groupName}</p>
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-muted-foreground">{group.entryType}</span>
+                              <Badge variant="outline" className="text-[9px] px-1 py-0">{group.unit}</Badge>
                               <span className="text-xs text-muted-foreground">({group.count} row{group.count !== 1 ? "s" : ""})</span>
                             </div>
                           </div>

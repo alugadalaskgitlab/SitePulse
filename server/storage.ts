@@ -6543,10 +6543,6 @@ export class DatabaseStorage implements IStorage {
         default: return "TIME/METER";
       }
     };
-    const entryTypeBillingKey = (et: string) => {
-      const label = entryTypeLabel(et);
-      return label.replace(/\s+/g, "_").replace(/\//g, "_");
-    };
     const entryTypeUnit = (et: string) => {
       switch (et.toLowerCase()) {
         case "hourly": return "HRS";
@@ -6557,6 +6553,7 @@ export class DatabaseStorage implements IStorage {
         default: return "HRS";
       }
     };
+    const canonicalizeName = (name: string) => name.toUpperCase().trim().replace(/\s+/g, "_");
 
     const itemMap = new Map<string, { itemKey: string; itemLabel: string; category: string; unit: string }>();
 
@@ -6584,14 +6581,15 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of dprEntryTypes) {
         const et = row.entryType || "time_meter";
-        const key = `${row.equipmentId}_${entryTypeBillingKey(et)}`;
+        const machineName = eqMap.get(row.equipmentId!) || "EQUIPMENT";
+        const unit = entryTypeUnit(et);
+        const key = `EQ_${canonicalizeName(machineName)}_${unit}`;
         if (!itemMap.has(key)) {
-          const machineName = eqMap.get(row.equipmentId!) || "EQUIPMENT";
           itemMap.set(key, {
             itemKey: key,
-            itemLabel: `${machineName} - ${entryTypeLabel(et)}`,
+            itemLabel: `${machineName.toUpperCase().trim()} - ${entryTypeLabel(et)}`,
             category: "equipment",
-            unit: entryTypeUnit(et),
+            unit,
           });
         }
       }
@@ -6605,18 +6603,33 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of plantEntryTypes) {
         const et = row.entryType || "time_meter";
-        const key = `${row.equipmentId}_${entryTypeBillingKey(et)}`;
+        const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
+        const unit = entryTypeUnit(et);
+        const key = `EQ_${canonicalizeName(machineName)}_${unit}`;
         if (!itemMap.has(key)) {
-          const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
           itemMap.set(key, {
             itemKey: key,
-            itemLabel: `${machineName} - ${entryTypeLabel(et)}`,
+            itemLabel: `${machineName.toUpperCase().trim()} - ${entryTypeLabel(et)}`,
             category: "equipment",
-            unit: entryTypeUnit(et),
+            unit,
           });
         }
       }
     }
+
+    const addMaterial = (matName: string, uom: string | null) => {
+      const name = (matName || "MATERIAL").toUpperCase().trim();
+      const unit = (uom || "NOS").toUpperCase().trim();
+      const key = `MAT_${canonicalizeName(name)}_${unit}`;
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: name,
+          category: "material",
+          unit,
+        });
+      }
+    };
 
     const dprMaterials = await db.selectDistinct({
       material: materialLogs.material,
@@ -6631,16 +6644,7 @@ export class DatabaseStorage implements IStorage {
     ));
 
     for (const row of dprMaterials) {
-      const matName = (row.material || "MATERIAL").toUpperCase();
-      const key = `MAT_${matName}`;
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
-          itemKey: key,
-          itemLabel: matName,
-          category: "material",
-          unit: row.uom || "NOS",
-        });
-      }
+      addMaterial(row.material || "MATERIAL", row.uom);
     }
 
     const siteTrips = await db.selectDistinct({
@@ -6651,16 +6655,7 @@ export class DatabaseStorage implements IStorage {
     .where(vendorMatchSql(siteMaterialTrips.supplier));
 
     for (const row of siteTrips) {
-      const matName = (row.material || "MATERIAL").toUpperCase();
-      const key = `MAT_${matName}`;
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
-          itemKey: key,
-          itemLabel: matName,
-          category: "material",
-          unit: row.uom || "NOS",
-        });
-      }
+      addMaterial(row.material || "MATERIAL", row.uom);
     }
 
     const plantReceipts = await db.selectDistinct({
@@ -6672,19 +6667,10 @@ export class DatabaseStorage implements IStorage {
     .where(vendorMatchSql(materialReceipts.supplier));
 
     for (const row of plantReceipts) {
-      const matName = (row.materialName || "MATERIAL").toUpperCase();
-      const key = `MAT_${matName}`;
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
-          itemKey: key,
-          itemLabel: matName,
-          category: "material",
-          unit: row.uom || "NOS",
-        });
-      }
+      addMaterial(row.materialName || "MATERIAL", row.uom);
     }
 
-    const transportEq = await db.select()
+    const transportEq = hiredEquipment.length > 0 ? hiredEquipment : await db.select()
       .from(equipmentMaster)
       .where(and(
         vendorMatchSql(equipmentMaster.vendorName),
@@ -6703,13 +6689,13 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of shiftingItems) {
         if (row.transportEquipmentId) {
-          const eq = transportEq.find(e => e.id === row.transportEquipmentId);
-          const label = eq ? `${eq.name}${eq.registrationNumber ? ` (${eq.registrationNumber})` : ''}` : "TRANSPORT";
-          const key = `TRANSPORT_${row.transportEquipmentId}`;
+          const teq = transportEq.find(e => e.id === row.transportEquipmentId);
+          const machineName = teq ? teq.name.toUpperCase().trim() : "TRANSPORT";
+          const key = `EQ_${canonicalizeName(machineName)}_KM`;
           if (!itemMap.has(key)) {
             itemMap.set(key, {
               itemKey: key,
-              itemLabel: `${label} - TRANSPORT`,
+              itemLabel: `${machineName} - TRANSPORT`,
               category: "transport",
               unit: "KM",
             });
@@ -6719,7 +6705,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const vendorBillConds = vendorVariants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
-    const existingBills = await db.select({
+    const existingBillRows = await db.select({
       category: vendorBillItems.category,
       description: vendorBillItems.description,
       unit: vendorBillItems.unit,
@@ -6729,34 +6715,49 @@ export class DatabaseStorage implements IStorage {
     .innerJoin(vendorBills, eq(vendorBills.id, vendorBillItems.billId))
     .where(or(...vendorBillConds));
 
-    const seenBillItems = new Set<string>();
-    for (const row of existingBills) {
+    const allEqIds = [...new Set(existingBillRows.filter(r => r.equipmentId).map(r => r.equipmentId!))];
+    let billEqNameMap = new Map<number, string>();
+    if (allEqIds.length > 0) {
+      const eqRows = await db.select({ id: equipmentMaster.id, name: equipmentMaster.name })
+        .from(equipmentMaster)
+        .where(inArray(equipmentMaster.id, allEqIds));
+      billEqNameMap = new Map(eqRows.map(e => [e.id, e.name]));
+    }
+
+    for (const row of existingBillRows) {
       if (!row.description) continue;
       let key = "";
       if (row.equipmentId) {
-        const entryTypeMatch = row.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-        const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
-        key = `${row.equipmentId}_${entryType}`;
+        const machineName = billEqNameMap.get(row.equipmentId) || row.description.split(" - ")[0]?.trim() || "EQUIPMENT";
+        const unit = (row.unit || "HRS").toUpperCase().trim();
+        key = `EQ_${canonicalizeName(machineName)}_${unit}`;
+        if (!itemMap.has(key)) {
+          const entryTypeMatch = row.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION|TRANSPORT)/);
+          const entryLabel = entryTypeMatch ? entryTypeMatch[1] : unit;
+          itemMap.set(key, {
+            itemKey: key,
+            itemLabel: `${machineName.toUpperCase().trim()} - ${entryLabel}`,
+            category: row.category || "equipment",
+            unit,
+          });
+        }
       } else {
         const desc = row.description.trim().toUpperCase();
         const cleanDesc = desc.replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
         if (row.category === "material") {
-          key = `MAT_${cleanDesc}`;
+          const unit = (row.unit || "NOS").toUpperCase().trim();
+          key = `MAT_${canonicalizeName(cleanDesc)}_${unit}`;
         } else {
           key = cleanDesc || desc;
         }
-      }
-      if (key && !itemMap.has(key) && !seenBillItems.has(key)) {
-        seenBillItems.add(key);
-        const label = row.equipmentId
-          ? row.description.split(" - ")[0]?.trim() || row.description
-          : row.description.trim().toUpperCase().replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
-        itemMap.set(key, {
-          itemKey: key,
-          itemLabel: label.toUpperCase(),
-          category: row.category || "other",
-          unit: row.unit || "NOS",
-        });
+        if (key && !itemMap.has(key)) {
+          itemMap.set(key, {
+            itemKey: key,
+            itemLabel: cleanDesc || desc,
+            category: row.category || "other",
+            unit: (row.unit || "NOS").toUpperCase().trim(),
+          });
+        }
       }
     }
 

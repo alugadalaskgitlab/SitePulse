@@ -21,6 +21,8 @@ type DiscoveredItem = {
   rateCardId: number | null;
 };
 
+const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM"];
+
 const getCategoryBadgeClass = (cat: string) => {
   switch (cat) {
     case "equipment": return "bg-blue-600 text-white border-blue-700";
@@ -40,6 +42,7 @@ export default function RateCards() {
   const [showPinAuth, setShowPinAuth] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
   const [rates, setRates] = useState<Record<string, number | string>>({});
+  const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
 
@@ -83,15 +86,32 @@ export default function RateCards() {
     onError: (err: any) => toast({ title: err.message || "Failed to save rates", variant: "destructive" }),
   });
 
+  const getEffectiveUnit = (item: DiscoveredItem) => unitOverrides[item.itemKey] || item.unit;
+
+  const getEffectiveKey = (item: DiscoveredItem) => {
+    const overriddenUnit = unitOverrides[item.itemKey];
+    if (!overriddenUnit || overriddenUnit === item.unit) return item.itemKey;
+    const parts = item.itemKey.split("_");
+    if (parts.length >= 2) {
+      parts[parts.length - 1] = overriddenUnit;
+      return parts.join("_");
+    }
+    return item.itemKey;
+  };
+
   const handleSaveAll = () => {
-    const items = discoveredItems.map(item => ({
-      vendorName: selectedVendor,
-      category: item.category,
-      itemKey: item.itemKey,
-      itemLabel: item.itemLabel,
-      unit: item.unit,
-      rate: parseFloat(String(rates[item.itemKey] || 0)) || 0,
-    })).filter(i => i.rate > 0);
+    const items = discoveredItems.map(item => {
+      const effectiveUnit = getEffectiveUnit(item);
+      const effectiveKey = getEffectiveKey(item);
+      return {
+        vendorName: selectedVendor,
+        category: item.category,
+        itemKey: effectiveKey,
+        itemLabel: item.itemLabel,
+        unit: effectiveUnit,
+        rate: parseFloat(String(rates[item.itemKey] || 0)) || 0,
+      };
+    }).filter(i => i.rate > 0);
 
     if (items.length === 0) {
       toast({ title: "No rates to save — enter at least one rate", variant: "destructive" });
@@ -166,7 +186,7 @@ export default function RateCards() {
         <CardContent className="pt-4 space-y-3">
           <div>
             <Label className="text-xs uppercase font-semibold">Select Vendor</Label>
-            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setCategoryFilter("all"); setSearchFilter(""); }}>
+            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setCategoryFilter("all"); setSearchFilter(""); }}>
               <SelectTrigger data-testid="select-vendor">
                 <SelectValue placeholder="Choose a vendor..." />
               </SelectTrigger>
@@ -260,7 +280,18 @@ export default function RateCards() {
                           {item.category.toUpperCase()}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground">{item.unit}</td>
+                      <td className="px-3 py-2">
+                        <Select value={getEffectiveUnit(item)} onValueChange={(v) => setUnitOverrides(prev => ({ ...prev, [item.itemKey]: v }))}>
+                          <SelectTrigger className="h-8 w-24 text-xs" data-testid={`select-unit-${idx}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNIT_OPTIONS.map(u => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
                       <td className="px-3 py-2">
                         <Input
                           type="number"
