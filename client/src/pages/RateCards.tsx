@@ -63,6 +63,15 @@ export default function RateCards() {
     },
   });
 
+  const { data: allRateCards = [] } = useQuery<any[]>({
+    queryKey: ["/api/vendor-rate-cards", selectedVendor],
+    enabled: !!selectedVendor,
+    queryFn: async () => {
+      const r = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(selectedVendor)}`);
+      return r.ok ? r.json() : [];
+    },
+  });
+
   useEffect(() => {
     if (discoveredItems.length > 0) {
       const rateMap: Record<string, number | string> = {};
@@ -97,6 +106,27 @@ export default function RateCards() {
       return parts.join("_");
     }
     return item.itemKey;
+  };
+
+  const handleUnitChange = (item: DiscoveredItem, newUnit: string) => {
+    setUnitOverrides(prev => ({ ...prev, [item.itemKey]: newUnit }));
+    const parts = item.itemKey.split("_");
+    if (parts.length >= 2) {
+      parts[parts.length - 1] = newUnit;
+      const newKey = parts.join("_");
+      const existingCard = allRateCards.find(
+        (rc: any) => rc.itemKey.toUpperCase() === newKey.toUpperCase() && rc.category === item.category
+      );
+      if (existingCard && Number(existingCard.rate) > 0) {
+        setRates(prev => ({ ...prev, [item.itemKey]: Number(existingCard.rate) }));
+      } else {
+        setRates(prev => {
+          const updated = { ...prev };
+          delete updated[item.itemKey];
+          return updated;
+        });
+      }
+    }
   };
 
   const handleSaveAll = () => {
@@ -281,7 +311,7 @@ export default function RateCards() {
                         </Badge>
                       </td>
                       <td className="px-3 py-2">
-                        <Select value={getEffectiveUnit(item)} onValueChange={(v) => setUnitOverrides(prev => ({ ...prev, [item.itemKey]: v }))}>
+                        <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
                           <SelectTrigger className="h-8 w-24 text-xs" data-testid={`select-unit-${idx}`}>
                             <SelectValue />
                           </SelectTrigger>
