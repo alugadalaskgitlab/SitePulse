@@ -1230,7 +1230,7 @@ export default function VendorBills() {
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">LINE ITEMS</CardTitle>
             <div className="flex gap-2 flex-wrap">
-              <Link href="/plant/rate-cards">
+              <Link href={`/plant/rate-cards?vendorName=${encodeURIComponent(vendorName)}`}>
                 <Button variant="outline" size="sm" data-testid="button-manage-rate-cards">
                   <Settings className="w-4 h-4 mr-1" /> RATE CARDS
                 </Button>

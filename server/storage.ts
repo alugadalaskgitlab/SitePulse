@@ -6713,6 +6713,42 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const vendorBillConds = vendorVariants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
+    const existingBills = await db.select({
+      category: vendorBillItems.category,
+      description: vendorBillItems.description,
+      unit: vendorBillItems.unit,
+      equipmentId: vendorBillItems.equipmentId,
+    })
+    .from(vendorBillItems)
+    .innerJoin(vendorBills, eq(vendorBills.id, vendorBillItems.billId))
+    .where(or(...vendorBillConds));
+
+    const seenBillItems = new Set<string>();
+    for (const row of existingBills) {
+      if (!row.description) continue;
+      let key = "";
+      if (row.equipmentId) {
+        const entryTypeMatch = row.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+        const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
+        key = `${row.equipmentId}_${entryType}`;
+      } else {
+        key = row.description.trim().toUpperCase();
+      }
+      if (key && !itemMap.has(key) && !seenBillItems.has(key)) {
+        seenBillItems.add(key);
+        const label = row.equipmentId
+          ? row.description.split(" - ")[0]?.trim() || row.description
+          : row.description.trim();
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: label.toUpperCase(),
+          category: row.category || "other",
+          unit: row.unit || "NOS",
+        });
+      }
+    }
+
     const existingCards = await this.getVendorRateCards(vendorName);
     const cardMap = new Map(existingCards.map(c => [c.itemKey.toUpperCase().trim(), c]));
 
