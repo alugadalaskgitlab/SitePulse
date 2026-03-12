@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
-import { ChevronLeft, Plus, Trash2, Loader2, Edit, Search } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Loader2, Edit, Search, Lock } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { PinAuth } from "@/components/PinAuth";
 import type { VendorRateCard } from "@shared/schema";
 
 const CATEGORIES = [
@@ -31,6 +32,8 @@ const getCategoryBadgeClass = (cat: string) => {
 
 export default function RateCards() {
   const { toast } = useToast();
+  const [authenticated, setAuthenticated] = useState(false);
+  const [showPinAuth, setShowPinAuth] = useState(true);
   const [vendorFilter, setVendorFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
@@ -128,6 +131,37 @@ export default function RateCards() {
     });
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [filteredCards]);
+
+  if (!authenticated) {
+    return (
+      <div className="max-w-md mx-auto p-8 space-y-4">
+        <div className="text-center space-y-2">
+          <Lock className="w-10 h-10 mx-auto text-muted-foreground" />
+          <h1 className="text-xl font-bold">RATE CARD MANAGEMENT</h1>
+          <p className="text-sm text-muted-foreground">Manager or Admin PIN required to access rate cards</p>
+        </div>
+        {showPinAuth && (
+          <PinAuth
+            targetRole="any"
+            onSuccess={() => { setAuthenticated(true); setShowPinAuth(false); }}
+            onClose={() => setShowPinAuth(false)}
+          />
+        )}
+        {!showPinAuth && (
+          <div className="text-center space-y-2">
+            <Button onClick={() => setShowPinAuth(true)} data-testid="button-retry-pin">
+              ENTER PIN
+            </Button>
+            <div>
+              <Link href="/plant/vendor-bills">
+                <Button variant="ghost" size="sm">BACK TO VENDOR BILLS</Button>
+              </Link>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">

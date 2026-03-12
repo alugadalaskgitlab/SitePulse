@@ -715,6 +715,38 @@ export default function VendorBills() {
       })),
     };
 
+    const rateCardItems: any[] = [];
+    lineItems.filter(i => i.description && i.rate > 0).forEach(item => {
+      let itemKey = "";
+      if (item.equipmentId) {
+        const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+        const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
+        itemKey = `${item.equipmentId}_${entryType}`;
+      } else {
+        itemKey = item.description.trim();
+      }
+      if (itemKey && !rateCardItems.some(rc => rc.itemKey === itemKey.toUpperCase() && rc.category === item.category)) {
+        rateCardItems.push({
+          vendorName: vendorName.toUpperCase(),
+          category: item.category,
+          itemKey: itemKey.toUpperCase(),
+          itemLabel: item.description.split(" - ")[0]?.trim().toUpperCase() || item.description.toUpperCase(),
+          unit: item.unit,
+          rate: item.rate,
+          notes: null,
+        });
+      }
+    });
+    if (rateCardItems.length > 0) {
+      fetch("/api/vendor-rate-cards/bulk-upsert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: rateCardItems }),
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+      }).catch(() => {});
+    }
+
     if (editingBillId) {
       updateMutation.mutate({ id: editingBillId, data, pin: adminPinForUpdate });
     } else {
