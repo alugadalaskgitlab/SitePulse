@@ -5758,6 +5758,11 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${truckDispatches.ownerName} IS NOT NULL AND ${truckDispatches.ownerName} != ''`);
     for (const r of tdOwners) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
+    const billVendors = await db.selectDistinct({ name: vendorBills.vendorName })
+      .from(vendorBills)
+      .where(sql`${vendorBills.vendorName} IS NOT NULL AND ${vendorBills.vendorName} != ''`);
+    for (const r of billVendors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
     const allAliases = await db.select().from(vendorAliases);
     const aliasToCanonical = new Map<string, string>();
     for (const a of allAliases) {
@@ -6733,13 +6738,19 @@ export class DatabaseStorage implements IStorage {
         const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
         key = `${row.equipmentId}_${entryType}`;
       } else {
-        key = row.description.trim().toUpperCase();
+        const desc = row.description.trim().toUpperCase();
+        const cleanDesc = desc.replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
+        if (row.category === "material") {
+          key = `MAT_${cleanDesc}`;
+        } else {
+          key = cleanDesc || desc;
+        }
       }
       if (key && !itemMap.has(key) && !seenBillItems.has(key)) {
         seenBillItems.add(key);
         const label = row.equipmentId
           ? row.description.split(" - ")[0]?.trim() || row.description
-          : row.description.trim();
+          : row.description.trim().toUpperCase().replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
         itemMap.set(key, {
           itemKey: key,
           itemLabel: label.toUpperCase(),
