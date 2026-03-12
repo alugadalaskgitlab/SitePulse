@@ -1004,3 +1004,19 @@ export const vendorAliases = pgTable("vendor_aliases", {
 export const insertVendorAliasSchema = createInsertSchema(vendorAliases).omit({ id: true, createdAt: true });
 export type VendorAlias = typeof vendorAliases.$inferSelect;
 export type InsertVendorAlias = z.infer<typeof insertVendorAliasSchema>;
+
+export const vendorRateCards = pgTable("vendor_rate_cards", {
+  id: serial("id").primaryKey(),
+  vendorName: text("vendor_name").notNull(),
+  category: text("category").notNull(),
+  itemKey: text("item_key").notNull(),
+  itemLabel: text("item_label"),
+  unit: text("unit").notNull(),
+  rate: real("rate").notNull(),
+  notes: text("notes"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertVendorRateCardSchema = createInsertSchema(vendorRateCards).omit({ id: true, updatedAt: true });
+export type VendorRateCard = typeof vendorRateCards.$inferSelect;
+export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;

@@ -39,6 +39,7 @@ interface LineItem {
   source: string;
   equipmentId: number | null;
   leadDistance: number | null;
+  billedIn?: { billNo: string; billStatus: string } | null;
 }
 
 const BILL_TYPES = [
@@ -391,26 +392,53 @@ export default function VendorBills() {
       }));
 
       try {
-        const res = await fetch(`/api/vendor-bills/previous-rates?vendorName=${encodeURIComponent(vendorName)}`);
-        if (res.ok) {
-          const previousRates: Record<string, { rate: number; leadDistance?: number }> = await res.json();
+        const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
+        if (rcRes.ok) {
+          const rateCards: any[] = await rcRes.json();
           let appliedCount = 0;
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
-            if (item.rate === 0 && item.equipmentId) {
-              const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-              const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
-              const key = `${item.equipmentId}_${entryType}`;
-              const prev = previousRates[key];
-              if (prev && prev.rate > 0) {
-                mapped[i] = { ...item, rate: prev.rate, leadDistance: prev.leadDistance ?? item.leadDistance };
+            if (item.rate === 0) {
+              let rateKey = "";
+              if (item.equipmentId) {
+                const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+                const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
+                rateKey = `${item.equipmentId}_${entryType}`;
+              } else {
+                rateKey = item.description.trim();
+              }
+              const card = rateCards.find((rc: any) => rc.itemKey.toUpperCase() === rateKey.toUpperCase() && rc.category === item.category);
+              if (card && Number(card.rate) > 0) {
+                mapped[i] = { ...item, rate: Number(card.rate) };
                 mapped[i].amount = calcAmount(mapped[i]);
                 appliedCount++;
               }
             }
           }
           if (appliedCount > 0) {
-            toast({ title: `Applied rates from previous bill for ${appliedCount} items` });
+            toast({ title: `Applied ${appliedCount} rates from rate card` });
+          }
+        }
+      } catch (_e) {
+      }
+
+      try {
+        const dupRes = await fetch("/api/vendor-bills/check-duplicates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vendorName,
+            excludeBillId: editingBillId || undefined,
+            items: mapped.map(m => ({ date: m.date, equipmentId: m.equipmentId, description: m.description })),
+          }),
+        });
+        if (dupRes.ok) {
+          const dups: { index: number; billNo: string; billStatus: string }[] = await dupRes.json();
+          if (dups.length > 0) {
+            for (const d of dups) {
+              mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
+            }
+            toast({ title: `⚠ ${dups.length} item(s) already billed in other bills`, variant: "destructive" });
           }
         }
       } catch (_e) {
@@ -540,8 +568,17 @@ export default function VendorBills() {
     return Object.entries(groups).map(([key, val]) => ({ key, ...val }));
   }, [lineItems]);
 
-  const openSetRatesDialog = () => {
+  const openSetRatesDialog = async () => {
     const initialRates: Record<string, { rate: number; leadDistance: number }> = {};
+
+    let rateCards: any[] = [];
+    if (vendorName) {
+      try {
+        const res = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
+        if (res.ok) rateCards = await res.json();
+      } catch (_e) {}
+    }
+
     uniqueRateGroups.forEach(group => {
       let existing: LineItem | undefined;
       if (group.equipmentId) {
@@ -549,8 +586,22 @@ export default function VendorBills() {
       } else {
         existing = lineItems.find(item => !item.equipmentId && item.category === group.category && item.description.trim().toUpperCase() === group.groupName.toUpperCase() && item.rate > 0);
       }
+
+      let cardRate = 0;
+      if (!existing?.rate && rateCards.length > 0) {
+        let itemKey = "";
+        if (group.equipmentId) {
+          const entryType = (group.entryType || "OTHER").replace(/\s+/g, "_").replace(/\//g, "_");
+          itemKey = `${group.equipmentId}_${entryType}`;
+        } else {
+          itemKey = group.groupName.trim();
+        }
+        const card = rateCards.find((rc: any) => rc.itemKey.toUpperCase() === itemKey.toUpperCase() && rc.category === group.category);
+        if (card) cardRate = Number(card.rate) || 0;
+      }
+
       initialRates[group.key] = {
-        rate: existing?.rate || 0,
+        rate: existing?.rate || cardRate || 0,
         leadDistance: existing?.leadDistance || 0,
       };
     });
@@ -588,6 +639,44 @@ export default function VendorBills() {
     });
     setShowSetRatesDialog(false);
     toast({ title: `Rates applied to ${applied} item${applied !== 1 ? "s" : ""}` });
+
+    if (vendorName) {
+      const rateCardItems: any[] = [];
+      uniqueRateGroups.forEach(group => {
+        const rd = bulkRates[group.key];
+        if (rd && rd.rate > 0) {
+          let itemKey = "";
+          if (group.equipmentId) {
+            const entryType = (group.entryType || "OTHER").replace(/\s+/g, "_").replace(/\//g, "_");
+            itemKey = `${group.equipmentId}_${entryType}`;
+          } else {
+            itemKey = group.groupName.trim();
+          }
+          const matchingItem = lineItems.find(li => {
+            if (group.equipmentId) return li.equipmentId === group.equipmentId && li.description.includes(group.entryType);
+            return !li.equipmentId && li.category === group.category && li.description.trim().toUpperCase() === group.groupName.toUpperCase();
+          });
+          rateCardItems.push({
+            vendorName: vendorName.toUpperCase(),
+            category: group.category,
+            itemKey: itemKey.toUpperCase(),
+            itemLabel: group.groupName.toUpperCase(),
+            unit: matchingItem?.unit || "HRS",
+            rate: rd.rate,
+            notes: null,
+          });
+        }
+      });
+      if (rateCardItems.length > 0) {
+        fetch("/api/vendor-rate-cards/bulk-upsert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: rateCardItems }),
+        }).then(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+        }).catch(() => {});
+      }
+    }
   };
 
   const handleSubmit = () => {
@@ -1109,6 +1198,11 @@ export default function VendorBills() {
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">LINE ITEMS</CardTitle>
             <div className="flex gap-2 flex-wrap">
+              <Link href="/plant/rate-cards">
+                <Button variant="outline" size="sm" data-testid="button-manage-rate-cards">
+                  <Settings className="w-4 h-4 mr-1" /> RATE CARDS
+                </Button>
+              </Link>
               {uniqueRateGroups.length > 0 && (
                 <Button variant="outline" size="sm" onClick={openSetRatesDialog} data-testid="button-set-rates">
                   <span className="font-bold mr-1">₹</span> SET RATES
@@ -1171,14 +1265,19 @@ export default function VendorBills() {
                     {item.source === "auto" ? (
                       <div className="space-y-1">
                         <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
-                        {extractDiesel(item.description) > 0 && (
-                          <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {extractDiesel(item.description) > 0 && (
                             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
                               <Fuel className="w-3 h-3 mr-1" />
                               {extractDiesel(item.description)}L DIESEL
                             </Badge>
-                          </div>
-                        )}
+                          )}
+                          {item.billedIn && (
+                            <Badge variant="outline" className="text-[10px] bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-billed-${idx}`}>
+                              BILLED ({item.billedIn.billNo} - {item.billedIn.billStatus.toUpperCase()})
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <Input
@@ -1191,14 +1290,30 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={item.qty || ""}
-                      onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
-                      className="text-xs h-8"
-                      data-testid={`input-item-qty-${idx}`}
-                    />
+                    {item.category === "transport" ? (
+                      <div className="space-y-0.5">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={item.qty || ""}
+                          onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
+                          className="text-xs h-8 bg-muted/50 text-muted-foreground"
+                          onWheel={e => (e.target as HTMLInputElement).blur()}
+                          data-testid={`input-item-qty-${idx}`}
+                        />
+                        <span className="text-[9px] text-muted-foreground italic">info only</span>
+                      </div>
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.qty || ""}
+                        onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
+                        className="text-xs h-8"
+                        onWheel={e => (e.target as HTMLInputElement).blur()}
+                        data-testid={`input-item-qty-${idx}`}
+                      />
+                    )}
                   </td>
                   <td className="px-2 py-1.5">
                     <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)}>
@@ -1223,6 +1338,7 @@ export default function VendorBills() {
                             onChange={e => updateLineItem(idx, "leadDistance", parseFloat(e.target.value) || 0)}
                             placeholder="ONE-WAY KM"
                             className="text-xs h-8"
+                            onWheel={e => (e.target as HTMLInputElement).blur()}
                             data-testid={`input-item-lead-${idx}`}
                           />
                           {item.leadDistance && item.leadDistance > 0 && (
@@ -1242,6 +1358,7 @@ export default function VendorBills() {
                         value={item.rate || ""}
                         onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
                         className="text-xs h-8"
+                        onWheel={e => (e.target as HTMLInputElement).blur()}
                         data-testid={`input-item-rate-${idx}`}
                       />
                       {item.rate > 0 && item.equipmentId && item.source === "auto" && (
@@ -1354,6 +1471,7 @@ export default function VendorBills() {
                     value={adjustmentAmount || ""}
                     onChange={e => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
                     placeholder="Negative for deduction"
+                    onWheel={e => (e.target as HTMLInputElement).blur()}
                     data-testid="input-adjustment-amount"
                   />
                 </div>

@@ -2918,6 +2918,68 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-rate-cards", async (req, res) => {
+    try {
+      const vendorName = req.query.vendorName as string | undefined;
+      const cards = await storage.getVendorRateCards(vendorName || undefined);
+      res.json(cards);
+    } catch (err) {
+      console.error("Error fetching vendor rate cards:", err);
+      res.status(500).json({ message: "Failed to fetch rate cards" });
+    }
+  });
+
+  app.post("/api/vendor-rate-cards", async (req, res) => {
+    try {
+      const card = await storage.upsertVendorRateCard(req.body);
+      res.status(201).json(card);
+    } catch (err) {
+      console.error("Error creating vendor rate card:", err);
+      res.status(500).json({ message: "Failed to create rate card" });
+    }
+  });
+
+  app.post("/api/vendor-rate-cards/bulk-upsert", async (req, res) => {
+    try {
+      const items = req.body.items as any[];
+      const results = [];
+      for (const item of items) {
+        if (item.rate && item.rate > 0) {
+          const card = await storage.upsertVendorRateCard(item);
+          results.push(card);
+        }
+      }
+      res.json({ upserted: results.length });
+    } catch (err) {
+      console.error("Error bulk upserting rate cards:", err);
+      res.status(500).json({ message: "Failed to upsert rate cards" });
+    }
+  });
+
+  app.delete("/api/vendor-rate-cards/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const deleted = await storage.deleteVendorRateCard(id);
+      if (!deleted) return res.status(404).json({ message: "Rate card not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting vendor rate card:", err);
+      res.status(500).json({ message: "Failed to delete rate card" });
+    }
+  });
+
+  app.post("/api/vendor-bills/check-duplicates", async (req, res) => {
+    try {
+      const { vendorName, items, excludeBillId } = req.body;
+      if (!vendorName || !items) return res.status(400).json({ message: "vendorName and items required" });
+      const duplicates = await storage.checkDuplicateBilledItems(vendorName, items, excludeBillId ? Number(excludeBillId) : undefined);
+      res.json(duplicates);
+    } catch (err) {
+      console.error("Error checking duplicate billed items:", err);
+      res.status(500).json({ message: "Failed to check duplicates" });
+    }
+  });
+
   const EXPORTABLE_TABLES: Record<string, string> = {
     equipment_master: "Equipment Master",
     vendor_aliases: "Vendor Aliases",

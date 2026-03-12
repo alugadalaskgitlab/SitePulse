@@ -32,6 +32,7 @@ import PlantLdoFlowMeter from "@/pages/PlantLdoFlowMeter";
 import PurchaseIndents from "@/pages/PurchaseIndents";
 import DieselRequirements from "@/pages/DieselRequirements";
 import VendorBills from "@/pages/VendorBills";
+import RateCards from "@/pages/RateCards";
 import DataSync from "@/pages/DataSync";
 import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
@@ -102,6 +103,7 @@ function Router() {
             <Route path="/plant/purchase-indents" component={PurchaseIndents} />
             <Route path="/plant/diesel-requirements" component={DieselRequirements} />
             <Route path="/plant/vendor-bills" component={VendorBills} />
+            <Route path="/plant/rate-cards" component={RateCards} />
             <Route path="/plant/data-sync" component={DataSync} />
             <Route path="/plant/:id" component={PlantDetails} />
             <Route path="/admin/settings" component={AdminSettings} />

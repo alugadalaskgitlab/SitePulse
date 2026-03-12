@@ -123,6 +123,9 @@ import {
   type InsertVendorBillItem,
   vendorAliases,
   type VendorAlias,
+  vendorRateCards,
+  type VendorRateCard,
+  type InsertVendorRateCard,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
@@ -365,6 +368,11 @@ export interface IStorage {
   addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
   deleteVendorAlias(id: number): Promise<boolean>;
   resolveVendorAliases(vendorName: string): Promise<string[]>;
+
+  getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]>;
+  upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
+  deleteVendorRateCard(id: number): Promise<boolean>;
+  checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
 
   discoverVendors(billType: string, periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
@@ -6474,6 +6482,76 @@ export class DatabaseStorage implements IStorage {
       } catch (_e) {
       }
     }
+  }
+  async getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]> {
+    if (vendorName) {
+      const variants = await this.resolveVendorAliases(vendorName);
+      const conditions = variants.map(v => sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${v}`);
+      return db.select().from(vendorRateCards).where(or(...conditions)).orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+    }
+    return db.select().from(vendorRateCards).orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+  }
+
+  async upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard> {
+    const upperVendor = data.vendorName.toUpperCase().trim();
+    const upperKey = data.itemKey.toUpperCase().trim();
+    const existing = await db.select().from(vendorRateCards)
+      .where(and(
+        sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${upperVendor}`,
+        sql`UPPER(TRIM(${vendorRateCards.itemKey})) = ${upperKey}`,
+        eq(vendorRateCards.category, data.category),
+      ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(vendorRateCards)
+        .set({ rate: data.rate, unit: data.unit, itemLabel: data.itemLabel, notes: data.notes, updatedAt: new Date() })
+        .where(eq(vendorRateCards.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(vendorRateCards).values({
+      ...data,
+      vendorName: upperVendor,
+      itemKey: upperKey,
+    }).returning();
+    return created;
+  }
+
+  async deleteVendorRateCard(id: number): Promise<boolean> {
+    const result = await db.delete(vendorRateCards).where(eq(vendorRateCards.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
+    const variants = await this.resolveVendorAliases(vendorName);
+    const vendorConds = variants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
+    const whereConditions = excludeBillId
+      ? and(or(...vendorConds), sql`${vendorBills.id} != ${excludeBillId}`)
+      : or(...vendorConds);
+    const existingBills = await db.select().from(vendorBills).where(whereConditions);
+    if (existingBills.length === 0) return [];
+
+    const billIds = existingBills.map(b => b.id);
+    const existingItems = await db.select().from(vendorBillItems).where(inArray(vendorBillItems.billId, billIds));
+
+    const billMap = new Map(existingBills.map(b => [b.id, b]));
+    const duplicates: { index: number; billNo: string; billStatus: string }[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      for (const existing of existingItems) {
+        const bill = billMap.get(existing.billId);
+        if (!bill) continue;
+        const dateMatch = existing.date === item.date;
+        const eqMatch = item.equipmentId && existing.equipmentId && item.equipmentId === existing.equipmentId;
+        const descMatch = !item.equipmentId && item.description && existing.description &&
+          item.description.toUpperCase().trim() === existing.description.toUpperCase().trim();
+        if (dateMatch && (eqMatch || descMatch)) {
+          duplicates.push({ index: i, billNo: bill.billNo, billStatus: bill.status });
+          break;
+        }
+      }
+    }
+    return duplicates;
   }
 }
 
