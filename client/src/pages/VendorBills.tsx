@@ -1905,7 +1905,7 @@ export default function VendorBills() {
                 <DialogTitle className="text-red-600">DELETE VENDOR BILL</DialogTitle>
               </DialogHeader>
               {pendingDeleteAction?.billNo && (
-                <p className="text-sm font-semibold">Bill: {pendingDeleteAction.billNo}</p>
+                <p className="text-sm font-semibold">Bill: {pendingDeleteAction.billNo} <span className="uppercase">({pendingDeleteAction.status || "draft"})</span></p>
               )}
               {pendingDeleteAction?.status && ["approved", "paid"].includes(pendingDeleteAction.status) && (
                 <div className="bg-red-50 dark:bg-red-950 border border-red-300 dark:border-red-800 rounded p-3 text-sm text-red-700 dark:text-red-300">
