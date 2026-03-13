@@ -98,6 +98,22 @@ function canonicalMachineName(description: string): string {
   return canonicalizeMachineType(stripped).toUpperCase().replace(/\s+/g, "_");
 }
 
+function canonicalTransportName(description: string): string {
+  const upper = stripSourceSuffix(description.trim().toUpperCase());
+  const viaMatch = upper.match(/\bVIA\s+(.+)/);
+  if (viaMatch) {
+    return canonicalizeMachineType(viaMatch[1].trim()).toUpperCase().replace(/\s+/g, "_");
+  }
+  const mobilMatch = upper.match(/^MOBILIZATION:\s*(.+?)(?:\s*\(.*)?$/);
+  if (mobilMatch) {
+    return canonicalizeMachineType(mobilMatch[1].trim()).toUpperCase().replace(/\s+/g, "_");
+  }
+  const stripped = upper
+    .replace(/\s*-\s*(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION|TRANSPORT).*$/i, "")
+    .trim();
+  return canonicalizeMachineType(stripped).toUpperCase().replace(/\s+/g, "_");
+}
+
 function canonicalMatName(description: string): string {
   return stripSourceSuffix(description.trim().toUpperCase()).replace(/\s+/g, "_");
 }
@@ -428,10 +444,9 @@ export default function VendorBills() {
             if (item.rate === 0) {
               let card: any = null;
               if (item.category === "transport") {
-                const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-                const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+                const canonical = canonicalTransportName(item.description);
                 const unit = (item.unit || "TRIP").toUpperCase();
-                const canonicalKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
+                const canonicalKey = `EQ_${canonical}_${unit}`;
                 card = cardByKey.get(`${canonicalKey}_${item.category}`);
               } else if (item.category === "material") {
                 const unit = (item.unit || "NOS").toUpperCase();
@@ -596,12 +611,11 @@ export default function VendorBills() {
     const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; unit: string; count: number }> = {};
     lineItems.forEach(item => {
       if (item.category === "transport") {
-        const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-        const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+        const canonical = canonicalTransportName(item.description);
         const unit = (item.unit || "TRIP").toUpperCase();
-        const key = `transport_${canonical.replace(/\s+/g, "_")}_${unit}`;
+        const key = `transport_${canonical}_${unit}`;
         if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName: canonical, entryType: unit, category: "transport", unit, count: 0 };
+          groups[key] = { equipmentId: null, groupName: canonical.replace(/_/g, " "), entryType: unit, category: "transport", unit, count: 0 };
         }
         groups[key].count++;
       } else if (item.equipmentId) {
@@ -698,10 +712,9 @@ export default function VendorBills() {
         const item = updated[i];
         let key: string;
         if (item.category === "transport") {
-          const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-          const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+          const canonical = canonicalTransportName(item.description);
           const unit = (item.unit || "TRIP").toUpperCase();
-          key = `transport_${canonical.replace(/\s+/g, "_")}_${unit}`;
+          key = `transport_${canonical}_${unit}`;
         } else if (item.equipmentId) {
           const mn = canonicalMachineName(item.description);
           const unit = (item.unit || "HRS").toUpperCase();
@@ -805,10 +818,9 @@ export default function VendorBills() {
     lineItems.filter(i => i.description && i.rate > 0).forEach(item => {
       let itemKey = "";
       if (item.category === "transport") {
-        const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-        const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+        const canonical = canonicalTransportName(item.description);
         const unit = (item.unit || "TRIP").toUpperCase();
-        itemKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
+        itemKey = `EQ_${canonical}_${unit}`;
       } else if (item.category === "material") {
         const mn = canonicalMatName(item.description);
         const unit = (item.unit || "NOS").toUpperCase();
