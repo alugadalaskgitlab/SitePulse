@@ -2917,8 +2917,8 @@ export async function registerRoutes(
       const allEquipment = await storage.getEquipmentMaster(false);
       let filtered = allEquipment.filter(e => e.ownership === "hired");
       if (vendorName) {
-        const upperVendor = vendorName.toUpperCase();
-        filtered = filtered.filter(e => (e.vendorName || "").toUpperCase().trim() === upperVendor);
+        const vendorVariants = await storage.resolveVendorAliases(vendorName);
+        filtered = filtered.filter(e => vendorVariants.includes((e.vendorName || "").toUpperCase().trim()));
       }
       const typeSet = new Set<string>();
       for (const eq of filtered) {
