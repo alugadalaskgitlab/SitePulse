@@ -41,7 +41,7 @@ const BILLING_MODES = [
 ];
 
 const TRANSPORT_MODES = [
-  { value: "TRANSPORT", unit: "TRIP" },
+  { value: "TRIP", unit: "TRIP" },
   { value: "HOURLY HIRE", unit: "HRS" },
   { value: "DAILY HIRE", unit: "DAYS" },
   { value: "MONTHLY HIRE", unit: "MONTHS" },
