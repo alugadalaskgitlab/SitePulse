@@ -80,9 +80,21 @@ function stripSourceSuffix(desc: string): string {
   return desc.replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
 }
 
+function canonicalizeMachineType(name: string): string {
+  return name
+    .replace(/\s+PLANT\s+INTERCARTING/gi, '')
+    .replace(/\s+INTERCARTING/gi, '')
+    .replace(/-PLANT$/i, '')
+    .replace(/-SITE$/i, '')
+    .replace(/-\d+(\s+.*)?$/i, '')
+    .replace(/-[A-Z][A-Z\s]+$/i, '')
+    .trim();
+}
+
 function canonicalMachineName(description: string): string {
-  const name = description.split(/\s*-\s*/)[0]?.trim() || "EQUIPMENT";
-  return stripSourceSuffix(name).toUpperCase().replace(/\s+/g, "_");
+  const rawName = description.split(/\s*-\s*/)[0]?.trim() || "EQUIPMENT";
+  const stripped = stripSourceSuffix(rawName);
+  return canonicalizeMachineType(stripped).toUpperCase().replace(/\s+/g, "_");
 }
 
 function canonicalMatName(description: string): string {

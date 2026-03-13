@@ -6532,6 +6532,17 @@ export class DatabaseStorage implements IStorage {
       return sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
     };
 
+    const canonicalizeMachineType = (name: string): string => {
+      return name
+        .replace(/\s+PLANT\s+INTERCARTING/gi, '')
+        .replace(/\s+INTERCARTING/gi, '')
+        .replace(/-PLANT$/i, '')
+        .replace(/-SITE$/i, '')
+        .replace(/-\d+(\s+.*)?$/i, '')
+        .replace(/-[A-Z][A-Z\s]+$/i, '')
+        .trim();
+    };
+
     const entryTypeLabel = (et: string) => {
       switch (et.toLowerCase()) {
         case "hourly": return "HOURLY HIRE";
@@ -6553,7 +6564,7 @@ export class DatabaseStorage implements IStorage {
         default: return "HRS";
       }
     };
-    const canonicalizeName = (name: string) => name.toUpperCase().trim().replace(/\s+/g, "_");
+    const canonicalizeName = (name: string) => canonicalizeMachineType(name).toUpperCase().trim().replace(/\s+/g, "_");
 
     const itemMap = new Map<string, { itemKey: string; itemLabel: string; category: string; unit: string }>();
 
@@ -6581,13 +6592,14 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of dprEntryTypes) {
         const et = row.entryType || "time_meter";
-        const machineName = eqMap.get(row.equipmentId!) || "EQUIPMENT";
+        const rawName = eqMap.get(row.equipmentId!) || "EQUIPMENT";
+        const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
         const unit = entryTypeUnit(et);
-        const key = `EQ_${canonicalizeName(machineName)}_${unit}`;
+        const key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
         if (!itemMap.has(key)) {
           itemMap.set(key, {
             itemKey: key,
-            itemLabel: `${machineName.toUpperCase().trim()} - ${entryTypeLabel(et)}`,
+            itemLabel: `${canonical} - ${entryTypeLabel(et)}`,
             category: "equipment",
             unit,
           });
@@ -6603,13 +6615,14 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of plantEntryTypes) {
         const et = row.entryType || "time_meter";
-        const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
+        const rawName = eqMap.get(row.equipmentId) || "EQUIPMENT";
+        const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
         const unit = entryTypeUnit(et);
-        const key = `EQ_${canonicalizeName(machineName)}_${unit}`;
+        const key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
         if (!itemMap.has(key)) {
           itemMap.set(key, {
             itemKey: key,
-            itemLabel: `${machineName.toUpperCase().trim()} - ${entryTypeLabel(et)}`,
+            itemLabel: `${canonical} - ${entryTypeLabel(et)}`,
             category: "equipment",
             unit,
           });
@@ -6687,19 +6700,25 @@ export class DatabaseStorage implements IStorage {
         eq(equipmentUsage.entryType, "shifting"),
       ));
 
+      const transportMachineTypes = new Set<string>();
       for (const row of shiftingItems) {
         if (row.transportEquipmentId) {
           const teq = transportEq.find(e => e.id === row.transportEquipmentId);
-          const machineName = teq ? teq.name.toUpperCase().trim() : "TRANSPORT";
-          const key = `EQ_${canonicalizeName(machineName)}_KM`;
-          if (!itemMap.has(key)) {
-            itemMap.set(key, {
-              itemKey: key,
-              itemLabel: `${machineName} - TRANSPORT`,
-              category: "transport",
-              unit: "KM",
-            });
-          }
+          const rawName = teq ? teq.name : "TRANSPORT";
+          const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
+          transportMachineTypes.add(canonical);
+        }
+      }
+
+      for (const canonical of transportMachineTypes) {
+        const key = `EQ_${canonical.replace(/\s+/g, "_")}_TRIP`;
+        if (!itemMap.has(key)) {
+          itemMap.set(key, {
+            itemKey: key,
+            itemLabel: `${canonical} - TRANSPORT`,
+            category: "transport",
+            unit: "TRIP",
+          });
         }
       }
     }
@@ -6728,15 +6747,16 @@ export class DatabaseStorage implements IStorage {
       if (!row.description) continue;
       let key = "";
       if (row.equipmentId) {
-        const machineName = billEqNameMap.get(row.equipmentId) || row.description.split(" - ")[0]?.trim() || "EQUIPMENT";
+        const rawName = billEqNameMap.get(row.equipmentId) || row.description.split(" - ")[0]?.trim() || "EQUIPMENT";
+        const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
         const unit = (row.unit || "HRS").toUpperCase().trim();
-        key = `EQ_${canonicalizeName(machineName)}_${unit}`;
+        key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
         if (!itemMap.has(key)) {
           const entryTypeMatch = row.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION|TRANSPORT)/);
           const entryLabel = entryTypeMatch ? entryTypeMatch[1] : unit;
           itemMap.set(key, {
             itemKey: key,
-            itemLabel: `${machineName.toUpperCase().trim()} - ${entryLabel}`,
+            itemLabel: `${canonical} - ${entryLabel}`,
             category: row.category || "equipment",
             unit,
           });
@@ -6747,6 +6767,19 @@ export class DatabaseStorage implements IStorage {
         if (row.category === "material") {
           const unit = (row.unit || "NOS").toUpperCase().trim();
           key = `MAT_${canonicalizeName(cleanDesc)}_${unit}`;
+        } else if (row.category === "transport") {
+          const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+          const unit = (row.unit || "TRIP").toUpperCase().trim();
+          key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
+          if (!itemMap.has(key)) {
+            itemMap.set(key, {
+              itemKey: key,
+              itemLabel: `${canonical} - TRANSPORT`,
+              category: "transport",
+              unit,
+            });
+          }
+          continue;
         } else {
           key = cleanDesc || desc;
         }
@@ -6766,6 +6799,7 @@ export class DatabaseStorage implements IStorage {
 
     for (const card of existingCards) {
       const key = card.itemKey.toUpperCase().trim();
+      if (/^\d+_/.test(key)) continue;
       if (!itemMap.has(key)) {
         itemMap.set(key, {
           itemKey: key,

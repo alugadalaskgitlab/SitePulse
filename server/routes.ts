@@ -2910,6 +2910,37 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/equipment-master/canonical-types", async (req, res) => {
+    try {
+      const vendorName = (req.query.vendorName as string || "").trim();
+      const allEquipment = await storage.getEquipmentMaster(false);
+      const canonicalizeMachineType = (name: string): string => {
+        return name
+          .replace(/\s+PLANT\s+INTERCARTING/gi, '')
+          .replace(/\s+INTERCARTING/gi, '')
+          .replace(/-PLANT$/i, '')
+          .replace(/-SITE$/i, '')
+          .replace(/-\d+(\s+.*)?$/i, '')
+          .replace(/-[A-Z][A-Z\s]+$/i, '')
+          .trim();
+      };
+      let filtered = allEquipment.filter(e => e.ownership === "hired");
+      if (vendorName) {
+        const upperVendor = vendorName.toUpperCase();
+        filtered = filtered.filter(e => (e.vendorName || "").toUpperCase().trim() === upperVendor);
+      }
+      const typeSet = new Set<string>();
+      for (const eq of filtered) {
+        const canonical = canonicalizeMachineType(eq.name).toUpperCase().trim();
+        if (canonical) typeSet.add(canonical);
+      }
+      res.json([...typeSet].sort());
+    } catch (err) {
+      console.error("Error fetching canonical equipment types:", err);
+      res.status(500).json({ message: "Failed to fetch canonical types" });
+    }
+  });
+
   app.get("/api/vendor-rate-cards", async (req, res) => {
     try {
       const vendorName = req.query.vendorName as string | undefined;

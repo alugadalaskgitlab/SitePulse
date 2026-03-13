@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
-import { ChevronLeft, Loader2, Save, Lock, Search } from "lucide-react";
+import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -21,7 +21,31 @@ type DiscoveredItem = {
   rateCardId: number | null;
 };
 
+type ManualRow = {
+  id: string;
+  itemKey: string;
+  itemLabel: string;
+  category: string;
+  unit: string;
+  rate: number | string;
+};
+
 const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM"];
+
+const BILLING_MODES = [
+  { value: "HOURLY HIRE", unit: "HRS" },
+  { value: "DAILY HIRE", unit: "DAYS" },
+  { value: "TRIP BASED", unit: "TRIPS" },
+  { value: "MONTHLY HIRE", unit: "MONTHS" },
+  { value: "TIME/METER", unit: "HRS" },
+];
+
+const TRANSPORT_MODES = [
+  { value: "TRANSPORT", unit: "TRIP" },
+  { value: "HOURLY HIRE", unit: "HRS" },
+  { value: "DAILY HIRE", unit: "DAYS" },
+  { value: "MONTHLY HIRE", unit: "MONTHS" },
+];
 
 const getCategoryBadgeClass = (cat: string) => {
   switch (cat) {
@@ -43,8 +67,22 @@ export default function RateCards() {
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
   const [rates, setRates] = useState<Record<string, number | string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
+
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [manualRows, setManualRows] = useState<ManualRow[]>([]);
+
+  const [showAddEquipment, setShowAddEquipment] = useState(false);
+  const [addEqType, setAddEqType] = useState("");
+  const [addEqMode, setAddEqMode] = useState("");
+
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [addMatName, setAddMatName] = useState("");
+  const [addMatUnit, setAddMatUnit] = useState("CFT");
+
+  const [showAddTransport, setShowAddTransport] = useState(false);
+  const [addTransType, setAddTransType] = useState("");
+  const [addTransMode, setAddTransMode] = useState("");
 
   const { data: vendorNames = [] } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
@@ -70,6 +108,20 @@ export default function RateCards() {
       const r = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(selectedVendor)}`);
       return r.ok ? r.json() : [];
     },
+  });
+
+  const { data: canonicalTypes = [] } = useQuery<string[]>({
+    queryKey: ["/api/equipment-master/canonical-types", selectedVendor],
+    enabled: !!selectedVendor,
+    queryFn: async () => {
+      const r = await fetch(`/api/equipment-master/canonical-types?vendorName=${encodeURIComponent(selectedVendor)}`);
+      return r.ok ? r.json() : [];
+    },
+  });
+
+  const { data: plantMaterials = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-materials"],
+    enabled: !!selectedVendor,
   });
 
   useEffect(() => {
@@ -129,8 +181,87 @@ export default function RateCards() {
     }
   };
 
+  const handleAddEquipmentRow = () => {
+    if (!addEqType || !addEqMode) {
+      toast({ title: "Select machine type and billing mode", variant: "destructive" });
+      return;
+    }
+    const mode = BILLING_MODES.find(m => m.value === addEqMode);
+    const unit = mode?.unit || "HRS";
+    const key = `EQ_${addEqType.replace(/\s+/g, "_")}_${unit}`;
+    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "equipment");
+    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "equipment");
+    if (existing || existingManual) {
+      toast({ title: `${addEqType} - ${addEqMode} already exists`, variant: "destructive" });
+      return;
+    }
+    setManualRows(prev => [...prev, {
+      id: `manual_eq_${Date.now()}`,
+      itemKey: key,
+      itemLabel: `${addEqType} - ${addEqMode}`,
+      category: "equipment",
+      unit,
+      rate: "",
+    }]);
+    setAddEqType("");
+    setAddEqMode("");
+    setShowAddEquipment(false);
+  };
+
+  const handleAddMaterialRow = () => {
+    if (!addMatName || !addMatUnit) {
+      toast({ title: "Select material and unit", variant: "destructive" });
+      return;
+    }
+    const key = `MAT_${addMatName.replace(/\s+/g, "_")}_${addMatUnit}`;
+    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "material");
+    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "material");
+    if (existing || existingManual) {
+      toast({ title: `${addMatName} - ${addMatUnit} already exists`, variant: "destructive" });
+      return;
+    }
+    setManualRows(prev => [...prev, {
+      id: `manual_mat_${Date.now()}`,
+      itemKey: key,
+      itemLabel: addMatName,
+      category: "material",
+      unit: addMatUnit,
+      rate: "",
+    }]);
+    setAddMatName("");
+    setAddMatUnit("CFT");
+    setShowAddMaterial(false);
+  };
+
+  const handleAddTransportRow = () => {
+    if (!addTransType || !addTransMode) {
+      toast({ title: "Select machine type and billing mode", variant: "destructive" });
+      return;
+    }
+    const mode = TRANSPORT_MODES.find(m => m.value === addTransMode);
+    const unit = mode?.unit || "TRIP";
+    const key = `EQ_${addTransType.replace(/\s+/g, "_")}_${unit}`;
+    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "transport");
+    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "transport");
+    if (existing || existingManual) {
+      toast({ title: `${addTransType} - ${addTransMode} already exists`, variant: "destructive" });
+      return;
+    }
+    setManualRows(prev => [...prev, {
+      id: `manual_trans_${Date.now()}`,
+      itemKey: key,
+      itemLabel: `${addTransType} - ${addTransMode}`,
+      category: "transport",
+      unit,
+      rate: "",
+    }]);
+    setAddTransType("");
+    setAddTransMode("");
+    setShowAddTransport(false);
+  };
+
   const handleSaveAll = () => {
-    const items = discoveredItems.map(item => {
+    const discoveredToSave = discoveredItems.map(item => {
       const effectiveUnit = getEffectiveUnit(item);
       const effectiveKey = getEffectiveKey(item);
       return {
@@ -143,32 +274,65 @@ export default function RateCards() {
       };
     }).filter(i => i.rate > 0);
 
-    if (items.length === 0) {
+    const manualToSave = manualRows.map(row => ({
+      vendorName: selectedVendor,
+      category: row.category,
+      itemKey: row.itemKey,
+      itemLabel: row.itemLabel,
+      unit: row.unit,
+      rate: parseFloat(String(row.rate || 0)) || 0,
+    })).filter(i => i.rate > 0);
+
+    const allToSave = [...discoveredToSave, ...manualToSave];
+
+    if (allToSave.length === 0) {
       toast({ title: "No rates to save — enter at least one rate", variant: "destructive" });
       return;
     }
-    bulkSaveMutation.mutate(items);
+    bulkSaveMutation.mutate(allToSave);
   };
 
-  const filteredItems = useMemo(() => {
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const equipmentItems = useMemo(() => {
     return discoveredItems.filter(item => {
-      if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
+      if (item.category !== "equipment") return false;
       if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
       return true;
     });
-  }, [discoveredItems, categoryFilter, searchFilter]);
+  }, [discoveredItems, searchFilter]);
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    discoveredItems.forEach(item => {
-      counts[item.category] = (counts[item.category] || 0) + 1;
+  const materialItems = useMemo(() => {
+    return discoveredItems.filter(item => {
+      if (item.category !== "material") return false;
+      if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
+      return true;
     });
-    return counts;
-  }, [discoveredItems]);
+  }, [discoveredItems, searchFilter]);
+
+  const transportItems = useMemo(() => {
+    return discoveredItems.filter(item => {
+      if (item.category !== "transport") return false;
+      if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
+      return true;
+    });
+  }, [discoveredItems, searchFilter]);
+
+  const equipmentManualRows = useMemo(() => manualRows.filter(r => r.category === "equipment"), [manualRows]);
+  const materialManualRows = useMemo(() => manualRows.filter(r => r.category === "material"), [manualRows]);
+  const transportManualRows = useMemo(() => manualRows.filter(r => r.category === "transport"), [manualRows]);
 
   const filledCount = useMemo(() => {
-    return Object.values(rates).filter(r => parseFloat(String(r)) > 0).length;
-  }, [rates]);
+    const discoveredFilled = Object.values(rates).filter(r => parseFloat(String(r)) > 0).length;
+    const manualFilled = manualRows.filter(r => parseFloat(String(r.rate)) > 0).length;
+    return discoveredFilled + manualFilled;
+  }, [rates, manualRows]);
+
+  const materialNameOptions = useMemo(() => {
+    return plantMaterials.map((m: any) => m.name?.toUpperCase()?.trim()).filter(Boolean).sort();
+  }, [plantMaterials]);
 
   if (!authenticated) {
     return (
@@ -201,6 +365,85 @@ export default function RateCards() {
     );
   }
 
+  const renderItemRow = (item: DiscoveredItem, idx: number) => (
+    <tr key={item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
+      <td className="px-3 py-2">
+        <div className="font-medium text-sm">{item.itemLabel}</div>
+      </td>
+      <td className="px-3 py-2">
+        <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
+          <SelectTrigger className="h-8 w-24 text-xs" data-testid={`select-unit-${idx}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {UNIT_OPTIONS.map(u => (
+              <SelectItem key={u} value={u}>{u}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="px-3 py-2">
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={rates[item.itemKey] ?? ""}
+          onChange={e => setRates(prev => ({ ...prev, [item.itemKey]: e.target.value }))}
+          onWheel={e => (e.target as HTMLInputElement).blur()}
+          placeholder="0.00"
+          className="text-right font-mono w-full"
+          data-testid={`input-rate-${idx}`}
+        />
+      </td>
+    </tr>
+  );
+
+  const renderManualRow = (row: ManualRow, idx: number) => (
+    <tr key={row.id} className="border-t hover:bg-muted/30 bg-green-50/50 dark:bg-green-900/10" data-testid={`row-manual-${row.category}-${idx}`}>
+      <td className="px-3 py-2">
+        <div className="font-medium text-sm flex items-center gap-2">
+          {row.itemLabel}
+          <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700 border-green-300 no-default-hover-elevate no-default-active-elevate">NEW</Badge>
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <span className="text-xs font-mono px-2 py-1 bg-muted rounded">{row.unit}</span>
+      </td>
+      <td className="px-3 py-2">
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={row.rate}
+          onChange={e => {
+            const val = e.target.value;
+            setManualRows(prev => prev.map(r => r.id === row.id ? { ...r, rate: val } : r));
+          }}
+          onWheel={e => (e.target as HTMLInputElement).blur()}
+          placeholder="0.00"
+          className="text-right font-mono w-full"
+          data-testid={`input-manual-rate-${row.category}-${idx}`}
+        />
+      </td>
+    </tr>
+  );
+
+  const renderSectionHeader = (title: string, category: string, count: number, badgeClass: string) => (
+    <div
+      className="flex items-center justify-between px-3 py-2 bg-muted/60 cursor-pointer select-none"
+      onClick={() => toggleSection(category)}
+      data-testid={`section-header-${category}`}
+    >
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className={`text-[10px] ${badgeClass} no-default-hover-elevate no-default-active-elevate`}>
+          {title}
+        </Badge>
+        <span className="text-xs text-muted-foreground">{count} item(s)</span>
+      </div>
+      {collapsedSections[category] ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+    </div>
+  );
+
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       <div className="flex items-center gap-4 flex-wrap">
@@ -216,7 +459,7 @@ export default function RateCards() {
         <CardContent className="pt-4 space-y-3">
           <div>
             <Label className="text-xs uppercase font-semibold">Select Vendor</Label>
-            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setCategoryFilter("all"); setSearchFilter(""); }}>
+            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); }}>
               <SelectTrigger data-testid="select-vendor">
                 <SelectValue placeholder="Choose a vendor..." />
               </SelectTrigger>
@@ -237,108 +480,224 @@ export default function RateCards() {
         </div>
       )}
 
-      {selectedVendor && !isDiscovering && discoveredItems.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No items found for {selectedVendor}. This vendor has no equipment, materials, or transport entries in the system yet.
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedVendor && !isDiscovering && discoveredItems.length > 0 && (
+      {selectedVendor && !isDiscovering && (
         <>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold">{discoveredItems.length} ITEMS FOUND</span>
+                  <span className="text-sm font-semibold">{discoveredItems.length + manualRows.length} ITEMS</span>
                   <Badge variant="outline" className="text-[10px] bg-green-600 text-white border-green-700 no-default-hover-elevate no-default-active-elevate">
                     {filledCount} RATES SET
                   </Badge>
-                  {Object.entries(categoryCounts).map(([cat, count]) => (
-                    <Badge key={cat} variant="outline" className={`text-[10px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}>
-                      {cat.toUpperCase()}: {count}
-                    </Badge>
-                  ))}
                 </div>
-                <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search items..."
-                      value={searchFilter}
-                      onChange={e => setSearchFilter(e.target.value)}
-                      className="pl-8 uppercase w-48"
-                      data-testid="input-search-items"
-                    />
-                  </div>
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="w-36" data-testid="select-filter-category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">ALL CATEGORIES</SelectItem>
-                      <SelectItem value="equipment">EQUIPMENT</SelectItem>
-                      <SelectItem value="material">MATERIAL</SelectItem>
-                      <SelectItem value="transport">TRANSPORT</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search items..."
+                    value={searchFilter}
+                    onChange={e => setSearchFilter(e.target.value)}
+                    className="pl-8 uppercase w-48"
+                    data-testid="input-search-items"
+                  />
                 </div>
               </div>
             </CardContent>
           </Card>
 
+          {/* EQUIPMENT SECTION */}
           <Card>
             <CardContent className="p-0 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs">ITEM</th>
-                    <th className="px-3 py-2 text-left text-xs w-28">CATEGORY</th>
-                    <th className="px-3 py-2 text-left text-xs w-20">UNIT</th>
-                    <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredItems.map((item, idx) => (
-                    <tr key={item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{item.itemLabel}</div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <Badge variant="outline" className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}>
-                          {item.category.toUpperCase()}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2">
-                        <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
-                          <SelectTrigger className="h-8 w-24 text-xs" data-testid={`select-unit-${idx}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {UNIT_OPTIONS.map(u => (
-                              <SelectItem key={u} value={u}>{u}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={rates[item.itemKey] ?? ""}
-                          onChange={e => setRates(prev => ({ ...prev, [item.itemKey]: e.target.value }))}
-                          onWheel={e => (e.target as HTMLInputElement).blur()}
-                          placeholder="0.00"
-                          className="text-right font-mono w-full"
-                          data-testid={`input-rate-${idx}`}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {renderSectionHeader("EQUIPMENT", "equipment", equipmentItems.length + equipmentManualRows.length, getCategoryBadgeClass("equipment"))}
+              {!collapsedSections["equipment"] && (
+                <>
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/30">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs">MACHINE TYPE — BILLING MODE</th>
+                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {equipmentItems.map((item, idx) => renderItemRow(item, idx))}
+                      {equipmentManualRows.map((row, idx) => renderManualRow(row, idx))}
+                      {equipmentItems.length === 0 && equipmentManualRows.length === 0 && (
+                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No equipment items discovered. Use ADD ROW to add manually.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="px-3 py-2 border-t">
+                    {!showAddEquipment ? (
+                      <Button variant="outline" size="sm" onClick={() => setShowAddEquipment(true)} data-testid="button-add-equipment-row">
+                        <Plus className="w-3 h-3 mr-1" /> ADD ROW
+                      </Button>
+                    ) : (
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Machine Type</Label>
+                          <Select value={addEqType} onValueChange={setAddEqType}>
+                            <SelectTrigger className="w-44 h-8 text-xs" data-testid="select-add-eq-type">
+                              <SelectValue placeholder="Select type..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {canonicalTypes.map(t => (
+                                <SelectItem key={t} value={t}>{t}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Billing Mode</Label>
+                          <Select value={addEqMode} onValueChange={setAddEqMode}>
+                            <SelectTrigger className="w-40 h-8 text-xs" data-testid="select-add-eq-mode">
+                              <SelectValue placeholder="Select mode..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {BILLING_MODES.map(m => (
+                                <SelectItem key={m.value} value={m.value}>{m.value} ({m.unit})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button size="sm" onClick={handleAddEquipmentRow} data-testid="button-confirm-add-equipment">ADD</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setShowAddEquipment(false); setAddEqType(""); setAddEqMode(""); }}>CANCEL</Button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* MATERIALS SECTION */}
+          <Card>
+            <CardContent className="p-0 overflow-x-auto">
+              {renderSectionHeader("MATERIALS", "material", materialItems.length + materialManualRows.length, getCategoryBadgeClass("material"))}
+              {!collapsedSections["material"] && (
+                <>
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/30">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs">MATERIAL NAME</th>
+                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialItems.map((item, idx) => renderItemRow(item, idx))}
+                      {materialManualRows.map((row, idx) => renderManualRow(row, idx))}
+                      {materialItems.length === 0 && materialManualRows.length === 0 && (
+                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No materials discovered. Use ADD ROW to add manually.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="px-3 py-2 border-t">
+                    {!showAddMaterial ? (
+                      <Button variant="outline" size="sm" onClick={() => setShowAddMaterial(true)} data-testid="button-add-material-row">
+                        <Plus className="w-3 h-3 mr-1" /> ADD ROW
+                      </Button>
+                    ) : (
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Material</Label>
+                          <Select value={addMatName} onValueChange={setAddMatName}>
+                            <SelectTrigger className="w-48 h-8 text-xs" data-testid="select-add-mat-name">
+                              <SelectValue placeholder="Select material..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {materialNameOptions.map((m: string) => (
+                                <SelectItem key={m} value={m}>{m}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Unit</Label>
+                          <Select value={addMatUnit} onValueChange={setAddMatUnit}>
+                            <SelectTrigger className="w-28 h-8 text-xs" data-testid="select-add-mat-unit">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {UNIT_OPTIONS.map(u => (
+                                <SelectItem key={u} value={u}>{u}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button size="sm" onClick={handleAddMaterialRow} data-testid="button-confirm-add-material">ADD</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setShowAddMaterial(false); setAddMatName(""); setAddMatUnit("CFT"); }}>CANCEL</Button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* TRANSPORT SECTION */}
+          <Card>
+            <CardContent className="p-0 overflow-x-auto">
+              {renderSectionHeader("TRANSPORT", "transport", transportItems.length + transportManualRows.length, getCategoryBadgeClass("transport"))}
+              {!collapsedSections["transport"] && (
+                <>
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/30">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs">MACHINE TYPE — BILLING MODE</th>
+                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transportItems.map((item, idx) => renderItemRow(item, idx))}
+                      {transportManualRows.map((row, idx) => renderManualRow(row, idx))}
+                      {transportItems.length === 0 && transportManualRows.length === 0 && (
+                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No transport items discovered. Use ADD ROW to add manually.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="px-3 py-2 border-t">
+                    <div className="text-[10px] text-muted-foreground mb-1">TRIP rates use lead distance x 2 (one-way to two-way)</div>
+                    {!showAddTransport ? (
+                      <Button variant="outline" size="sm" onClick={() => setShowAddTransport(true)} data-testid="button-add-transport-row">
+                        <Plus className="w-3 h-3 mr-1" /> ADD ROW
+                      </Button>
+                    ) : (
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Machine Type</Label>
+                          <Select value={addTransType} onValueChange={setAddTransType}>
+                            <SelectTrigger className="w-44 h-8 text-xs" data-testid="select-add-trans-type">
+                              <SelectValue placeholder="Select type..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {canonicalTypes.map(t => (
+                                <SelectItem key={t} value={t}>{t}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Billing Mode</Label>
+                          <Select value={addTransMode} onValueChange={setAddTransMode}>
+                            <SelectTrigger className="w-40 h-8 text-xs" data-testid="select-add-trans-mode">
+                              <SelectValue placeholder="Select mode..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TRANSPORT_MODES.map(m => (
+                                <SelectItem key={m.value} value={m.value}>{m.value} ({m.unit})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button size="sm" onClick={handleAddTransportRow} data-testid="button-confirm-add-transport">ADD</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setShowAddTransport(false); setAddTransType(""); setAddTransMode(""); }}>CANCEL</Button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
