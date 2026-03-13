@@ -7,6 +7,7 @@ import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
+import { canonicalizeMachineType } from "@shared/canonicalize";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -2914,16 +2915,6 @@ export async function registerRoutes(
     try {
       const vendorName = (req.query.vendorName as string || "").trim();
       const allEquipment = await storage.getEquipmentMaster(false);
-      const canonicalizeMachineType = (name: string): string => {
-        return name
-          .replace(/\s+PLANT\s+INTERCARTING/gi, '')
-          .replace(/\s+INTERCARTING/gi, '')
-          .replace(/-PLANT$/i, '')
-          .replace(/-SITE$/i, '')
-          .replace(/-\d+(\s+.*)?$/i, '')
-          .replace(/-[A-Z][A-Z\s]+$/i, '')
-          .trim();
-      };
       let filtered = allEquipment.filter(e => e.ownership === "hired");
       if (vendorName) {
         const upperVendor = vendorName.toUpperCase();

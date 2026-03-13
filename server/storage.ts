@@ -129,6 +129,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
+import { canonicalizeMachineType } from "@shared/canonicalize";
 
 export interface IStorage {
   // DPRs
@@ -6530,17 +6531,6 @@ export class DatabaseStorage implements IStorage {
         return sql`UPPER(TRIM(${col})) = ${vendorVariants[0]}`;
       }
       return sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
-    };
-
-    const canonicalizeMachineType = (name: string): string => {
-      return name
-        .replace(/\s+PLANT\s+INTERCARTING/gi, '')
-        .replace(/\s+INTERCARTING/gi, '')
-        .replace(/-PLANT$/i, '')
-        .replace(/-SITE$/i, '')
-        .replace(/-\d+(\s+.*)?$/i, '')
-        .replace(/-[A-Z][A-Z\s]+$/i, '')
-        .trim();
     };
 
     const entryTypeLabel = (et: string) => {
