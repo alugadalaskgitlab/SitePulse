@@ -427,7 +427,22 @@ export default function VendorBills() {
             const item = mapped[i];
             if (item.rate === 0) {
               let card: any = null;
-              if (item.equipmentId) {
+              if (item.category === "transport") {
+                const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+                const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+                const unit = (item.unit || "TRIP").toUpperCase();
+                const canonicalKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
+                card = cardByKey.get(`${canonicalKey}_${item.category}`);
+              } else if (item.category === "material") {
+                const unit = (item.unit || "NOS").toUpperCase();
+                const mn = canonicalMatName(item.description);
+                const newKey = `MAT_${mn}_${unit}`;
+                card = cardByKey.get(`${newKey}_${item.category}`);
+                if (!card) {
+                  const oldKey = `MAT_${stripSourceSuffix(item.description.trim().toUpperCase())}`;
+                  card = cardByKey.get(`${oldKey}_${item.category}`);
+                }
+              } else if (item.equipmentId) {
                 const mn = canonicalMachineName(item.description);
                 const unit = (item.unit || "HRS").toUpperCase();
                 const newKey = `EQ_${mn}_${unit}`;
@@ -439,24 +454,8 @@ export default function VendorBills() {
                   card = cardByKey.get(`${oldKey}_${item.category}`);
                 }
               } else {
-                const unit = (item.unit || "NOS").toUpperCase();
-                if (item.category === "material") {
-                  const mn = canonicalMatName(item.description);
-                  const newKey = `MAT_${mn}_${unit}`;
-                  card = cardByKey.get(`${newKey}_${item.category}`);
-                  if (!card) {
-                    const oldKey = `MAT_${stripSourceSuffix(item.description.trim().toUpperCase())}`;
-                    card = cardByKey.get(`${oldKey}_${item.category}`);
-                  }
-                } else if (item.category === "transport") {
-                  const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-                  const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
-                  const canonicalKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
-                  card = cardByKey.get(`${canonicalKey}_${item.category}`);
-                } else {
-                  const descKey = stripSourceSuffix(item.description.trim().toUpperCase());
-                  card = cardByKey.get(`${descKey}_${item.category}`);
-                }
+                const descKey = stripSourceSuffix(item.description.trim().toUpperCase());
+                card = cardByKey.get(`${descKey}_${item.category}`);
               }
               if (card && Number(card.rate) > 0) {
                 mapped[i] = { ...item, rate: Number(card.rate) };
@@ -596,7 +595,16 @@ export default function VendorBills() {
   const uniqueRateGroups = useMemo(() => {
     const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; unit: string; count: number }> = {};
     lineItems.forEach(item => {
-      if (item.equipmentId) {
+      if (item.category === "transport") {
+        const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+        const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+        const unit = (item.unit || "TRIP").toUpperCase();
+        const key = `transport_${canonical.replace(/\s+/g, "_")}_${unit}`;
+        if (!groups[key]) {
+          groups[key] = { equipmentId: null, groupName: canonical, entryType: unit, category: "transport", unit, count: 0 };
+        }
+        groups[key].count++;
+      } else if (item.equipmentId) {
         const mn = canonicalMachineName(item.description);
         const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
         const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
@@ -608,13 +616,10 @@ export default function VendorBills() {
         groups[key].count++;
       } else if (item.description.trim()) {
         const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-        const groupName = item.category === "transport"
-          ? canonicalizeMachineType(cleanDesc).toUpperCase().trim()
-          : cleanDesc;
         const unit = (item.unit || "NOS").toUpperCase();
-        const key = `desc_${item.category}_${groupName.replace(/\s+/g, "_")}_${unit}`;
+        const key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
         if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName, entryType: item.unit || "", category: item.category, unit, count: 0 };
+          groups[key] = { equipmentId: null, groupName: cleanDesc, entryType: item.unit || "", category: item.category, unit, count: 0 };
         }
         groups[key].count++;
       }
@@ -692,17 +697,19 @@ export default function VendorBills() {
       for (let i = 0; i < updated.length; i++) {
         const item = updated[i];
         let key: string;
-        if (item.equipmentId) {
+        if (item.category === "transport") {
+          const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+          const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+          const unit = (item.unit || "TRIP").toUpperCase();
+          key = `transport_${canonical.replace(/\s+/g, "_")}_${unit}`;
+        } else if (item.equipmentId) {
           const mn = canonicalMachineName(item.description);
           const unit = (item.unit || "HRS").toUpperCase();
           key = `eq_${mn}_${unit}`;
         } else {
           const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-          const groupName = item.category === "transport"
-            ? canonicalizeMachineType(cleanDesc).toUpperCase().trim()
-            : cleanDesc;
           const unit = (item.unit || "NOS").toUpperCase();
-          key = `desc_${item.category}_${groupName.replace(/\s+/g, "_")}_${unit}`;
+          key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
         }
         const rateData = bulkRates[key];
         if (rateData && rateData.rate > 0) {
@@ -797,19 +804,19 @@ export default function VendorBills() {
     const rateCardItems: any[] = [];
     lineItems.filter(i => i.description && i.rate > 0).forEach(item => {
       let itemKey = "";
-      if (item.equipmentId) {
-        const mn = canonicalMachineName(item.description);
-        const unit = (item.unit || "HRS").toUpperCase();
-        itemKey = `EQ_${mn}_${unit}`;
-      } else if (item.category === "material") {
-        const mn = canonicalMatName(item.description);
-        const unit = (item.unit || "NOS").toUpperCase();
-        itemKey = `MAT_${mn}_${unit}`;
-      } else if (item.category === "transport") {
+      if (item.category === "transport") {
         const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
         const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
         const unit = (item.unit || "TRIP").toUpperCase();
         itemKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
+      } else if (item.category === "material") {
+        const mn = canonicalMatName(item.description);
+        const unit = (item.unit || "NOS").toUpperCase();
+        itemKey = `MAT_${mn}_${unit}`;
+      } else if (item.equipmentId) {
+        const mn = canonicalMachineName(item.description);
+        const unit = (item.unit || "HRS").toUpperCase();
+        itemKey = `EQ_${mn}_${unit}`;
       } else {
         itemKey = stripSourceSuffix(item.description.trim().toUpperCase());
       }
