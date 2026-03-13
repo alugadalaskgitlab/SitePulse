@@ -448,6 +448,11 @@ export default function VendorBills() {
                     const oldKey = `MAT_${stripSourceSuffix(item.description.trim().toUpperCase())}`;
                     card = cardByKey.get(`${oldKey}_${item.category}`);
                   }
+                } else if (item.category === "transport") {
+                  const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+                  const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+                  const canonicalKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
+                  card = cardByKey.get(`${canonicalKey}_${item.category}`);
                 } else {
                   const descKey = stripSourceSuffix(item.description.trim().toUpperCase());
                   card = cardByKey.get(`${descKey}_${item.category}`);
@@ -603,10 +608,13 @@ export default function VendorBills() {
         groups[key].count++;
       } else if (item.description.trim()) {
         const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+        const groupName = item.category === "transport"
+          ? canonicalizeMachineType(cleanDesc).toUpperCase().trim()
+          : cleanDesc;
         const unit = (item.unit || "NOS").toUpperCase();
-        const key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
+        const key = `desc_${item.category}_${groupName.replace(/\s+/g, "_")}_${unit}`;
         if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName: cleanDesc, entryType: item.unit || "", category: item.category, unit, count: 0 };
+          groups[key] = { equipmentId: null, groupName, entryType: item.unit || "", category: item.category, unit, count: 0 };
         }
         groups[key].count++;
       }
@@ -658,6 +666,9 @@ export default function VendorBills() {
               const oldKey = `MAT_${group.groupName.trim().toUpperCase()}`;
               card = cardByKey.get(`${oldKey}_${group.category}`);
             }
+          } else if (group.category === "transport") {
+            const canonicalKey = `EQ_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
+            card = cardByKey.get(`${canonicalKey}_${group.category}`);
           } else {
             card = cardByKey.get(`${group.groupName.trim().toUpperCase()}_${group.category}`);
           }
@@ -687,8 +698,11 @@ export default function VendorBills() {
           key = `eq_${mn}_${unit}`;
         } else {
           const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+          const groupName = item.category === "transport"
+            ? canonicalizeMachineType(cleanDesc).toUpperCase().trim()
+            : cleanDesc;
           const unit = (item.unit || "NOS").toUpperCase();
-          key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
+          key = `desc_${item.category}_${groupName.replace(/\s+/g, "_")}_${unit}`;
         }
         const rateData = bulkRates[key];
         if (rateData && rateData.rate > 0) {
@@ -716,6 +730,8 @@ export default function VendorBills() {
             itemKey = `EQ_${group.groupName.replace(/\s+/g, "_")}_${group.unit}`;
           } else if (group.category === "material") {
             itemKey = `MAT_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
+          } else if (group.category === "transport") {
+            itemKey = `EQ_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
           } else {
             itemKey = group.groupName.trim().toUpperCase();
           }
@@ -789,6 +805,11 @@ export default function VendorBills() {
         const mn = canonicalMatName(item.description);
         const unit = (item.unit || "NOS").toUpperCase();
         itemKey = `MAT_${mn}_${unit}`;
+      } else if (item.category === "transport") {
+        const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
+        const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
+        const unit = (item.unit || "TRIP").toUpperCase();
+        itemKey = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
       } else {
         itemKey = stripSourceSuffix(item.description.trim().toUpperCase());
       }

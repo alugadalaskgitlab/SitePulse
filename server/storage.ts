@@ -6554,7 +6554,8 @@ export class DatabaseStorage implements IStorage {
         default: return "HRS";
       }
     };
-    const canonicalizeName = (name: string) => canonicalizeMachineType(name).toUpperCase().trim().replace(/\s+/g, "_");
+    const canonicalizeEqName = (name: string) => canonicalizeMachineType(name).toUpperCase().trim().replace(/\s+/g, "_");
+    const canonicalizeMatName = (name: string) => name.toUpperCase().trim().replace(/\s+/g, "_");
 
     const itemMap = new Map<string, { itemKey: string; itemLabel: string; category: string; unit: string }>();
 
@@ -6623,7 +6624,7 @@ export class DatabaseStorage implements IStorage {
     const addMaterial = (matName: string, uom: string | null) => {
       const name = (matName || "MATERIAL").toUpperCase().trim();
       const unit = (uom || "NOS").toUpperCase().trim();
-      const key = `MAT_${canonicalizeName(name)}_${unit}`;
+      const key = `MAT_${canonicalizeMatName(name)}_${unit}`;
       if (!itemMap.has(key)) {
         itemMap.set(key, {
           itemKey: key,
@@ -6756,7 +6757,7 @@ export class DatabaseStorage implements IStorage {
         const cleanDesc = desc.replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
         if (row.category === "material") {
           const unit = (row.unit || "NOS").toUpperCase().trim();
-          key = `MAT_${canonicalizeName(cleanDesc)}_${unit}`;
+          key = `MAT_${canonicalizeMatName(cleanDesc)}_${unit}`;
         } else if (row.category === "transport") {
           const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
           const unit = (row.unit || "TRIP").toUpperCase().trim();
