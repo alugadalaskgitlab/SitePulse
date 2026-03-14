@@ -767,6 +767,9 @@ export class DatabaseStorage implements IStorage {
         editedBy,
       });
 
+      // Mark original DPR as superseded so it no longer appears in listings or reports
+      await tx.update(dprs).set({ isSuperseded: true }).where(eq(dprs.id, id));
+
       return newDpr;
     });
   }
@@ -4194,7 +4197,9 @@ export class DatabaseStorage implements IStorage {
   // ============================================
   
   async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]> {
-    let conditions: any[] = [];
+    let conditions: any[] = [
+      or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+    ];
     
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
@@ -4211,36 +4216,19 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
-      submittedAt: dprs.submittedAt,
     })
     .from(sitePurchases)
     .innerJoin(dprs, eq(sitePurchases.dprId, dprs.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(dprs.date));
     
-    // Deduplicate: only keep purchases from the latest version of each DPR
-    const latestDprByKey = new Map<string, { dprId: number; timestamp: string }>();
-    for (const row of results) {
-      const baseSite = this.getBaseSiteName(row.site);
-      const key = `${baseSite}|${row.date}`;
-      const currentTimestamp = row.submittedAt || '';
-      const existing = latestDprByKey.get(key);
-      if (!existing || currentTimestamp > existing.timestamp) {
-        latestDprByKey.set(key, { dprId: row.dprId, timestamp: currentTimestamp });
-      }
-    }
-    
-    const latestDprIds = new Set(Array.from(latestDprByKey.values()).map(v => v.dprId));
-    
     let filtered = results
-      .filter(r => latestDprIds.has(r.dprId))
-      .map(({ submittedAt, ...rest }) => ({
+      .map(rest => ({
         ...rest,
         site: this.getBaseSiteName(rest.site),
         source: "purchase" as const,
       }));
     
-    // Apply site filter on base site name
     if (filters?.site) {
       const filterSite = filters.site.toUpperCase().trim();
       filtered = filtered.filter(r => r.site.toUpperCase().trim() === filterSite);
@@ -4264,26 +4252,13 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
-      submittedAt: dprs.submittedAt,
     })
     .from(equipmentLogs)
     .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
     .where(and(...dieselConditions));
 
-    const dieselLatestDprByKey = new Map<string, { dprId: number; timestamp: string }>();
-    for (const row of dieselResults) {
-      const baseSite = this.getBaseSiteName(row.site);
-      const key = `${baseSite}|${row.date}`;
-      const currentTimestamp = row.submittedAt || '';
-      const existing = dieselLatestDprByKey.get(key);
-      if (!existing || currentTimestamp > existing.timestamp) {
-        dieselLatestDprByKey.set(key, { dprId: row.dprId, timestamp: currentTimestamp });
-      }
-    }
-    const dieselLatestDprIds = new Set(Array.from(dieselLatestDprByKey.values()).map(v => v.dprId));
-
     let dieselFiltered = dieselResults
-      .filter(r => dieselLatestDprIds.has(r.dprId) && (r.amountPaid || 0) > 0)
+      .filter(r => (r.amountPaid || 0) > 0)
       .map(row => ({
         id: row.id,
         dprId: row.dprId,
@@ -6054,12 +6029,17 @@ export class DatabaseStorage implements IStorage {
         lte(equipmentUsage.date, dateTo),
       ));
 
-    const equipLogs = await db.select()
-      .from(equipmentLogs)
-      .where(and(
-        gte(sql`(SELECT date FROM dprs WHERE dprs.id = ${equipmentLogs.dprId})`, dateFrom),
-        lte(sql`(SELECT date FROM dprs WHERE dprs.id = ${equipmentLogs.dprId})`, dateTo),
-      ));
+    const equipLogs = await db.select({
+      diesel: equipmentLogs.diesel,
+      date: dprs.date,
+    })
+    .from(equipmentLogs)
+    .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+    .where(and(
+      gte(dprs.date, dateFrom),
+      lte(dprs.date, dateTo),
+      or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+    ));
 
     const dateMap = new Map<string, { totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }>();
 
@@ -6079,14 +6059,11 @@ export class DatabaseStorage implements IStorage {
     }
 
     for (const eLog of equipLogs) {
-      if (eLog.diesel && eLog.diesel > 0 && eLog.dprId) {
-        const [dpr] = await db.select({ date: dprs.date }).from(dprs).where(eq(dprs.id, eLog.dprId)).limit(1);
-        if (dpr) {
-          const d = dpr.date;
-          const existing = dateMap.get(d) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };
-          existing.totalActualIssued += eLog.diesel || 0;
-          dateMap.set(d, existing);
-        }
+      if (eLog.diesel && eLog.diesel > 0) {
+        const d = eLog.date;
+        const existing = dateMap.get(d) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };
+        existing.totalActualIssued += eLog.diesel || 0;
+        dateMap.set(d, existing);
       }
     }
 
