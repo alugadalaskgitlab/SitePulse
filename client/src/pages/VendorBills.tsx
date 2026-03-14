@@ -973,11 +973,6 @@ export default function VendorBills() {
   };
 
   const handlePrint = (bill: VendorBillWithItems) => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      toast({ title: "Please allow pop-ups to print", variant: "destructive" });
-      return;
-    }
     const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
     const catSubs = computeCategorySubTotals(bill.items);
     const shouldGroup = catSubs.length > 1;
@@ -1023,7 +1018,7 @@ export default function VendorBills() {
     const totalQty = bill.items.reduce((s: number, it: any) => s + (it.qty || 0), 0);
     const totalItems = bill.items.length;
 
-    printWindow.document.write(`
+    const printContent = `
       <!DOCTYPE html><html><head><title>Vendor Bill - ${bill.billNo}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1092,9 +1087,37 @@ export default function VendorBills() {
       </div>
       <div class="footer">Generated on ${new Date().toLocaleString("en-IN")} | HIGH LANE CONSTRUCTIONS</div>
       </body></html>
-    `);
-    printWindow.document.close();
-    setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 250);
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.left = '-9999px';
+
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        window.print();
+      }
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1000);
+    };
+
+    iframe.onload = () => setTimeout(doPrint, 100);
+    document.body.appendChild(iframe);
+    iframe.srcdoc = printContent;
+
+    setTimeout(() => {
+      if (!printed) doPrint();
+    }, 2000);
   };
 
   const renderStatusSteps = (currentStatus: string) => {

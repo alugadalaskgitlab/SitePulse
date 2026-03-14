@@ -731,17 +731,14 @@ export default function SiteDashboard() {
   const handlePrint = () => {
     if (!dprs || dprs.length === 0) return;
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow pop-ups to print the report');
-      return;
-    }
-
     const styles = `
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; font-size: 11px; }
-        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+        .company-header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px; }
+        .company-header img { height: 50px; margin-bottom: 5px; }
+        .company-header h2 { margin: 0; font-size: 14px; font-weight: bold; }
+        .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; }
         .header h1 { font-size: 18px; margin-bottom: 5px; }
         .header p { font-size: 11px; color: #666; }
         .filters-info { background: #f5f5f5; padding: 8px; margin-bottom: 15px; border-radius: 4px; font-size: 10px; }
@@ -885,7 +882,7 @@ export default function SiteDashboard() {
       `;
     }).join('') || '';
 
-    printWindow.document.write(`
+    const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -893,9 +890,12 @@ export default function SiteDashboard() {
           ${styles}
         </head>
         <body>
+          <div class="company-header">
+            <img src="${window.location.origin}/hlc-logo.jpg" onerror="this.style.display='none'" />
+            <h2>High Lane Constructions Pvt Ltd</h2>
+          </div>
           <div class="header">
-            <h1>High Lane Constructions Pvt Ltd</h1>
-            <p>Daily Progress Reports - Detailed</p>
+            <h1>Daily Progress Reports - Detailed</h1>
             <p>Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}</p>
           </div>
           ${filtersText.length > 0 ? `<div class="filters-info"><strong>Filters:</strong> ${filtersText.join(' | ')}</div>` : ''}
@@ -907,13 +907,37 @@ export default function SiteDashboard() {
           </div>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.left = '-9999px';
+
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        window.print();
+      }
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1000);
+    };
+
+    iframe.onload = () => setTimeout(doPrint, 100);
+    document.body.appendChild(iframe);
+    iframe.srcdoc = printContent;
+
     setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+      if (!printed) doPrint();
+    }, 2000);
   };
 
   return (

@@ -321,12 +321,6 @@ export default function PlantMaterialIssues() {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast({ title: "Please allow pop-ups to print", variant: "destructive" });
-      return;
-    }
-
     const tableRows = filteredIssues.map(issue => `
       <tr>
         <td>${issue.date}</td>
@@ -339,7 +333,7 @@ export default function PlantMaterialIssues() {
       </tr>
     `).join('');
 
-    printWindow.document.write(`
+    const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -381,13 +375,37 @@ export default function PlantMaterialIssues() {
           </table>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.left = '-9999px';
+
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        window.print();
+      }
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1000);
+    };
+
+    iframe.onload = () => setTimeout(doPrint, 100);
+    document.body.appendChild(iframe);
+    iframe.srcdoc = printContent;
+
     setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+      if (!printed) doPrint();
+    }, 2000);
   };
 
   return (
