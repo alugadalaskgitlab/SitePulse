@@ -1659,8 +1659,16 @@ export default function SiteDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {materialTrips.map((trip: any) => (
-                        <tr key={`${trip.source}-${trip.id}`} className="border-b hover:bg-muted/30" data-testid={`material-entry-${trip.source}-${trip.id}`}>
+                      {materialTrips.map((trip: any) => {
+                        const isDprRow = trip.source === 'dpr' && trip.dprId;
+                        const handleRowClick = isDprRow ? () => { saveDashboardState(); setLocation(appendOrigin(`/site/report/${trip.dprId}`)); } : undefined;
+                        return (
+                        <tr 
+                          key={`${trip.source}-${trip.id}`} 
+                          className={`border-b hover:bg-muted/30 ${isDprRow ? 'cursor-pointer' : ''}`}
+                          onClick={handleRowClick}
+                          data-testid={`material-entry-${trip.source}-${trip.id}`}
+                        >
                           <td className="p-2 border text-xs">
                             <div>{trip.date ? format(new Date(trip.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase() : '-'}</div>
                             {trip.time && <div className="text-muted-foreground">{trip.time}</div>}
@@ -1671,10 +1679,9 @@ export default function SiteDashboard() {
                           <td className="p-2 border text-xs">{trip.supplier || '-'}</td>
                           <td className="p-2 border text-xs">{trip.receiptNumber || '-'}</td>
                           <td className="p-2 border text-center">
-                            {trip.source === 'dpr' && trip.dprId ? (
+                            {isDprRow ? (
                               <span 
-                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 cursor-pointer hover:bg-amber-200"
-                                onClick={() => { saveDashboardState(); setLocation(`/site/report/${trip.dprId}`); }}
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
                                 data-testid={`link-dpr-${trip.dprId}`}
                               >DPR</span>
                             ) : (
@@ -1683,7 +1690,7 @@ export default function SiteDashboard() {
                               </span>
                             )}
                           </td>
-                          <td className="p-2 border text-center">
+                          <td className="p-2 border text-center" onClick={(e) => e.stopPropagation()}>
                             {trip.source === 'trip' ? (
                               <Button 
                                 variant="ghost" 
@@ -1698,7 +1705,8 @@ export default function SiteDashboard() {
                             ) : null}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
