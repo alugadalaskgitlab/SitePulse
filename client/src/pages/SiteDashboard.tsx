@@ -79,6 +79,7 @@ export default function SiteDashboard() {
     equipment: "",
     hasDiesel: false,
     material: "",
+    supplier: "",
   });
   
   const [, setLocation] = useLocation();
@@ -200,6 +201,12 @@ export default function SiteDashboard() {
         const hasMaterial = dpr.materials?.some((m: any) => m.material === filters.material);
         if (!hasMaterial) return false;
       }
+
+      // Supplier filter
+      if (filters.supplier) {
+        const hasSupplier = dpr.materials?.some((m: any) => (m.supplier || '').toUpperCase() === filters.supplier);
+        if (!hasSupplier) return false;
+      }
       
       return true;
     });
@@ -256,6 +263,10 @@ export default function SiteDashboard() {
     });
     return Array.from(materials).sort();
   }, [dprsWithDetails]);
+
+  const { data: supplierList } = useQuery<string[]>({
+    queryKey: ["/api/materials/suppliers"],
+  });
 
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
@@ -377,10 +388,11 @@ export default function SiteDashboard() {
       equipment: "",
       hasDiesel: false,
       material: "",
+      supplier: "",
     });
   };
 
-  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material;
+  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier;
 
   // Export action handlers - ALWAYS requires manager or admin PIN
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
@@ -1077,6 +1089,20 @@ export default function SiteDashboard() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Supplier</Label>
+                  <Select value={filters.supplier || "all"} onValueChange={(value) => setFilters({ ...filters, supplier: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-supplier">
+                      <SelectValue placeholder="All Suppliers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Suppliers</SelectItem>
+                      {(supplierList || []).map((supplier) => (
+                        <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1443,12 +1469,17 @@ export default function SiteDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Supplier / Party</Label>
-                  <Input
-                    placeholder="Search supplier..."
-                    value={materialSupplierFilter}
-                    onChange={(e) => { setMaterialSupplierFilter(e.target.value.toUpperCase()); if (e.target.value) setMaterialStockOwnerFilter(""); }}
-                    data-testid="input-material-supplier-filter"
-                  />
+                  <Select value={materialSupplierFilter || "__all__"} onValueChange={(v) => { setMaterialSupplierFilter(v === "__all__" ? "" : v); if (v !== "__all__") setMaterialStockOwnerFilter(""); }}>
+                    <SelectTrigger data-testid="select-material-supplier-filter">
+                      <SelectValue placeholder="All Suppliers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All Suppliers</SelectItem>
+                      {(supplierList || []).map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Stock Owner</Label>
@@ -1458,15 +1489,9 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__all__">All Owners</SelectItem>
-                      {(() => {
-                        const suppliers = new Set<string>();
-                        (materialTrips || []).forEach((t: any) => {
-                          if (t.supplier) suppliers.add(t.supplier.toUpperCase().trim());
-                        });
-                        return [...suppliers].sort().map(s => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
-                        ));
-                      })()}
+                      {(supplierList || []).map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

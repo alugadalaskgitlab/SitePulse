@@ -127,7 +127,7 @@ import {
   type VendorRateCard,
   type InsertVendorRateCard,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, ilike } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 
@@ -313,6 +313,7 @@ export interface IStorage {
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
   getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string }): Promise<any[]>;
+  getMaterialSuppliers(): Promise<string[]>;
   
   // Consumption Audit Log
   getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]>;
@@ -4473,6 +4474,28 @@ export class DatabaseStorage implements IStorage {
     const combined = [...tripResults, ...dprResults, ...waterResults];
     combined.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     return combined;
+  }
+
+  async getMaterialSuppliers(): Promise<string[]> {
+    const [tripSuppliers, dprSuppliers] = await Promise.all([
+      db.selectDistinct({ supplier: siteMaterialTrips.supplier })
+        .from(siteMaterialTrips)
+        .where(isNotNull(siteMaterialTrips.supplier)),
+      db.selectDistinct({ supplier: materialLogs.supplier })
+        .from(materialLogs)
+        .innerJoin(dprs, eq(materialLogs.dprId, dprs.id))
+        .where(and(
+          eq(materialLogs.type, 'Received'),
+          isNotNull(materialLogs.supplier),
+          or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+        )),
+    ]);
+    const all = new Set<string>();
+    for (const row of [...tripSuppliers, ...dprSuppliers]) {
+      const val = (row.supplier || '').trim().toUpperCase();
+      if (val) all.add(val);
+    }
+    return [...all].sort();
   }
 
   // Consumption Audit Log

@@ -60,6 +60,16 @@ export async function registerRoutes(
   // SITE MATERIAL TRIPS (Quick Entry)
   // ============================================
 
+  app.get("/api/materials/suppliers", async (req, res) => {
+    try {
+      const suppliers = await storage.getMaterialSuppliers();
+      res.json(suppliers);
+    } catch (err) {
+      console.error("Error fetching material suppliers:", err);
+      res.status(500).json({ message: "Failed to fetch material suppliers" });
+    }
+  });
+
   // Get all site material trips (with optional filters)
   app.get("/api/materials-received", async (req, res) => {
     try {
