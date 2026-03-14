@@ -1401,6 +1401,10 @@ export default function SiteEdit() {
                   <Label>Location</Label>
                   <Input placeholder="Location" value={m.location} onChange={e => updateMaterial(idx, 'location', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-location-${idx}`} />
                 </div>
+                <div>
+                  <Label>Receipt No</Label>
+                  <Input placeholder="Receipt number" value={m.receiptNumber} onChange={e => updateMaterial(idx, 'receiptNumber', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-receipt-${idx}`} />
+                </div>
               </div>
             ))
           )}
