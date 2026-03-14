@@ -1044,7 +1044,7 @@ export default function PurchaseIndents() {
                             <SelectValue placeholder="SELECT MATERIAL OR OTHER" />
                           </SelectTrigger>
                           <SelectContent>
-                            {(plantMaterialsList || []).filter(m => m.isActive === 1).map(m => (
+                            {(plantMaterialsList || []).filter(m => m.isActive === 1 || m.id === item.materialId).map(m => (
                               <SelectItem key={m.id} value={String(m.id)}>
                                 {m.name.toUpperCase()} ({(m.defaultUom || "").toUpperCase()})
                               </SelectItem>
