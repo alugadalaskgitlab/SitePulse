@@ -312,7 +312,7 @@ export interface IStorage {
   deleteSiteMaterialTrip(id: number): Promise<void>;
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
-  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
+  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string }): Promise<any[]>;
   
   // Consumption Audit Log
   getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]>;
@@ -4463,6 +4463,11 @@ export class DatabaseStorage implements IStorage {
       dprResults = dprResults.filter(r => r.site.toUpperCase().trim() === filterSite);
       tripResults = tripResults.filter(r => (r.site || '').toUpperCase().trim() === filterSite);
       waterResults = waterResults.filter(r => r.site.toUpperCase().trim() === filterSite);
+    }
+
+    if (filters?.supplier) {
+      const sup = filters.supplier.toUpperCase().trim();
+      waterResults = waterResults.filter(r => (r.supplier || '').toUpperCase().includes(sup));
     }
 
     const combined = [...tripResults, ...dprResults, ...waterResults];
