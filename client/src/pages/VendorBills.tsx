@@ -1051,7 +1051,7 @@ export default function VendorBills() {
         @media print { body { padding: 12px; } .signatures { page-break-inside: avoid; } }
       </style></head><body>
       <div class="header">
-        <img src="${window.location.origin}/hlc-logo.jpg" onerror="this.style.display='none'" />
+        <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 6px;" onerror="this.style.display='none'" />
         <h1>HIGH LANE CONSTRUCTIONS</h1>
         <div class="subtitle">Vendor Bill</div>
       </div>
@@ -1400,7 +1400,6 @@ export default function VendorBills() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">LINE ITEMS</CardTitle>
             <div className="flex gap-2 flex-wrap">
               <Link href={`/plant/rate-cards?vendorName=${encodeURIComponent(vendorName)}`}>
                 <Button variant="outline" size="sm" data-testid="button-manage-rate-cards">
@@ -1919,7 +1918,6 @@ export default function VendorBills() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">LINE ITEMS</CardTitle>
             <span className="font-bold text-amber-600 dark:text-amber-400" data-testid="text-detail-total">
               TOTAL: {formatCurrency(bill.totalAmount)}
             </span>
