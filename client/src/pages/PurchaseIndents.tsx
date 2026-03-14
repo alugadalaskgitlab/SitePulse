@@ -575,7 +575,7 @@ export default function PurchaseIndents() {
           uom: item.uom,
           purpose: item.purpose,
           priority: item.priority,
-          materialId: (item as any).materialId || null,
+          materialId: item.materialId || null,
         })));
         setSavedPin(pin);
         setView("form");
@@ -1022,8 +1022,9 @@ export default function PurchaseIndents() {
                           value={item.materialId ? String(item.materialId) : "__other__"}
                           onValueChange={(v) => {
                             if (v === "__other__") {
-                              updateItem(index, "materialId", null as any);
-                              updateItem(index, "description", "");
+                              const updated = [...formItems];
+                              updated[index] = { ...updated[index], materialId: null, description: "" };
+                              setFormItems(updated);
                             } else {
                               const mat = plantMaterialsList?.find(m => m.id === Number(v));
                               if (mat) {
