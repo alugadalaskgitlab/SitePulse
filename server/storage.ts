@@ -4899,6 +4899,7 @@ export class DatabaseStorage implements IStorage {
             uom: item.uom.toUpperCase(),
             purpose: item.purpose.toUpperCase(),
             priority: item.priority || "normal",
+            materialId: item.materialId || null,
           }))
         ).returning();
       }
@@ -5132,6 +5133,7 @@ export class DatabaseStorage implements IStorage {
             uom: item.uom.toUpperCase(),
             purpose: item.purpose.toUpperCase(),
             priority: item.priority || "normal",
+            materialId: item.materialId || null,
           }))
         ).returning();
       }

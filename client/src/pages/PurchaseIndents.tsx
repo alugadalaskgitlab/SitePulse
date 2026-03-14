@@ -14,7 +14,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
-import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry } from "@shared/schema";
+import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry, PlantMaterial } from "@shared/schema";
 
 type ViewMode = "list" | "form" | "detail" | "purchase" | "report";
 
@@ -24,7 +24,7 @@ const PURPOSE_OPTIONS = [
 
 const PRIORITY_OPTIONS = ["urgent", "normal", "low"] as const;
 
-const UOM_ITEM_OPTIONS = ["NOS", "KG", "METERS", "LITERS", "SET", "PAIR", "BOX", "ROLLS", "PACKETS"] as const;
+const UOM_ITEM_OPTIONS = ["NOS", "KG", "METERS", "LITERS", "SET", "PAIR", "BOX", "ROLLS", "PACKETS", "TON", "MT", "CFT", "CUM", "SQM", "RMT"] as const;
 
 interface ItemRow {
   description: string;
@@ -32,6 +32,7 @@ interface ItemRow {
   uom: string;
   purpose: string;
   priority: string;
+  materialId: number | null;
 }
 
 interface PurchaseUpdateData {
@@ -212,7 +213,7 @@ export default function PurchaseIndents() {
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
   const [formItems, setFormItems] = useState<ItemRow[]>([
-    { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal" },
+    { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null },
   ]);
 
   const [editIndentId, setEditIndentId] = useState<number | null>(null);
@@ -257,6 +258,10 @@ export default function PurchaseIndents() {
   const { data: selectedIndent, isLoading: isLoadingDetail } = useQuery<PurchaseIndentWithItems>({
     queryKey: ["/api/purchase-indents", selectedIndentId],
     enabled: !!selectedIndentId,
+  });
+
+  const { data: plantMaterialsList } = useQuery<PlantMaterial[]>({
+    queryKey: ["/api/plant-module/materials"],
   });
 
   const createMutation = useMutation({
@@ -462,11 +467,11 @@ export default function PurchaseIndents() {
     setFormProposedBy("");
     setFormRaisedBy("");
     setFormRemarks("");
-    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal" }]);
+    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null }]);
   };
 
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal" }]);
+    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -504,6 +509,7 @@ export default function PurchaseIndents() {
         uom: item.uom,
         purpose: item.purpose,
         priority: item.priority,
+        materialId: item.materialId || undefined,
       })),
     };
 
@@ -569,6 +575,7 @@ export default function PurchaseIndents() {
           uom: item.uom,
           purpose: item.purpose,
           priority: item.priority,
+          materialId: (item as any).materialId || null,
         })));
         setSavedPin(pin);
         setView("form");
@@ -1010,13 +1017,51 @@ export default function PurchaseIndents() {
                     <span className="text-xs text-muted-foreground font-medium mt-2 w-5 flex-shrink-0">{index + 1}.</span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <Input
-                          value={item.description}
-                          onChange={(e) => updateItem(index, "description", e.target.value.toUpperCase())}
-                          placeholder="ITEM DESCRIPTION"
-                          data-testid={`input-item-desc-${index}`}
-                        />
+                        <Label className="text-xs">ITEM</Label>
+                        <Select
+                          value={item.materialId ? String(item.materialId) : "__other__"}
+                          onValueChange={(v) => {
+                            if (v === "__other__") {
+                              updateItem(index, "materialId", null as any);
+                              updateItem(index, "description", "");
+                            } else {
+                              const mat = plantMaterialsList?.find(m => m.id === Number(v));
+                              if (mat) {
+                                const updated = [...formItems];
+                                updated[index] = {
+                                  ...updated[index],
+                                  materialId: mat.id,
+                                  description: mat.name.toUpperCase(),
+                                  uom: (mat.defaultUom || "NOS").toUpperCase(),
+                                };
+                                setFormItems(updated);
+                              }
+                            }
+                          }}
+                        >
+                          <SelectTrigger data-testid={`select-item-material-${index}`}>
+                            <SelectValue placeholder="SELECT MATERIAL OR OTHER" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(plantMaterialsList || []).filter(m => m.isActive === 1).map(m => (
+                              <SelectItem key={m.id} value={String(m.id)}>
+                                {m.name.toUpperCase()} ({(m.defaultUom || "").toUpperCase()})
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="__other__">OTHER (FREE TEXT)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
+                      {!item.materialId && (
+                        <div>
+                          <Input
+                            value={item.description}
+                            onChange={(e) => updateItem(index, "description", e.target.value.toUpperCase())}
+                            placeholder="ENTER ITEM DESCRIPTION"
+                            data-testid={`input-item-desc-${index}`}
+                          />
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
                           <Label className="text-xs">QTY</Label>
