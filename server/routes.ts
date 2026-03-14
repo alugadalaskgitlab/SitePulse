@@ -68,6 +68,7 @@ export async function registerRoutes(
         material: req.query.material as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
+        supplier: req.query.supplier as string | undefined,
       };
       const results = await storage.getAllMaterialsReceived(filters);
       res.json(results);

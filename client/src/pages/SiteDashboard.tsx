@@ -1,5 +1,5 @@
-import { useState, useRef, useMemo } from "react";
-import { Link } from "wouter";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAccess } from "@/lib/access-context";
@@ -81,12 +81,16 @@ export default function SiteDashboard() {
     material: "",
   });
   
+  const [, setLocation] = useLocation();
+  
   // Materials Received tab state
   const today = format(new Date(), "yyyy-MM-dd");
   const [materialDateFrom, setMaterialDateFrom] = useState(today);
   const [materialDateTo, setMaterialDateTo] = useState(today);
   const [materialSiteFilter, setMaterialSiteFilter] = useState("");
   const [materialNameFilter, setMaterialNameFilter] = useState("");
+  const [materialSupplierFilter, setMaterialSupplierFilter] = useState("");
+  const [materialStockOwnerFilter, setMaterialStockOwnerFilter] = useState("");
   const [newMaterialEntry, setNewMaterialEntry] = useState({
     date: today,
     time: format(new Date(), "HH:mm"),
@@ -103,9 +107,39 @@ export default function SiteDashboard() {
   });
   
   const printRef = useRef<HTMLDivElement>(null);
+  const hasRestoredRef = useRef(false);
   
   const { getBackLink, appendOrigin } = useOrigin();
   const backLink = getBackLink("/site");
+  
+  useEffect(() => {
+    if (hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
+    try {
+      const saved = sessionStorage.getItem("siteDashboardState");
+      if (saved) {
+        const state = JSON.parse(saved);
+        if (state.activeTab) setActiveTab(state.activeTab);
+        if (state.expandedReports && Array.isArray(state.expandedReports)) {
+          setExpandedReports(new Set(state.expandedReports));
+        }
+        if (state.scrollY != null) {
+          setTimeout(() => window.scrollTo(0, state.scrollY), 100);
+        }
+        sessionStorage.removeItem("siteDashboardState");
+      }
+    } catch (_e) {}
+  }, []);
+
+  const saveDashboardState = useCallback(() => {
+    try {
+      sessionStorage.setItem("siteDashboardState", JSON.stringify({
+        activeTab,
+        expandedReports: [...expandedReports],
+        scrollY: window.scrollY,
+      }));
+    } catch (_e) {}
+  }, [activeTab, expandedReports]);
   
   // Use detailed DPR data for advanced filtering
   // Only send date filters to server; site/engineer/activity/equipment/diesel are filtered client-side
@@ -252,6 +286,8 @@ export default function SiteDashboard() {
     if (materialDateTo) params.set("dateTo", materialDateTo);
     if (materialSiteFilter) params.set("site", materialSiteFilter);
     if (materialNameFilter) params.set("material", materialNameFilter);
+    const activeSupplier = materialSupplierFilter || materialStockOwnerFilter;
+    if (activeSupplier) params.set("supplier", activeSupplier);
     const queryString = params.toString();
     return queryString ? `/api/materials-received?${queryString}` : "/api/materials-received";
   };
@@ -1153,12 +1189,11 @@ export default function SiteDashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             {pendingClosingCount > 0 && (
-                              <Link href={appendOrigin(`/site/edit/${dpr.id}?complete=true`)}>
-                                <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-complete-${dpr.id}`}>
-                                  <Pencil className="w-3 h-3" />
-                                  Complete
-                                </Button>
-                              </Link>
+                              <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-complete-${dpr.id}`}
+                                onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/edit/${dpr.id}?complete=true`)); }}>
+                                <Pencil className="w-3 h-3" />
+                                Complete
+                              </Button>
                             )}
                             <Button 
                               size="sm" 
@@ -1168,12 +1203,11 @@ export default function SiteDashboard() {
                             >
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </Button>
-                            <Link href={appendOrigin(`/site/report/${dpr.id}`)}>
-                              <Button size="sm" variant="outline" className="gap-1" data-testid={`button-view-${dpr.id}`}>
-                                <ExternalLink className="w-3 h-3" />
-                                View
-                              </Button>
-                            </Link>
+                            <Button size="sm" variant="outline" className="gap-1" data-testid={`button-view-${dpr.id}`}
+                              onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/report/${dpr.id}`)); }}>
+                              <ExternalLink className="w-3 h-3" />
+                              View
+                            </Button>
                           </div>
                         </div>
                         
@@ -1320,6 +1354,8 @@ export default function SiteDashboard() {
                                         <th className="text-right p-2 border">Quantity</th>
                                         <th className="text-left p-2 border">UOM</th>
                                         <th className="text-left p-2 border">Vehicle</th>
+                                        <th className="text-left p-2 border">Received From</th>
+                                        <th className="text-left p-2 border">Receipt No.</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1330,6 +1366,8 @@ export default function SiteDashboard() {
                                           <td className="p-2 border text-right">{m.quantity?.toFixed(3) || "-"}</td>
                                           <td className="p-2 border">{m.uom || "-"}</td>
                                           <td className="p-2 border">{m.vehicleNumber || "-"}</td>
+                                          <td className="p-2 border">{m.supplier || "-"}</td>
+                                          <td className="p-2 border">{m.receiptNumber || "-"}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -1356,7 +1394,7 @@ export default function SiteDashboard() {
                 <Filter className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filters</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs">From Date</Label>
                   <Input
@@ -1400,6 +1438,35 @@ export default function SiteDashboard() {
                       {MATERIAL_OPTIONS.map(mat => (
                         <SelectItem key={mat} value={mat}>{mat}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Supplier / Party</Label>
+                  <Input
+                    placeholder="Search supplier..."
+                    value={materialSupplierFilter}
+                    onChange={(e) => { setMaterialSupplierFilter(e.target.value.toUpperCase()); if (e.target.value) setMaterialStockOwnerFilter(""); }}
+                    data-testid="input-material-supplier-filter"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Stock Owner</Label>
+                  <Select value={materialStockOwnerFilter || "__all__"} onValueChange={(v) => { setMaterialStockOwnerFilter(v === "__all__" ? "" : v); if (v !== "__all__") setMaterialSupplierFilter(""); }}>
+                    <SelectTrigger data-testid="select-material-stock-owner">
+                      <SelectValue placeholder="All Owners" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All Owners</SelectItem>
+                      {(() => {
+                        const suppliers = new Set<string>();
+                        (materialTrips || []).forEach((t: any) => {
+                          if (t.supplier) suppliers.add(t.supplier.toUpperCase().trim());
+                        });
+                        return [...suppliers].sort().map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ));
+                      })()}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1560,7 +1627,7 @@ export default function SiteDashboard() {
             </CardContent>
           </Card>
 
-          {/* Material Entries List */}
+          {/* Material Entries Table */}
           <Card>
             <CardContent className="p-4">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1577,51 +1644,63 @@ export default function SiteDashboard() {
                   <p>No material entries found</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {materialTrips.map((trip: any) => (
-                    <div key={`${trip.source}-${trip.id}`} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg" data-testid={`material-entry-${trip.source}-${trip.id}`}>
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Truck className="w-5 h-5 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === 'trip' ? 'bg-blue-100 text-blue-700' : trip.source === 'equipment' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {trip.source === 'trip' ? 'TRIP' : trip.source === 'equipment' ? 'EQUIP' : 'DPR'}
-                            </span>
-                            <span className="font-medium">{trip.material}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {trip.quantity} {trip.uom}
-                            </span>
-                            {trip.vehicleNumber && (
-                              <span className="text-xs bg-muted px-2 py-0.5 rounded">{trip.vehicleNumber}</span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-muted/50">
+                        <th className="text-left p-2 border text-xs">Date / Time</th>
+                        <th className="text-left p-2 border text-xs">Vehicle</th>
+                        <th className="text-left p-2 border text-xs">Material</th>
+                        <th className="text-right p-2 border text-xs">Qty / UOM</th>
+                        <th className="text-left p-2 border text-xs">Supplier</th>
+                        <th className="text-left p-2 border text-xs">Receipt No.</th>
+                        <th className="text-center p-2 border text-xs">Source</th>
+                        <th className="text-center p-2 border text-xs w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialTrips.map((trip: any) => (
+                        <tr key={`${trip.source}-${trip.id}`} className="border-b hover:bg-muted/30" data-testid={`material-entry-${trip.source}-${trip.id}`}>
+                          <td className="p-2 border text-xs">
+                            <div>{trip.date ? format(new Date(trip.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase() : '-'}</div>
+                            {trip.time && <div className="text-muted-foreground">{trip.time}</div>}
+                          </td>
+                          <td className="p-2 border text-xs">{trip.vehicleNumber || '-'}</td>
+                          <td className="p-2 border text-xs font-medium">{trip.material || '-'}</td>
+                          <td className="p-2 border text-xs text-right">{trip.quantity} {trip.uom}</td>
+                          <td className="p-2 border text-xs">{trip.supplier || '-'}</td>
+                          <td className="p-2 border text-xs">{trip.receiptNumber || '-'}</td>
+                          <td className="p-2 border text-center">
+                            {trip.source === 'dpr' && trip.dprId ? (
+                              <span 
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 cursor-pointer hover:bg-amber-200"
+                                onClick={() => { saveDashboardState(); setLocation(`/site/report/${trip.dprId}`); }}
+                                data-testid={`link-dpr-${trip.dprId}`}
+                              >DPR</span>
+                            ) : (
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === 'trip' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                {trip.source === 'trip' ? 'TRIP' : 'EQUIP'}
+                              </span>
                             )}
-                          </div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap mt-1">
-                            <span className="font-medium">{trip.date ? format(new Date(trip.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase() : ''}</span>
-                            <span>{trip.site}</span>
-                            {trip.time && <span>at {trip.time}</span>}
-                            {trip.supplier && <span>from {trip.supplier}</span>}
-                            {trip.location && <span>@ {trip.location}</span>}
-                            {trip.receiptNumber && <span>#{trip.receiptNumber}</span>}
-                            {trip.enteredBy && <span>by {trip.enteredBy}</span>}
-                            {trip.notes && <span className="italic">{trip.notes}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      {trip.source === 'trip' ? (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => deleteMaterialMutation.mutate(trip.id)}
-                          disabled={deleteMaterialMutation.isPending}
-                          data-testid={`button-delete-material-${trip.id}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))}
+                          </td>
+                          <td className="p-2 border text-center">
+                            {trip.source === 'trip' ? (
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => deleteMaterialMutation.mutate(trip.id)}
+                                disabled={deleteMaterialMutation.isPending}
+                                data-testid={`button-delete-material-${trip.id}`}
+                              >
+                                <Trash2 className="w-3 h-3 text-destructive" />
+                              </Button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>

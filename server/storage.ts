@@ -4333,11 +4333,12 @@ export class DatabaseStorage implements IStorage {
     await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
   }
 
-  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<any[]> {
+  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string }): Promise<any[]> {
     const tripConditions: any[] = [];
     if (filters?.dateFrom) tripConditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) tripConditions.push(lte(siteMaterialTrips.date, filters.dateTo));
     if (filters?.material) tripConditions.push(ilike(siteMaterialTrips.material, `%${filters.material}%`));
+    if (filters?.supplier) tripConditions.push(ilike(siteMaterialTrips.supplier, `%${filters.supplier}%`));
 
     const trips = await db.select().from(siteMaterialTrips)
       .where(tripConditions.length > 0 ? and(...tripConditions) : undefined)
@@ -4350,9 +4351,11 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) dprConditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
     if (filters?.material) dprConditions.push(ilike(materialLogs.material, `%${filters.material}%`));
+    if (filters?.supplier) dprConditions.push(ilike(materialLogs.supplier, `%${filters.supplier}%`));
 
     const dprMaterials = await db.select({
       id: materialLogs.id,
+      dprId: materialLogs.dprId,
       material: materialLogs.material,
       supplier: materialLogs.supplier,
       quantity: materialLogs.quantity,
@@ -4371,6 +4374,7 @@ export class DatabaseStorage implements IStorage {
 
     let dprResults = dprMaterials.map(row => ({
       id: row.id,
+      dprId: row.dprId,
       source: "dpr" as const,
       date: row.date,
       site: this.getBaseSiteName(row.site),
