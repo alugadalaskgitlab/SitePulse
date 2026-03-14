@@ -830,16 +830,40 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Insert edited material logs with uppercase text fields
-      if (dprData.materials?.length) {
-        await tx.insert(materialLogs).values(
-          dprData.materials.map(m => ({ 
-            ...m, 
-            dprId,
-            vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
-            supplier: m.supplier?.toUpperCase() || m.supplier,
-            location: m.location?.toUpperCase() || m.location,
-          }))
-        );
+      // Distinguish: explicit empty array [] = user intentionally cleared materials
+      // undefined/not present = field wasn't sent, carry forward from original to prevent data loss
+      if (Array.isArray(dprData.materials)) {
+        if (dprData.materials.length > 0) {
+          await tx.insert(materialLogs).values(
+            dprData.materials.map(m => ({ 
+              ...m, 
+              dprId,
+              vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
+              supplier: m.supplier?.toUpperCase() || m.supplier,
+              location: m.location?.toUpperCase() || m.location,
+            }))
+          );
+        }
+        // else: explicit empty array = user intentionally cleared, don't carry forward
+      } else {
+        // Field not present at all - carry forward from original DPR to prevent accidental data loss
+        const originalMaterials = await tx.select().from(materialLogs)
+          .where(eq(materialLogs.dprId, originalId));
+        if (originalMaterials.length > 0) {
+          await tx.insert(materialLogs).values(
+            originalMaterials.map(m => ({
+              dprId,
+              type: m.type,
+              material: m.material,
+              quantity: m.quantity,
+              uom: m.uom,
+              vehicleNumber: m.vehicleNumber,
+              supplier: m.supplier,
+              location: m.location,
+              receiptNumber: m.receiptNumber,
+            }))
+          );
+        }
       }
 
       // Insert edited site purchases with uppercase text fields

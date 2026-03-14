@@ -201,8 +201,7 @@ export default function SiteEdit() {
     { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }
   ]);
 
-  // Materials are now managed separately in the Materials Received tab
-  const [materials] = useState<MaterialEntry[]>([]);
+  const [materials, setMaterials] = useState<MaterialEntry[]>([]);
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
@@ -266,7 +265,18 @@ export default function SiteEdit() {
         })));
       }
 
-      // Materials are now managed separately in the Materials Received tab
+      if (dpr.materials) {
+        setMaterials(dpr.materials.map((m: any) => ({
+          type: m.type || "Received",
+          material: m.material || "",
+          quantity: m.quantity != null ? Number(m.quantity) : null,
+          uom: m.uom || "",
+          vehicleNumber: m.vehicleNumber || "",
+          supplier: m.supplier || "",
+          location: m.location || "",
+          receiptNumber: m.receiptNumber || "",
+        })));
+      }
 
       if (dpr.sitePurchases) {
         setSitePurchases(dpr.sitePurchases.map((sp: any) => ({
@@ -394,6 +404,18 @@ export default function SiteEdit() {
     const updated = [...sitePurchases];
     (updated[index] as any)[field] = value;
     setSitePurchases(updated);
+  };
+
+  const addMaterial = () => {
+    setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }]);
+  };
+  const removeMaterial = (index: number) => {
+    setMaterials(materials.filter((_, i) => i !== index));
+  };
+  const updateMaterial = (index: number, field: keyof MaterialEntry, value: any) => {
+    const updated = [...materials];
+    (updated[index] as any)[field] = value;
+    setMaterials(updated);
   };
 
   const handleSave = () => {
@@ -1323,6 +1345,70 @@ export default function SiteEdit() {
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">
             <Plus className="w-4 h-4 mr-1" /> Add Row
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Materials */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="text-orange-600">Materials Log</CardTitle>
+          <Button size="sm" variant="outline" onClick={addMaterial} data-testid="button-add-material-top">
+            <Plus className="w-4 h-4 mr-1" /> Add
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {materials.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-4">No materials recorded.</p>
+          ) : (
+            materials.map((m, idx) => (
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end p-4 bg-muted/30 rounded-lg relative" data-testid={`material-row-${idx}`}>
+                <Button size="icon" variant="ghost" className="absolute right-0 top-0 text-muted-foreground hover:text-destructive" onClick={() => removeMaterial(idx)} data-testid={`button-remove-material-${idx}`}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+                <div>
+                  <Label>Type</Label>
+                  <Select value={m.type} onValueChange={(v) => updateMaterial(idx, 'type', v)}>
+                    <SelectTrigger data-testid={`select-material-type-${idx}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Received">Received</SelectItem>
+                      <SelectItem value="Issued">Issued</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Material</Label>
+                  <Input placeholder="e.g. 20MM AGGREGATE" value={m.material} onChange={e => updateMaterial(idx, 'material', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-name-${idx}`} />
+                </div>
+                <div>
+                  <Label>Qty</Label>
+                  <Input type="number" step="0.001" placeholder="0" value={m.quantity ?? ''} onChange={e => updateMaterial(idx, 'quantity', e.target.value ? parseFloat(e.target.value) : null)} data-testid={`input-material-qty-${idx}`} />
+                </div>
+                <div>
+                  <Label>UOM</Label>
+                  <Input placeholder="CFT/MT" value={m.uom} onChange={e => updateMaterial(idx, 'uom', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-uom-${idx}`} />
+                </div>
+                <div>
+                  <Label>Vehicle No</Label>
+                  <Input placeholder="Vehicle number" value={m.vehicleNumber} onChange={e => updateMaterial(idx, 'vehicleNumber', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-vehicle-${idx}`} />
+                </div>
+                <div>
+                  <Label>Supplier</Label>
+                  <Input placeholder="Supplier name" value={m.supplier} onChange={e => updateMaterial(idx, 'supplier', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-supplier-${idx}`} />
+                </div>
+                <div>
+                  <Label>Location</Label>
+                  <Input placeholder="Location" value={m.location} onChange={e => updateMaterial(idx, 'location', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-location-${idx}`} />
+                </div>
+              </div>
+            ))
+          )}
+          {materials.length > 0 && (
+            <Button variant="outline" className="w-full border-dashed" onClick={addMaterial} data-testid="button-add-material-bottom">
+              <Plus className="w-4 h-4 mr-1" /> Add Material
+            </Button>
+          )}
         </CardContent>
       </Card>
 
