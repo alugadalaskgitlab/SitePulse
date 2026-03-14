@@ -2728,8 +2728,10 @@ export async function registerRoutes(
 
       const renderPdfItemRow = (item: any, idx: number) => {
         const desc = item.description || "";
+        const siteLabel = item.siteName || "";
         const descHeight = doc.heightOfString(desc, { width: colWidths[descColIdx] - 8, fontSize: 9 });
-        const rowH = Math.max(18, descHeight + 8);
+        const siteHeight = siteLabel ? doc.heightOfString(siteLabel, { width: colWidths[descColIdx] - 8, fontSize: 7 }) + 2 : 0;
+        const rowH = Math.max(18, descHeight + siteHeight + 8);
 
         if (y + rowH > 720) {
           doc.addPage();
@@ -2759,6 +2761,11 @@ export async function registerRoutes(
           const w = colWidths[i] - 8;
           if (i === descColIdx) {
             doc.text(cell, cx + 4, y + 4, { width: w, align, lineBreak: true });
+            if (siteLabel) {
+              doc.fillColor("#666").fontSize(7).font("Helvetica-Oblique");
+              doc.text(siteLabel, cx + 4, y + 4 + descHeight + 1, { width: w, align: "left", lineBreak: false });
+              doc.fillColor("#000").fontSize(9).font("Helvetica");
+            }
           } else {
             doc.text(cell, cx + 4, y + 4, { width: w, align, lineBreak: false });
           }

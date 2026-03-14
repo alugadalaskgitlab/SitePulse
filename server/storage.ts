@@ -5282,6 +5282,7 @@ export class DatabaseStorage implements IStorage {
             source: item.source || "manual",
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
+            siteName: (item as any).siteName?.toUpperCase() || null,
           }))
         ).returning();
       }
@@ -5338,6 +5339,7 @@ export class DatabaseStorage implements IStorage {
             source: item.source || "manual",
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
+            siteName: (item as any).siteName?.toUpperCase() || null,
           }))
         ).returning();
       }
@@ -5495,6 +5497,8 @@ export class DatabaseStorage implements IStorage {
           numberOfTrips: equipmentLogs.numberOfTrips,
           equipmentId: equipmentLogs.equipmentId,
           diesel: equipmentLogs.diesel,
+          task: equipmentLogs.task,
+          site: dprs.site,
         })
         .from(equipmentLogs)
         .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
@@ -5513,8 +5517,11 @@ export class DatabaseStorage implements IStorage {
           if (qty > 0) {
             const machineName = eqMap.get(row.equipmentId!) || row.machine;
             const label = entryTypeLabel(row.entryType);
-            let desc = `${machineName} (SITE) - ${label} | ${hours} HRS`;
+            const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";
+            let desc = `${machineName}${taskPart} (SITE) - ${label} | ${hours} HRS`;
             if (dieselVal > 0) desc += ` | DIESEL: ${dieselVal}L`;
+            const cleanSite = row.site ? row.site.replace(/\s*[–-]\s*Edited by .*/i, "").trim().toUpperCase() : "";
+            const siteLabel = cleanSite ? `SITE: ${cleanSite}` : "SITE";
             items.push({
               date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
               category: "equipment",
@@ -5523,6 +5530,7 @@ export class DatabaseStorage implements IStorage {
               unit: entryTypeUnit(row.entryType),
               source: "auto",
               equipmentId: row.equipmentId,
+              siteName: siteLabel,
             });
           }
         }
@@ -5544,7 +5552,8 @@ export class DatabaseStorage implements IStorage {
           if (qty > 0) {
             const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
             const label = entryTypeLabel(et);
-            let desc = `${machineName} (PLANT) - ${label} | ${hours} HRS`;
+            const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";
+            let desc = `${machineName}${taskPart} (PLANT) - ${label} | ${hours} HRS`;
             if (dieselVal > 0) desc += ` | DIESEL: ${dieselVal}L`;
             items.push({
               date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
@@ -5554,6 +5563,7 @@ export class DatabaseStorage implements IStorage {
               unit: entryTypeUnit(et),
               source: "auto",
               equipmentId: row.equipmentId,
+              siteName: "PLANT",
             });
           }
         }
@@ -5579,6 +5589,8 @@ export class DatabaseStorage implements IStorage {
         endTime: equipmentLogs.endTime,
         numberOfTrips: equipmentLogs.numberOfTrips,
         diesel: equipmentLogs.diesel,
+        task: equipmentLogs.task,
+        site: dprs.site,
       })
       .from(equipmentLogs)
       .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
@@ -5591,8 +5603,11 @@ export class DatabaseStorage implements IStorage {
         const dieselVal = row.diesel || 0;
         if (qty > 0) {
           const label = entryTypeLabel(row.entryType);
-          let desc = `${(row.machine || "EQUIPMENT").toUpperCase()} (SITE-UNLINKED) - ${label} | ${hours} HRS`;
+          const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";
+          let desc = `${(row.machine || "EQUIPMENT").toUpperCase()}${taskPart} (SITE-UNLINKED) - ${label} | ${hours} HRS`;
           if (dieselVal > 0) desc += ` | DIESEL: ${dieselVal}L`;
+          const cleanSite = row.site ? row.site.replace(/\s*[–-]\s*Edited by .*/i, "").trim().toUpperCase() : "";
+          const siteLabel = cleanSite ? `SITE*: ${cleanSite}` : "SITE*";
           items.push({
             date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
             category: "equipment",
@@ -5600,6 +5615,7 @@ export class DatabaseStorage implements IStorage {
             qty,
             unit: entryTypeUnit(row.entryType),
             source: "auto",
+            siteName: siteLabel,
           });
         }
       }

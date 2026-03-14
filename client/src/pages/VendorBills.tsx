@@ -39,6 +39,7 @@ interface LineItem {
   source: string;
   equipmentId: number | null;
   leadDistance: number | null;
+  siteName?: string | null;
   billedIn?: { billNo: string; billStatus: string } | null;
 }
 
@@ -76,8 +77,40 @@ function extractDiesel(description: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
+function parseSiteBadge(item: { siteName?: string | null; description?: string }): { type: "site" | "plant" | "site-unlinked"; label: string } | null {
+  if (item.siteName) {
+    const sn = item.siteName.toUpperCase();
+    if (sn === "PLANT") return { type: "plant", label: "PLANT" };
+    if (sn.startsWith("SITE*")) {
+      const name = sn.replace(/^SITE\*:?\s*/, "").trim();
+      return { type: "site-unlinked", label: name ? `SITE* · ${name}` : "SITE*" };
+    }
+    if (sn.startsWith("SITE")) {
+      const name = sn.replace(/^SITE:?\s*/, "").trim();
+      return { type: "site", label: name ? `SITE · ${name}` : "SITE" };
+    }
+    return { type: "site", label: sn };
+  }
+  if (item.description) {
+    const d = item.description.toUpperCase();
+    if (d.includes("(SITE-UNLINKED)")) return { type: "site-unlinked", label: "SITE*" };
+    if (d.includes("(SITE TRIP)")) return { type: "site", label: "SITE" };
+    if (d.includes("(SITE)")) return { type: "site", label: "SITE" };
+    if (d.includes("(PLANT)")) return { type: "plant", label: "PLANT" };
+  }
+  return null;
+}
+
+function getSiteBadgeClass(type: "site" | "plant" | "site-unlinked"): string {
+  switch (type) {
+    case "site": return "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700";
+    case "plant": return "bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700";
+    case "site-unlinked": return "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700";
+  }
+}
+
 function stripSourceSuffix(desc: string): string {
-  return desc.replace(/\s*\(SITE\)\s*$/i, "").replace(/\s*\(PLANT\)\s*$/i, "").replace(/\s*\(SITE TRIP\)\s*$/i, "").trim();
+  return desc.replace(/\s*\(SITE-UNLINKED\)\s*/gi, " ").replace(/\s*\(SITE TRIP\)\s*/gi, " ").replace(/\s*\(SITE\)\s*/gi, " ").replace(/\s*\(PLANT\)\s*/gi, " ").trim();
 }
 
 function canonicalizeMachineType(name: string): string {
@@ -410,6 +443,7 @@ export default function VendorBills() {
         source: item.source || "manual",
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
+        siteName: (item as any).siteName || null,
       }))
     );
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
@@ -431,6 +465,7 @@ export default function VendorBills() {
         source: "auto",
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
+        siteName: item.siteName || null,
       }));
 
       try {
@@ -811,6 +846,7 @@ export default function VendorBills() {
         source: item.source,
         equipmentId: item.equipmentId,
         leadDistance: item.leadDistance,
+        siteName: item.siteName || null,
       })),
     };
 
@@ -950,12 +986,15 @@ export default function VendorBills() {
     const colCount = hasLeadDistance ? 9 : 8;
     const labelColCount = hasLeadDistance ? 8 : 7;
 
-    const renderPrintRow = (item: any, i: number) => `
+    const renderPrintRow = (item: any, i: number) => {
+      const badge = parseSiteBadge(item);
+      const siteHtml = badge ? `<div style="font-size:10px;color:#555;font-style:italic;margin-top:2px;">${escHtml(badge.label)}</div>` : "";
+      return `
       <tr class="${i % 2 === 0 ? "even" : "odd"}">
         <td style="text-align:center">${i + 1}</td>
         <td>${escHtml(formatDate(item.date))}</td>
         <td style="text-align:center">${item.category ? escHtml(getCategoryLabel(item.category).toUpperCase()) : "-"}</td>
-        <td>${escHtml(item.description)}</td>
+        <td>${escHtml(item.description)}${siteHtml}</td>
         <td style="text-align:center">${formatQty(item.qty)}</td>
         <td style="text-align:center">${item.unit || ""}</td>
         ${hasLeadDistance ? `<td style="text-align:center">${item.leadDistance ? `${formatQty(item.leadDistance)} (RT: ${formatQty(item.leadDistance * 2)})` : "-"}</td>` : ""}
@@ -963,6 +1002,7 @@ export default function VendorBills() {
         <td style="text-align:right">${formatCurrency(item.amount)}</td>
       </tr>
     `;
+    };
 
     let rows = "";
     if (shouldGroup) {
@@ -1405,6 +1445,14 @@ export default function VendorBills() {
                       <div className="space-y-1">
                         <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
                         <div className="flex items-center gap-1 flex-wrap">
+                          {(() => {
+                            const badge = parseSiteBadge(item);
+                            return badge ? (
+                              <Badge variant="outline" className={`text-[10px] ${getSiteBadgeClass(badge.type)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-form-site-${idx}`}>
+                                {badge.label}
+                              </Badge>
+                            ) : null;
+                          })()}
                           {extractDiesel(item.description) > 0 && (
                             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
                               <Fuel className="w-3 h-3 mr-1" />
@@ -1882,14 +1930,22 @@ export default function VendorBills() {
                   <td className="px-2 py-2 font-medium text-xs" data-testid={`text-detail-item-desc-${idx}`}>
                     <div className="space-y-1">
                       <span>{item.description}</span>
-                      {extractDiesel(item.description) > 0 && (
-                        <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {(() => {
+                          const badge = parseSiteBadge(item);
+                          return badge ? (
+                            <Badge variant="outline" className={`text-[10px] ${getSiteBadgeClass(badge.type)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-site-${idx}`}>
+                              {badge.label}
+                            </Badge>
+                          ) : null;
+                        })()}
+                        {extractDiesel(item.description) > 0 && (
                           <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate">
                             <Fuel className="w-3 h-3 mr-1" />
                             {extractDiesel(item.description)}L DIESEL
                           </Badge>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-2 py-2 text-xs">{formatQty(item.qty)}</td>
