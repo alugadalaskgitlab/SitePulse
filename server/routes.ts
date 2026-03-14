@@ -5,6 +5,8 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
+import * as fs from 'fs';
+import * as path from 'path';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -2681,6 +2683,16 @@ export async function registerRoutes(
       const amber = "#d97706";
       const tableX = 40;
 
+      try {
+        const logoPath = path.join(process.cwd(), "client", "public", "hlc-logo.jpg");
+        if (fs.existsSync(logoPath)) {
+          const logoWidth = 60;
+          const logoX = (pageW - logoWidth) / 2 + tableX;
+          const logoY = doc.y;
+          doc.image(logoPath, logoX, logoY, { width: logoWidth });
+          doc.y = logoY + 65;
+        }
+      } catch {}
       doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
       doc.moveDown(0.2);
       doc.fontSize(11).font("Helvetica").fillColor("#333").text("VENDOR BILL", { align: "center" });

@@ -338,6 +338,9 @@ export default function PlantMaterialReturns() {
           <title>Material Returns - Print</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
+            .company-header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px; }
+            .company-header img { height: 50px; margin-bottom: 5px; }
+            .company-header h2 { margin: 0; font-size: 14px; font-weight: bold; }
             h1 { font-size: 18px; margin-bottom: 5px; }
             .date { font-size: 12px; color: #666; margin-bottom: 20px; }
             table { width: 100%; border-collapse: collapse; }
@@ -346,6 +349,10 @@ export default function PlantMaterialReturns() {
           </style>
         </head>
         <body>
+          <div class="company-header">
+            <img src="${window.location.origin}/hlc-logo.jpg" onerror="this.style.display='none'" />
+            <h2>High Lane Constructions Pvt Ltd</h2>
+          </div>
           <h1>Material Returns Report</h1>
           <p class="date">Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p>
           <table>

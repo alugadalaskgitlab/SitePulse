@@ -1029,6 +1029,7 @@ export default function VendorBills() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 24px; color: #000; }
         .header { text-align: center; margin-bottom: 16px; border-bottom: 3px solid #d97706; padding-bottom: 12px; }
+        .header img { height: 50px; margin-bottom: 5px; }
         .header h1 { font-size: 22px; letter-spacing: 2px; margin-bottom: 4px; color: #000; }
         .header .subtitle { font-size: 14px; color: #333; text-transform: uppercase; letter-spacing: 1px; }
         .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
@@ -1055,6 +1056,7 @@ export default function VendorBills() {
         @media print { body { padding: 12px; } .signatures { page-break-inside: avoid; } }
       </style></head><body>
       <div class="header">
+        <img src="${window.location.origin}/hlc-logo.jpg" onerror="this.style.display='none'" />
         <h1>HIGH LANE CONSTRUCTIONS</h1>
         <div class="subtitle">Vendor Bill</div>
       </div>
