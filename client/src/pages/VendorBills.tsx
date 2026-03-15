@@ -217,6 +217,10 @@ export default function VendorBills() {
   ]);
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
+  const [gstRateEquipment, setGstRateEquipment] = useState<number>(0);
+  const [gstRateMaterial, setGstRateMaterial] = useState<number>(0);
+  const [gstRateTransport, setGstRateTransport] = useState<number>(0);
+  const [tdsRate, setTdsRate] = useState<number>(0);
 
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
@@ -397,6 +401,10 @@ export default function VendorBills() {
     setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
+    setGstRateEquipment(0);
+    setGstRateMaterial(0);
+    setGstRateTransport(0);
+    setTdsRate(0);
     setEditingBillId(null);
     setAdminPinForUpdate(null);
     setVendorSearch("");
@@ -448,6 +456,10 @@ export default function VendorBills() {
     );
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
     setAdjustmentAmount((bill as any).adjustmentAmount || 0);
+    setGstRateEquipment((bill as any).gstRateEquipment || 0);
+    setGstRateMaterial((bill as any).gstRateMaterial || 0);
+    setGstRateTransport((bill as any).gstRateTransport || 0);
+    setTdsRate((bill as any).tdsRate || 0);
     setEditingBillId(bill.id);
     setView("form");
   };
@@ -599,7 +611,22 @@ export default function VendorBills() {
   };
 
   const totalAmount = useMemo(() => lineItems.reduce((sum, item) => sum + (item.amount || 0), 0), [lineItems]);
-  const netTotal = useMemo(() => totalAmount + (adjustmentAmount || 0), [totalAmount, adjustmentAmount]);
+
+  const categorySubtotals = useMemo(() => {
+    const cats: Record<string, number> = {};
+    lineItems.forEach(item => {
+      const cat = item.category || "other";
+      cats[cat] = (cats[cat] || 0) + (item.amount || 0);
+    });
+    return cats;
+  }, [lineItems]);
+
+  const gstAmountEquipment = useMemo(() => gstRateEquipment ? (categorySubtotals["equipment"] || 0) * gstRateEquipment / 100 : 0, [categorySubtotals, gstRateEquipment]);
+  const gstAmountMaterial = useMemo(() => gstRateMaterial ? (categorySubtotals["material"] || 0) * gstRateMaterial / 100 : 0, [categorySubtotals, gstRateMaterial]);
+  const gstAmountTransport = useMemo(() => gstRateTransport ? (categorySubtotals["transport"] || 0) * gstRateTransport / 100 : 0, [categorySubtotals, gstRateTransport]);
+  const totalGstAmount = useMemo(() => gstAmountEquipment + gstAmountMaterial + gstAmountTransport, [gstAmountEquipment, gstAmountMaterial, gstAmountTransport]);
+  const tdsAmount = useMemo(() => tdsRate ? totalAmount * tdsRate / 100 : 0, [totalAmount, tdsRate]);
+  const netTotal = useMemo(() => totalAmount + totalGstAmount + (adjustmentAmount || 0) - tdsAmount, [totalAmount, totalGstAmount, adjustmentAmount, tdsAmount]);
 
   const computeCategorySubTotals = (items: { category?: string | null; amount?: number | null }[]) => {
     const cats: Record<string, number> = {};
@@ -835,6 +862,10 @@ export default function VendorBills() {
       totalAmount,
       adjustmentLabel: adjustmentLabel || null,
       adjustmentAmount: adjustmentAmount || 0,
+      gstRateEquipment: gstRateEquipment || null,
+      gstRateMaterial: gstRateMaterial || null,
+      gstRateTransport: gstRateTransport || null,
+      tdsRate: tdsRate || null,
       items: lineItems.filter(i => i.description).map(item => ({
         date: item.date || null,
         category: item.category || null,
@@ -1007,9 +1038,14 @@ export default function VendorBills() {
         }));
         if (catItems.length === 0) continue;
         const catTotal = catItems.reduce((sum: number, { item }: any) => sum + (item.amount || 0), 0);
+        const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : 0;
+        const catGstAmt = catGstRate ? catTotal * catGstRate / 100 : 0;
         rows += `<tr class="cat-header"><td colspan="${colCount}" style="background:#f0f0f0;font-weight:bold;font-size:12px;text-transform:uppercase;letter-spacing:1px;padding:8px;">${printCatLabels[cat]} (${catItems.length} items)</td></tr>`;
         rows += catItems.map(({ item, origIdx }: any) => renderPrintRow(item, origIdx)).join("");
         rows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${printCatLabels[cat]} Sub-total</td><td style="text-align:right">Rs. ${formatCurrency(catTotal)}</td></tr>`;
+        if (catGstRate > 0) {
+          rows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">GST ON ${printCatLabels[cat]} @ ${catGstRate}%</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(catGstAmt)}</td></tr>`;
+        }
       }
     } else {
       rows = bill.items.map((item: any, i: number) => renderPrintRow(item, i)).join("");
@@ -1068,10 +1104,43 @@ export default function VendorBills() {
       <tfoot>
         <tr class="summary-row"><td colspan="${hasLeadDistance ? 5 : 4}" style="text-align:right">TOTAL ITEMS: ${totalItems}</td><td style="text-align:center">${formatQty(totalQty)}</td><td colspan="${hasLeadDistance ? 4 : 3}"></td></tr>
         <tr class="total-row"><td colspan="${labelColCount}" style="text-align:right">TOTAL AMOUNT</td><td style="text-align:right">Rs. ${formatCurrency(bill.totalAmount)}</td></tr>
-        ${(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 ? `
-          <tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${escHtml((bill as any).adjustmentLabel || "ADJUSTMENT")}</td><td style="text-align:right">Rs. ${formatCurrency((bill as any).adjustmentAmount)}</td></tr>
-          <tr class="total-row"><td colspan="${labelColCount}" style="text-align:right">NET TOTAL</td><td style="text-align:right">Rs. ${formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td></tr>
-        ` : ""}
+        ${(() => {
+          const pb = bill as any;
+          const pCatSubs: Record<string, number> = {};
+          bill.items.forEach((it: any) => { const c = it.category || "other"; pCatSubs[c] = (pCatSubs[c] || 0) + (it.amount || 0); });
+          const pGstEq = pb.gstRateEquipment ? (pCatSubs["equipment"] || 0) * pb.gstRateEquipment / 100 : 0;
+          const pGstMat = pb.gstRateMaterial ? (pCatSubs["material"] || 0) * pb.gstRateMaterial / 100 : 0;
+          const pGstTr = pb.gstRateTransport ? (pCatSubs["transport"] || 0) * pb.gstRateTransport / 100 : 0;
+          const pSingleGstRate = !shouldGroup
+            ? (bill.billType?.toLowerCase() === "equipment" ? pb.gstRateEquipment
+              : bill.billType?.toLowerCase() === "material" ? pb.gstRateMaterial
+              : bill.billType?.toLowerCase() === "transport" ? pb.gstRateTransport : 0) || 0
+            : 0;
+          const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
+          const pTotalGst = shouldGroup ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
+          const pAdvAmt = pb.adjustmentAmount || 0;
+          const pAdvLabel = pb.adjustmentLabel || "ADVANCE DEDUCTION";
+          const pTdsR = pb.tdsRate || 0;
+          const pTdsAmt = pTdsR ? (bill.totalAmount || 0) * pTdsR / 100 : 0;
+          const pHasAny = pTotalGst !== 0 || pAdvAmt !== 0 || pTdsAmt !== 0;
+          if (!pHasAny) return "";
+          const pNetTotal = (bill.totalAmount || 0) + pTotalGst + pAdvAmt - pTdsAmt;
+          let adjRows = "";
+          if (!shouldGroup && pSingleGstRate > 0) {
+            adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">GST @ ${pSingleGstRate}%</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(pSingleGstAmt)}</td></tr>`;
+          }
+          if (shouldGroup && pTotalGst > 0) {
+            adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">TOTAL GST</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(pTotalGst)}</td></tr>`;
+          }
+          if (pAdvAmt !== 0) {
+            adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${escHtml(pAdvLabel)}</td><td style="text-align:right">Rs. ${formatCurrency(pAdvAmt)}</td></tr>`;
+          }
+          if (pTdsAmt > 0) {
+            adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#dc2626;">IT TDS @ ${pTdsR}%</td><td style="text-align:right;color:#dc2626;">- Rs. ${formatCurrency(pTdsAmt)}</td></tr>`;
+          }
+          adjRows += `<tr class="total-row"><td colspan="${labelColCount}" style="text-align:right">NET TOTAL</td><td style="text-align:right">Rs. ${formatCurrency(pNetTotal)}</td></tr>`;
+          return adjRows;
+        })()}
       </tfoot>
       </table>
       ${bill.notes ? `<div class="notes"><strong>Notes / Remarks:</strong><br/>${escHtml(bill.notes)}</div>` : ""}
@@ -1663,34 +1732,123 @@ export default function VendorBills() {
           <CardContent className="py-4 space-y-4">
             <div className="space-y-3">
               <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Adjustments</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div className="md:col-span-2">
-                  <Label className="text-xs uppercase">Adjustment Description</Label>
-                  <Input
-                    value={adjustmentLabel}
-                    onChange={e => setAdjustmentLabel(e.target.value.toUpperCase())}
-                    placeholder="e.g., ADVANCE DEDUCTION, TDS, SECURITY DEPOSIT"
-                    className="uppercase"
-                    data-testid="input-adjustment-label"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase">Adjustment Amount</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={adjustmentAmount || ""}
-                    onChange={e => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
-                    placeholder="Negative for deduction"
-                    onWheel={e => (e.target as HTMLInputElement).blur()}
-                    data-testid="input-adjustment-amount"
-                  />
-                </div>
-              </div>
-              {adjustmentAmount !== 0 && (
-                <div className="flex justify-between items-center p-3 rounded-md bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700">
-                  <span className="text-sm font-semibold uppercase">{adjustmentLabel || "ADJUSTMENT"}: Rs. {formatCurrency(adjustmentAmount)}</span>
-                  <span className="text-base font-bold" data-testid="text-net-total">NET TOTAL: Rs. {formatCurrency(netTotal)}</span>
+
+              {(() => {
+                const isGrouped = billType === "all";
+                const hasEquipmentItems = (categorySubtotals["equipment"] || 0) !== 0;
+                const hasMaterialItems = (categorySubtotals["material"] || 0) !== 0;
+                const hasTransportItems = (categorySubtotals["transport"] || 0) !== 0;
+                const gstRows = isGrouped
+                  ? [
+                      ...(hasEquipmentItems ? [{ label: "GST ON EQUIPMENT", rate: gstRateEquipment, setRate: setGstRateEquipment, subtotal: categorySubtotals["equipment"] || 0, amount: gstAmountEquipment, testId: "gst-equipment" }] : []),
+                      ...(hasMaterialItems ? [{ label: "GST ON MATERIAL", rate: gstRateMaterial, setRate: setGstRateMaterial, subtotal: categorySubtotals["material"] || 0, amount: gstAmountMaterial, testId: "gst-material" }] : []),
+                      ...(hasTransportItems ? [{ label: "GST ON TRANSPORT", rate: gstRateTransport, setRate: setGstRateTransport, subtotal: categorySubtotals["transport"] || 0, amount: gstAmountTransport, testId: "gst-transport" }] : []),
+                    ]
+                  : (() => {
+                      const singleType = billType === "equipment" ? { label: "GST", rate: gstRateEquipment, setRate: setGstRateEquipment, subtotal: totalAmount, amount: gstAmountEquipment, testId: "gst-equipment" }
+                        : billType === "material" ? { label: "GST", rate: gstRateMaterial, setRate: setGstRateMaterial, subtotal: totalAmount, amount: gstAmountMaterial, testId: "gst-material" }
+                        : billType === "transport" ? { label: "GST", rate: gstRateTransport, setRate: setGstRateTransport, subtotal: totalAmount, amount: gstAmountTransport, testId: "gst-transport" }
+                        : null;
+                      return singleType ? [singleType] : [];
+                    })();
+                return (
+                  <>
+                    {gstRows.map(row => (
+                      <div key={row.testId} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        <div className="md:col-span-2">
+                          <Label className="text-xs uppercase">{row.label}</Label>
+                          <p className="text-xs text-muted-foreground">On Rs. {formatCurrency(row.subtotal)}</p>
+                        </div>
+                        <div>
+                          <Label className="text-xs uppercase">Rate %</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.rate || ""}
+                            onChange={e => row.setRate(parseFloat(e.target.value) || 0)}
+                            placeholder="e.g. 18"
+                            onWheel={e => (e.target as HTMLInputElement).blur()}
+                            data-testid={`input-${row.testId}-rate`}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs uppercase">GST Amount</Label>
+                          <p className="text-sm font-semibold text-green-700 dark:text-green-400 pt-2" data-testid={`text-${row.testId}-amount`}>
+                            {row.rate ? `+ Rs. ${formatCurrency(row.amount)}` : "—"}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-3">
+                      <div className="md:col-span-2">
+                        <Label className="text-xs uppercase">Advance Deduction</Label>
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label className="text-xs uppercase">Amount (negative to deduct)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={adjustmentAmount || ""}
+                          onChange={e => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
+                          placeholder="e.g. -50000"
+                          onWheel={e => (e.target as HTMLInputElement).blur()}
+                          data-testid="input-adjustment-amount"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                      <div className="md:col-span-2">
+                        <Label className="text-xs uppercase">IT TDS</Label>
+                        <p className="text-xs text-muted-foreground">On Rs. {formatCurrency(totalAmount)}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs uppercase">Rate %</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={tdsRate || ""}
+                          onChange={e => setTdsRate(parseFloat(e.target.value) || 0)}
+                          placeholder="e.g. 2"
+                          onWheel={e => (e.target as HTMLInputElement).blur()}
+                          data-testid="input-tds-rate"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs uppercase">TDS Amount</Label>
+                        <p className="text-sm font-semibold text-red-600 dark:text-red-400 pt-2" data-testid="text-tds-amount">
+                          {tdsRate ? `- Rs. ${formatCurrency(tdsAmount)}` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {(totalGstAmount !== 0 || adjustmentAmount !== 0 || tdsAmount !== 0) && (
+                <div className="space-y-1 p-3 rounded-md bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700">
+                  {totalGstAmount !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold uppercase">TOTAL GST</span>
+                      <span className="font-semibold text-green-700 dark:text-green-400">+ Rs. {formatCurrency(totalGstAmount)}</span>
+                    </div>
+                  )}
+                  {adjustmentAmount !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold uppercase">{adjustmentLabel || "ADVANCE DEDUCTION"}</span>
+                      <span className="font-semibold">{adjustmentAmount >= 0 ? "+" : ""} Rs. {formatCurrency(adjustmentAmount)}</span>
+                    </div>
+                  )}
+                  {tdsAmount !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold uppercase">IT TDS @ {tdsRate}%</span>
+                      <span className="font-semibold text-red-600 dark:text-red-400">- Rs. {formatCurrency(tdsAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-end pt-1 border-t border-amber-400 dark:border-amber-600">
+                    <span className="text-base font-bold" data-testid="text-net-total">NET TOTAL: Rs. {formatCurrency(netTotal)}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -2009,6 +2167,8 @@ export default function VendorBills() {
                           const catItems = bill.items.map((item: any, idx: number) => ({ item, idx })).filter(({ item }: any) => item.category === cat);
                           if (catItems.length === 0) return null;
                           const catTotal = catItems.reduce((sum: number, { item }: any) => sum + (item.amount || 0), 0);
+                          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : 0;
+                          const catGstAmount = catGstRate ? catTotal * catGstRate / 100 : 0;
                           return (
                             <Fragment key={cat}>
                               <tr className={`${getCategoryBadgeClass(cat)} border-b`}>
@@ -2026,6 +2186,14 @@ export default function VendorBills() {
                                 </td>
                                 <td className="px-2 py-2 text-right text-xs font-semibold" colSpan={2}>Rs. {formatCurrency(catTotal)}</td>
                               </tr>
+                              {catGstRate > 0 && (
+                                <tr className="border-b bg-green-50 dark:bg-green-900/10">
+                                  <td colSpan={labelCols} className="px-2 py-1 text-right text-xs font-semibold text-green-700 dark:text-green-400 uppercase">
+                                    GST ON {catLabels[cat]} @ {catGstRate}%
+                                  </td>
+                                  <td className="px-2 py-1 text-right text-xs font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(catGstAmount)}</td>
+                                </tr>
+                              )}
                             </Fragment>
                           );
                         })}
@@ -2039,20 +2207,60 @@ export default function VendorBills() {
                       <td colSpan={labelCols} className="px-2 py-3 text-right font-bold">TOTAL</td>
                       <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(bill.totalAmount)}</td>
                     </tr>
-                    {(bill as any).adjustmentAmount && (bill as any).adjustmentAmount !== 0 && (
-                      <>
-                        <tr className="bg-muted/20">
-                          <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">
-                            {(bill as any).adjustmentLabel || "ADJUSTMENT"}
-                          </td>
-                          <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency((bill as any).adjustmentAmount)}</td>
-                        </tr>
-                        <tr className="border-t-2 border-amber-600 bg-amber-100 dark:bg-amber-900/30">
-                          <td colSpan={labelCols} className="px-2 py-3 text-right font-bold text-base">NET TOTAL</td>
-                          <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency((bill.totalAmount || 0) + ((bill as any).adjustmentAmount || 0))}</td>
-                        </tr>
-                      </>
-                    )}
+                    {(() => {
+                      const b = bill as any;
+                      const detailCatSubs: Record<string, number> = {};
+                      bill.items.forEach((it: any) => { const c = it.category || "other"; detailCatSubs[c] = (detailCatSubs[c] || 0) + (it.amount || 0); });
+                      const gstEq = b.gstRateEquipment ? (detailCatSubs["equipment"] || 0) * b.gstRateEquipment / 100 : 0;
+                      const gstMat = b.gstRateMaterial ? (detailCatSubs["material"] || 0) * b.gstRateMaterial / 100 : 0;
+                      const gstTr = b.gstRateTransport ? (detailCatSubs["transport"] || 0) * b.gstRateTransport / 100 : 0;
+                      const singleGstRate = !shouldGroup
+                        ? (bill.billType?.toLowerCase() === "equipment" ? b.gstRateEquipment
+                          : bill.billType?.toLowerCase() === "material" ? b.gstRateMaterial
+                          : bill.billType?.toLowerCase() === "transport" ? b.gstRateTransport : 0) || 0
+                        : 0;
+                      const singleGstAmt = singleGstRate ? (bill.totalAmount || 0) * singleGstRate / 100 : 0;
+                      const totalGst = shouldGroup ? gstEq + gstMat + gstTr : singleGstAmt;
+                      const advAmt = b.adjustmentAmount || 0;
+                      const advLabel = b.adjustmentLabel || "ADVANCE DEDUCTION";
+                      const tdsR = b.tdsRate || 0;
+                      const tdsAmt = tdsR ? (bill.totalAmount || 0) * tdsR / 100 : 0;
+                      const hasAny = totalGst !== 0 || advAmt !== 0 || tdsAmt !== 0;
+                      if (!hasAny) return null;
+                      const billNetTotal = (bill.totalAmount || 0) + totalGst + advAmt - tdsAmt;
+                      return (
+                        <>
+                          {!shouldGroup && singleGstRate > 0 && (
+                            <tr className="bg-green-50 dark:bg-green-900/10">
+                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">GST @ {singleGstRate}%</td>
+                              <td className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(singleGstAmt)}</td>
+                            </tr>
+                          )}
+                          {shouldGroup && totalGst > 0 && (
+                            <tr className="bg-green-50 dark:bg-green-900/10">
+                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">TOTAL GST</td>
+                              <td className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(totalGst)}</td>
+                            </tr>
+                          )}
+                          {advAmt !== 0 && (
+                            <tr className="bg-muted/20">
+                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">{advLabel}</td>
+                              <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(advAmt)}</td>
+                            </tr>
+                          )}
+                          {tdsAmt > 0 && (
+                            <tr className="bg-red-50 dark:bg-red-900/10">
+                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-red-600 dark:text-red-400 uppercase">IT TDS @ {tdsR}%</td>
+                              <td className="px-2 py-2 text-right text-sm font-semibold text-red-600 dark:text-red-400" colSpan={2}>- Rs. {formatCurrency(tdsAmt)}</td>
+                            </tr>
+                          )}
+                          <tr className="border-t-2 border-amber-600 bg-amber-100 dark:bg-amber-900/30">
+                            <td colSpan={labelCols} className="px-2 py-3 text-right font-bold text-base">NET TOTAL</td>
+                            <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(billNetTotal)}</td>
+                          </tr>
+                        </>
+                      );
+                    })()}
                   </tfoot>
                 </table>
               );

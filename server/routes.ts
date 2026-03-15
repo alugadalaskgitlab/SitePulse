@@ -2822,6 +2822,18 @@ export async function registerRoutes(
           doc.text(`${pdfCatLabels[cat]} Sub-total`, tableX + 4, y + 5, { width: pageW - amtW - 8, align: "right" });
           doc.text(`Rs. ${fmtCurrency(catTotal)}`, tableX + pageW - amtW + 4, y + 5, { width: amtW - 8, align: "right" });
           y += 20;
+
+          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : 0;
+          if (catGstRate > 0) {
+            const catGstAmt = catTotal * catGstRate / 100;
+            if (y + 20 > 720) { doc.addPage(); y = 40; }
+            doc.fillColor("#f0fff0").rect(tableX, y, pageW, 20).fill();
+            doc.fillColor("#15803d").fontSize(9).font("Helvetica-Bold");
+            doc.text(`GST ON ${pdfCatLabels[cat]} @ ${catGstRate}%`, tableX + 4, y + 5, { width: pageW - amtW - 8, align: "right" });
+            doc.text(`+ Rs. ${fmtCurrency(catGstAmt)}`, tableX + pageW - amtW + 4, y + 5, { width: amtW - 8, align: "right" });
+            y += 20;
+          }
+
           doc.font("Helvetica").fontSize(9);
         }
       } else {
@@ -2852,21 +2864,67 @@ export async function registerRoutes(
       doc.text(`Rs. ${fmtCurrency(bill.totalAmount)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
       y += summaryH;
 
-      const adjustmentAmount = (bill as any).adjustmentAmount || 0;
-      const adjustmentLabel = (bill as any).adjustmentLabel || "";
-      if (adjustmentAmount !== 0 || adjustmentLabel) {
-        doc.fillColor("#f0f0f0").rect(tableX, y, pageW, summaryH).fill();
-        doc.fillColor("#000").fontSize(10).font("Helvetica");
-        doc.text(adjustmentLabel || "ADJUSTMENT", tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
-        doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustmentAmount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
-        y += summaryH;
+      {
+        const pdfCatAmts: Record<string, number> = {};
+        bill.items.forEach((it: any) => { const c = it.category || "other"; pdfCatAmts[c] = (pdfCatAmts[c] || 0) + (it.amount || 0); });
+        const pGstEq = (bill as any).gstRateEquipment ? (pdfCatAmts["equipment"] || 0) * (bill as any).gstRateEquipment / 100 : 0;
+        const pGstMat = (bill as any).gstRateMaterial ? (pdfCatAmts["material"] || 0) * (bill as any).gstRateMaterial / 100 : 0;
+        const pGstTr = (bill as any).gstRateTransport ? (pdfCatAmts["transport"] || 0) * (bill as any).gstRateTransport / 100 : 0;
+        const pSingleGstRate = !shouldGroupPdf
+          ? (bill.billType?.toLowerCase() === "equipment" ? (bill as any).gstRateEquipment
+            : bill.billType?.toLowerCase() === "material" ? (bill as any).gstRateMaterial
+            : bill.billType?.toLowerCase() === "transport" ? (bill as any).gstRateTransport : 0) || 0
+          : 0;
+        const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
+        const pTotalGst = shouldGroupPdf ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
+        const adjustmentAmount = (bill as any).adjustmentAmount || 0;
+        const adjustmentLabel = (bill as any).adjustmentLabel || "ADVANCE DEDUCTION";
+        const pTdsRate = (bill as any).tdsRate || 0;
+        const pTdsAmt = pTdsRate ? (bill.totalAmount || 0) * pTdsRate / 100 : 0;
+        const pHasAny = pTotalGst !== 0 || adjustmentAmount !== 0 || pTdsAmt !== 0;
 
-        const netTotal = (bill.totalAmount || 0) + adjustmentAmount;
-        doc.fillColor("#1a1a1a").rect(tableX, y, pageW, summaryH).fill();
-        doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
-        doc.text("NET TOTAL", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
-        doc.text(`Rs. ${fmtCurrency(netTotal)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
-        y += summaryH;
+        if (pHasAny) {
+          if (!shouldGroupPdf && pSingleGstRate > 0) {
+            if (y + summaryH > 720) { doc.addPage(); y = 40; }
+            doc.fillColor("#f0fff0").rect(tableX, y, pageW, summaryH).fill();
+            doc.fillColor("#15803d").fontSize(10).font("Helvetica");
+            doc.text(`GST @ ${pSingleGstRate}%`, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
+            doc.font("Helvetica-Bold").text(`+ Rs. ${fmtCurrency(pSingleGstAmt)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
+            y += summaryH;
+          }
+          if (shouldGroupPdf && pTotalGst > 0) {
+            if (y + summaryH > 720) { doc.addPage(); y = 40; }
+            doc.fillColor("#f0fff0").rect(tableX, y, pageW, summaryH).fill();
+            doc.fillColor("#15803d").fontSize(10).font("Helvetica-Bold");
+            doc.text("TOTAL GST", tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
+            doc.text(`+ Rs. ${fmtCurrency(pTotalGst)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
+            y += summaryH;
+          }
+          if (adjustmentAmount !== 0) {
+            if (y + summaryH > 720) { doc.addPage(); y = 40; }
+            doc.fillColor("#f0f0f0").rect(tableX, y, pageW, summaryH).fill();
+            doc.fillColor("#000").fontSize(10).font("Helvetica");
+            doc.text(adjustmentLabel, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
+            doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustmentAmount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
+            y += summaryH;
+          }
+          if (pTdsAmt > 0) {
+            if (y + summaryH > 720) { doc.addPage(); y = 40; }
+            doc.fillColor("#fff5f5").rect(tableX, y, pageW, summaryH).fill();
+            doc.fillColor("#dc2626").fontSize(10).font("Helvetica");
+            doc.text(`IT TDS @ ${pTdsRate}%`, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
+            doc.font("Helvetica-Bold").text(`- Rs. ${fmtCurrency(pTdsAmt)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
+            y += summaryH;
+          }
+
+          const netTotal = (bill.totalAmount || 0) + pTotalGst + adjustmentAmount - pTdsAmt;
+          if (y + summaryH > 720) { doc.addPage(); y = 40; }
+          doc.fillColor("#1a1a1a").rect(tableX, y, pageW, summaryH).fill();
+          doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
+          doc.text("NET TOTAL", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
+          doc.text(`Rs. ${fmtCurrency(netTotal)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
+          y += summaryH;
+        }
       }
 
       if (bill.notes) {

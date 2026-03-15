@@ -5259,6 +5259,10 @@ export class DatabaseStorage implements IStorage {
         totalAmount: data.totalAmount,
         adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
         adjustmentAmount: (data as any).adjustmentAmount || 0,
+        gstRateEquipment: (data as any).gstRateEquipment || null,
+        gstRateMaterial: (data as any).gstRateMaterial || null,
+        gstRateTransport: (data as any).gstRateTransport || null,
+        tdsRate: (data as any).tdsRate || null,
         verifiedBy: data.verifiedBy?.toUpperCase() || data.verifiedBy,
         verifiedAt: data.verifiedAt,
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
@@ -5306,6 +5310,10 @@ export class DatabaseStorage implements IStorage {
           totalAmount: data.totalAmount,
           adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
           adjustmentAmount: (data as any).adjustmentAmount || 0,
+          gstRateEquipment: (data as any).gstRateEquipment || null,
+          gstRateMaterial: (data as any).gstRateMaterial || null,
+          gstRateTransport: (data as any).gstRateTransport || null,
+          tdsRate: (data as any).tdsRate || null,
           paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
         };
       if (data.status) {

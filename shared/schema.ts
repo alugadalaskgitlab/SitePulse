@@ -951,8 +951,12 @@ export const vendorBills = pgTable("vendor_bills", {
   approvedAt: text("approved_at"),
   paidAt: text("paid_at"),
   paymentRemarks: text("payment_remarks"),
-  adjustmentLabel: text("adjustment_label"), // Free-text description (e.g., "ADVANCE DEDUCTION", "TDS")
-  adjustmentAmount: real("adjustment_amount").default(0), // Positive = addition, negative = deduction
+  adjustmentLabel: text("adjustment_label"),
+  adjustmentAmount: real("adjustment_amount").default(0),
+  gstRateEquipment: real("gst_rate_equipment"),
+  gstRateMaterial: real("gst_rate_material"),
+  gstRateTransport: real("gst_rate_transport"),
+  tdsRate: real("tds_rate"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
