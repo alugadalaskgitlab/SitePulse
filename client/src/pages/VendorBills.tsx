@@ -1111,13 +1111,15 @@ export default function VendorBills() {
           const pGstEq = pb.gstRateEquipment ? (pCatSubs["equipment"] || 0) * pb.gstRateEquipment / 100 : 0;
           const pGstMat = pb.gstRateMaterial ? (pCatSubs["material"] || 0) * pb.gstRateMaterial / 100 : 0;
           const pGstTr = pb.gstRateTransport ? (pCatSubs["transport"] || 0) * pb.gstRateTransport / 100 : 0;
-          const pSingleGstRate = !shouldGroup
+          const pIsAllType = bill.billType?.toLowerCase() === "all";
+          const pUsePerGroupGst = pIsAllType || shouldGroup;
+          const pSingleGstRate = !pUsePerGroupGst
             ? (bill.billType?.toLowerCase() === "equipment" ? pb.gstRateEquipment
               : bill.billType?.toLowerCase() === "material" ? pb.gstRateMaterial
               : bill.billType?.toLowerCase() === "transport" ? pb.gstRateTransport : 0) || 0
             : 0;
           const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
-          const pTotalGst = shouldGroup ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
+          const pTotalGst = pUsePerGroupGst ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
           const pAdvAmt = pb.adjustmentAmount || 0;
           const pAdvLabel = pb.adjustmentLabel || "ADVANCE DEDUCTION";
           const pTdsR = pb.tdsRate || 0;
@@ -1126,10 +1128,10 @@ export default function VendorBills() {
           if (!pHasAny) return "";
           const pNetTotal = (bill.totalAmount || 0) + pTotalGst + pAdvAmt - pTdsAmt;
           let adjRows = "";
-          if (!shouldGroup && pSingleGstRate > 0) {
+          if (!pUsePerGroupGst && pSingleGstRate > 0) {
             adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">GST @ ${pSingleGstRate}%</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(pSingleGstAmt)}</td></tr>`;
           }
-          if (shouldGroup && pTotalGst > 0) {
+          if (pUsePerGroupGst && pTotalGst > 0) {
             adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">TOTAL GST</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(pTotalGst)}</td></tr>`;
           }
           if (pAdvAmt !== 0) {
@@ -2209,18 +2211,20 @@ export default function VendorBills() {
                     </tr>
                     {(() => {
                       const b = bill as any;
+                      const isAllType = bill.billType?.toLowerCase() === "all";
                       const detailCatSubs: Record<string, number> = {};
                       bill.items.forEach((it: any) => { const c = it.category || "other"; detailCatSubs[c] = (detailCatSubs[c] || 0) + (it.amount || 0); });
                       const gstEq = b.gstRateEquipment ? (detailCatSubs["equipment"] || 0) * b.gstRateEquipment / 100 : 0;
                       const gstMat = b.gstRateMaterial ? (detailCatSubs["material"] || 0) * b.gstRateMaterial / 100 : 0;
                       const gstTr = b.gstRateTransport ? (detailCatSubs["transport"] || 0) * b.gstRateTransport / 100 : 0;
-                      const singleGstRate = !shouldGroup
+                      const usePerGroupGst = isAllType || shouldGroup;
+                      const singleGstRate = !usePerGroupGst
                         ? (bill.billType?.toLowerCase() === "equipment" ? b.gstRateEquipment
                           : bill.billType?.toLowerCase() === "material" ? b.gstRateMaterial
                           : bill.billType?.toLowerCase() === "transport" ? b.gstRateTransport : 0) || 0
                         : 0;
                       const singleGstAmt = singleGstRate ? (bill.totalAmount || 0) * singleGstRate / 100 : 0;
-                      const totalGst = shouldGroup ? gstEq + gstMat + gstTr : singleGstAmt;
+                      const totalGst = usePerGroupGst ? gstEq + gstMat + gstTr : singleGstAmt;
                       const advAmt = b.adjustmentAmount || 0;
                       const advLabel = b.adjustmentLabel || "ADVANCE DEDUCTION";
                       const tdsR = b.tdsRate || 0;
@@ -2230,13 +2234,13 @@ export default function VendorBills() {
                       const billNetTotal = (bill.totalAmount || 0) + totalGst + advAmt - tdsAmt;
                       return (
                         <>
-                          {!shouldGroup && singleGstRate > 0 && (
+                          {!usePerGroupGst && singleGstRate > 0 && (
                             <tr className="bg-green-50 dark:bg-green-900/10">
                               <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">GST @ {singleGstRate}%</td>
                               <td className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(singleGstAmt)}</td>
                             </tr>
                           )}
-                          {shouldGroup && totalGst > 0 && (
+                          {usePerGroupGst && totalGst > 0 && (
                             <tr className="bg-green-50 dark:bg-green-900/10">
                               <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">TOTAL GST</td>
                               <td className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(totalGst)}</td>

@@ -2870,13 +2870,15 @@ export async function registerRoutes(
         const pGstEq = (bill as any).gstRateEquipment ? (pdfCatAmts["equipment"] || 0) * (bill as any).gstRateEquipment / 100 : 0;
         const pGstMat = (bill as any).gstRateMaterial ? (pdfCatAmts["material"] || 0) * (bill as any).gstRateMaterial / 100 : 0;
         const pGstTr = (bill as any).gstRateTransport ? (pdfCatAmts["transport"] || 0) * (bill as any).gstRateTransport / 100 : 0;
-        const pSingleGstRate = !shouldGroupPdf
+        const pdfIsAllType = bill.billType?.toLowerCase() === "all";
+        const pdfUsePerGroupGst = pdfIsAllType || shouldGroupPdf;
+        const pSingleGstRate = !pdfUsePerGroupGst
           ? (bill.billType?.toLowerCase() === "equipment" ? (bill as any).gstRateEquipment
             : bill.billType?.toLowerCase() === "material" ? (bill as any).gstRateMaterial
             : bill.billType?.toLowerCase() === "transport" ? (bill as any).gstRateTransport : 0) || 0
           : 0;
         const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
-        const pTotalGst = shouldGroupPdf ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
+        const pTotalGst = pdfUsePerGroupGst ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
         const adjustmentAmount = (bill as any).adjustmentAmount || 0;
         const adjustmentLabel = (bill as any).adjustmentLabel || "ADVANCE DEDUCTION";
         const pTdsRate = (bill as any).tdsRate || 0;
@@ -2884,7 +2886,7 @@ export async function registerRoutes(
         const pHasAny = pTotalGst !== 0 || adjustmentAmount !== 0 || pTdsAmt !== 0;
 
         if (pHasAny) {
-          if (!shouldGroupPdf && pSingleGstRate > 0) {
+          if (!pdfUsePerGroupGst && pSingleGstRate > 0) {
             if (y + summaryH > 720) { doc.addPage(); y = 40; }
             doc.fillColor("#f0fff0").rect(tableX, y, pageW, summaryH).fill();
             doc.fillColor("#15803d").fontSize(10).font("Helvetica");
@@ -2892,7 +2894,7 @@ export async function registerRoutes(
             doc.font("Helvetica-Bold").text(`+ Rs. ${fmtCurrency(pSingleGstAmt)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
             y += summaryH;
           }
-          if (shouldGroupPdf && pTotalGst > 0) {
+          if (pdfUsePerGroupGst && pTotalGst > 0) {
             if (y + summaryH > 720) { doc.addPage(); y = 40; }
             doc.fillColor("#f0fff0").rect(tableX, y, pageW, summaryH).fill();
             doc.fillColor("#15803d").fontSize(10).font("Helvetica-Bold");
