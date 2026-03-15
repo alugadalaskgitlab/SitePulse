@@ -82,34 +82,26 @@ function inferSiteNameFromDescription(description: string | undefined, existingS
   if (!description) return null;
   const d = description.toUpperCase();
   if (d.includes("(SITE-UNLINKED)")) return "SITE*";
-  if (d.includes("(SITE TRIP)")) return "SITE";
+  if (d.includes("(SITE TRIP)")) return "SITE: TRIP";
   if (d.includes("(PLANT)")) return "PLANT";
   if (d.includes("(SITE)")) return "SITE";
   return null;
 }
 
 function parseSiteBadge(item: { siteName?: string | null; description?: string }): { type: "site" | "plant" | "site-unlinked"; label: string } | null {
-  if (item.siteName) {
-    const sn = item.siteName.toUpperCase();
-    if (sn === "PLANT") return { type: "plant", label: "PLANT" };
-    if (sn.startsWith("SITE*")) {
-      const name = sn.replace(/^SITE\*:?\s*/, "").trim();
-      return { type: "site-unlinked", label: name ? `SITE* · ${name}` : "SITE*" };
-    }
-    if (sn.startsWith("SITE")) {
-      const name = sn.replace(/^SITE:?\s*/, "").trim();
-      return { type: "site", label: name ? `SITE · ${name}` : "SITE" };
-    }
-    return { type: "site", label: sn };
+  const resolved = inferSiteNameFromDescription(item.description, item.siteName);
+  if (!resolved) return null;
+  const sn = resolved.toUpperCase();
+  if (sn === "PLANT") return { type: "plant", label: "PLANT" };
+  if (sn.startsWith("SITE*")) {
+    const name = sn.replace(/^SITE\*:?\s*/, "").trim();
+    return { type: "site-unlinked", label: name ? `SITE* · ${name}` : "SITE*" };
   }
-  if (item.description) {
-    const d = item.description.toUpperCase();
-    if (d.includes("(SITE-UNLINKED)")) return { type: "site-unlinked", label: "SITE*" };
-    if (d.includes("(SITE TRIP)")) return { type: "site", label: "SITE" };
-    if (d.includes("(SITE)")) return { type: "site", label: "SITE" };
-    if (d.includes("(PLANT)")) return { type: "plant", label: "PLANT" };
+  if (sn.startsWith("SITE")) {
+    const name = sn.replace(/^SITE:?\s*/, "").trim();
+    return { type: "site", label: name ? `SITE · ${name}` : "SITE" };
   }
-  return null;
+  return { type: "site", label: sn };
 }
 
 function getSiteBadgeClass(type: "site" | "plant" | "site-unlinked"): string {
@@ -462,7 +454,7 @@ export default function VendorBills() {
         source: item.source || "manual",
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
-        siteName: inferSiteNameFromDescription(item.description, (item as any).siteName) || null,
+        siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
       }))
     );
     setAdjustmentLabel((bill as any).adjustmentLabel || "");

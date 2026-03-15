@@ -2743,7 +2743,7 @@ export async function registerRoutes(
         if (!desc) return "";
         const d = desc.toUpperCase();
         if (d.includes("(SITE-UNLINKED)")) return "SITE*";
-        if (d.includes("(SITE TRIP)")) return "SITE";
+        if (d.includes("(SITE TRIP)")) return "SITE: TRIP";
         if (d.includes("(PLANT)")) return "PLANT";
         if (d.includes("(SITE)")) return "SITE";
         return "";
