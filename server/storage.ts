@@ -5636,6 +5636,7 @@ export class DatabaseStorage implements IStorage {
         quantity: materialLogs.quantity,
         uom: materialLogs.uom,
         supplier: materialLogs.supplier,
+        site: dprs.site,
       })
       .from(materialLogs)
       .innerJoin(dprs, eq(dprs.id, materialLogs.dprId))
@@ -5649,6 +5650,8 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of dprMaterials) {
         if (row.quantity && row.quantity > 0) {
+          const cleanSite = row.site ? row.site.replace(/\s*[–-]\s*Edited by .*/i, "").trim().toUpperCase() : "";
+          const siteLabel = cleanSite ? `SITE: ${cleanSite}` : "SITE";
           items.push({
             date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
             category: "material",
@@ -5656,6 +5659,7 @@ export class DatabaseStorage implements IStorage {
             qty: row.quantity,
             unit: row.uom || "NOS",
             source: "auto",
+            siteName: siteLabel,
           });
         }
       }
@@ -5677,6 +5681,7 @@ export class DatabaseStorage implements IStorage {
             qty: row.quantity,
             unit: row.uom || "NOS",
             source: "auto",
+            siteName: `SITE: ${(row.site || "").toUpperCase()}`,
           });
         }
       }
@@ -5705,6 +5710,7 @@ export class DatabaseStorage implements IStorage {
             qty: row.quantity,
             unit: row.uom || "NOS",
             source: "auto",
+            siteName: "PLANT",
           });
         }
       }
