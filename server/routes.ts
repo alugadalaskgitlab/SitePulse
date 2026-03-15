@@ -2738,9 +2738,20 @@ export async function registerRoutes(
       });
       y += 20;
 
+      const inferSiteName = (desc: string, existing: string | null) => {
+        if (existing) return existing;
+        if (!desc) return "";
+        const d = desc.toUpperCase();
+        if (d.includes("(SITE-UNLINKED)")) return "SITE*";
+        if (d.includes("(SITE TRIP)")) return "SITE";
+        if (d.includes("(PLANT)")) return "PLANT";
+        if (d.includes("(SITE)")) return "SITE";
+        return "";
+      };
+
       const renderPdfItemRow = (item: any, idx: number) => {
         const desc = item.description || "";
-        const siteLabel = item.siteName || "";
+        const siteLabel = inferSiteName(desc, item.siteName || null);
         const descHeight = doc.heightOfString(desc, { width: colWidths[descColIdx] - 8, fontSize: 9 });
         const siteHeight = siteLabel ? doc.heightOfString(siteLabel, { width: colWidths[descColIdx] - 8, fontSize: 7 }) + 2 : 0;
         const rowH = Math.max(18, descHeight + siteHeight + 8);

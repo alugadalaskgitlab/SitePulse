@@ -77,6 +77,17 @@ function extractDiesel(description: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
+function inferSiteNameFromDescription(description: string | undefined, existingSiteName: string | null | undefined): string | null {
+  if (existingSiteName) return existingSiteName;
+  if (!description) return null;
+  const d = description.toUpperCase();
+  if (d.includes("(SITE-UNLINKED)")) return "SITE*";
+  if (d.includes("(SITE TRIP)")) return "SITE";
+  if (d.includes("(PLANT)")) return "PLANT";
+  if (d.includes("(SITE)")) return "SITE";
+  return null;
+}
+
 function parseSiteBadge(item: { siteName?: string | null; description?: string }): { type: "site" | "plant" | "site-unlinked"; label: string } | null {
   if (item.siteName) {
     const sn = item.siteName.toUpperCase();
@@ -451,7 +462,7 @@ export default function VendorBills() {
         source: item.source || "manual",
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
-        siteName: (item as any).siteName || null,
+        siteName: inferSiteNameFromDescription(item.description, (item as any).siteName) || null,
       }))
     );
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
