@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HLC — Mix Rate Calculator</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--amber:#d97706;--amber-light:#f59e0b;--amber-bg:#fffbeb;--amber-border:#fde68a;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--gray-100);color:var(--gray-800);font-size:14px;line-height:1.5}
+.top-bar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:3px solid var(--amber);padding:10px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow)}
+.top-bar h1{font-size:18px;font-weight:700;color:var(--gray-900)}
+.top-bar h1 span{color:var(--amber)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--amber);color:#fff}.btn-primary:hover{background:#b45309}
+.btn-secondary{background:var(--gray-200);color:var(--gray-700)}.btn-secondary:hover{background:var(--gray-300)}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#b91c1c}
+.main-layout{display:flex;gap:0;max-width:1600px;margin:0 auto;padding:16px}
+.left-col{flex:0 0 65%;max-width:65%;padding-right:16px;overflow-y:auto}
+.right-col{flex:0 0 35%;max-width:35%;position:sticky;top:60px;align-self:flex-start;height:calc(100vh - 80px);overflow-y:auto}
+.card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;border-left:4px solid var(--amber);background:var(--gray-50)}
+.card-header h2{font-size:14px;font-weight:700;text-transform:uppercase;color:var(--gray-700);letter-spacing:.5px}
+.card-header .chevron{transition:transform .2s;color:var(--gray-400);font-size:18px}
+.card-header.open .chevron{transform:rotate(180deg)}
+.card-body{padding:16px;display:none}
+.card-body.open{display:block}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:12px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px}
+.form-group input,.form-group select{padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;outline:none;transition:border .15s}
+.form-group input:focus,.form-group select:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(217,119,6,.15)}
+.derived{background:var(--amber-bg)!important;border-color:var(--amber-border)!important;cursor:default;font-weight:600;color:var(--gray-700)}
+.derived-label{font-size:12px;color:var(--amber);font-weight:600;margin-top:4px}
+.toggle-group{display:inline-flex;border-radius:20px;overflow:hidden;border:2px solid var(--gray-200)}
+.toggle-btn{padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s;background:var(--gray-50);color:var(--gray-500)}
+.toggle-btn.active-amber{background:var(--amber);color:#fff}
+.toggle-btn.active-blue{background:var(--blue);color:#fff}
+.equip-card{border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px;margin-bottom:10px}
+.equip-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.equip-card-header h3{font-size:13px;font-weight:700;color:var(--gray-700)}
+.equip-rate{font-size:12px;font-weight:700;color:var(--amber);background:var(--amber-bg);padding:4px 10px;border-radius:12px}
+.rate-panel{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+.rate-panel h2{font-size:15px;font-weight:700;color:var(--gray-800);margin-bottom:12px;text-transform:uppercase;border-bottom:2px solid var(--amber);padding-bottom:8px}
+.rate-table{width:100%;border-collapse:collapse;font-size:13px}
+.rate-table th{text-align:right;padding:6px 8px;font-weight:700;color:var(--gray-500);font-size:11px;text-transform:uppercase}
+.rate-table th:first-child{text-align:left}
+.rate-table td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--gray-100)}
+.rate-table td:first-child{text-align:left;font-weight:600;color:var(--gray-600)}
+.rate-table tr.total-row td{border-top:2px solid var(--amber);font-weight:700;color:var(--gray-900);font-size:14px}
+.rate-table tr.separator td{border-bottom:2px solid var(--gray-300);padding:0;height:2px}
+.cost-bar{height:20px;border-radius:4px;overflow:hidden;display:flex;margin:8px 0}
+.cost-bar div{height:100%;transition:width .3s}
+.cost-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.cost-legend span{font-size:10px;display:flex;align-items:center;gap:3px}
+.cost-legend span::before{content:'';width:10px;height:10px;border-radius:2px;display:inline-block}
+.breakdown-toggle{font-size:12px;color:var(--amber);cursor:pointer;font-weight:600;margin-top:12px;display:flex;align-items:center;gap:4px}
+.full-width{max-width:1600px;margin:0 auto;padding:0 16px 40px}
+.job-table-wrap{overflow-x:auto}
+table.job-table{width:100%;border-collapse:collapse;font-size:12px;min-width:1200px}
+table.job-table th{background:var(--gray-50);padding:8px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:2px solid var(--gray-200);white-space:nowrap}
+table.job-table td{padding:6px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+table.job-table input,table.job-table select{padding:4px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:12px;width:100%;min-width:50px}
+table.job-table .calc-cell{background:var(--amber-bg);font-weight:600;text-align:right;white-space:nowrap}
+table.job-table tr.totals-row td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg)}
+.procurement-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+table.proc-table{width:100%;border-collapse:collapse;font-size:12px}
+table.proc-table th{background:var(--gray-50);padding:8px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:2px solid var(--gray-200)}
+table.proc-table td{padding:6px;border-bottom:1px solid var(--gray-100)}
+table.proc-table tr.subtotal td{font-weight:700;border-top:1px solid var(--amber);background:var(--amber-bg)}
+table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg);font-size:13px}
+.validation-bar{height:6px;border-radius:3px;background:var(--gray-200);margin-top:4px;overflow:hidden}
+.validation-bar .fill{height:100%;border-radius:3px;transition:width .3s,background .3s}
+.mix-tab-bar{display:flex;gap:4px;margin-bottom:12px}
+.mix-tab{padding:6px 14px;font-size:12px;font-weight:600;border:2px solid var(--gray-200);border-radius:20px;cursor:pointer;background:#fff;color:var(--gray-500);transition:all .15s}
+.mix-tab.active{border-color:var(--amber);background:var(--amber);color:#fff}
+.mix-tab .remove-mix{margin-left:6px;font-size:14px;line-height:1;opacity:.6}
+.mix-tab .remove-mix:hover{opacity:1}
+.inline-derived{display:inline-block;background:var(--amber-bg);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;color:var(--amber);margin-left:8px}
+.section-sep{border:none;border-top:2px solid var(--gray-200);margin:24px 0}
+.checkbox-label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer}
+.checkbox-label input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber)}
+.contractor-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:16px}
+.contractor-card{background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px}
+.contractor-card h4{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px}
+.contractor-card table{width:100%;font-size:12px}
+.contractor-card td{padding:3px 0}
+.contractor-card td:last-child{text-align:right;font-weight:600}
+.hidden{display:none!important}
+@media(max-width:900px){
+.main-layout{flex-direction:column}
+.left-col,.right-col{flex:1;max-width:100%;padding-right:0}
+.right-col{position:static;height:auto}
+.form-grid,.form-grid-3{grid-template-columns:1fr}
+.procurement-grid{grid-template-columns:1fr}
+}
+@media print{
+.top-bar,.card-header .chevron,.btn,.toggle-group,.breakdown-toggle,.no-print{display:none!important}
+.card-body{display:block!important}
+.main-layout{display:block}
+.left-col,.right-col{max-width:100%;position:static}
+.card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
+body{font-size:11px;background:#fff}
+.rate-panel{box-shadow:none;border:1px solid #ddd}
+table.job-table{font-size:10px;min-width:auto}
+}
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <h1><span>HLC</span> — Mix Rate Calculator</h1>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a href="/" class="btn btn-secondary btn-sm no-print">← Back to SiteLog</a>
+    <button class="btn btn-primary no-print" onclick="window.print()">🖨 Print</button>
+  </div>
+</div>
+
+<div class="main-layout">
+<div class="left-col" id="leftCol">
+
+<!-- ① Project Info -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>① Project Info</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="form-grid">
+      <div class="form-group"><label>Project Name</label><input id="projName" value="NH-48 Hot Mix Works"></div>
+      <div class="form-group"><label>Prepared By</label><input id="projBy" value=""></div>
+      <div class="form-group"><label>Date</label><input id="projDate" type="date"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ② Mix Types & Proportions -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>② Mix Types & Proportions</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div class="mix-tab-bar" id="mixTabBar"></div>
+      <button class="btn btn-secondary btn-sm" onclick="addMixType()">+ Add Mix</button>
+    </div>
+    <div id="mixPanels"></div>
+  </div>
+</div>
+
+<!-- ③ Raw Materials -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>③ Raw Materials</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Aggregate Purchase Basis</label>
+        <div class="toggle-group">
+          <button class="toggle-btn active-amber" id="aggBasisMT" onclick="setAggBasis('MT')">MT</button>
+          <button class="toggle-btn" id="aggBasisCFT" onclick="setAggBasis('CFT')">CFT</button>
+        </div>
+      </div>
+      <div class="form-group"><label id="aggRateLabel">Purchase Rate (₹/MT)</label><input id="aggRate" type="number" value="700" oninput="recalc()"></div>
+      <div class="form-group"><label>Loose Bulk Density (MT/CUM)</label><input id="aggDensity" type="number" value="1.5" step="0.01" oninput="recalc()"></div>
+      <div class="form-group"><label>Crusher → Plant Distance (km, one way)</label><input id="aggDist" type="number" value="25" oninput="recalc()"></div>
+      <div class="form-group"><label>Freight Rate (₹/km/load)</label><input id="aggFreightRate" type="number" value="9" oninput="recalc()"></div>
+      <div class="form-group"><label>Freight Payload (MT)</label><input id="aggPayload" type="number" value="16" oninput="recalc()"></div>
+      <div class="form-group"><label>Freight ₹/MT</label><input class="derived" id="aggFreight" readonly></div>
+      <div class="form-group"><label>Landed Aggregate Rate ₹/MT</label><input class="derived" id="aggLanded" readonly></div>
+      <div class="form-group"><label>Bitumen Price (₹/kg)</label><input id="bitPrice" type="number" value="48" oninput="recalc()"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ④ Equipment -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>④ Equipment</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="form-group"><label>Production Rate (TPH)</label><input id="tph" type="number" value="60" oninput="recalc()"></div>
+      <div class="form-group"><label>Plant Hours / Month</label><input id="plantHrsMonth" type="number" value="200" oninput="recalc()"></div>
+    </div>
+    <div id="equipCards"></div>
+  </div>
+</div>
+
+<!-- ⑤ Fuel & Energy -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑤ Fuel & Energy</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="form-grid">
+      <div class="form-group"><label>HSD Price (₹/L)</label><input id="hsdPrice" type="number" value="89" oninput="recalc()"></div>
+      <div class="form-group"><label>HSD Consumption (L/hr) — JCB/Loader</label><input id="hsdConsump" type="number" value="8" oninput="recalc()"></div>
+    </div>
+    <div class="derived-label" id="hsdDerived" style="margin:8px 0"></div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--gray-200)">
+    <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Dryer (LDO)</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>LDO Consumption (L/MT)</label><input id="ldoConsump" type="number" value="4.5" step="0.1" oninput="recalc()"></div>
+      <div class="form-group"><label>LDO Rate (₹/L)</label><input id="ldoRate" type="number" value="72" oninput="recalc()"></div>
+      <div class="form-group"><label>Dryer LDO ₹/MT</label><input class="derived" id="ldoDerived" readonly></div>
+    </div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--gray-200)">
+    <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Boiler</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Production Consumption (L/hr)</label><input id="boilerProdLhr" type="number" value="20" oninput="recalc()"></div>
+      <div class="form-group"><label>Preheat Consumption (L/hr)</label><input id="boilerPreheatLhr" type="number" value="15" oninput="recalc()"></div>
+      <div class="form-group"><label>Boiler Fuel Rate (₹/L)</label><input id="boilerFuelRate" type="number" value="72" oninput="recalc()"></div>
+      <div class="form-group"><label>Production Hours / Cycle</label><input id="boilerProdHrs" type="number" value="8" oninput="recalc()"></div>
+      <div class="form-group"><label>Preheat Hours / Cycle</label><input id="boilerPreheatHrs" type="number" value="2" oninput="recalc()"></div>
+      <div class="form-group"><label>Campaign Tonnage (MT)</label><input id="boilerCampaignMt" type="number" value="500" oninput="recalc()"></div>
+      <div class="form-group"><label>Boiler Prod ₹/MT</label><input class="derived" id="boilerProdDerived" readonly></div>
+      <div class="form-group"><label>Boiler Preheat ₹/MT</label><input class="derived" id="boilerPreheatDerived" readonly></div>
+    </div>
+  </div>
+</div>
+
+<!-- ⑥ Labour & Overhead -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑥ Labour & Overhead</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="form-grid">
+      <div class="form-group"><label>Plant Crew Monthly Cost (₹)</label><input id="crewMonthly" type="number" value="150000" oninput="recalc()"></div>
+      <div class="form-group"><label>Working Days / Month</label><input id="crewDays" type="number" value="25" oninput="recalc()"></div>
+      <div class="form-group"><label>Working Hours / Day</label><input id="crewHrs" type="number" value="8" oninput="recalc()"></div>
+      <div class="form-group"><label>Crew ₹/MT</label><input class="derived" id="crewDerived" readonly></div>
+      <div class="form-group"><label>Margin / Profit %</label><input id="marginPct" type="number" value="0" step="0.5" oninput="recalc()"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ⑦ Laying & Compaction -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑦ Laying & Compaction</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Equipment costs auto-pulled from Section ④ (Paver, Tandem Roller, PTR)</p>
+    <div class="form-grid">
+      <div class="form-group"><label>Paver Daily Cost (₹)</label><input class="derived" id="layPaverCost" readonly></div>
+      <div class="form-group"><label>Tandem Roller Daily Cost (₹)</label><input class="derived" id="layRollerCost" readonly></div>
+      <div class="form-group"><label>PTR Daily Cost (₹)</label><input class="derived" id="layPtrCost" readonly></div>
+      <div class="form-group"><label>Crew ₹/Day</label><input id="layCrew" type="number" value="5000" oninput="recalc()"></div>
+      <div class="form-group"><label>Diesel/Fuel ₹/Day</label><input id="layFuel" type="number" value="8000" oninput="recalc()"></div>
+      <div class="form-group"><label>Productivity (MT/day)</label><input id="layProductivity" type="number" value="200" oninput="recalc()"></div>
+      <div class="form-group"><label>Laying & Compaction ₹/MT</label><input class="derived" id="layDerived" readonly></div>
+    </div>
+  </div>
+</div>
+
+<!-- ⑧ Transport to Site -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑧ Transport to Site</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="form-grid">
+      <div class="form-group"><label>Distance (km, one way)</label><input id="transDist" type="number" value="30" oninput="recalc()"></div>
+      <div class="form-group"><label>Rate (₹/km/load)</label><input id="transRate" type="number" value="9" oninput="recalc()"></div>
+      <div class="form-group"><label>Payload (MT)</label><input id="transPayload" type="number" value="16" oninput="recalc()"></div>
+      <div class="form-group"><label>Transport ₹/MT</label><input class="derived" id="transDerived" readonly></div>
+    </div>
+  </div>
+</div>
+
+<!-- ⑨ Prime & Tack Coat -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑨ Prime & Tack Coat</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Prime Coat</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Spray Rate (kg/sqm)</label><input id="primeSpray" type="number" value="0.9" step="0.1" oninput="recalc()"></div>
+      <div class="form-group"><label>Emulsion Price (₹/kg)</label><input id="primePrice" type="number" value="38" oninput="recalc()"></div>
+      <div class="form-group"><label>Water Dilution Factor</label><input id="primeDilution" type="number" value="1" step="0.1" oninput="recalc()"></div>
+    </div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--gray-200)">
+    <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Tack Coat</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Spray Rate (kg/sqm)</label><input id="tackSpray" type="number" value="0.25" step="0.05" oninput="recalc()"></div>
+      <div class="form-group"><label>Emulsion Price (₹/kg)</label><input id="tackPrice" type="number" value="42" oninput="recalc()"></div>
+      <div class="form-group"><label>Water Dilution Factor</label><input id="tackDilution" type="number" value="1" step="0.1" oninput="recalc()"></div>
+    </div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--gray-200)">
+    <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Spray Operation</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Bowser + Tractor (₹/day)</label><input id="sprayBowser" type="number" value="3000" oninput="recalc()"></div>
+      <div class="form-group"><label>Crew + Diesel (₹/day)</label><input id="sprayCrew" type="number" value="2000" oninput="recalc()"></div>
+      <div class="form-group"><label>Productivity (sqm/day)</label><input id="sprayProd" type="number" value="5000" oninput="recalc()"></div>
+      <div class="form-group"><label>Prime ₹/sqm</label><input class="derived" id="primeDerived" readonly></div>
+      <div class="form-group"><label>Tack ₹/sqm</label><input class="derived" id="tackDerived" readonly></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end left-col -->
+
+<!-- RIGHT SIDE — Rate Summary Panel -->
+<div class="right-col" id="rightCol">
+  <div class="rate-panel">
+    <h2>Live Rate Summary</h2>
+    <div id="rateSummaryTable"></div>
+    <div style="margin-top:16px">
+      <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
+      <div id="costBarContainer"></div>
+    </div>
+    <div class="breakdown-toggle no-print" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
+    <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
+  </div>
+</div>
+
+</div><!-- end main-layout -->
+
+<!-- Full-Width Bottom Sections -->
+<div class="full-width">
+
+<hr class="section-sep">
+
+<!-- ⑩ Job Estimator -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑩ Job Estimator</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <button class="btn btn-primary btn-sm" onclick="addJob()" style="margin-bottom:12px">+ Add Job</button>
+    <div class="job-table-wrap">
+      <table class="job-table" id="jobTable">
+        <thead>
+          <tr>
+            <th>Job ID</th><th>Contractor</th><th>Mix</th><th>Basis</th>
+            <th>Length(m)</th><th>Width(m)</th><th>Thick(mm)</th><th>Vol(CUM)</th>
+            <th>Prime</th><th>Tack</th>
+            <th style="background:var(--amber-bg)">CUM</th>
+            <th style="background:var(--amber-bg)">Area(sqm)</th>
+            <th style="background:var(--amber-bg)">Mix(MT)</th>
+            <th style="background:var(--amber-bg)">Plant ₹</th>
+            <th style="background:var(--amber-bg)">Transport ₹</th>
+            <th style="background:var(--amber-bg)">Laying ₹</th>
+            <th style="background:var(--amber-bg)">Prime ₹</th>
+            <th style="background:var(--amber-bg)">Tack ₹</th>
+            <th style="background:var(--amber-bg)">Total ₹</th>
+            <th style="background:var(--amber-bg)">₹/MT</th>
+            <th style="background:var(--amber-bg)">₹/CUM</th>
+            <th style="background:var(--amber-bg)">₹/SQM</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody id="jobTableBody"></tbody>
+        <tfoot id="jobTableFoot"></tfoot>
+      </table>
+    </div>
+    <div id="contractorSummary"></div>
+  </div>
+</div>
+
+<hr class="section-sep">
+
+<!-- ⑪ Procurement & Cost Summary -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑪ Procurement & Cost Summary</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div class="procurement-grid">
+      <div>
+        <h3 style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px">Material Requirements</h3>
+        <table class="proc-table" id="procTable">
+          <thead><tr><th>Material</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount (₹)</th></tr></thead>
+          <tbody id="procTableBody"></tbody>
+        </table>
+      </div>
+      <div>
+        <h3 style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px">Job-wise Cost Split</h3>
+        <div id="jobCostSplit"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ====== STATE ======
+var aggBasis = 'MT';
+var activeMixIdx = 0;
+var breakdownOpen = false;
+
+var mixTypes = [
+  { name:'BC', binderPct:5.4, density:2.35, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
+  { name:'DBM', binderPct:4.5, density:2.30, fractions:{f20mm:30,f10mm:22,f6mm:12,fDust:27,fFiller:4.5} }
+];
+
+var FRAC_KEYS = ['f20mm','f10mm','f6mm','fDust','fFiller'];
+var FRAC_LABELS = ['20mm','10mm','6mm / Chips','Dust / Screening','Filler'];
+
+var equipDefs = [
+  {id:'hotmix',  name:'Hot Mix Plant',    mode:'owned', capex:25000000, life:10, maint:15, hireBasis:'daily', hireRate:50000, hireHrsDay:10, hireHrsMonth:200, enabled:true, isLaying:false},
+  {id:'dg',      name:'DG / Generator',   mode:'owned', capex:5000000, life:10, maint:15, hireBasis:'daily', hireRate:15000, hireHrsDay:10, hireHrsMonth:200, enabled:true, isLaying:false},
+  {id:'jcb',     name:'Wheel Loader / JCB',mode:'hired',capex:3000000, life:8, maint:10, hireBasis:'daily', hireRate:6000, hireHrsDay:10, hireHrsMonth:200, enabled:true, isLaying:false},
+  {id:'tipper',  name:'Tipper (inter-cart)',mode:'hired',capex:2000000, life:8, maint:10, hireBasis:'daily', hireRate:5000, hireHrsDay:10, hireHrsMonth:200, enabled:true, isLaying:false},
+  {id:'paver',   name:'Paver',             mode:'hired',capex:8000000, life:10, maint:15, hireBasis:'daily', hireRate:25000, hireHrsDay:8, hireHrsMonth:200, enabled:true, isLaying:true},
+  {id:'roller',  name:'Tandem Roller',     mode:'hired',capex:4000000, life:10, maint:15, hireBasis:'daily', hireRate:8000, hireHrsDay:8, hireHrsMonth:200, enabled:true, isLaying:true},
+  {id:'ptr',     name:'Pneumatic Tyre Roller (PTR)', mode:'hired',capex:3000000,life:10,maint:15,hireBasis:'daily',hireRate:6000,hireHrsDay:8,hireHrsMonth:200,enabled:true,isLaying:true}
+];
+
+var jobs = [];
+var jobCounter = 0;
+
+// ====== HELPERS ======
+function n(id){ return parseFloat(document.getElementById(id).value)||0; }
+function fmt(v){ return v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+function fmtI(v){ return Math.round(v).toLocaleString('en-IN'); }
+function fmtR(v){ return v>=1000? fmtI(v) : fmt(v); }
+
+function toggleCard(header){
+  header.classList.toggle('open');
+  var body = header.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+// ====== AGGREGATE BASIS ======
+function setAggBasis(b){
+  aggBasis = b;
+  document.getElementById('aggBasisMT').className = 'toggle-btn' + (b==='MT'?' active-amber':'');
+  document.getElementById('aggBasisCFT').className = 'toggle-btn' + (b==='CFT'?' active-amber':'');
+  document.getElementById('aggRateLabel').textContent = 'Purchase Rate (₹/' + b + ')';
+  recalc();
+}
+
+// ====== MIX TYPES ======
+function renderMixTabs(){
+  var bar = document.getElementById('mixTabBar');
+  bar.innerHTML = '';
+  mixTypes.forEach(function(m,i){
+    var tab = document.createElement('div');
+    tab.className = 'mix-tab' + (i===activeMixIdx?' active':'');
+    tab.innerHTML = m.name + (mixTypes.length>1?'<span class="remove-mix" onclick="event.stopPropagation();removeMix('+i+')">×</span>':'');
+    tab.onclick = function(){ activeMixIdx=i; renderMixTabs(); renderMixPanels(); recalc(); };
+    bar.appendChild(tab);
+  });
+}
+function removeMix(i){
+  if(mixTypes.length<=1) return;
+  mixTypes.splice(i,1);
+  if(activeMixIdx>=mixTypes.length) activeMixIdx=mixTypes.length-1;
+  renderMixTabs(); renderMixPanels(); recalc();
+}
+function addMixType(){
+  if(mixTypes.length>=4) return;
+  mixTypes.push({name:'MIX'+(mixTypes.length+1), binderPct:4.5, density:2.30, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:5.5}});
+  activeMixIdx=mixTypes.length-1;
+  renderMixTabs(); renderMixPanels(); recalc();
+}
+function renderMixPanels(){
+  var container = document.getElementById('mixPanels');
+  var m = mixTypes[activeMixIdx];
+  var fracTotal = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0) + m.binderPct;
+  var valid = Math.abs(fracTotal-100)<0.05;
+  var html = '<div class="form-grid" style="margin-bottom:12px">';
+  html += '<div class="form-group"><label>Mix Name</label><input value="'+m.name+'" onchange="mixTypes['+activeMixIdx+'].name=this.value.toUpperCase();renderMixTabs();recalc()"></div>';
+  html += '<div class="form-group"><label>Binder Content %</label><input type="number" value="'+m.binderPct+'" step="0.1" onchange="mixTypes['+activeMixIdx+'].binderPct=parseFloat(this.value)||0;renderMixPanels();recalc()"></div>';
+  html += '<div class="form-group"><label>Compacted Density (MT/CUM)</label><input type="number" value="'+m.density+'" step="0.01" onchange="mixTypes['+activeMixIdx+'].density=parseFloat(this.value)||0;recalc()"></div>';
+  html += '</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">';
+  html += '<tr style="background:var(--gray-50)"><th style="text-align:left;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">Component</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">% of Mix</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/MT</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/CUM</th></tr>';
+  FRAC_KEYS.forEach(function(k,fi){
+    var pct = m.fractions[k]||0;
+    var kgMt = pct*10;
+    var kgCum = kgMt * m.density;
+    html += '<tr><td style="padding:6px">'+FRAC_LABELS[fi]+'</td>';
+    html += '<td style="text-align:right;padding:6px"><input type="number" style="width:70px;text-align:right;padding:4px;border:1px solid var(--gray-300);border-radius:4px" value="'+pct+'" step="0.1" onchange="mixTypes['+activeMixIdx+'].fractions.'+k+'=parseFloat(this.value)||0;renderMixPanels();recalc()"></td>';
+    html += '<td style="text-align:right;padding:6px;color:var(--gray-500)">'+kgMt.toFixed(1)+'</td>';
+    html += '<td style="text-align:right;padding:6px;color:var(--gray-500)">'+kgCum.toFixed(1)+'</td></tr>';
+  });
+  var bitKgMt = m.binderPct*10;
+  var bitKgCum = bitKgMt*m.density;
+  html += '<tr style="background:var(--amber-bg)"><td style="padding:6px;font-weight:600">Bitumen</td><td style="text-align:right;padding:6px;font-weight:600">'+m.binderPct.toFixed(1)+'</td><td style="text-align:right;padding:6px;font-weight:600">'+bitKgMt.toFixed(1)+'</td><td style="text-align:right;padding:6px;font-weight:600">'+bitKgCum.toFixed(1)+'</td></tr>';
+  html += '<tr style="border-top:2px solid var(--gray-300)"><td style="padding:6px;font-weight:700">Total</td><td style="text-align:right;padding:6px;font-weight:700;color:'+(valid?'var(--green)':'var(--red)')+'">'+fracTotal.toFixed(1)+'%</td><td></td><td></td></tr>';
+  html += '</table>';
+  html += '<div class="validation-bar"><div class="fill" style="width:'+Math.min(fracTotal,100)+'%;background:'+(valid?'var(--green)':'var(--red)')+'"></div></div>';
+  html += '<div style="font-size:11px;color:'+(valid?'var(--green)':'var(--red)')+';margin-top:4px">'+(valid?'✓ Total = 100%':'⚠ Total ≠ 100% ('+fracTotal.toFixed(1)+'%)')+'</div>';
+  container.innerHTML = html;
+}
+
+// ====== EQUIPMENT CARDS ======
+function renderEquipCards(){
+  var container = document.getElementById('equipCards');
+  var html = '';
+  equipDefs.forEach(function(eq,i){
+    var isOwned = eq.mode==='owned';
+    html += '<div class="equip-card">';
+    html += '<div class="equip-card-header">';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    if(eq.id==='ptr'){
+      html += '<label class="checkbox-label" style="margin-right:8px"><input type="checkbox" '+(eq.enabled?'checked':'')+' onchange="equipDefs['+i+'].enabled=this.checked;recalc();renderEquipCards()"> Enable</label>';
+    }
+    html += '<h3>'+eq.name+'</h3>';
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<div class="toggle-group"><button class="toggle-btn'+(isOwned?' active-amber':'')+'" onclick="equipDefs['+i+'].mode=\'owned\';renderEquipCards();recalc()">Owned</button><button class="toggle-btn'+(!isOwned?' active-blue':'')+'" onclick="equipDefs['+i+'].mode=\'hired\';renderEquipCards();recalc()">Hired</button></div>';
+    html += '<span class="equip-rate" id="eqRate_'+eq.id+'">₹/MT → --</span>';
+    html += '</div></div>';
+    if(!eq.enabled && eq.id==='ptr'){
+      html += '<div style="padding:8px;color:var(--gray-400);font-size:12px;font-style:italic">Disabled</div>';
+    } else if(isOwned){
+      html += '<div class="form-grid-3" style="margin-top:8px">';
+      html += '<div class="form-group"><label>Capex (₹)</label><input type="number" value="'+eq.capex+'" onchange="equipDefs['+i+'].capex=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Life (years)</label><input type="number" value="'+eq.life+'" onchange="equipDefs['+i+'].life=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Maintenance %</label><input type="number" value="'+eq.maint+'" onchange="equipDefs['+i+'].maint=parseFloat(this.value)||0;recalc()"></div>';
+      html += '</div>';
+    } else {
+      html += '<div class="form-grid-3" style="margin-top:8px">';
+      html += '<div class="form-group"><label>Hire Basis</label><select onchange="equipDefs['+i+'].hireBasis=this.value;renderEquipCards();recalc()"><option value="daily"'+(eq.hireBasis==='daily'?' selected':'')+'>Daily</option><option value="hourly"'+(eq.hireBasis==='hourly'?' selected':'')+'>Hourly</option><option value="monthly"'+(eq.hireBasis==='monthly'?' selected':'')+'>Monthly</option></select></div>';
+      if(eq.hireBasis==='daily'){
+        html += '<div class="form-group"><label>Rate (₹/day)</label><input type="number" value="'+eq.hireRate+'" onchange="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Working Hrs/Day</label><input type="number" value="'+eq.hireHrsDay+'" onchange="equipDefs['+i+'].hireHrsDay=parseFloat(this.value)||0;recalc()"></div>';
+      } else if(eq.hireBasis==='hourly'){
+        html += '<div class="form-group"><label>Rate (₹/hr)</label><input type="number" value="'+eq.hireRate+'" onchange="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"></div>';
+      } else {
+        html += '<div class="form-group"><label>Rate (₹/month)</label><input type="number" value="'+eq.hireRate+'" onchange="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Billed Hrs/Month</label><input type="number" value="'+eq.hireHrsMonth+'" onchange="equipDefs['+i+'].hireHrsMonth=parseFloat(this.value)||0;recalc()"></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+// ====== EQUIPMENT COST/MT CALCULATION ======
+function getEquipCostPerMT(eq){
+  if(!eq.enabled) return 0;
+  var tph = n('tph');
+  var phm = n('plantHrsMonth');
+  if(tph<=0) return 0;
+  if(eq.mode==='owned'){
+    if(eq.life<=0 || phm<=0) return 0;
+    var monthlyDepr = (eq.capex / eq.life / 12) * (1 + eq.maint/100);
+    return monthlyDepr / phm / tph;
+  } else {
+    if(eq.hireBasis==='daily'){
+      if(eq.hireHrsDay<=0) return 0;
+      return eq.hireRate / eq.hireHrsDay / tph;
+    } else if(eq.hireBasis==='hourly'){
+      return eq.hireRate / tph;
+    } else {
+      if(phm<=0) return 0;
+      return eq.hireRate / phm / tph;
+    }
+  }
+}
+function getEquipDailyCost(eq){
+  if(!eq.enabled) return 0;
+  if(eq.mode==='owned'){
+    var monthlyDepr = (eq.capex / eq.life / 12) * (1 + eq.maint/100);
+    return monthlyDepr / 25;
+  } else {
+    if(eq.hireBasis==='daily') return eq.hireRate;
+    if(eq.hireBasis==='hourly') return eq.hireRate * (eq.hireHrsDay||8);
+    return eq.hireRate / 25;
+  }
+}
+
+// ====== MAIN RECALC ======
+function recalc(){
+  var tph = n('tph');
+  var phm = n('plantHrsMonth');
+
+  // Raw materials
+  var aggRateInput = n('aggRate');
+  var aggDensity = n('aggDensity');
+  var aggDist = n('aggDist');
+  var aggFreightRate = n('aggFreightRate');
+  var aggPayload = n('aggPayload');
+  var aggFreight = (aggPayload>0) ? (aggDist * 2 * aggFreightRate / aggPayload) : 0;
+  var aggRateMT = (aggBasis==='CFT' && aggDensity>0) ? (aggRateInput / aggDensity * 35.3147) : aggRateInput;
+  var aggLanded = aggRateMT + aggFreight;
+  document.getElementById('aggFreight').value = fmt(aggFreight);
+  document.getElementById('aggLanded').value = fmt(aggLanded);
+
+  var bitPrice = n('bitPrice');
+
+  // Equipment per MT
+  equipDefs.forEach(function(eq){
+    var c = getEquipCostPerMT(eq);
+    var el = document.getElementById('eqRate_'+eq.id);
+    if(el) el.textContent = '₹/MT → '+fmt(c);
+  });
+
+  // Laying equipment daily costs
+  var paverEq = equipDefs.find(function(e){return e.id==='paver'});
+  var rollerEq = equipDefs.find(function(e){return e.id==='roller'});
+  var ptrEq = equipDefs.find(function(e){return e.id==='ptr'});
+  document.getElementById('layPaverCost').value = fmtI(getEquipDailyCost(paverEq));
+  document.getElementById('layRollerCost').value = fmtI(getEquipDailyCost(rollerEq));
+  document.getElementById('layPtrCost').value = fmtI(getEquipDailyCost(ptrEq));
+
+  // Fuel
+  var hsdPrice = n('hsdPrice');
+  var hsdConsump = n('hsdConsump');
+  var hsdPerMT = tph>0 ? (hsdConsump * hsdPrice / tph) : 0;
+  document.getElementById('hsdDerived').textContent = 'JCB/Loader HSD → ₹'+fmt(hsdPerMT)+'/MT';
+
+  var ldoConsump = n('ldoConsump');
+  var ldoRate = n('ldoRate');
+  var ldoPerMT = ldoConsump * ldoRate;
+  document.getElementById('ldoDerived').value = fmt(ldoPerMT);
+
+  var boilerProdLhr = n('boilerProdLhr');
+  var boilerPreheatLhr = n('boilerPreheatLhr');
+  var boilerFuelRate = n('boilerFuelRate');
+  var boilerProdHrs = n('boilerProdHrs');
+  var boilerPreheatHrs = n('boilerPreheatHrs');
+  var boilerCampaignMt = n('boilerCampaignMt');
+  var boilerProdPerMT = boilerCampaignMt>0 ? (boilerProdLhr * boilerFuelRate * boilerProdHrs / boilerCampaignMt) : 0;
+  var boilerPreheatPerMT = boilerCampaignMt>0 ? (boilerPreheatLhr * boilerFuelRate * boilerPreheatHrs / boilerCampaignMt) : 0;
+  document.getElementById('boilerProdDerived').value = fmt(boilerProdPerMT);
+  document.getElementById('boilerPreheatDerived').value = fmt(boilerPreheatPerMT);
+
+  // Crew
+  var crewMonthly = n('crewMonthly');
+  var crewDays = n('crewDays');
+  var crewHrs = n('crewHrs');
+  var crewPerMT = (crewDays>0 && crewHrs>0 && tph>0) ? (crewMonthly / crewDays / crewHrs / tph) : 0;
+  document.getElementById('crewDerived').value = fmt(crewPerMT);
+  var marginPct = n('marginPct');
+
+  // Laying
+  var layPaverD = getEquipDailyCost(paverEq);
+  var layRollerD = getEquipDailyCost(rollerEq);
+  var layPtrD = getEquipDailyCost(ptrEq);
+  var layCrewD = n('layCrew');
+  var layFuelD = n('layFuel');
+  var layProd = n('layProductivity');
+  var layTotalDaily = layPaverD + layRollerD + layPtrD + layCrewD + layFuelD;
+  var layPerMT = layProd>0 ? (layTotalDaily / layProd) : 0;
+  document.getElementById('layDerived').value = fmt(layPerMT);
+
+  // Transport
+  var transDist = n('transDist');
+  var transRate = n('transRate');
+  var transPayload = n('transPayload');
+  var transPerMT = transPayload>0 ? (transDist * 2 * transRate / transPayload) : 0;
+  document.getElementById('transDerived').value = fmt(transPerMT);
+
+  // Prime & Tack
+  var primeSpray = n('primeSpray');
+  var primePrice = n('primePrice');
+  var primeDilution = n('primeDilution') || 1;
+  var tackSpray = n('tackSpray');
+  var tackPrice = n('tackPrice');
+  var tackDilution = n('tackDilution') || 1;
+  var sprayBowser = n('sprayBowser');
+  var sprayCrew = n('sprayCrew');
+  var sprayProd = n('sprayProd');
+  var sprayOpPerSqm = sprayProd>0 ? ((sprayBowser + sprayCrew) / sprayProd) : 0;
+  var primePerSqm = (primeSpray * primePrice / primeDilution) + sprayOpPerSqm;
+  var tackPerSqm = (tackSpray * tackPrice / tackDilution) + sprayOpPerSqm;
+  document.getElementById('primeDerived').value = fmt(primePerSqm);
+  document.getElementById('tackDerived').value = fmt(tackPerSqm);
+
+  // ====== PER-MIX-TYPE RATE CALCULATION ======
+  // Plant equipment cost (non-laying)
+  var plantEquipPerMT = 0;
+  equipDefs.forEach(function(eq){
+    if(!eq.isLaying) plantEquipPerMT += getEquipCostPerMT(eq);
+  });
+
+  // Build cost breakdown per mix type
+  var mixRates = mixTypes.map(function(m){
+    var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0) / 100;
+    var bitFrac = m.binderPct / 100;
+    var aggCostPerMT = aggFrac * aggLanded * 10;
+    var bitCostPerMT = bitFrac * 1000 * bitPrice;
+    var fuelTotal = hsdPerMT + ldoPerMT + boilerProdPerMT + boilerPreheatPerMT;
+    var plantSubtotal = aggCostPerMT + bitCostPerMT + plantEquipPerMT + fuelTotal + crewPerMT;
+    var marginAmt = plantSubtotal * marginPct / 100;
+    var exPlant = plantSubtotal + marginAmt;
+    var finalLaid = exPlant + transPerMT + layPerMT;
+    return {
+      name: m.name,
+      density: m.density,
+      aggregate: aggCostPerMT,
+      bitumen: bitCostPerMT,
+      equipment: plantEquipPerMT,
+      hsd: hsdPerMT,
+      fuel: fuelTotal,
+      ldo: ldoPerMT,
+      boilerProd: boilerProdPerMT,
+      boilerPreheat: boilerPreheatPerMT,
+      crew: crewPerMT,
+      margin: marginAmt,
+      exPlant: exPlant,
+      transport: transPerMT,
+      laying: layPerMT,
+      finalLaid: finalLaid,
+      perCum: finalLaid * m.density
+    };
+  });
+
+  // ====== RENDER RATE SUMMARY ======
+  renderRateSummary(mixRates);
+  renderCostBar(mixRates);
+  if(breakdownOpen) renderFullBreakdown(mixRates);
+
+  // ====== RECALC JOBS ======
+  recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm);
+}
+
+function renderRateSummary(mixRates){
+  var html = '<table class="rate-table"><thead><tr><th></th>';
+  mixRates.forEach(function(r){ html += '<th>'+r.name+'</th>'; });
+  html += '</tr></thead><tbody>';
+  html += '<tr><td>Aggregate ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.aggregate)+'</td>'; });
+  html += '</tr>';
+  html += '<tr><td>Bitumen ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.bitumen)+'</td>'; });
+  html += '</tr>';
+  html += '<tr><td>Equipment ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.equipment)+'</td>'; });
+  html += '</tr>';
+  html += '<tr><td>Fuel & Energy ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.fuel)+'</td>'; });
+  html += '</tr>';
+  html += '<tr><td>Crew ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.crew)+'</td>'; });
+  html += '</tr>';
+  if(mixRates[0] && mixRates[0].margin>0){
+    html += '<tr><td>Margin ₹/MT</td>';
+    mixRates.forEach(function(r){ html += '<td>'+fmtR(r.margin)+'</td>'; });
+    html += '</tr>';
+  }
+  html += '<tr class="separator"><td colspan="'+(mixRates.length+1)+'"></td></tr>';
+  html += '<tr style="font-weight:700"><td>Ex-Plant ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td style="color:var(--amber)">'+fmtR(r.exPlant)+'</td>'; });
+  html += '</tr>';
+  html += '<tr><td>Transport ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.transport)+'</td>'; });
+  html += '</tr>';
+  html += '<tr><td>Laying ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.laying)+'</td>'; });
+  html += '</tr>';
+  html += '<tr class="total-row"><td>Final Laid ₹/MT</td>';
+  mixRates.forEach(function(r){ html += '<td style="color:var(--amber)">'+fmtR(r.finalLaid)+'</td>'; });
+  html += '</tr>';
+  html += '<tr class="total-row"><td>₹/CUM</td>';
+  mixRates.forEach(function(r){ html += '<td>'+fmtR(r.perCum)+'</td>'; });
+  html += '</tr>';
+  html += '</tbody></table>';
+  document.getElementById('rateSummaryTable').innerHTML = html;
+}
+
+function renderCostBar(mixRates){
+  var r = mixRates[activeMixIdx] || mixRates[0];
+  if(!r) return;
+  var heads = [
+    {label:'Material',color:'#f59e0b',val:r.aggregate},
+    {label:'Bitumen',color:'#8b5cf6',val:r.bitumen},
+    {label:'Equipment',color:'#3b82f6',val:r.equipment},
+    {label:'Fuel',color:'#ef4444',val:r.fuel},
+    {label:'Crew',color:'#10b981',val:r.crew},
+    {label:'Transport',color:'#6366f1',val:r.transport},
+    {label:'Laying',color:'#ec4899',val:r.laying}
+  ];
+  var total = heads.reduce(function(s,h){return s+h.val;},0);
+  if(total<=0) return;
+  var barHtml = '<div class="cost-bar">';
+  heads.forEach(function(h){
+    var pct = (h.val/total*100);
+    if(pct>0.5) barHtml += '<div style="width:'+pct+'%;background:'+h.color+'" title="'+h.label+': '+pct.toFixed(1)+'%"></div>';
+  });
+  barHtml += '</div><div class="cost-legend">';
+  heads.forEach(function(h){
+    var pct = (h.val/total*100);
+    if(pct>0.5) barHtml += '<span style="--c:'+h.color+'"><style>.cost-legend span[style*="'+h.color+'"]::before{background:'+h.color+'}</style>'+h.label+' '+pct.toFixed(0)+'%</span>';
+  });
+  barHtml += '</div>';
+  document.getElementById('costBarContainer').innerHTML = barHtml;
+}
+
+function toggleBreakdown(){
+  breakdownOpen = !breakdownOpen;
+  document.getElementById('fullBreakdown').classList.toggle('hidden',!breakdownOpen);
+  document.getElementById('breakdownToggle').textContent = breakdownOpen ? '▲ Hide full breakdown' : '▼ Show full breakdown';
+  if(breakdownOpen) recalc();
+}
+
+function renderFullBreakdown(mixRates){
+  var rows = [
+    {label:'Aggregate',key:'aggregate'},
+    {label:'Bitumen',key:'bitumen'},
+    {label:'Plant Equipment',key:'equipment'},
+    {label:'JCB/Loader HSD',key:'hsd'},
+    {label:'Dryer LDO',key:'ldo'},
+    {label:'Boiler Production',key:'boilerProd'},
+    {label:'Boiler Preheat',key:'boilerPreheat'},
+    {label:'Crew',key:'crew'},
+    {label:'Margin',key:'margin'},
+    {label:'Ex-Plant Total',key:'exPlant',bold:true},
+    {label:'Transport',key:'transport'},
+    {label:'Laying & Compaction',key:'laying'},
+    {label:'Final Laid',key:'finalLaid',bold:true}
+  ];
+  var html = '<table class="rate-table"><thead><tr><th></th>';
+  mixRates.forEach(function(r){ html += '<th>₹/MT</th><th>₹/CUM</th>'; });
+  html += '</tr><tr><th></th>';
+  mixRates.forEach(function(r){ html += '<th colspan="2" style="text-align:center;color:var(--amber)">'+r.name+'</th>'; });
+  html += '</tr></thead><tbody>';
+  rows.forEach(function(row){
+    var cls = row.bold ? ' style="font-weight:700;border-top:2px solid var(--amber)"' : '';
+    html += '<tr'+cls+'><td>'+row.label+'</td>';
+    mixRates.forEach(function(r){
+      var v = r[row.key]||0;
+      html += '<td>'+fmtR(v)+'</td><td>'+fmtR(v*r.density)+'</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('fullBreakdown').innerHTML = html;
+}
+
+// ====== JOB ESTIMATOR ======
+function addJob(){
+  jobCounter++;
+  jobs.push({
+    id: 'J'+String(jobCounter).padStart(2,'0'),
+    contractor: '',
+    mixIdx: 0,
+    basis: 'GEOMETRY',
+    length: 100, width: 7, thickness: 50, volume: 35,
+    prime: true, tack: true
+  });
+  renderJobs();
+  recalc();
+}
+function removeJob(idx){
+  jobs.splice(idx,1);
+  renderJobs();
+  recalc();
+}
+function renderJobs(){
+  var tbody = document.getElementById('jobTableBody');
+  var html = '';
+  jobs.forEach(function(j,i){
+    var isGeo = j.basis==='GEOMETRY';
+    html += '<tr>';
+    html += '<td><input value="'+j.id+'" onchange="jobs['+i+'].id=this.value" style="width:60px"></td>';
+    html += '<td><input value="'+(j.contractor||'')+'" onchange="jobs['+i+'].contractor=this.value.toUpperCase()" style="width:100px"></td>';
+    html += '<td><select onchange="jobs['+i+'].mixIdx=parseInt(this.value);recalc()">';
+    mixTypes.forEach(function(m,mi){
+      html += '<option value="'+mi+'"'+(j.mixIdx===mi?' selected':'')+'>'+m.name+'</option>';
+    });
+    html += '</select></td>';
+    html += '<td><select onchange="jobs['+i+'].basis=this.value;renderJobs();recalc()"><option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option><option value="BOQ"'+(!isGeo?' selected':'')+'>BOQ</option></select></td>';
+    if(isGeo){
+      html += '<td><input type="number" value="'+j.length+'" onchange="jobs['+i+'].length=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
+      html += '<td><input type="number" value="'+j.width+'" onchange="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.thickness+'" onchange="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td style="color:var(--gray-400)">—</td>';
+    } else {
+      html += '<td class="calc-cell" id="jobLen_'+i+'">—</td>';
+      html += '<td><input type="number" value="'+j.width+'" onchange="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.thickness+'" onchange="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.volume+'" onchange="jobs['+i+'].volume=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
+    }
+    html += '<td><input type="checkbox" '+(j.prime?'checked':'')+' onchange="jobs['+i+'].prime=this.checked;recalc()"></td>';
+    html += '<td><input type="checkbox" '+(j.tack?'checked':'')+' onchange="jobs['+i+'].tack=this.checked;recalc()"></td>';
+    html += '<td class="calc-cell" id="jobCum_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobArea_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobMT_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobPlant_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobTrans_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobLay_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobPrime_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobTack_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobTotal_'+i+'" style="font-weight:700"></td>';
+    html += '<td class="calc-cell" id="jobRateMT_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobRateCUM_'+i+'"></td>';
+    html += '<td class="calc-cell" id="jobRateSQM_'+i+'"></td>';
+    html += '<td class="no-print"><button class="btn btn-danger btn-sm" onclick="removeJob('+i+')">×</button></td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
+  var totals = {cum:0,area:0,mt:0,plant:0,trans:0,lay:0,prime:0,tack:0,total:0};
+  jobs.forEach(function(j,i){
+    var mix = mixTypes[j.mixIdx] || mixTypes[0];
+    var mr = mixRates[j.mixIdx] || mixRates[0];
+    if(!mr) return;
+    var cum, area, len;
+    if(j.basis==='GEOMETRY'){
+      var thickM = j.thickness/1000;
+      cum = j.length * j.width * thickM;
+      area = j.length * j.width;
+      len = j.length;
+    } else {
+      cum = j.volume;
+      var thickM = j.thickness/1000;
+      len = (j.width>0 && thickM>0) ? (cum / (j.width * thickM)) : 0;
+      area = len * j.width;
+      var el = document.getElementById('jobLen_'+i);
+      if(el) el.textContent = len.toFixed(1);
+    }
+    var mt = cum * mix.density;
+    var plantAmt = mt * mr.exPlant;
+    var transAmt = mt * transPerMT;
+    var layAmt = mt * layPerMT;
+    var primeAmt = j.prime ? (area * primePerSqm) : 0;
+    var tackAmt = j.tack ? (area * tackPerSqm) : 0;
+    var totalAmt = plantAmt + transAmt + layAmt + primeAmt + tackAmt;
+
+    var el;
+    el=document.getElementById('jobCum_'+i); if(el) el.textContent=cum.toFixed(2);
+    el=document.getElementById('jobArea_'+i); if(el) el.textContent=fmtI(Math.round(area));
+    el=document.getElementById('jobMT_'+i); if(el) el.textContent=mt.toFixed(1);
+    el=document.getElementById('jobPlant_'+i); if(el) el.textContent=fmtI(Math.round(plantAmt));
+    el=document.getElementById('jobTrans_'+i); if(el) el.textContent=fmtI(Math.round(transAmt));
+    el=document.getElementById('jobLay_'+i); if(el) el.textContent=fmtI(Math.round(layAmt));
+    el=document.getElementById('jobPrime_'+i); if(el) el.textContent=j.prime?fmtI(Math.round(primeAmt)):'—';
+    el=document.getElementById('jobTack_'+i); if(el) el.textContent=j.tack?fmtI(Math.round(tackAmt)):'—';
+    el=document.getElementById('jobTotal_'+i); if(el) el.textContent=fmtI(Math.round(totalAmt));
+    el=document.getElementById('jobRateMT_'+i); if(el) el.textContent=mt>0?fmtR(totalAmt/mt):'—';
+    el=document.getElementById('jobRateCUM_'+i); if(el) el.textContent=cum>0?fmtR(totalAmt/cum):'—';
+    el=document.getElementById('jobRateSQM_'+i); if(el) el.textContent=area>0?fmtR(totalAmt/area):'—';
+
+    j._cum=cum; j._area=area; j._mt=mt; j._plantAmt=plantAmt; j._transAmt=transAmt;
+    j._layAmt=layAmt; j._primeAmt=primeAmt; j._tackAmt=tackAmt; j._totalAmt=totalAmt;
+
+    totals.cum+=cum; totals.area+=area; totals.mt+=mt; totals.plant+=plantAmt;
+    totals.trans+=transAmt; totals.lay+=layAmt; totals.prime+=primeAmt;
+    totals.tack+=tackAmt; totals.total+=totalAmt;
+  });
+
+  // Totals row
+  var foot = document.getElementById('jobTableFoot');
+  if(jobs.length>0){
+    var html = '<tr class="totals-row">';
+    html += '<td colspan="4" style="text-align:right;font-weight:700">TOTALS</td>';
+    html += '<td></td><td></td><td></td><td></td><td></td><td></td>';
+    html += '<td class="calc-cell">'+totals.cum.toFixed(2)+'</td>';
+    html += '<td class="calc-cell">'+fmtI(Math.round(totals.area))+'</td>';
+    html += '<td class="calc-cell">'+totals.mt.toFixed(1)+'</td>';
+    html += '<td class="calc-cell">'+fmtI(Math.round(totals.plant))+'</td>';
+    html += '<td class="calc-cell">'+fmtI(Math.round(totals.trans))+'</td>';
+    html += '<td class="calc-cell">'+fmtI(Math.round(totals.lay))+'</td>';
+    html += '<td class="calc-cell">'+fmtI(Math.round(totals.prime))+'</td>';
+    html += '<td class="calc-cell">'+fmtI(Math.round(totals.tack))+'</td>';
+    html += '<td class="calc-cell" style="font-weight:700">'+fmtI(Math.round(totals.total))+'</td>';
+    html += '<td class="calc-cell">'+(totals.mt>0?fmtR(totals.total/totals.mt):'—')+'</td>';
+    html += '<td class="calc-cell">'+(totals.cum>0?fmtR(totals.total/totals.cum):'—')+'</td>';
+    html += '<td class="calc-cell">'+(totals.area>0?fmtR(totals.total/totals.area):'—')+'</td>';
+    html += '<td class="no-print"></td>';
+    html += '</tr>';
+    foot.innerHTML = html;
+  } else {
+    foot.innerHTML = '';
+  }
+
+  // Contractor summary
+  renderContractorSummary(mixRates);
+
+  // Procurement
+  renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm);
+}
+
+function renderContractorSummary(mixRates){
+  var contractors = {};
+  jobs.forEach(function(j){
+    var c = j.contractor || 'Unassigned';
+    if(!contractors[c]) contractors[c] = {mt:0, bitMT:0, aggMT:0, total:0};
+    var mix = mixTypes[j.mixIdx] || mixTypes[0];
+    contractors[c].mt += j._mt||0;
+    contractors[c].bitMT += (j._mt||0) * (mix.binderPct/100);
+    var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(mix.fractions[k]||0);},0)/100;
+    contractors[c].aggMT += (j._mt||0) * aggFrac;
+    contractors[c].total += j._totalAmt||0;
+  });
+  var html = '';
+  if(Object.keys(contractors).length>0 && jobs.length>0){
+    html = '<h3 style="font-size:13px;font-weight:700;color:var(--gray-700);margin-top:16px;margin-bottom:8px">Contractor Summary</h3><div class="contractor-summary">';
+    Object.keys(contractors).forEach(function(name){
+      var c = contractors[name];
+      html += '<div class="contractor-card"><h4>'+name+'</h4><table>';
+      html += '<tr><td>Mix</td><td>'+c.mt.toFixed(1)+' MT</td></tr>';
+      html += '<tr><td>Bitumen</td><td>'+c.bitMT.toFixed(1)+' MT</td></tr>';
+      html += '<tr><td>Aggregates</td><td>'+c.aggMT.toFixed(1)+' MT</td></tr>';
+      html += '<tr><td style="font-weight:700">Total Cost</td><td style="font-weight:700;color:var(--amber)">₹ '+fmtI(Math.round(c.total))+'</td></tr>';
+      html += '</table></div>';
+    });
+    html += '</div>';
+  }
+  document.getElementById('contractorSummary').innerHTML = html;
+}
+
+function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
+  if(jobs.length===0){
+    document.getElementById('procTableBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:16px">Add jobs to see procurement summary</td></tr>';
+    document.getElementById('jobCostSplit').innerHTML = '';
+    return;
+  }
+
+  var aggLanded = parseFloat(document.getElementById('aggLanded').value.replace(/,/g,''))||0;
+  var bitPrice = n('bitPrice');
+  var primePrice = n('primePrice');
+  var tackPrice = n('tackPrice');
+  var primeSpray = n('primeSpray');
+  var tackSpray = n('tackSpray');
+  var primeDilution = n('primeDilution')||1;
+  var tackDilution = n('tackDilution')||1;
+
+  // Aggregate quantities per fraction
+  var fracQtys = {};
+  FRAC_KEYS.forEach(function(k){ fracQtys[k] = 0; });
+  var totalBitMT = 0;
+  var totalPrimeKg = 0;
+  var totalTackKg = 0;
+
+  jobs.forEach(function(j){
+    var mix = mixTypes[j.mixIdx] || mixTypes[0];
+    var mt = j._mt || 0;
+    FRAC_KEYS.forEach(function(k){
+      fracQtys[k] += mt * ((mix.fractions[k]||0)/100);
+    });
+    totalBitMT += mt * (mix.binderPct/100);
+    if(j.prime) totalPrimeKg += (j._area||0) * primeSpray / primeDilution;
+    if(j.tack) totalTackKg += (j._area||0) * tackSpray / tackDilution;
+  });
+
+  var totalAggMT = FRAC_KEYS.reduce(function(s,k){return s+fracQtys[k];},0);
+  var totalAggAmt = totalAggMT * aggLanded;
+
+  var html = '';
+  // Individual aggregate rows
+  FRAC_KEYS.forEach(function(k,fi){
+    var qty = fracQtys[k];
+    var amt = qty * aggLanded;
+    html += '<tr><td>'+FRAC_LABELS[fi]+'</td><td style="text-align:right">'+qty.toFixed(1)+'</td><td>MT</td><td style="text-align:right">'+fmtR(aggLanded)+'</td><td style="text-align:right">'+fmtI(Math.round(amt))+'</td></tr>';
+  });
+  html += '<tr class="subtotal"><td>Total Aggregates</td><td style="text-align:right">'+totalAggMT.toFixed(1)+'</td><td>MT</td><td style="text-align:right">'+fmtR(aggLanded)+'</td><td style="text-align:right">'+fmtI(Math.round(totalAggAmt))+'</td></tr>';
+
+  // Bitumen
+  var bitAmt = totalBitMT * 1000 * bitPrice;
+  html += '<tr><td>Bitumen (VG30)</td><td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-400);font-size:10px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td><td style="text-align:right">'+fmtR(bitPrice)+'</td><td style="text-align:right">'+fmtI(Math.round(bitAmt))+'</td></tr>';
+
+  // Prime emulsion
+  if(totalPrimeKg>0){
+    var primeAmt = totalPrimeKg * primePrice;
+    html += '<tr><td>Prime Coat Emulsion</td><td style="text-align:right">'+totalPrimeKg.toFixed(0)+'</td><td>kg</td><td style="text-align:right">'+fmtR(primePrice)+'</td><td style="text-align:right">'+fmtI(Math.round(primeAmt))+'</td></tr>';
+  }
+  // Tack emulsion
+  if(totalTackKg>0){
+    var tackAmt = totalTackKg * tackPrice;
+    html += '<tr><td>Tack Coat Emulsion</td><td style="text-align:right">'+totalTackKg.toFixed(0)+'</td><td>kg</td><td style="text-align:right">'+fmtR(tackPrice)+'</td><td style="text-align:right">'+fmtI(Math.round(tackAmt))+'</td></tr>';
+  }
+
+  var grandTotal = totalAggAmt + bitAmt + (totalPrimeKg>0?totalPrimeKg*primePrice:0) + (totalTackKg>0?totalTackKg*tackPrice:0);
+  html += '<tr class="grand-total"><td>GRAND TOTAL MATERIAL COST</td><td></td><td></td><td></td><td style="text-align:right">₹ '+fmtI(Math.round(grandTotal))+'</td></tr>';
+
+  document.getElementById('procTableBody').innerHTML = html;
+
+  // Job-wise cost split
+  var splitHtml = '<table class="proc-table"><thead><tr><th>Job</th><th>Mix</th><th style="text-align:right">Plant %</th><th style="text-align:right">Transport %</th><th style="text-align:right">Laying %</th><th style="text-align:right">Prime/Tack %</th></tr></thead><tbody>';
+  jobs.forEach(function(j){
+    var t = j._totalAmt||1;
+    splitHtml += '<tr><td>'+j.id+'</td><td>'+(mixTypes[j.mixIdx]||mixTypes[0]).name+'</td>';
+    splitHtml += '<td style="text-align:right">'+(((j._plantAmt||0)/t)*100).toFixed(1)+'%</td>';
+    splitHtml += '<td style="text-align:right">'+(((j._transAmt||0)/t)*100).toFixed(1)+'%</td>';
+    splitHtml += '<td style="text-align:right">'+(((j._layAmt||0)/t)*100).toFixed(1)+'%</td>';
+    splitHtml += '<td style="text-align:right">'+((((j._primeAmt||0)+(j._tackAmt||0))/t)*100).toFixed(1)+'%</td>';
+    splitHtml += '</tr>';
+  });
+  splitHtml += '</tbody></table>';
+  document.getElementById('jobCostSplit').innerHTML = splitHtml;
+}
+
+// ====== INIT ======
+function init(){
+  document.getElementById('projDate').value = new Date().toISOString().slice(0,10);
+  renderMixTabs();
+  renderMixPanels();
+  renderEquipCards();
+  renderJobs();
+  recalc();
+}
+init();
+</script>
+</body>
+</html>

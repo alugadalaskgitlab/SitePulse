@@ -16,6 +16,10 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get('/mix-calculator', (_req, res) => {
+    res.sendFile('mix-calculator.html', { root: path.join(process.cwd(), 'client', 'public') });
+  });
+
   // List DPRs with filters
   app.get(api.dprs.list.path, async (req, res) => {
     try {
