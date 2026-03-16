@@ -463,7 +463,11 @@ function removeMix(i){
   if(mixTypes.length<=1) return;
   mixTypes.splice(i,1);
   if(activeMixIdx>=mixTypes.length) activeMixIdx=mixTypes.length-1;
-  renderMixTabs(); renderMixPanels(); recalc();
+  jobs.forEach(function(j){
+    if(j.mixIdx===i) j.mixIdx=0;
+    else if(j.mixIdx>i) j.mixIdx--;
+  });
+  renderMixTabs(); renderMixPanels(); renderJobs(); recalc();
 }
 function addMixType(){
   if(mixTypes.length>=4) return;
@@ -565,8 +569,9 @@ function getEquipCostPerMT(eq){
     } else if(eq.hireBasis==='hourly'){
       return eq.hireRate / tph;
     } else {
-      if(phm<=0) return 0;
-      return eq.hireRate / phm / tph;
+      var billedHrs = eq.hireHrsMonth || phm;
+      if(billedHrs<=0) return 0;
+      return eq.hireRate / billedHrs / tph;
     }
   }
 }
