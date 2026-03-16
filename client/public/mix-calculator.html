@@ -454,13 +454,13 @@ function renderMixTabs(){
   mixTypes.forEach(function(m,i){
     var tab = document.createElement('div');
     tab.className = 'mix-tab' + (i===activeMixIdx?' active':'');
-    tab.innerHTML = m.name + (mixTypes.length>1?'<span class="remove-mix" onclick="event.stopPropagation();removeMix('+i+')">×</span>':'');
+    tab.innerHTML = m.name + (mixTypes.length>2?'<span class="remove-mix" onclick="event.stopPropagation();removeMix('+i+')">×</span>':'');
     tab.onclick = function(){ activeMixIdx=i; renderMixTabs(); renderMixPanels(); recalc(); };
     bar.appendChild(tab);
   });
 }
 function removeMix(i){
-  if(mixTypes.length<=1) return;
+  if(mixTypes.length<=2) return;
   mixTypes.splice(i,1);
   if(activeMixIdx>=mixTypes.length) activeMixIdx=mixTypes.length-1;
   jobs.forEach(function(j){
