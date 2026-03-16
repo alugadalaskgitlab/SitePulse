@@ -97,14 +97,25 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .procurement-grid{grid-template-columns:1fr}
 }
 @media print{
-.top-bar,.card-header .chevron,.btn,.toggle-group,.breakdown-toggle,.no-print{display:none!important}
+.top-bar .btn,.toggle-group,.breakdown-toggle,.no-print,.equip-card,.validation-bar,.mix-tab-bar{display:none!important}
 .card-body{display:block!important}
 .main-layout{display:block}
-.left-col,.right-col{max-width:100%;position:static}
+.left-col{display:none!important}
+.right-col{display:block!important;max-width:100%;position:static;height:auto}
 .card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
 body{font-size:11px;background:#fff}
 .rate-panel{box-shadow:none;border:1px solid #ddd}
-table.job-table{font-size:10px;min-width:auto}
+.rate-panel h2{font-size:14px}
+#fullBreakdown{display:block!important}
+table.job-table{font-size:9px;min-width:auto}
+.full-width{padding:0}
+.top-bar{position:static;border-bottom:2px solid #d97706;box-shadow:none;padding:8px 16px}
+.top-bar h1{font-size:16px}
+.section-sep{margin:12px 0}
+.card-header{padding:8px 12px}
+.procurement-grid{grid-template-columns:1fr}
+.contractor-summary{display:none}
+@page{margin:10mm 8mm;size:A4}
 }
 </style>
 </head>
@@ -466,9 +477,9 @@ function renderMixPanels(){
   var fracTotal = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0) + m.binderPct;
   var valid = Math.abs(fracTotal-100)<0.05;
   var html = '<div class="form-grid" style="margin-bottom:12px">';
-  html += '<div class="form-group"><label>Mix Name</label><input value="'+m.name+'" onchange="mixTypes['+activeMixIdx+'].name=this.value.toUpperCase();renderMixTabs();recalc()"></div>';
-  html += '<div class="form-group"><label>Binder Content %</label><input type="number" value="'+m.binderPct+'" step="0.1" onchange="mixTypes['+activeMixIdx+'].binderPct=parseFloat(this.value)||0;renderMixPanels();recalc()"></div>';
-  html += '<div class="form-group"><label>Compacted Density (MT/CUM)</label><input type="number" value="'+m.density+'" step="0.01" onchange="mixTypes['+activeMixIdx+'].density=parseFloat(this.value)||0;recalc()"></div>';
+  html += '<div class="form-group"><label>Mix Name</label><input value="'+m.name+'" oninput="mixTypes['+activeMixIdx+'].name=this.value.toUpperCase();renderMixTabs();recalc()"></div>';
+  html += '<div class="form-group"><label>Binder Content %</label><input type="number" value="'+m.binderPct+'" step="0.1" oninput="mixTypes['+activeMixIdx+'].binderPct=parseFloat(this.value)||0;renderMixPanels();recalc()"></div>';
+  html += '<div class="form-group"><label>Compacted Density (MT/CUM)</label><input type="number" value="'+m.density+'" step="0.01" oninput="mixTypes['+activeMixIdx+'].density=parseFloat(this.value)||0;recalc()"></div>';
   html += '</div>';
   html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">';
   html += '<tr style="background:var(--gray-50)"><th style="text-align:left;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">Component</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">% of Mix</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/MT</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/CUM</th></tr>';
@@ -477,7 +488,7 @@ function renderMixPanels(){
     var kgMt = pct*10;
     var kgCum = kgMt * m.density;
     html += '<tr><td style="padding:6px">'+FRAC_LABELS[fi]+'</td>';
-    html += '<td style="text-align:right;padding:6px"><input type="number" style="width:70px;text-align:right;padding:4px;border:1px solid var(--gray-300);border-radius:4px" value="'+pct+'" step="0.1" onchange="mixTypes['+activeMixIdx+'].fractions.'+k+'=parseFloat(this.value)||0;renderMixPanels();recalc()"></td>';
+    html += '<td style="text-align:right;padding:6px"><input type="number" style="width:70px;text-align:right;padding:4px;border:1px solid var(--gray-300);border-radius:4px" value="'+pct+'" step="0.1" oninput="mixTypes['+activeMixIdx+'].fractions.'+k+'=parseFloat(this.value)||0;renderMixPanels();recalc()"></td>';
     html += '<td style="text-align:right;padding:6px;color:var(--gray-500)">'+kgMt.toFixed(1)+'</td>';
     html += '<td style="text-align:right;padding:6px;color:var(--gray-500)">'+kgCum.toFixed(1)+'</td></tr>';
   });
@@ -501,7 +512,7 @@ function renderEquipCards(){
     html += '<div class="equip-card-header">';
     html += '<div style="display:flex;align-items:center;gap:8px">';
     if(eq.id==='ptr'){
-      html += '<label class="checkbox-label" style="margin-right:8px"><input type="checkbox" '+(eq.enabled?'checked':'')+' onchange="equipDefs['+i+'].enabled=this.checked;recalc();renderEquipCards()"> Enable</label>';
+      html += '<label class="checkbox-label" style="margin-right:8px"><input type="checkbox" '+(eq.enabled?'checked':'')+' oninput="equipDefs['+i+'].enabled=this.checked;recalc();renderEquipCards()"> Enable</label>';
     }
     html += '<h3>'+eq.name+'</h3>';
     html += '</div>';
@@ -513,22 +524,22 @@ function renderEquipCards(){
       html += '<div style="padding:8px;color:var(--gray-400);font-size:12px;font-style:italic">Disabled</div>';
     } else if(isOwned){
       html += '<div class="form-grid-3" style="margin-top:8px">';
-      html += '<div class="form-group"><label>Capex (₹)</label><input type="number" value="'+eq.capex+'" onchange="equipDefs['+i+'].capex=parseFloat(this.value)||0;recalc()"></div>';
-      html += '<div class="form-group"><label>Life (years)</label><input type="number" value="'+eq.life+'" onchange="equipDefs['+i+'].life=parseFloat(this.value)||0;recalc()"></div>';
-      html += '<div class="form-group"><label>Maintenance %</label><input type="number" value="'+eq.maint+'" onchange="equipDefs['+i+'].maint=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Capex (₹)</label><input type="number" value="'+eq.capex+'" oninput="equipDefs['+i+'].capex=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Life (years)</label><input type="number" value="'+eq.life+'" oninput="equipDefs['+i+'].life=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Maintenance %</label><input type="number" value="'+eq.maint+'" oninput="equipDefs['+i+'].maint=parseFloat(this.value)||0;recalc()"></div>';
       html += '</div>';
     } else {
       html += '<div class="form-grid-3" style="margin-top:8px">';
       html += '<div class="form-group"><label>Hire Basis</label><select onchange="equipDefs['+i+'].hireBasis=this.value;renderEquipCards();recalc()"><option value="daily"'+(eq.hireBasis==='daily'?' selected':'')+'>Daily</option><option value="hourly"'+(eq.hireBasis==='hourly'?' selected':'')+'>Hourly</option><option value="monthly"'+(eq.hireBasis==='monthly'?' selected':'')+'>Monthly</option></select></div>';
       if(eq.hireBasis==='daily'){
-        html += '<div class="form-group"><label>Rate (₹/day)</label><input type="number" value="'+eq.hireRate+'" onchange="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
-        html += '<div class="form-group"><label>Working Hrs/Day</label><input type="number" value="'+eq.hireHrsDay+'" onchange="equipDefs['+i+'].hireHrsDay=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Rate (₹/day)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Working Hrs/Day</label><input type="number" value="'+eq.hireHrsDay+'" oninput="equipDefs['+i+'].hireHrsDay=parseFloat(this.value)||0;recalc()"></div>';
       } else if(eq.hireBasis==='hourly'){
-        html += '<div class="form-group"><label>Rate (₹/hr)</label><input type="number" value="'+eq.hireRate+'" onchange="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Rate (₹/hr)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
         html += '<div class="form-group"></div>';
       } else {
-        html += '<div class="form-group"><label>Rate (₹/month)</label><input type="number" value="'+eq.hireRate+'" onchange="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
-        html += '<div class="form-group"><label>Billed Hrs/Month</label><input type="number" value="'+eq.hireHrsMonth+'" onchange="equipDefs['+i+'].hireHrsMonth=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Rate (₹/month)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Billed Hrs/Month</label><input type="number" value="'+eq.hireHrsMonth+'" oninput="equipDefs['+i+'].hireHrsMonth=parseFloat(this.value)||0;recalc()"></div>';
       }
       html += '</div>';
     }
@@ -670,13 +681,14 @@ function recalc(){
   document.getElementById('tackDerived').value = fmt(tackPerSqm);
 
   // ====== PER-MIX-TYPE RATE CALCULATION ======
-  // Plant equipment cost (non-laying)
+  var eqCosts = {};
   var plantEquipPerMT = 0;
   equipDefs.forEach(function(eq){
-    if(!eq.isLaying) plantEquipPerMT += getEquipCostPerMT(eq);
+    var c = getEquipCostPerMT(eq);
+    eqCosts[eq.id] = c;
+    if(!eq.isLaying) plantEquipPerMT += c;
   });
 
-  // Build cost breakdown per mix type
   var mixRates = mixTypes.map(function(m){
     var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0) / 100;
     var bitFrac = m.binderPct / 100;
@@ -693,6 +705,10 @@ function recalc(){
       aggregate: aggCostPerMT,
       bitumen: bitCostPerMT,
       equipment: plantEquipPerMT,
+      hotmix: eqCosts.hotmix||0,
+      dg: eqCosts.dg||0,
+      jcb: eqCosts.jcb||0,
+      tipper: eqCosts.tipper||0,
       hsd: hsdPerMT,
       fuel: fuelTotal,
       ldo: ldoPerMT,
@@ -798,19 +814,22 @@ function toggleBreakdown(){
 
 function renderFullBreakdown(mixRates){
   var rows = [
-    {label:'Aggregate',key:'aggregate'},
+    {label:'Aggregate (landed)',key:'aggregate'},
     {label:'Bitumen',key:'bitumen'},
-    {label:'Plant Equipment',key:'equipment'},
+    {label:'Hot Mix Plant',key:'hotmix'},
+    {label:'DG / Generator',key:'dg'},
+    {label:'JCB / Loader',key:'jcb'},
+    {label:'Tipper (inter-cart)',key:'tipper'},
     {label:'JCB/Loader HSD',key:'hsd'},
     {label:'Dryer LDO',key:'ldo'},
     {label:'Boiler Production',key:'boilerProd'},
     {label:'Boiler Preheat',key:'boilerPreheat'},
     {label:'Crew',key:'crew'},
-    {label:'Margin',key:'margin'},
+    {label:'Margin / Profit',key:'margin'},
     {label:'Ex-Plant Total',key:'exPlant',bold:true},
-    {label:'Transport',key:'transport'},
+    {label:'Transport to Site',key:'transport'},
     {label:'Laying & Compaction',key:'laying'},
-    {label:'Final Laid',key:'finalLaid',bold:true}
+    {label:'Final Laid Rate',key:'finalLaid',bold:true}
   ];
   var html = '<table class="rate-table"><thead><tr><th></th>';
   mixRates.forEach(function(r){ html += '<th>₹/MT</th><th>₹/CUM</th>'; });
@@ -855,8 +874,8 @@ function renderJobs(){
   jobs.forEach(function(j,i){
     var isGeo = j.basis==='GEOMETRY';
     html += '<tr>';
-    html += '<td><input value="'+j.id+'" onchange="jobs['+i+'].id=this.value" style="width:60px"></td>';
-    html += '<td><input value="'+(j.contractor||'')+'" onchange="jobs['+i+'].contractor=this.value.toUpperCase()" style="width:100px"></td>';
+    html += '<td><input value="'+j.id+'" oninput="jobs['+i+'].id=this.value" style="width:60px"></td>';
+    html += '<td><input value="'+(j.contractor||'')+'" oninput="jobs['+i+'].contractor=this.value.toUpperCase()" style="width:100px"></td>';
     html += '<td><select onchange="jobs['+i+'].mixIdx=parseInt(this.value);recalc()">';
     mixTypes.forEach(function(m,mi){
       html += '<option value="'+mi+'"'+(j.mixIdx===mi?' selected':'')+'>'+m.name+'</option>';
@@ -864,18 +883,18 @@ function renderJobs(){
     html += '</select></td>';
     html += '<td><select onchange="jobs['+i+'].basis=this.value;renderJobs();recalc()"><option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option><option value="BOQ"'+(!isGeo?' selected':'')+'>BOQ</option></select></td>';
     if(isGeo){
-      html += '<td><input type="number" value="'+j.length+'" onchange="jobs['+i+'].length=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
-      html += '<td><input type="number" value="'+j.width+'" onchange="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td><input type="number" value="'+j.thickness+'" onchange="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.length+'" oninput="jobs['+i+'].length=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
+      html += '<td><input type="number" value="'+j.width+'" oninput="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.thickness+'" oninput="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
       html += '<td style="color:var(--gray-400)">—</td>';
     } else {
       html += '<td class="calc-cell" id="jobLen_'+i+'">—</td>';
-      html += '<td><input type="number" value="'+j.width+'" onchange="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td><input type="number" value="'+j.thickness+'" onchange="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td><input type="number" value="'+j.volume+'" onchange="jobs['+i+'].volume=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
+      html += '<td><input type="number" value="'+j.width+'" oninput="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.thickness+'" oninput="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
+      html += '<td><input type="number" value="'+j.volume+'" oninput="jobs['+i+'].volume=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
     }
-    html += '<td><input type="checkbox" '+(j.prime?'checked':'')+' onchange="jobs['+i+'].prime=this.checked;recalc()"></td>';
-    html += '<td><input type="checkbox" '+(j.tack?'checked':'')+' onchange="jobs['+i+'].tack=this.checked;recalc()"></td>';
+    html += '<td><input type="checkbox" '+(j.prime?'checked':'')+' oninput="jobs['+i+'].prime=this.checked;recalc()"></td>';
+    html += '<td><input type="checkbox" '+(j.tack?'checked':'')+' oninput="jobs['+i+'].tack=this.checked;recalc()"></td>';
     html += '<td class="calc-cell" id="jobCum_'+i+'"></td>';
     html += '<td class="calc-cell" id="jobArea_'+i+'"></td>';
     html += '<td class="calc-cell" id="jobMT_'+i+'"></td>';
