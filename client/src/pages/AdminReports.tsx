@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar, Download, Printer, ChevronDown, ChevronRight, FileSpreadsheet, Truck } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar, Download, Printer, ChevronDown, ChevronRight, FileSpreadsheet, Truck, Calculator } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, parseISO, eachDayOfInterval, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { PinAuth } from "@/components/PinAuth";
@@ -62,6 +63,7 @@ export default function AdminReports() {
   const [, setLocation] = useLocation();
   const [showPinAuth, setShowPinAuth] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState("reports");
   const printRef = useRef<HTMLDivElement>(null);
   
   const [dateFrom, setDateFrom] = useState("");
@@ -490,17 +492,39 @@ export default function AdminReports() {
           </div>
         </div>
         
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="button-export-excel">
-            <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
-          </Button>
-          <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
-            <Printer className="w-4 h-4" />
-            Print
-          </Button>
-        </div>
+        {activeTab === "reports" && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="button-export-excel">
+              <FileSpreadsheet className="w-4 h-4" />
+              Export Excel
+            </Button>
+            <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
+              <Printer className="w-4 h-4" />
+              Print
+            </Button>
+          </div>
+        )}
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="print:hidden">
+          <TabsTrigger value="reports" data-testid="tab-site-reports">Site Reports</TabsTrigger>
+          <TabsTrigger value="mix-calculator" data-testid="tab-mix-calculator">
+            <Calculator className="w-4 h-4 mr-1" />
+            Mix Rate Calculator
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="mix-calculator" className="mt-4">
+          <iframe
+            src="/mix-calculator"
+            style={{ width: '100%', height: 'calc(100vh - 160px)', border: 'none', borderRadius: '8px' }}
+            title="Mix Rate Calculator"
+            data-testid="iframe-mix-calculator"
+          />
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-4 space-y-6">
 
       <div className="hidden print:block mb-6 border-b pb-4">
         <h1 className="text-2xl font-bold mb-2">High Lane Constructions Pvt Ltd - Admin Report</h1>
@@ -865,6 +889,9 @@ export default function AdminReports() {
           .print\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         }
       `}</style>
+
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
