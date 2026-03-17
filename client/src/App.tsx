@@ -38,6 +38,7 @@ import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
 import MixEstimates from "@/pages/MixEstimates";
 import MixImpact from "@/pages/MixImpact";
+import MixComparativeReport from "@/pages/MixComparativeReport";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -112,6 +113,7 @@ function Router() {
             <Route path="/admin/reports" component={AdminReports} />
             <Route path="/admin/mix-estimates" component={MixEstimates} />
             <Route path="/admin/mix-impact" component={MixImpact} />
+            <Route path="/admin/mix-comparison" component={MixComparativeReport} />
             <Route component={NotFound} />
           </Switch>
         </div>
