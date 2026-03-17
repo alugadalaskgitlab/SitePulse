@@ -6930,29 +6930,22 @@ export class DatabaseStorage implements IStorage {
   // ====== MIX ESTIMATES ======
 
   async fixNullContractorLabels(): Promise<{ updated: number }> {
-    const rows = await db.select({ id: mixEstimates.id, state: mixEstimates.state })
-      .from(mixEstimates)
-      .where(isNull(mixEstimates.contractor));
-    let updated = 0;
-    for (const row of rows) {
-      try {
-        const state = JSON.parse(row.state);
-        const contractorName = (state?.jobs?.[0]?.contractor as string | undefined)?.trim() || null;
-        if (contractorName) {
-          await db.update(mixEstimates)
-            .set({ contractor: contractorName })
-            .where(eq(mixEstimates.id, row.id));
-          updated++;
-        }
-      } catch { /* skip invalid state */ }
-    }
-    return { updated };
+    const result = await db.execute(sql`
+      UPDATE mix_estimates
+      SET contractor = TRIM(state::jsonb->'jobs'->0->>'contractor')
+      WHERE contractor IS NULL
+        AND TRIM(state::jsonb->'jobs'->0->>'contractor') IS NOT NULL
+        AND TRIM(state::jsonb->'jobs'->0->>'contractor') <> ''
+    `);
+    return { updated: result.rowCount ?? 0 };
   }
 
   async renameContractor(from: string, to: string): Promise<number> {
-    const result = await db.update(mixEstimates)
-      .set({ contractor: to.trim().toUpperCase() })
-      .where(eq(mixEstimates.contractor, from.trim().toUpperCase()));
+    const result = await db.execute(sql`
+      UPDATE mix_estimates
+      SET contractor = UPPER(TRIM(${to}))
+      WHERE UPPER(TRIM(contractor)) = UPPER(TRIM(${from}))
+    `);
     return result.rowCount ?? 0;
   }
 

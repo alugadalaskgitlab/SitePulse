@@ -3464,9 +3464,7 @@ async function seedDatabase() {
 
   try {
     const contractorLabelResult = await storage.fixNullContractorLabels();
-    if (contractorLabelResult.updated > 0) {
-      console.log(`Startup: Fixed ${contractorLabelResult.updated} mix estimate(s) with missing contractor label`);
-    }
+    console.log(`Startup: Fix null contractor labels - updated: ${contractorLabelResult.updated}`);
   } catch (err) {
     console.error("Startup: Failed to fix null contractor labels:", err);
   }
