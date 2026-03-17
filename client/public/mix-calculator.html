@@ -60,18 +60,26 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .cost-legend span::before{content:'';width:10px;height:10px;border-radius:2px;display:inline-block;background:var(--swatch-color)}
 .breakdown-toggle{font-size:12px;color:var(--amber);cursor:pointer;font-weight:600;margin-top:12px;display:flex;align-items:center;gap:4px}
 .full-width{max-width:1600px;margin:0 auto;padding:0 16px 40px}
-.job-table-wrap{overflow-x:auto}
-table.job-table{width:100%;border-collapse:collapse;font-size:13px;min-width:1200px}
-table.job-table th{background:var(--gray-50);padding:8px 6px;text-align:left;font-size:12px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:2px solid var(--gray-200);white-space:nowrap}
-table.job-table td{padding:6px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
-table.job-table input,table.job-table select{padding:4px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:13px;width:100%;min-width:50px}
-.job-header-row{background:var(--amber-bg);border-left:3px solid var(--amber)}
-.job-header-row td{font-weight:600;padding:8px 6px}
-.job-mix-row{border-left:3px solid var(--amber-border)}
-.job-mix-row td{padding:5px 6px}
-.job-subtotal-row td{font-weight:700;border-top:1px solid var(--amber);background:var(--gray-50);padding:6px}
-table.job-table .calc-cell{background:var(--amber-bg);font-weight:600;text-align:right;white-space:nowrap}
-table.job-table tr.totals-row td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg)}
+.job-cards-container{display:flex;flex-direction:column;gap:12px}
+.job-card{background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;border-left:4px solid var(--amber)}
+.job-card-header{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;background:var(--amber-bg);border-bottom:1px solid var(--amber-border)}
+.job-card-header input,.job-card-header select{padding:4px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:13px;outline:none}
+.job-card-header input:focus,.job-card-header select:focus{border-color:var(--amber);box-shadow:0 0 0 2px rgba(217,119,6,.15)}
+.job-card-header .jc-label{font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase;margin-right:2px}
+.job-card-header .jc-group{display:flex;align-items:center;gap:3px}
+.job-card-header .jc-derived{font-size:12px;font-weight:600;color:var(--amber);background:rgba(217,119,6,.1);padding:2px 8px;border-radius:4px}
+.job-card-body{padding:0}
+.job-card-body table{width:100%;border-collapse:collapse;font-size:13px}
+.job-card-body th{background:var(--gray-50);padding:6px 8px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:1px solid var(--gray-200);white-space:nowrap}
+.job-card-body th:first-child{text-align:left}
+.job-card-body td{padding:5px 8px;border-bottom:1px solid var(--gray-100);text-align:right;vertical-align:middle}
+.job-card-body td:first-child{text-align:left}
+.job-card-body .jc-calc{background:var(--amber-bg);font-weight:600;white-space:nowrap}
+.job-card-body input,.job-card-body select{padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:13px}
+.job-card-body tr.jc-subtotal td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg);font-size:12px}
+.job-totals-bar{background:var(--amber-bg);border:2px solid var(--amber);border-radius:var(--radius);padding:10px 14px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:13px;font-weight:700}
+.job-totals-bar .jt-label{color:var(--gray-500);font-size:11px;text-transform:uppercase;font-weight:600}
+.job-totals-bar .jt-value{color:var(--gray-800)}
 .procurement-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 table.proc-table{width:100%;border-collapse:collapse;font-size:13px}
 table.proc-table th{background:var(--gray-50);padding:8px 6px;text-align:left;font-size:12px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:2px solid var(--gray-200)}
@@ -114,7 +122,10 @@ body{font-size:11px;background:#fff}
 .rate-panel{box-shadow:none;border:1px solid #ddd}
 .rate-panel h2{font-size:14px}
 #fullBreakdown{display:block!important}
-table.job-table{font-size:9px;min-width:auto}
+.job-card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
+.job-card-header{padding:6px 10px;font-size:11px}
+.job-card-body table{font-size:9px}
+.job-totals-bar{border:1px solid #ddd;font-size:10px;padding:6px 10px}
 .full-width{padding:0}
 .top-bar{position:static;border-bottom:2px solid #d97706;box-shadow:none;padding:8px 16px}
 .top-bar h1{font-size:16px}
@@ -350,31 +361,8 @@ table.job-table{font-size:9px;min-width:auto}
   </div>
   <div class="card-body open">
     <button class="btn btn-primary btn-sm" onclick="addJob()" style="margin-bottom:12px">+ Add Job</button>
-    <div class="job-table-wrap">
-      <table class="job-table" id="jobTable">
-        <thead>
-          <tr>
-            <th>Job / Mix</th><th>Contractor</th><th>Basis</th>
-            <th>Length(m)</th><th>Width(m)</th><th>Thick(mm)</th><th>Vol(CUM)</th>
-            <th>Prime</th><th>Tack</th>
-            <th style="background:var(--amber-bg)">MT</th>
-            <th style="background:var(--amber-bg)">Plant ₹/MT</th>
-            <th style="background:var(--amber-bg)">Plant ₹/CUM</th>
-            <th style="background:var(--amber-bg)">Plant Amt</th>
-            <th style="background:var(--amber-bg)">Trans ₹/MT</th>
-            <th style="background:var(--amber-bg)">Trans Amt</th>
-            <th style="background:var(--amber-bg)">Lay ₹/MT</th>
-            <th style="background:var(--amber-bg)">Lay Amt</th>
-            <th style="background:var(--amber-bg)">Prime ₹</th>
-            <th style="background:var(--amber-bg)">Tack ₹</th>
-            <th style="background:var(--amber-bg)">Total ₹</th>
-            <th class="no-print"></th>
-          </tr>
-        </thead>
-        <tbody id="jobTableBody"></tbody>
-        <tfoot id="jobTableFoot"></tfoot>
-      </table>
-    </div>
+    <div class="job-cards-container" id="jobCardsContainer"></div>
+    <div id="jobTotalsContainer" style="margin-top:12px"></div>
     <div id="contractorSummary"></div>
   </div>
 </div>
@@ -915,84 +903,100 @@ function removeJobMix(ji, mi){
   renderJobs();
   recalc();
 }
-var COL_COUNT = 20;
 function renderJobs(){
-  var tbody = document.getElementById('jobTableBody');
+  var container = document.getElementById('jobCardsContainer');
   var html = '';
   jobs.forEach(function(j,i){
     var isGeo = j.basis==='GEOMETRY';
     var mixCount = j.mixes.length;
-    html += '<tr class="job-header-row">';
-    html += '<td><input value="'+j.id+'" oninput="jobs['+i+'].id=this.value" style="width:60px;font-weight:600"></td>';
-    html += '<td><input value="'+(j.contractor||'')+'" oninput="jobs['+i+'].contractor=this.value.toUpperCase()" style="width:110px" placeholder="Contractor"></td>';
-    html += '<td><select onchange="jobs['+i+'].basis=this.value;renderJobs();recalc()"><option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option><option value="BOQ"'+(!isGeo?' selected':'')+'>BOQ</option></select></td>';
+
+    html += '<div class="job-card">';
+
+    html += '<div class="job-card-header">';
+    html += '<div class="jc-group"><span class="jc-label">Job</span><input value="'+j.id+'" oninput="jobs['+i+'].id=this.value" style="width:55px;font-weight:700"></div>';
+    html += '<div class="jc-group"><span class="jc-label">Contractor</span><input value="'+(j.contractor||'')+'" oninput="jobs['+i+'].contractor=this.value.toUpperCase()" style="width:100px" placeholder="Name"></div>';
+    html += '<div class="jc-group"><span class="jc-label">Basis</span><select onchange="jobs['+i+'].basis=this.value;renderJobs();recalc()"><option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option><option value="BOQ"'+(!isGeo?' selected':'')+'>BOQ</option></select></div>';
+
     if(isGeo){
-      html += '<td><input type="number" value="'+j.length+'" oninput="jobs['+i+'].length=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
-      html += '<td><input type="number" value="'+j.width+'" oninput="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td><input type="number" value="'+j.thickness+'" oninput="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td style="color:var(--gray-400)">—</td>';
+      html += '<div class="jc-group"><span class="jc-label">L(m)</span><input type="number" value="'+j.length+'" oninput="jobs['+i+'].length=parseFloat(this.value)||0;recalc()" style="width:65px"></div>';
+      html += '<div class="jc-group"><span class="jc-label">W(m)</span><input type="number" value="'+j.width+'" oninput="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
+      html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+j.thickness+'" oninput="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
     } else {
-      html += '<td class="calc-cell" id="jobLen_'+i+'">—</td>';
-      html += '<td><input type="number" value="'+j.width+'" oninput="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td><input type="number" value="'+j.thickness+'" oninput="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:60px"></td>';
-      html += '<td><input type="number" value="'+j.volume+'" oninput="jobs['+i+'].volume=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
+      html += '<div class="jc-group"><span class="jc-label">L(m)</span><span class="jc-derived" id="jobLen_'+i+'" style="min-width:40px;text-align:center">—</span></div>';
+      html += '<div class="jc-group"><span class="jc-label">W(m)</span><input type="number" value="'+j.width+'" oninput="jobs['+i+'].width=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
+      html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+j.thickness+'" oninput="jobs['+i+'].thickness=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
+      html += '<div class="jc-group"><span class="jc-label">Vol(CUM)</span><input type="number" value="'+j.volume+'" oninput="jobs['+i+'].volume=parseFloat(this.value)||0;recalc()" style="width:65px"></div>';
     }
-    html += '<td><input type="checkbox" '+(j.prime?'checked':'')+' oninput="jobs['+i+'].prime=this.checked;recalc()"></td>';
-    html += '<td><input type="checkbox" '+(j.tack?'checked':'')+' oninput="jobs['+i+'].tack=this.checked;recalc()"></td>';
-    html += '<td colspan="10" style="text-align:right">';
-    html += '<span class="calc-cell" id="jobArea_'+i+'" style="margin-right:12px;padding:2px 6px;border-radius:4px"></span>';
-    html += '<button class="btn btn-secondary btn-sm" onclick="addJobMix('+i+')" style="margin-right:4px">+ Mix</button>';
-    html += '</td>';
-    html += '<td class="calc-cell" id="jobTotal_'+i+'" style="font-weight:700"></td>';
-    html += '<td class="no-print"><button class="btn btn-danger btn-sm" onclick="removeJob('+i+')">×</button></td>';
-    html += '</tr>';
+
+    html += '<label class="checkbox-label"><input type="checkbox" '+(j.prime?'checked':'')+' oninput="jobs['+i+'].prime=this.checked;recalc()"> Prime</label>';
+    html += '<label class="checkbox-label"><input type="checkbox" '+(j.tack?'checked':'')+' oninput="jobs['+i+'].tack=this.checked;recalc()"> Tack</label>';
+    html += '<span class="jc-derived" id="jobArea_'+i+'"></span>';
+    html += '<div style="margin-left:auto;display:flex;gap:4px;align-items:center">';
+    html += '<span class="jc-derived" id="jobTotal_'+i+'" style="font-weight:700"></span>';
+    html += '<button class="btn btn-secondary btn-sm no-print" onclick="addJobMix('+i+')">+ Mix</button>';
+    html += '<button class="btn btn-danger btn-sm no-print" onclick="removeJob('+i+')" style="padding:4px 8px">×</button>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '<div class="job-card-body"><table><thead><tr>';
+    html += '<th style="text-align:left">Mix</th><th>MT</th>';
+    html += '<th>Plant ₹/MT</th><th>Plant ₹/CUM</th><th>Plant Amt</th>';
+    html += '<th>Trans ₹/MT</th><th>Trans Amt</th>';
+    html += '<th>Lay ₹/MT</th><th>Lay Amt</th>';
+    html += '<th>Prime ₹</th><th>Tack ₹</th>';
+    html += '<th>Total ₹</th>';
+    html += '<th class="no-print" style="width:30px"></th>';
+    html += '</tr></thead><tbody>';
 
     j.mixes.forEach(function(mx, mi){
-      html += '<tr class="job-mix-row">';
-      html += '<td style="padding-left:20px;color:var(--gray-500);font-size:12px">↳</td>';
-      html += '<td><select onchange="jobs['+i+'].mixes['+mi+'].mixIdx=parseInt(this.value);recalc()" style="width:90px">';
+      var autoCum = isGeo ? (j.length * j.width * (j.thickness/1000)) : (j.volume || 0);
+      var autoMix = mixTypes[mx.mixIdx] || mixTypes[0];
+      var autoMT = isGeo ? (autoCum * autoMix.density) : 0;
+      var mtPlaceholder = isGeo ? autoMT.toFixed(1) : 'MT';
+      var hasMT = mx.qty_mt!=null && mx.qty_mt>0;
+
+      html += '<tr>';
+      html += '<td style="text-align:left"><select onchange="jobs['+i+'].mixes['+mi+'].mixIdx=parseInt(this.value);renderJobs();recalc()" style="width:85px">';
       mixTypes.forEach(function(m, mti){
         html += '<option value="'+mti+'"'+(mx.mixIdx===mti?' selected':'')+'>'+m.name+'</option>';
       });
       html += '</select></td>';
-      html += '<td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
-      var autoCum = isGeo ? (j.length * j.width * (j.thickness/1000)) : (j.volume || 0);
-      var autoMix = mixTypes[mx.mixIdx] || mixTypes[0];
-      var autoMT = isGeo ? (autoCum * autoMix.density) : 0;
-      var mtPlaceholder = isGeo ? autoMT.toFixed(1)+' (auto)' : 'MT';
-      html += '<td><input type="number" value="'+(mx.qty_mt!=null&&mx.qty_mt>0?mx.qty_mt:'')+'" placeholder="'+mtPlaceholder+'" oninput="var v=parseFloat(this.value);jobs['+i+'].mixes['+mi+'].qty_mt=(isNaN(v)||v<=0?null:v);recalc()" style="width:80px;color:'+(mx.qty_mt!=null&&mx.qty_mt>0?'inherit':'var(--amber)')+'"></td>';
-      html += '<td class="calc-cell" id="jmPlantRate_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmPlantCum_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmPlantAmt_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmTransRate_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmTransAmt_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmLayRate_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmLayAmt_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmPrime_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmTack_'+i+'_'+mi+'"></td>';
-      html += '<td class="calc-cell" id="jmTotal_'+i+'_'+mi+'" style="font-weight:600"></td>';
+      html += '<td><input type="number" value="'+(hasMT?mx.qty_mt:'')+'" placeholder="'+mtPlaceholder+'" oninput="var v=parseFloat(this.value);jobs['+i+'].mixes['+mi+'].qty_mt=(isNaN(v)||v<=0?null:v);recalc()" style="width:75px;text-align:right;color:'+(hasMT?'inherit':'var(--amber)')+'"></td>';
+      html += '<td class="jc-calc" id="jmPlantRate_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmPlantCum_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmPlantAmt_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmTransRate_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmTransAmt_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmLayRate_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmLayAmt_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmPrime_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmTack_'+i+'_'+mi+'"></td>';
+      html += '<td class="jc-calc" id="jmTotal_'+i+'_'+mi+'" style="font-weight:700"></td>';
       html += '<td class="no-print">'+(mixCount>1?'<button class="btn btn-danger btn-sm" onclick="removeJobMix('+i+','+mi+')" style="padding:2px 6px;font-size:11px">×</button>':'')+'</td>';
       html += '</tr>';
     });
 
     if(mixCount > 1){
-      html += '<tr class="job-subtotal-row">';
-      html += '<td colspan="9" style="text-align:right;font-size:12px">Subtotal — '+(j.contractor||j.id)+'</td>';
-      html += '<td class="calc-cell" id="jSubMT_'+i+'"></td>';
-      html += '<td class="calc-cell"></td><td class="calc-cell"></td>';
-      html += '<td class="calc-cell" id="jSubPlant_'+i+'"></td>';
-      html += '<td class="calc-cell"></td>';
-      html += '<td class="calc-cell" id="jSubTrans_'+i+'"></td>';
-      html += '<td class="calc-cell"></td>';
-      html += '<td class="calc-cell" id="jSubLay_'+i+'"></td>';
-      html += '<td class="calc-cell" id="jSubPrime_'+i+'"></td>';
-      html += '<td class="calc-cell" id="jSubTack_'+i+'"></td>';
-      html += '<td class="calc-cell" id="jSubTotal_'+i+'" style="font-weight:700"></td>';
+      html += '<tr class="jc-subtotal">';
+      html += '<td style="text-align:left">Subtotal</td>';
+      html += '<td id="jSubMT_'+i+'"></td>';
+      html += '<td></td><td></td>';
+      html += '<td id="jSubPlant_'+i+'"></td>';
+      html += '<td></td>';
+      html += '<td id="jSubTrans_'+i+'"></td>';
+      html += '<td></td>';
+      html += '<td id="jSubLay_'+i+'"></td>';
+      html += '<td id="jSubPrime_'+i+'"></td>';
+      html += '<td id="jSubTack_'+i+'"></td>';
+      html += '<td id="jSubTotal_'+i+'" style="font-weight:700"></td>';
       html += '<td class="no-print"></td>';
       html += '</tr>';
     }
+
+    html += '</tbody></table></div>';
+    html += '</div>';
   });
-  tbody.innerHTML = html;
+  container.innerHTML = html;
 }
 
 function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
@@ -1027,7 +1031,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
       var mr = mixRates[mx.mixIdx] || mixRates[0];
       if(!mr) return;
       var mix = mixTypes[mx.mixIdx] || mixTypes[0];
-      var mt = (mx.qty_mt != null && mx.qty_mt > 0) ? mx.qty_mt : (isGeo ? cum * mix.density : 0);
+      var mt = (mx.qty_mt != null && mx.qty_mt > 0) ? mx.qty_mt : (isGeo && cum > 0 && mix.density > 0 ? cum * mix.density : 0);
       var plantAmt = mt * mr.exPlant;
       var transAmt = mt * transPerMT;
       var layAmt = mt * layPerMT;
@@ -1075,26 +1079,21 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
     totals.lay+=jobLay; totals.prime+=primeAmt; totals.tack+=tackAmt; totals.total+=jobTotal;
   });
 
-  var foot = document.getElementById('jobTableFoot');
+  var totalsDiv = document.getElementById('jobTotalsContainer');
   if(jobs.length>0){
-    var html = '<tr class="totals-row">';
-    html += '<td colspan="3" style="text-align:right;font-weight:700">TOTALS</td>';
-    html += '<td></td><td></td><td></td><td></td><td></td><td></td>';
-    html += '<td class="calc-cell">'+totals.mt.toFixed(1)+'</td>';
-    html += '<td class="calc-cell"></td><td class="calc-cell"></td>';
-    html += '<td class="calc-cell">'+fmtI(Math.round(totals.plant))+'</td>';
-    html += '<td class="calc-cell"></td>';
-    html += '<td class="calc-cell">'+fmtI(Math.round(totals.trans))+'</td>';
-    html += '<td class="calc-cell"></td>';
-    html += '<td class="calc-cell">'+fmtI(Math.round(totals.lay))+'</td>';
-    html += '<td class="calc-cell">'+fmtI(Math.round(totals.prime))+'</td>';
-    html += '<td class="calc-cell">'+fmtI(Math.round(totals.tack))+'</td>';
-    html += '<td class="calc-cell" style="font-weight:700">'+fmtI(Math.round(totals.total))+'</td>';
-    html += '<td class="no-print"></td>';
-    html += '</tr>';
-    foot.innerHTML = html;
+    var html = '<div class="job-totals-bar">';
+    html += '<span style="font-size:13px;color:var(--amber)">TOTALS</span>';
+    html += '<span><span class="jt-label">MT</span> <span class="jt-value">'+totals.mt.toFixed(1)+'</span></span>';
+    html += '<span><span class="jt-label">Plant</span> <span class="jt-value">₹'+fmtI(Math.round(totals.plant))+'</span></span>';
+    html += '<span><span class="jt-label">Trans</span> <span class="jt-value">₹'+fmtI(Math.round(totals.trans))+'</span></span>';
+    html += '<span><span class="jt-label">Lay</span> <span class="jt-value">₹'+fmtI(Math.round(totals.lay))+'</span></span>';
+    html += '<span><span class="jt-label">Prime</span> <span class="jt-value">₹'+fmtI(Math.round(totals.prime))+'</span></span>';
+    html += '<span><span class="jt-label">Tack</span> <span class="jt-value">₹'+fmtI(Math.round(totals.tack))+'</span></span>';
+    html += '<span style="margin-left:auto;font-size:15px;color:var(--amber)">Total: ₹'+fmtI(Math.round(totals.total))+'</span>';
+    html += '</div>';
+    totalsDiv.innerHTML = html;
   } else {
-    foot.innerHTML = '';
+    totalsDiv.innerHTML = '';
   }
 
   renderContractorSummary(mixRates);
