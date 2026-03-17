@@ -5,17 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronLeft, Download, Printer, BarChart3 } from "lucide-react";
 import type { MixEstimate } from "@shared/schema";
-import { buildMixComparisonData } from "@/lib/mixComparisonData";
+import { buildMixComparisonData, type ComparisonData } from "@/lib/mixComparisonData";
 
 function fmt0(v: number) { return v > 0 ? Math.round(v).toLocaleString("en-IN") : "—"; }
 function fmt2(v: number) { return v > 0 ? v.toFixed(2) : "—"; }
 
-async function exportToExcel(
-  allMixNames: string[],
-  contractors: string[],
-  rateMap: ReturnType<typeof buildMixComparisonData>["rateMap"],
-  ledgerRows: ReturnType<typeof buildMixComparisonData>["ledgerRows"]
-) {
+async function doExport(data: ComparisonData) {
+  const { allMixNames, contractors, rateMap, ledgerRows } = data;
   const XLSX = await import("xlsx");
 
   const rateHeaders = ["Mix Type", ...contractors];
@@ -26,7 +22,6 @@ async function exportToExcel(
       return r ? r.finalLaid.toFixed(2) : "";
     }),
   ]);
-  const rateSheet = XLSX.utils.aoa_to_sheet([rateHeaders, ...rateRows]);
 
   const ledgerHeaders = [
     "Contractor", "Estimate", "Job", "Area (Sqm)", "MT",
@@ -35,88 +30,52 @@ async function exportToExcel(
   const ledgerData = ledgerRows.map((r) => [
     r.contractor, r.estimateName, r.jobId,
     r.areaSqm > 0 ? r.areaSqm.toFixed(1) : "",
-    r.mt.toFixed(1),
-    r.plantPerMt.toFixed(2), r.transPerMt.toFixed(2),
-    r.layPerMt.toFixed(2), r.totalPerMt.toFixed(2),
-    Math.round(r.totalAmt).toString(),
+    r.mt > 0 ? r.mt.toFixed(1) : "",
+    r.plantPerMt > 0 ? r.plantPerMt.toFixed(2) : "",
+    r.transPerMt > 0 ? r.transPerMt.toFixed(2) : "",
+    r.layPerMt > 0 ? r.layPerMt.toFixed(2) : "",
+    r.totalPerMt > 0 ? r.totalPerMt.toFixed(2) : "",
+    r.totalAmt > 0 ? Math.round(r.totalAmt).toString() : "",
   ]);
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, rateSheet, "Rate Comparison");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([rateHeaders, ...rateRows]), "Rate Comparison");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ledgerHeaders, ...ledgerData]), "Job Ledger");
   XLSX.writeFile(wb, `Comparative_Rate_Statement_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-export default function MixComparativeReport() {
-  const { data: estimates = [], isLoading } = useQuery<MixEstimate[]>({
-    queryKey: ["/api/mix-estimates"],
-  });
+interface ContentProps {
+  data: ComparisonData;
+  printable?: boolean;
+}
 
-  const { contractors, allMixNames, rateMap, ledgerRows } = useMemo(
-    () => buildMixComparisonData(estimates),
-    [estimates]
-  );
+export function MixComparisonContent({ data, printable = false }: ContentProps) {
+  const { contractors, allMixNames, rateMap, ledgerRows } = data;
 
   const grandTotals = useMemo(
     () => ledgerRows.reduce((s, r) => ({ mt: s.mt + r.mt, amt: s.amt + r.totalAmt }), { mt: 0, amt: 0 }),
     [ledgerRows]
   );
 
-  if (isLoading) {
-    return <div className="text-center py-20 text-muted-foreground">Loading estimates…</div>;
-  }
-
-  if (estimates.length === 0) {
-    return (
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
-        <Link href="/admin/mix-estimates">
-          <Button variant="ghost" size="sm"><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
-        </Link>
-        <div className="text-center py-20 text-muted-foreground">
-          <BarChart3 className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="font-medium">No estimates to compare</p>
-          <p className="text-sm mt-1">Save estimates in the Mix Calculator to see a comparison here.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between no-print">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/mix-estimates">
-            <Button variant="ghost" size="sm" data-testid="btn-back">
-              <ChevronLeft className="w-4 h-4 mr-1" /> Estimates
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-primary" /> Contractor Comparative Rate Statement
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {contractors.length} contractor{contractors.length !== 1 ? "s" : ""} · {estimates.length} estimate{estimates.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportToExcel(allMixNames, contractors, rateMap, ledgerRows)}
-            data-testid="btn-export-excel"
-          >
-            <Download className="w-4 h-4 mr-1" /> Export Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print">
-            <Printer className="w-4 h-4 mr-1" /> Print
-          </Button>
-        </div>
-      </div>
-
-      <div className="hidden print:block mb-2 text-center">
-        <h2 className="text-lg font-bold">Contractor Comparative Rate Statement</h2>
-        <p className="text-sm text-gray-500">{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</p>
+    <div className="space-y-6">
+      <div className={`flex items-center gap-2 ${printable ? "no-print" : ""}`}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => doExport(data)}
+          data-testid="btn-export-excel"
+        >
+          <Download className="w-4 h-4 mr-1" /> Export Excel
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print">
+          <Printer className="w-4 h-4 mr-1" /> Print
+        </Button>
+        {printable && (
+          <span className="text-xs text-muted-foreground ml-2">
+            {contractors.length} contractor{contractors.length !== 1 ? "s" : ""} · {ledgerRows.length} job{ledgerRows.length !== 1 ? "s" : ""}
+          </span>
+        )}
       </div>
 
       {/* Section 1: Rate Comparison */}
@@ -259,6 +218,58 @@ export default function MixComparativeReport() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export default function MixComparativeReport() {
+  const { data: estimates = [], isLoading } = useQuery<MixEstimate[]>({
+    queryKey: ["/api/mix-estimates"],
+  });
+
+  const comparisonData = useMemo(() => buildMixComparisonData(estimates), [estimates]);
+
+  if (isLoading) {
+    return <div className="text-center py-20 text-muted-foreground">Loading estimates…</div>;
+  }
+
+  if (estimates.length === 0) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
+        <Link href="/admin/mix-estimates">
+          <Button variant="ghost" size="sm"><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
+        </Link>
+        <div className="text-center py-20 text-muted-foreground">
+          <BarChart3 className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+          <p className="font-medium">No estimates to compare</p>
+          <p className="text-sm mt-1">Save estimates in the Mix Calculator to see a comparison here.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      <div className="flex items-center gap-3 no-print">
+        <Link href="/admin/mix-estimates">
+          <Button variant="ghost" size="sm" data-testid="btn-back">
+            <ChevronLeft className="w-4 h-4 mr-1" /> Estimates
+          </Button>
+        </Link>
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-primary" /> Contractor Comparative Rate Statement
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {comparisonData.contractors.length} contractor{comparisonData.contractors.length !== 1 ? "s" : ""} · {estimates.length} estimate{estimates.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+      </div>
+      <div className="hidden print:block mb-2 text-center">
+        <h2 className="text-lg font-bold">Contractor Comparative Rate Statement</h2>
+        <p className="text-sm text-gray-500">{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</p>
+      </div>
+      <MixComparisonContent data={comparisonData} printable />
     </div>
   );
 }

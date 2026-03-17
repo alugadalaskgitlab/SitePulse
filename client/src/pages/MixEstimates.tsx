@@ -1,13 +1,16 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChevronLeft, ChevronRight, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate } from "@shared/schema";
+import { buildMixComparisonData } from "@/lib/mixComparisonData";
+import { MixComparisonContent } from "./MixComparativeReport";
 
 function fmtAmt(v: number | null | undefined) {
   if (!v) return "—";
@@ -30,6 +33,7 @@ export default function MixEstimates({ embedded = false }: Props) {
   const [collapsedContractors, setCollapsedContractors] = useState<Record<string, boolean>>({});
   const [editingContractor, setEditingContractor] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [showComparison, setShowComparison] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const renameMutation = useMutation({
@@ -111,6 +115,8 @@ export default function MixEstimates({ embedded = false }: Props) {
     groups.push({ contractor: key, estimates: ests, latestId });
   });
 
+  const comparisonData = useMemo(() => buildMixComparisonData(estimates), [estimates]);
+
   // Latest estimate across all contractors (for "New Contractor" button)
   const globalLatestId = estimates[0]?.id;
 
@@ -149,11 +155,14 @@ export default function MixEstimates({ embedded = false }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {estimates.length >= 1 && (
-            <Link href="/admin/mix-comparison">
-              <Button variant="outline" size="sm" data-testid="btn-comparative-report">
-                Comparative Report <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowComparison(true)}
+              data-testid="btn-comparative-report"
+            >
+              Comparative Report <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
           )}
           {globalLatestId && (
             <a href={`/mix-calculator?clone=${globalLatestId}`}>
@@ -364,6 +373,17 @@ export default function MixEstimates({ embedded = false }: Props) {
           })}
         </div>
       )}
+
+      <Dialog open={showComparison} onOpenChange={setShowComparison}>
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              Contractor Comparative Rate Statement
+            </DialogTitle>
+          </DialogHeader>
+          <MixComparisonContent data={comparisonData} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
