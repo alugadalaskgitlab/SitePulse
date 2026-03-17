@@ -517,7 +517,7 @@ export default function AdminReports() {
 
         <TabsContent value="mix-calculator" className="mt-4">
           <iframe
-            src="/mix-calculator"
+            src="/mix-calculator?v=3"
             style={{ width: '100%', height: 'calc(100vh - 160px)', border: 'none', borderRadius: '8px' }}
             title="Mix Rate Calculator"
             data-testid="iframe-mix-calculator"
