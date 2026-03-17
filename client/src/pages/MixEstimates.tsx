@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronLeft, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate } from "@shared/schema";
@@ -28,6 +28,33 @@ interface Props {
 export default function MixEstimates({ embedded = false }: Props) {
   const { toast } = useToast();
   const [collapsedContractors, setCollapsedContractors] = useState<Record<string, boolean>>({});
+  const [editingContractor, setEditingContractor] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  const renameMutation = useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) =>
+      apiRequest("PATCH", "/api/mix-estimates/rename-contractor", { from, to }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mix-estimates"] });
+      toast({ title: "Contractor renamed" });
+      setEditingContractor(null);
+    },
+    onError: () => toast({ title: "Failed to rename contractor", variant: "destructive" }),
+  });
+
+  function startEdit(contractor: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingContractor(contractor);
+    setEditValue(contractor);
+    setTimeout(() => editInputRef.current?.focus(), 50);
+  }
+
+  function confirmRename(from: string) {
+    const to = editValue.trim().toUpperCase();
+    if (!to || to === from) { setEditingContractor(null); return; }
+    renameMutation.mutate({ from, to });
+  }
 
   const { data: estimates = [], isLoading } = useQuery<MixEstimate[]>({
     queryKey: ["/api/mix-estimates"],
@@ -176,16 +203,57 @@ export default function MixEstimates({ embedded = false }: Props) {
                 >
                   <div className="flex items-center gap-3">
                     <Building2 className="w-5 h-5 text-primary shrink-0" />
-                    <div>
-                      <span className="font-bold text-base text-foreground">{contractor}</span>
-                      <span className="ml-2 text-sm text-muted-foreground">
-                        {ests.length} site{ests.length !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    {totalMt > 0 && (
-                      <Badge variant="outline" className="text-xs ml-1">{totalMt.toFixed(0)} MT total</Badge>
+                    {editingContractor === contractor ? (
+                      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          ref={editInputRef}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") confirmRename(contractor);
+                            if (e.key === "Escape") setEditingContractor(null);
+                          }}
+                          className="border border-primary rounded px-2 py-0.5 text-sm font-bold w-40 focus:outline-none focus:ring-2 focus:ring-primary"
+                          data-testid={`input-rename-${contractor}`}
+                        />
+                        <button
+                          onClick={() => confirmRename(contractor)}
+                          className="text-green-600 hover:text-green-700 p-0.5"
+                          title="Confirm rename"
+                          disabled={renameMutation.isPending}
+                          data-testid={`btn-confirm-rename-${contractor}`}
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditingContractor(null)}
+                          className="text-muted-foreground hover:text-foreground p-0.5"
+                          title="Cancel"
+                          data-testid={`btn-cancel-rename-${contractor}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-base text-foreground">{contractor}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {ests.length} site{ests.length !== 1 ? "s" : ""}
+                        </span>
+                        <button
+                          onClick={(e) => startEdit(contractor, e)}
+                          className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
+                          title="Rename contractor"
+                          data-testid={`btn-rename-${contractor}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
-                    {totalAmt > 0 && (
+                    {editingContractor !== contractor && totalMt > 0 && (
+                      <Badge variant="outline" className="text-xs">{totalMt.toFixed(0)} MT total</Badge>
+                    )}
+                    {editingContractor !== contractor && totalAmt > 0 && (
                       <Badge className="text-xs bg-green-600 text-white border-green-700">{fmtAmt(totalAmt)}</Badge>
                     )}
                   </div>

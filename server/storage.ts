@@ -392,6 +392,8 @@ export interface IStorage {
   createMixEstimate(data: InsertMixEstimate): Promise<MixEstimate>;
   updateMixEstimate(id: number, data: Partial<InsertMixEstimate>): Promise<MixEstimate | undefined>;
   deleteMixEstimate(id: number): Promise<boolean>;
+  fixNullContractorLabels(): Promise<{ updated: number }>;
+  renameContractor(from: string, to: string): Promise<number>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -6926,6 +6928,34 @@ export class DatabaseStorage implements IStorage {
     return duplicates;
   }
   // ====== MIX ESTIMATES ======
+
+  async fixNullContractorLabels(): Promise<{ updated: number }> {
+    const rows = await db.select({ id: mixEstimates.id, state: mixEstimates.state })
+      .from(mixEstimates)
+      .where(isNull(mixEstimates.contractor));
+    let updated = 0;
+    for (const row of rows) {
+      try {
+        const state = JSON.parse(row.state);
+        const contractorName = (state?.jobs?.[0]?.contractor as string | undefined)?.trim() || null;
+        if (contractorName) {
+          await db.update(mixEstimates)
+            .set({ contractor: contractorName })
+            .where(eq(mixEstimates.id, row.id));
+          updated++;
+        }
+      } catch { /* skip invalid state */ }
+    }
+    return { updated };
+  }
+
+  async renameContractor(from: string, to: string): Promise<number> {
+    const result = await db.update(mixEstimates)
+      .set({ contractor: to.trim().toUpperCase() })
+      .where(eq(mixEstimates.contractor, from.trim().toUpperCase()));
+    return result.rowCount ?? 0;
+  }
+
   async getMixEstimates(): Promise<MixEstimate[]> {
     return await db.select().from(mixEstimates).orderBy(desc(mixEstimates.updatedAt));
   }

@@ -3258,6 +3258,18 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/mix-estimates/rename-contractor", async (req, res) => {
+    try {
+      const { from, to } = req.body;
+      if (!from || !to) return res.status(400).json({ message: "from and to are required" });
+      const count = await storage.renameContractor(from, to);
+      res.json({ updated: count });
+    } catch (err) {
+      console.error("Error renaming contractor:", err);
+      res.status(500).json({ message: "Failed to rename contractor" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();
@@ -3448,5 +3460,14 @@ async function seedDatabase() {
     }
   } catch (err) {
     console.error("Startup: Failed to recalculate dispatch variances:", err);
+  }
+
+  try {
+    const contractorLabelResult = await storage.fixNullContractorLabels();
+    if (contractorLabelResult.updated > 0) {
+      console.log(`Startup: Fixed ${contractorLabelResult.updated} mix estimate(s) with missing contractor label`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to fix null contractor labels:", err);
   }
 }
