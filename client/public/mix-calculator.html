@@ -526,6 +526,7 @@ function resetState(){
 // ====== DATABASE SAVE / LOAD ======
 var currentEstimateId = null;
 var currentEstimateName = '';
+var _estimatesList = {};
 
 function getDbState(){
   var inputs = {};
@@ -554,8 +555,26 @@ function updateBadge(){
   else badge.style.display='none';
 }
 
+function autoEstimateName(){
+  var contractors = [];
+  var jobIds = [];
+  jobs.forEach(function(j){
+    if(j.contractor && contractors.indexOf(j.contractor) === -1) contractors.push(j.contractor);
+    if(j.id && jobIds.indexOf(j.id) === -1) jobIds.push(j.id);
+  });
+  var d = new Date();
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dateStr = String(d.getDate()).padStart(2,'0')+' '+months[d.getMonth()]+' '+d.getFullYear();
+  var parts = [];
+  if(contractors.length) parts.push(contractors.join(' / '));
+  else { var pn = (document.getElementById('projName').value||'').trim(); if(pn) parts.push(pn); }
+  if(jobIds.length) parts.push('J: '+jobIds.join(', '));
+  parts.push(dateStr);
+  return parts.join(' | ');
+}
+
 function saveToDb(){
-  var name = prompt('Estimate name:', currentEstimateName || (document.getElementById('projName').value||'Estimate'));
+  var name = prompt('Estimate name:', currentEstimateName || autoEstimateName());
   if(!name || !name.trim()) return;
   name = name.trim();
   var summary = getDbSummary();
@@ -584,7 +603,9 @@ function openSavedPanel(){
       }
       var html = '<table style="width:100%;border-collapse:collapse;font-size:13px">';
       html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:8px">Name</th><th style="text-align:right;padding:8px">MT</th><th style="text-align:right;padding:8px">Amount</th><th style="text-align:right;padding:8px">Updated</th><th style="padding:8px"></th></tr></thead><tbody>';
+      _estimatesList = {};
       list.forEach(function(est){
+        _estimatesList[est.id] = est;
         var d = est.updatedAt ? new Date(est.updatedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '';
         var isCurrent = est.id === currentEstimateId;
         html += '<tr style="border-bottom:1px solid var(--gray-100)'+(isCurrent?';background:var(--amber-bg)':'')+'">';
@@ -592,7 +613,7 @@ function openSavedPanel(){
         html += '<td style="padding:8px;text-align:right;color:var(--gray-600)">'+(est.totalMt?est.totalMt.toFixed(0)+' MT':'—')+'</td>';
         html += '<td style="padding:8px;text-align:right;color:var(--gray-600)">'+(est.totalAmt?'₹'+Math.round(est.totalAmt).toLocaleString('en-IN'):'—')+'</td>';
         html += '<td style="padding:8px;text-align:right;color:var(--gray-400);font-size:12px">'+d+'</td>';
-        html += '<td style="padding:8px;white-space:nowrap"><button onclick="loadFromDb('+JSON.stringify(est)+')" class="btn btn-secondary btn-sm" style="margin-right:4px">Load</button><button onclick="deleteEstimate('+est.id+',\''+esc(est.name)+'\')" class="btn btn-sm btn-danger">✕</button></td>';
+        html += '<td style="padding:8px;white-space:nowrap"><button onclick="loadFromDb(_estimatesList['+est.id+'])" class="btn btn-secondary btn-sm" style="margin-right:4px">Load</button><button onclick="deleteEstimate('+est.id+',\''+esc(est.name)+'\')" class="btn btn-sm btn-danger">✕</button></td>';
         html += '</tr>';
       });
       html += '</tbody></table>';
