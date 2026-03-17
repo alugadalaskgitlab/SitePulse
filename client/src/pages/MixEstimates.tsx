@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical, BarChart3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate } from "@shared/schema";
@@ -151,7 +151,7 @@ export default function MixEstimates({ embedded = false }: Props) {
           {estimates.length >= 1 && (
             <Link href="/admin/mix-comparison">
               <Button variant="outline" size="sm" data-testid="btn-comparative-report">
-                <BarChart3 className="w-4 h-4 mr-1" /> Comparative Report
+                Comparative Report <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </Link>
           )}
