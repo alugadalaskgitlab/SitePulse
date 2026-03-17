@@ -42,12 +42,12 @@ function latestUpdatedAt(ests: MixEstimate[]): number {
   );
 }
 
-function pickPrimary(ests: MixEstimate[]): MixEstimate {
-  return ests.reduce((best, e) => {
-    const bt = best.updatedAt ? new Date(best.updatedAt).getTime() : 0;
-    const et = e.updatedAt ? new Date(e.updatedAt).getTime() : 0;
-    return et > bt ? e : best;
-  }, ests[0]);
+function sortByUpdatedAtDesc(ests: MixEstimate[]): MixEstimate[] {
+  return [...ests].sort(
+    (a, b) =>
+      (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) -
+      (a.updatedAt ? new Date(a.updatedAt).getTime() : 0)
+  );
 }
 
 export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData {
@@ -67,36 +67,46 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
   const allMixNames: string[] = [];
 
   contractors.forEach((contractor) => {
-    const primary = pickPrimary(contractorMap[contractor]);
-    try {
-      const state: CalcState = JSON.parse(primary.state);
-      const { mixRates } = calcMixRatesAndJobs(state);
-      const rates: MixRateEntry[] = mixRates.map((mr) => ({
-        name: mr.name,
-        exPlant: mr.exPlant,
-        transport: mr.transport,
-        laying: mr.laying,
-        finalLaid: mr.finalLaid,
-      }));
-      rateMap[contractor] = { contractor, estimateName: primary.name, rates };
-      rates.forEach((r) => {
-        if (!seenMixNames.has(r.name)) {
-          seenMixNames.add(r.name);
-          allMixNames.push(r.name);
-        }
-      });
-    } catch { /* skip malformed state */ }
+    const sorted = sortByUpdatedAtDesc(contractorMap[contractor]);
+    const ratesByMixName: Record<string, MixRateEntry> = {};
+
+    sorted.forEach((est) => {
+      try {
+        const state: CalcState = JSON.parse(est.state);
+        const { mixRates } = calcMixRatesAndJobs(state);
+        mixRates.forEach((mr) => {
+          if (!seenMixNames.has(mr.name)) {
+            seenMixNames.add(mr.name);
+            allMixNames.push(mr.name);
+          }
+          if (!ratesByMixName[mr.name]) {
+            ratesByMixName[mr.name] = {
+              name: mr.name,
+              exPlant: mr.exPlant,
+              transport: mr.transport,
+              laying: mr.laying,
+              finalLaid: mr.finalLaid,
+            };
+          }
+        });
+      } catch { /* skip malformed state */ }
+    });
+
+    rateMap[contractor] = {
+      contractor,
+      estimateName: sorted[0]?.name ?? "",
+      rates: Object.values(ratesByMixName),
+    };
   });
 
   const ledgerRows: LedgerRow[] = [];
   contractors.forEach((contractor) => {
-    contractorMap[contractor].forEach((est) => {
+    sortByUpdatedAtDesc(contractorMap[contractor]).forEach((est) => {
       try {
         const state: CalcState = JSON.parse(est.state);
         const jobs: Record<string, unknown>[] = ((state.jobs as unknown) as Record<string, unknown>[]) || [];
         jobs.forEach((j) => {
           const mt = (j._mt as number) ?? 0;
-          if (mt <= 0) return;
           const plantAmt = (j._plantAmt as number) ?? 0;
           const transAmt = (j._transAmt as number) ?? 0;
           const layAmt = (j._layAmt as number) ?? 0;
@@ -109,10 +119,10 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
             jobId: (j.id as string) ?? "—",
             areaSqm: (j._area as number) ?? 0,
             mt,
-            plantPerMt: plantAmt / mt,
-            transPerMt: transAmt / mt,
-            layPerMt: layAmt / mt,
-            totalPerMt: totalAmt / mt,
+            plantPerMt: mt > 0 ? plantAmt / mt : 0,
+            transPerMt: mt > 0 ? transAmt / mt : 0,
+            layPerMt: mt > 0 ? layAmt / mt : 0,
+            totalPerMt: mt > 0 ? totalAmt / mt : 0,
             totalAmt,
           });
         });
