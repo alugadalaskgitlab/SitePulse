@@ -240,14 +240,16 @@ export default function MixEstimates({ embedded = false }: Props) {
                         <span className="text-sm text-muted-foreground">
                           {ests.length} site{ests.length !== 1 ? "s" : ""}
                         </span>
-                        <button
-                          onClick={(e) => startEdit(contractor, e)}
-                          className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
-                          title="Rename contractor"
-                          data-testid={`btn-rename-${contractor}`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        {contractor !== "UNASSIGNED" && (
+                          <button
+                            onClick={(e) => startEdit(contractor, e)}
+                            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
+                            title="Rename contractor"
+                            data-testid={`btn-rename-${contractor}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
                     {editingContractor !== contractor && totalMt > 0 && (
