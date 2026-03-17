@@ -142,6 +142,7 @@ body{font-size:11px;background:#fff}
   <h1><span>HLC</span> — Mix Rate Calculator</h1>
   <div style="display:flex;gap:8px;align-items:center">
     <a href="/" class="btn btn-secondary btn-sm no-print">← Back to SiteLog</a>
+    <button class="btn btn-secondary btn-sm no-print" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
     <button class="btn btn-primary no-print" onclick="window.print()">🖨 Print</button>
   </div>
 </div>
@@ -419,6 +420,90 @@ var equipDefs = [
 
 var jobs = [];
 var jobCounter = 0;
+
+// ====== PERSISTENCE (localStorage) ======
+var PERSIST_INPUTS = [
+  'projName','projBy','projDate',
+  'aggRate','aggDensity','aggDist','aggFreightRate','aggPayload','bitPrice',
+  'tph','plantHrsMonth',
+  'hsdPrice','hsdConsump',
+  'ldoConsump','ldoRate',
+  'boilerProdLhr','boilerPreheatLhr','boilerFuelRate','boilerProdHrs','boilerPreheatHrs','boilerCampaignMt',
+  'crewMonthly','crewDays','crewHrs','marginPct',
+  'layCrew','layFuel','layProductivity',
+  'transDist','transRate','transPayload',
+  'primeSpray','primePrice','primeDilution',
+  'tackSpray','tackPrice','tackDilution',
+  'sprayBowser','sprayCrew','sprayProd'
+];
+var STORAGE_KEY = 'hlc_mix_calc_v3';
+
+function saveState(){
+  try {
+    var inputs = {};
+    PERSIST_INPUTS.forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) inputs[id] = el.value;
+    });
+    var jobsClean = jobs.map(function(j){
+      var jc = Object.assign({}, j);
+      jc.mixes = j.mixes.map(function(mx){ return { mixIdx: mx.mixIdx, qty_mt: mx.qty_mt }; });
+      return jc;
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      inputs: inputs,
+      mixTypes: mixTypes,
+      equipDefs: equipDefs,
+      jobs: jobsClean,
+      jobCounter: jobCounter,
+      activeMixIdx: activeMixIdx,
+      aggBasis: aggBasis
+    }));
+  } catch(e) { /* ignore quota errors */ }
+}
+
+function loadState(){
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    var state = JSON.parse(raw);
+    if(state.mixTypes && state.mixTypes.length >= 2) mixTypes = state.mixTypes;
+    if(state.equipDefs && state.equipDefs.length === equipDefs.length) equipDefs = state.equipDefs;
+    if(Array.isArray(state.jobs)){ jobs = state.jobs; jobCounter = state.jobCounter || jobs.length; }
+    if(state.activeMixIdx !== undefined && state.activeMixIdx < mixTypes.length) activeMixIdx = state.activeMixIdx;
+    if(state.aggBasis) aggBasis = state.aggBasis;
+    if(state.inputs){
+      PERSIST_INPUTS.forEach(function(id){
+        if(id === 'projDate') return; // restore date separately
+        var el = document.getElementById(id);
+        if(el && state.inputs[id] !== undefined) el.value = state.inputs[id];
+      });
+      // Restore date only if it was set to a non-empty value
+      if(state.inputs.projDate){
+        var dateEl = document.getElementById('projDate');
+        if(dateEl) dateEl.value = state.inputs.projDate;
+      }
+    }
+    // Update aggBasis toggle UI without triggering recalc
+    var b = aggBasis;
+    var mtBtn = document.getElementById('aggBasisMT');
+    var cftBtn = document.getElementById('aggBasisCFT');
+    var aggLbl = document.getElementById('aggRateLabel');
+    if(mtBtn) mtBtn.className = 'toggle-btn' + (b==='MT'?' active-amber':'');
+    if(cftBtn) cftBtn.className = 'toggle-btn' + (b==='CFT'?' active-amber':'');
+    if(aggLbl) aggLbl.textContent = 'Purchase Rate (₹/' + b + ')';
+    return true;
+  } catch(e) {
+    console.warn('Failed to restore state:', e);
+    return false;
+  }
+}
+
+function resetState(){
+  if(!confirm('Clear all saved data and reset to defaults?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
 
 // ====== HELPERS ======
 function n(id){ return parseFloat(document.getElementById(id).value)||0; }
@@ -754,6 +839,7 @@ function recalc(){
 
   // ====== RECALC JOBS ======
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm);
+  saveState();
 }
 
 function renderRateSummary(mixRates){
@@ -1229,6 +1315,7 @@ function init(){
       document.activeElement.blur();
     }
   }, {passive: false});
+  loadState();
   renderMixTabs();
   renderMixPanels();
   renderEquipCards();
