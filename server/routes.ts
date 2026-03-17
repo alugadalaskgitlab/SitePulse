@@ -3222,9 +3222,9 @@ export async function registerRoutes(
 
   app.post("/api/mix-estimates", async (req, res) => {
     try {
-      const { name, state, totalMt, totalAmt, contractorList } = req.body;
+      const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
-      const estimate = await storage.createMixEstimate({ name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "" });
+      const estimate = await storage.createMixEstimate({ name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null });
       res.status(201).json(estimate);
     } catch (err) {
       console.error("Error creating mix estimate:", err);
@@ -3235,9 +3235,9 @@ export async function registerRoutes(
   app.put("/api/mix-estimates/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { name, state, totalMt, totalAmt, contractorList } = req.body;
+      const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
-      const estimate = await storage.updateMixEstimate(id, { name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "" });
+      const estimate = await storage.updateMixEstimate(id, { name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null });
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
       res.json(estimate);
     } catch (err) {

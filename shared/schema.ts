@@ -1018,6 +1018,7 @@ export const mixEstimates = pgTable("mix_estimates", {
   totalMt: real("total_mt").default(0),
   totalAmt: real("total_amt").default(0),
   contractorList: text("contractor_list").default(""),
+  contractor: text("contractor"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

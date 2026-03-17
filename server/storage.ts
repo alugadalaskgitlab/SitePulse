@@ -6927,16 +6927,7 @@ export class DatabaseStorage implements IStorage {
   }
   // ====== MIX ESTIMATES ======
   async getMixEstimates(): Promise<MixEstimate[]> {
-    return await db.select({
-      id: mixEstimates.id,
-      name: mixEstimates.name,
-      state: mixEstimates.state,
-      totalMt: mixEstimates.totalMt,
-      totalAmt: mixEstimates.totalAmt,
-      contractorList: mixEstimates.contractorList,
-      createdAt: mixEstimates.createdAt,
-      updatedAt: mixEstimates.updatedAt,
-    }).from(mixEstimates).orderBy(desc(mixEstimates.updatedAt));
+    return await db.select().from(mixEstimates).orderBy(desc(mixEstimates.updatedAt));
   }
 
   async getMixEstimate(id: number): Promise<MixEstimate | undefined> {

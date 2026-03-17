@@ -516,16 +516,17 @@ export default function AdminReports() {
         </TabsList>
 
         <TabsContent value="mix-calculator" className="mt-4">
-          <div className="flex justify-end mb-2">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-muted-foreground">Full calculator below. Use the Contractor Overview to manage saved estimates per contractor.</p>
             <a href="/admin/mix-estimates" data-testid="link-mix-estimates">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 transition-colors">
-                📂 Saved Estimates
+              <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm">
+                🏗 Contractor Overview
               </button>
             </a>
           </div>
           <iframe
             src="/mix-calculator?v=3"
-            style={{ width: '100%', height: 'calc(100vh - 200px)', border: 'none', borderRadius: '8px' }}
+            style={{ width: '100%', height: 'calc(100vh - 210px)', border: 'none', borderRadius: '8px' }}
             title="Mix Rate Calculator"
             data-testid="iframe-mix-calculator"
           />

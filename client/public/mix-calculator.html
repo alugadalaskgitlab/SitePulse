@@ -578,7 +578,10 @@ function saveToDb(){
   if(!name || !name.trim()) return;
   name = name.trim();
   var summary = getDbSummary();
-  var payload = { name: name, state: getDbState(), totalMt: summary.totalMt, totalAmt: summary.totalAmt, contractorList: summary.contractorList };
+  var contractorNames = [];
+  jobs.forEach(function(j){ if(j.contractor && contractorNames.indexOf(j.contractor)===-1) contractorNames.push(j.contractor); });
+  var primaryContractor = contractorNames[0] || null;
+  var payload = { name: name, state: getDbState(), totalMt: summary.totalMt, totalAmt: summary.totalAmt, contractorList: summary.contractorList, contractor: primaryContractor };
   var url = currentEstimateId ? '/api/mix-estimates/'+currentEstimateId : '/api/mix-estimates';
   var method = currentEstimateId ? 'PUT' : 'POST';
   fetch(url, { method: method, headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
@@ -1467,8 +1470,44 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
   document.getElementById('jobCostSplit').innerHTML = splitHtml;
 }
 
+// ====== CLONE MODE ======
+function initCloneMode(cloneId, presetContractor){
+  fetch('/api/mix-estimates/'+cloneId)
+    .then(function(r){ return r.json(); })
+    .then(function(est){
+      try {
+        var state = JSON.parse(est.state);
+        // Keep base rates but clear jobs
+        state.jobs = [];
+        state.jobCounter = 0;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch(e) {}
+      // Ensure clone starts as a NEW estimate (no id)
+      localStorage.removeItem(STORAGE_KEY + '_estId');
+      localStorage.removeItem(STORAGE_KEY + '_estName');
+      // Store the preset contractor name to apply after load
+      if(presetContractor) localStorage.setItem(STORAGE_KEY + '_presetContractor', decodeURIComponent(presetContractor));
+      else localStorage.removeItem(STORAGE_KEY + '_presetContractor');
+      location.replace(location.pathname); // reload without query params
+    })
+    .catch(function(){
+      showToast('Could not load base estimate', true);
+      // fallback: just reload without params
+      location.replace(location.pathname);
+    });
+}
+
 // ====== INIT ======
 function init(){
+  // Check for clone mode FIRST — do async fetch then reload (no further init needed this tick)
+  var params = new URLSearchParams(location.search);
+  var cloneId = params.get('clone');
+  if(cloneId){
+    showToast('Loading base rates...');
+    initCloneMode(cloneId, params.get('contractor'));
+    return; // halt init — page will reload after clone setup
+  }
+
   document.getElementById('projDate').value = new Date().toISOString().slice(0,10);
   document.addEventListener('wheel', function(e){
     if(document.activeElement && document.activeElement.type === 'number'){
@@ -1485,6 +1524,29 @@ function init(){
   renderEquipCards();
   renderJobs();
   recalc();
+
+  // Apply preset contractor to first job after render
+  var presetContractor = localStorage.getItem(STORAGE_KEY + '_presetContractor');
+  if(presetContractor){
+    localStorage.removeItem(STORAGE_KEY + '_presetContractor');
+    if(jobs.length === 0){
+      // Add a blank job with the contractor pre-filled
+      jobCounter++;
+      jobs.push({ id: 'J'+String(jobCounter).padStart(2,'0'), contractor: presetContractor, basis: 'GEOMETRY', length: 100, width: 7, thickness: 50, volume: 35, prime: true, tack: true, mixes: [{ mixIdx: 0, qty_mt: null }] });
+      renderJobs();
+      recalc();
+    } else {
+      jobs[0].contractor = presetContractor;
+      renderJobs();
+    }
+    // Show badge to indicate this is a new estimate for the contractor
+    var badge = document.getElementById('estimateBadge');
+    badge.textContent = 'New: '+presetContractor;
+    badge.style.display = 'inline';
+    badge.style.color = '#16a34a';
+    badge.style.borderColor = '#16a34a';
+    badge.style.background = '#f0fdf4';
+  }
 }
 init();
 </script>
