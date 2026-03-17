@@ -139,11 +139,27 @@ body{font-size:11px;background:#fff}
 </head>
 <body>
 <div class="top-bar">
-  <h1><span>HLC</span> — Mix Rate Calculator</h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <h1><span>HLC</span> — Mix Rate Calculator</h1>
+    <span id="estimateBadge" style="display:none;font-size:12px;font-weight:600;color:var(--amber);background:var(--amber-bg);border:1px solid var(--amber-border);padding:2px 10px;border-radius:12px"></span>
+  </div>
   <div style="display:flex;gap:8px;align-items:center">
     <a href="/" class="btn btn-secondary btn-sm no-print">← Back to SiteLog</a>
+    <button class="btn btn-secondary btn-sm no-print" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
+    <button class="btn btn-secondary btn-sm no-print" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
     <button class="btn btn-secondary btn-sm no-print" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
     <button class="btn btn-primary no-print" onclick="window.print()">🖨 Print</button>
+  </div>
+</div>
+
+<!-- Save/Load Modal -->
+<div id="estimateModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;width:560px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:2px solid var(--amber)">
+      <h3 id="modalTitle" style="font-size:16px;font-weight:700;color:var(--gray-900)">Saved Estimates</h3>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray-500)">&times;</button>
+    </div>
+    <div id="modalBody" style="flex:1;overflow-y:auto;padding:20px"></div>
   </div>
 </div>
 
@@ -502,7 +518,130 @@ function loadState(){
 function resetState(){
   if(!confirm('Clear all saved data and reset to defaults?')) return;
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(STORAGE_KEY + '_estId');
+  localStorage.removeItem(STORAGE_KEY + '_estName');
   location.reload();
+}
+
+// ====== DATABASE SAVE / LOAD ======
+var currentEstimateId = null;
+var currentEstimateName = '';
+
+function getDbState(){
+  var inputs = {};
+  PERSIST_INPUTS.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) inputs[id] = el.value;
+  });
+  var jobsClean = jobs.map(function(j){
+    var jc = Object.assign({}, j);
+    jc.mixes = j.mixes.map(function(mx){ return { mixIdx: mx.mixIdx, qty_mt: mx.qty_mt }; });
+    return jc;
+  });
+  return JSON.stringify({ inputs: inputs, mixTypes: mixTypes, equipDefs: equipDefs, jobs: jobsClean, jobCounter: jobCounter, activeMixIdx: activeMixIdx, aggBasis: aggBasis });
+}
+
+function getDbSummary(){
+  var totalMt = 0, totalAmt = 0;
+  var contractorSet = {};
+  jobs.forEach(function(j){ totalMt += (j._mt||0); totalAmt += (j._totalAmt||0); if(j.contractor) contractorSet[j.contractor]=1; });
+  return { totalMt: totalMt, totalAmt: totalAmt, contractorList: Object.keys(contractorSet).join(', ') };
+}
+
+function updateBadge(){
+  var badge = document.getElementById('estimateBadge');
+  if(currentEstimateName){ badge.textContent = currentEstimateName; badge.style.display='inline'; }
+  else badge.style.display='none';
+}
+
+function saveToDb(){
+  var name = prompt('Estimate name:', currentEstimateName || (document.getElementById('projName').value||'Estimate'));
+  if(!name || !name.trim()) return;
+  name = name.trim();
+  var summary = getDbSummary();
+  var payload = { name: name, state: getDbState(), totalMt: summary.totalMt, totalAmt: summary.totalAmt, contractorList: summary.contractorList };
+  var url = currentEstimateId ? '/api/mix-estimates/'+currentEstimateId : '/api/mix-estimates';
+  var method = currentEstimateId ? 'PUT' : 'POST';
+  fetch(url, { method: method, headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); })
+    .then(function(est){
+      currentEstimateId = est.id;
+      currentEstimateName = est.name;
+      updateBadge();
+      showToast('Estimate "'+est.name+'" saved ✓');
+    })
+    .catch(function(){ showToast('Save failed — check connection', true); });
+}
+
+function openSavedPanel(){
+  showModal('Saved Estimates', '<p style="color:var(--gray-400);text-align:center;padding:20px">Loading...</p>');
+  fetch('/api/mix-estimates')
+    .then(function(r){ return r.json(); })
+    .then(function(list){
+      if(!list.length){
+        document.getElementById('modalBody').innerHTML = '<p style="color:var(--gray-500);text-align:center;padding:30px">No saved estimates yet.</p>';
+        return;
+      }
+      var html = '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+      html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:8px">Name</th><th style="text-align:right;padding:8px">MT</th><th style="text-align:right;padding:8px">Amount</th><th style="text-align:right;padding:8px">Updated</th><th style="padding:8px"></th></tr></thead><tbody>';
+      list.forEach(function(est){
+        var d = est.updatedAt ? new Date(est.updatedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '';
+        var isCurrent = est.id === currentEstimateId;
+        html += '<tr style="border-bottom:1px solid var(--gray-100)'+(isCurrent?';background:var(--amber-bg)':'')+'">';
+        html += '<td style="padding:8px;font-weight:600;color:var(--gray-800)">'+(isCurrent?'★ ':'')+esc(est.name)+(est.contractorList?'<br><span style="font-size:11px;color:var(--gray-400)">'+esc(est.contractorList)+'</span>':'')+'</td>';
+        html += '<td style="padding:8px;text-align:right;color:var(--gray-600)">'+(est.totalMt?est.totalMt.toFixed(0)+' MT':'—')+'</td>';
+        html += '<td style="padding:8px;text-align:right;color:var(--gray-600)">'+(est.totalAmt?'₹'+Math.round(est.totalAmt).toLocaleString('en-IN'):'—')+'</td>';
+        html += '<td style="padding:8px;text-align:right;color:var(--gray-400);font-size:12px">'+d+'</td>';
+        html += '<td style="padding:8px;white-space:nowrap"><button onclick="loadFromDb('+JSON.stringify(est)+')" class="btn btn-secondary btn-sm" style="margin-right:4px">Load</button><button onclick="deleteEstimate('+est.id+',\''+esc(est.name)+'\')" class="btn btn-sm btn-danger">✕</button></td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('modalBody').innerHTML = html;
+    })
+    .catch(function(){ document.getElementById('modalBody').innerHTML = '<p style="color:var(--red);text-align:center;padding:20px">Failed to load estimates.</p>'; });
+}
+
+function loadFromDb(est){
+  if(!confirm('Load "'+est.name+'"? This will replace the current calculator state.')) return;
+  try {
+    var state = JSON.parse(est.state);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch(e) { showToast('Invalid estimate data', true); return; }
+  localStorage.setItem(STORAGE_KEY + '_estId', String(est.id));
+  localStorage.setItem(STORAGE_KEY + '_estName', est.name);
+  closeModal();
+  location.reload();
+}
+
+function deleteEstimate(id, name){
+  if(!confirm('Delete estimate "'+name+'"?')) return;
+  fetch('/api/mix-estimates/'+id, { method:'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(){ if(currentEstimateId===id){ currentEstimateId=null; currentEstimateName=''; updateBadge(); } openSavedPanel(); })
+    .catch(function(){ showToast('Delete failed', true); });
+}
+
+function showModal(title, bodyHtml){
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  var m = document.getElementById('estimateModal');
+  m.style.display = 'flex';
+}
+
+function closeModal(){
+  document.getElementById('estimateModal').style.display = 'none';
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showToast(msg, isError){
+  var t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.2);';
+  t.style.background = isError ? '#dc2626' : '#16a34a';
+  t.style.color = '#fff';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 3000);
 }
 
 // ====== HELPERS ======
@@ -1316,6 +1455,10 @@ function init(){
     }
   }, {passive: false});
   loadState();
+  // Restore estimate identity if we just loaded from DB
+  var savedId = localStorage.getItem(STORAGE_KEY + '_estId');
+  var savedName = localStorage.getItem(STORAGE_KEY + '_estName');
+  if(savedId){ currentEstimateId = parseInt(savedId); currentEstimateName = savedName || ''; updateBadge(); }
   renderMixTabs();
   renderMixPanels();
   renderEquipCards();

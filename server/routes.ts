@@ -3197,6 +3197,67 @@ export async function registerRoutes(
     }
   });
 
+  // ====== MIX ESTIMATES ======
+  app.get("/api/mix-estimates", async (_req, res) => {
+    try {
+      const estimates = await storage.getMixEstimates();
+      res.json(estimates);
+    } catch (err) {
+      console.error("Error fetching mix estimates:", err);
+      res.status(500).json({ message: "Failed to fetch estimates" });
+    }
+  });
+
+  app.get("/api/mix-estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const estimate = await storage.getMixEstimate(id);
+      if (!estimate) return res.status(404).json({ message: "Estimate not found" });
+      res.json(estimate);
+    } catch (err) {
+      console.error("Error fetching mix estimate:", err);
+      res.status(500).json({ message: "Failed to fetch estimate" });
+    }
+  });
+
+  app.post("/api/mix-estimates", async (req, res) => {
+    try {
+      const { name, state, totalMt, totalAmt, contractorList } = req.body;
+      if (!name || !state) return res.status(400).json({ message: "name and state required" });
+      const estimate = await storage.createMixEstimate({ name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "" });
+      res.status(201).json(estimate);
+    } catch (err) {
+      console.error("Error creating mix estimate:", err);
+      res.status(500).json({ message: "Failed to create estimate" });
+    }
+  });
+
+  app.put("/api/mix-estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, state, totalMt, totalAmt, contractorList } = req.body;
+      if (!name || !state) return res.status(400).json({ message: "name and state required" });
+      const estimate = await storage.updateMixEstimate(id, { name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "" });
+      if (!estimate) return res.status(404).json({ message: "Estimate not found" });
+      res.json(estimate);
+    } catch (err) {
+      console.error("Error updating mix estimate:", err);
+      res.status(500).json({ message: "Failed to update estimate" });
+    }
+  });
+
+  app.delete("/api/mix-estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteMixEstimate(id);
+      if (!deleted) return res.status(404).json({ message: "Estimate not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting mix estimate:", err);
+      res.status(500).json({ message: "Failed to delete estimate" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();

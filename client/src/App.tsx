@@ -36,6 +36,7 @@ import RateCards from "@/pages/RateCards";
 import DataSync from "@/pages/DataSync";
 import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
+import MixEstimates from "@/pages/MixEstimates";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -108,6 +109,7 @@ function Router() {
             <Route path="/plant/:id" component={PlantDetails} />
             <Route path="/admin/settings" component={AdminSettings} />
             <Route path="/admin/reports" component={AdminReports} />
+            <Route path="/admin/mix-estimates" component={MixEstimates} />
             <Route component={NotFound} />
           </Switch>
         </div>

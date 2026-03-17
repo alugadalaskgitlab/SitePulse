@@ -122,6 +122,9 @@ import {
   type InsertVendorBill,
   type InsertVendorBillItem,
   vendorAliases,
+  mixEstimates,
+  type MixEstimate,
+  type InsertMixEstimate,
   type VendorAlias,
   vendorRateCards,
   type VendorRateCard,
@@ -383,6 +386,12 @@ export interface IStorage {
     categories: string[];
     existingBill: { id: number; billNo: string; status: string } | null;
   }[]>;
+
+  getMixEstimates(): Promise<MixEstimate[]>;
+  getMixEstimate(id: number): Promise<MixEstimate | undefined>;
+  createMixEstimate(data: InsertMixEstimate): Promise<MixEstimate>;
+  updateMixEstimate(id: number, data: Partial<InsertMixEstimate>): Promise<MixEstimate | undefined>;
+  deleteMixEstimate(id: number): Promise<boolean>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -6915,6 +6924,42 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return duplicates;
+  }
+  // ====== MIX ESTIMATES ======
+  async getMixEstimates(): Promise<MixEstimate[]> {
+    return await db.select({
+      id: mixEstimates.id,
+      name: mixEstimates.name,
+      state: mixEstimates.state,
+      totalMt: mixEstimates.totalMt,
+      totalAmt: mixEstimates.totalAmt,
+      contractorList: mixEstimates.contractorList,
+      createdAt: mixEstimates.createdAt,
+      updatedAt: mixEstimates.updatedAt,
+    }).from(mixEstimates).orderBy(desc(mixEstimates.updatedAt));
+  }
+
+  async getMixEstimate(id: number): Promise<MixEstimate | undefined> {
+    const [row] = await db.select().from(mixEstimates).where(eq(mixEstimates.id, id));
+    return row;
+  }
+
+  async createMixEstimate(data: InsertMixEstimate): Promise<MixEstimate> {
+    const [row] = await db.insert(mixEstimates).values(data).returning();
+    return row;
+  }
+
+  async updateMixEstimate(id: number, data: Partial<InsertMixEstimate>): Promise<MixEstimate | undefined> {
+    const [row] = await db.update(mixEstimates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(mixEstimates.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteMixEstimate(id: number): Promise<boolean> {
+    const result = await db.delete(mixEstimates).where(eq(mixEstimates.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

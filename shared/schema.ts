@@ -1011,6 +1011,21 @@ export const insertVendorAliasSchema = createInsertSchema(vendorAliases).omit({ 
 export type VendorAlias = typeof vendorAliases.$inferSelect;
 export type InsertVendorAlias = z.infer<typeof insertVendorAliasSchema>;
 
+export const mixEstimates = pgTable("mix_estimates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  state: text("state").notNull(),
+  totalMt: real("total_mt").default(0),
+  totalAmt: real("total_amt").default(0),
+  contractorList: text("contractor_list").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMixEstimateSchema = createInsertSchema(mixEstimates).omit({ id: true, createdAt: true, updatedAt: true });
+export type MixEstimate = typeof mixEstimates.$inferSelect;
+export type InsertMixEstimate = z.infer<typeof insertMixEstimateSchema>;
+
 export const vendorRateCards = pgTable("vendor_rate_cards", {
   id: serial("id").primaryKey(),
   vendorName: text("vendor_name").notNull(),
