@@ -951,8 +951,8 @@ function renderJobs(){
     j.mixes.forEach(function(mx, mi){
       var autoCum = isGeo ? (j.length * j.width * (j.thickness/1000)) : (j.volume || 0);
       var autoMix = mixTypes[mx.mixIdx] || mixTypes[0];
-      var autoMT = isGeo ? (autoCum * autoMix.density) : 0;
-      var mtPlaceholder = isGeo ? autoMT.toFixed(1) : 'MT';
+      var autoMT = (autoCum > 0 && autoMix.density > 0) ? (autoCum * autoMix.density) : 0;
+      var mtPlaceholder = autoMT > 0 ? autoMT.toFixed(1) : 'MT';
       var hasMT = mx.qty_mt!=null && mx.qty_mt>0;
 
       html += '<tr>';
@@ -1031,7 +1031,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
       var mr = mixRates[mx.mixIdx] || mixRates[0];
       if(!mr) return;
       var mix = mixTypes[mx.mixIdx] || mixTypes[0];
-      var mt = (mx.qty_mt != null && mx.qty_mt > 0) ? mx.qty_mt : (isGeo && cum > 0 && mix.density > 0 ? cum * mix.density : 0);
+      var mt = (mx.qty_mt != null && mx.qty_mt > 0) ? mx.qty_mt : (cum > 0 && mix.density > 0 ? cum * mix.density : 0);
       var plantAmt = mt * mr.exPlant;
       var transAmt = mt * transPerMT;
       var layAmt = mt * layPerMT;
