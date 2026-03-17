@@ -917,7 +917,7 @@ function renderJobs(){
     }
     html += '<td><input type="checkbox" '+(j.prime?'checked':'')+' oninput="jobs['+i+'].prime=this.checked;recalc()"></td>';
     html += '<td><input type="checkbox" '+(j.tack?'checked':'')+' oninput="jobs['+i+'].tack=this.checked;recalc()"></td>';
-    html += '<td colspan="9" style="text-align:right">';
+    html += '<td colspan="10" style="text-align:right">';
     html += '<span class="calc-cell" id="jobArea_'+i+'" style="margin-right:12px;padding:2px 6px;border-radius:4px"></span>';
     html += '<button class="btn btn-secondary btn-sm" onclick="addJobMix('+i+')" style="margin-right:4px">+ Mix</button>';
     html += '</td>';
@@ -948,6 +948,23 @@ function renderJobs(){
       html += '<td class="no-print">'+(mixCount>1?'<button class="btn btn-danger btn-sm" onclick="removeJobMix('+i+','+mi+')" style="padding:2px 6px;font-size:11px">×</button>':'')+'</td>';
       html += '</tr>';
     });
+
+    if(mixCount > 1){
+      html += '<tr class="job-subtotal-row">';
+      html += '<td colspan="9" style="text-align:right;font-size:12px">Subtotal — '+(j.contractor||j.id)+'</td>';
+      html += '<td class="calc-cell" id="jSubMT_'+i+'"></td>';
+      html += '<td class="calc-cell"></td><td class="calc-cell"></td>';
+      html += '<td class="calc-cell" id="jSubPlant_'+i+'"></td>';
+      html += '<td class="calc-cell"></td>';
+      html += '<td class="calc-cell" id="jSubTrans_'+i+'"></td>';
+      html += '<td class="calc-cell"></td>';
+      html += '<td class="calc-cell" id="jSubLay_'+i+'"></td>';
+      html += '<td class="calc-cell" id="jSubPrime_'+i+'"></td>';
+      html += '<td class="calc-cell" id="jSubTack_'+i+'"></td>';
+      html += '<td class="calc-cell" id="jSubTotal_'+i+'" style="font-weight:700"></td>';
+      html += '<td class="no-print"></td>';
+      html += '</tr>';
+    }
   });
   tbody.innerHTML = html;
 }
@@ -1017,6 +1034,16 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
     var el;
     el=document.getElementById('jobArea_'+i); if(el) el.textContent='Area: '+fmtI(Math.round(area))+' sqm | CUM: '+cum.toFixed(2);
     el=document.getElementById('jobTotal_'+i); if(el) el.textContent=fmtI(Math.round(jobTotal));
+
+    if(j.mixes.length > 1){
+      el=document.getElementById('jSubMT_'+i); if(el) el.textContent=jobMT.toFixed(1);
+      el=document.getElementById('jSubPlant_'+i); if(el) el.textContent=fmtI(Math.round(jobPlant));
+      el=document.getElementById('jSubTrans_'+i); if(el) el.textContent=fmtI(Math.round(jobTrans));
+      el=document.getElementById('jSubLay_'+i); if(el) el.textContent=fmtI(Math.round(jobLay));
+      el=document.getElementById('jSubPrime_'+i); if(el) el.textContent=j.prime?fmtI(Math.round(primeAmt)):'—';
+      el=document.getElementById('jSubTack_'+i); if(el) el.textContent=j.tack?fmtI(Math.round(tackAmt)):'—';
+      el=document.getElementById('jSubTotal_'+i); if(el) el.textContent=fmtI(Math.round(jobTotal));
+    }
 
     totals.mt+=jobMT; totals.plant+=jobPlant; totals.trans+=jobTrans;
     totals.lay+=jobLay; totals.prime+=primeAmt; totals.tack+=tackAmt; totals.total+=jobTotal;
