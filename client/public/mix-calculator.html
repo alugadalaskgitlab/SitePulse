@@ -359,6 +359,7 @@ table.job-table{font-size:9px;min-width:auto}
             <th>Prime</th><th>Tack</th>
             <th style="background:var(--amber-bg)">MT</th>
             <th style="background:var(--amber-bg)">Plant ₹/MT</th>
+            <th style="background:var(--amber-bg)">Plant ₹/CUM</th>
             <th style="background:var(--amber-bg)">Plant Amt</th>
             <th style="background:var(--amber-bg)">Trans ₹/MT</th>
             <th style="background:var(--amber-bg)">Trans Amt</th>
@@ -916,7 +917,7 @@ function renderJobs(){
     }
     html += '<td><input type="checkbox" '+(j.prime?'checked':'')+' oninput="jobs['+i+'].prime=this.checked;recalc()"></td>';
     html += '<td><input type="checkbox" '+(j.tack?'checked':'')+' oninput="jobs['+i+'].tack=this.checked;recalc()"></td>';
-    html += '<td colspan="8" style="text-align:right">';
+    html += '<td colspan="9" style="text-align:right">';
     html += '<span class="calc-cell" id="jobArea_'+i+'" style="margin-right:12px;padding:2px 6px;border-radius:4px"></span>';
     html += '<button class="btn btn-secondary btn-sm" onclick="addJobMix('+i+')" style="margin-right:4px">+ Mix</button>';
     html += '</td>';
@@ -935,6 +936,7 @@ function renderJobs(){
       html += '<td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
       html += '<td><input type="number" value="'+(mx.qty_mt||'')+'" placeholder="MT" oninput="jobs['+i+'].mixes['+mi+'].qty_mt=parseFloat(this.value)||0;recalc()" style="width:70px"></td>';
       html += '<td class="calc-cell" id="jmPlantRate_'+i+'_'+mi+'"></td>';
+      html += '<td class="calc-cell" id="jmPlantCum_'+i+'_'+mi+'"></td>';
       html += '<td class="calc-cell" id="jmPlantAmt_'+i+'_'+mi+'"></td>';
       html += '<td class="calc-cell" id="jmTransRate_'+i+'_'+mi+'"></td>';
       html += '<td class="calc-cell" id="jmTransAmt_'+i+'_'+mi+'"></td>';
@@ -992,7 +994,10 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
       var lineTotal = mixTotal + showPrime + showTack;
 
       var el;
+      var mix = mixTypes[mx.mixIdx] || mixTypes[0];
+      var plantPerCum = mr.exPlant * mix.density;
       el=document.getElementById('jmPlantRate_'+i+'_'+mi); if(el) el.textContent=fmtR(mr.exPlant);
+      el=document.getElementById('jmPlantCum_'+i+'_'+mi); if(el) el.textContent=fmtR(plantPerCum);
       el=document.getElementById('jmPlantAmt_'+i+'_'+mi); if(el) el.textContent=mt>0?fmtI(Math.round(plantAmt)):'—';
       el=document.getElementById('jmTransRate_'+i+'_'+mi); if(el) el.textContent=fmtR(transPerMT);
       el=document.getElementById('jmTransAmt_'+i+'_'+mi); if(el) el.textContent=mt>0?fmtI(Math.round(transAmt)):'—';
@@ -1023,7 +1028,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm){
     html += '<td colspan="3" style="text-align:right;font-weight:700">TOTALS</td>';
     html += '<td></td><td></td><td></td><td></td><td></td><td></td>';
     html += '<td class="calc-cell">'+totals.mt.toFixed(1)+'</td>';
-    html += '<td class="calc-cell"></td>';
+    html += '<td class="calc-cell"></td><td class="calc-cell"></td>';
     html += '<td class="calc-cell">'+fmtI(Math.round(totals.plant))+'</td>';
     html += '<td class="calc-cell"></td>';
     html += '<td class="calc-cell">'+fmtI(Math.round(totals.trans))+'</td>';
@@ -1171,7 +1176,7 @@ function init(){
     if(document.activeElement && document.activeElement.type === 'number'){
       document.activeElement.blur();
     }
-  }, {passive: true});
+  }, {passive: false});
   renderMixTabs();
   renderMixPanels();
   renderEquipCards();
