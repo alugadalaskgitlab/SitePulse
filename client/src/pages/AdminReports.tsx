@@ -16,6 +16,7 @@ import { PinAuth } from "@/components/PinAuth";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import type { DprWithDetails } from "@shared/schema";
+import MixEstimates from "@/pages/MixEstimates";
 
 function getCleanSiteName(site: string): string {
   const editMarkerIndex = site.indexOf(' – Edited by');
@@ -516,20 +517,7 @@ export default function AdminReports() {
         </TabsList>
 
         <TabsContent value="mix-calculator" className="mt-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm text-muted-foreground">Full calculator below. Use the Contractor Overview to manage saved estimates per contractor.</p>
-            <a href="/admin/mix-estimates" data-testid="link-mix-estimates">
-              <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm">
-                🏗 Contractor Overview
-              </button>
-            </a>
-          </div>
-          <iframe
-            src="/mix-calculator?v=3"
-            style={{ width: '100%', height: 'calc(100vh - 210px)', border: 'none', borderRadius: '8px' }}
-            title="Mix Rate Calculator"
-            data-testid="iframe-mix-calculator"
-          />
+          <MixEstimates embedded />
         </TabsContent>
 
         <TabsContent value="reports" className="mt-4 space-y-6">

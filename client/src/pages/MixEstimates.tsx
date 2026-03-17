@@ -21,7 +21,11 @@ function fmtDate(d: Date | string | null | undefined) {
   return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default function MixEstimates() {
+interface Props {
+  embedded?: boolean;
+}
+
+export default function MixEstimates({ embedded = false }: Props) {
   const { toast } = useToast();
   const [collapsedContractors, setCollapsedContractors] = useState<Record<string, boolean>>({});
 
@@ -88,28 +92,46 @@ export default function MixEstimates() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className={embedded ? "p-0" : "p-6 max-w-5xl mx-auto"}>
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/admin/reports">
-          <Button variant="ghost" size="sm" data-testid="btn-back">
-            <ChevronLeft className="w-4 h-4 mr-1" /> Back
-          </Button>
-        </Link>
+      <div className="flex items-center gap-4 mb-5">
+        {!embedded && (
+          <Link href="/admin/reports">
+            <Button variant="ghost" size="sm" data-testid="btn-back">
+              <ChevronLeft className="w-4 h-4 mr-1" /> Back
+            </Button>
+          </Link>
+        )}
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Calculator className="w-6 h-6 text-primary" />
-            Mix Rate Estimates
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Saved estimates grouped by contractor — each row is a separate site
-          </p>
+          {!embedded && (
+            <>
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <Calculator className="w-6 h-6 text-primary" />
+                Mix Rate Estimates
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Saved estimates grouped by contractor — each row is a separate site
+              </p>
+            </>
+          )}
+          {embedded && (
+            <p className="text-sm text-muted-foreground">
+              Saved estimates by contractor — click a row to open in the calculator
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {globalLatestId && (
             <a href={`/mix-calculator?clone=${globalLatestId}`}>
               <Button variant="default" size="sm" data-testid="btn-new-contractor">
                 <Plus className="w-4 h-4 mr-1" /> New Contractor
+              </Button>
+            </a>
+          )}
+          {!globalLatestId && (
+            <a href="/mix-calculator">
+              <Button variant="default" size="sm" data-testid="btn-new-estimate">
+                <Plus className="w-4 h-4 mr-1" /> New Estimate
               </Button>
             </a>
           )}

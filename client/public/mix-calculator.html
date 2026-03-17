@@ -144,7 +144,7 @@ body{font-size:11px;background:#fff}
     <span id="estimateBadge" style="display:none;font-size:12px;font-weight:600;color:var(--amber);background:var(--amber-bg);border:1px solid var(--amber-border);padding:2px 10px;border-radius:12px"></span>
   </div>
   <div style="display:flex;gap:8px;align-items:center">
-    <a href="/" class="btn btn-secondary btn-sm no-print">← Back to SiteLog</a>
+    <a href="/admin/mix-estimates" class="btn btn-secondary btn-sm no-print">← Overview</a>
     <button class="btn btn-secondary btn-sm no-print" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
     <button class="btn btn-secondary btn-sm no-print" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
     <button class="btn btn-secondary btn-sm no-print" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
@@ -590,7 +590,8 @@ function saveToDb(){
       currentEstimateId = est.id;
       currentEstimateName = est.name;
       updateBadge();
-      showToast('Estimate "'+est.name+'" saved ✓');
+      showToast('Saved ✓ — returning to overview…');
+      setTimeout(function(){ window.location.href = '/admin/mix-estimates'; }, 1500);
     })
     .catch(function(){ showToast('Save failed — check connection', true); });
 }
