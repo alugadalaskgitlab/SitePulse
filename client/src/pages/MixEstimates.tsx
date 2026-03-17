@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X } from "lucide-react";
+import { ChevronLeft, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate } from "@shared/schema";
@@ -260,6 +260,13 @@ export default function MixEstimates({ embedded = false }: Props) {
                     )}
                   </div>
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    {latestId && (
+                      <Link href={`/admin/mix-impact?estimateId=${latestId}`}>
+                        <Button variant="outline" size="sm" data-testid={`btn-price-impact-${contractor}`} title="Price Impact Analysis">
+                          <FlaskConical className="w-3.5 h-3.5 mr-1" /> Price Impact
+                        </Button>
+                      </Link>
+                    )}
                     {contractor !== "UNASSIGNED" && (
                       <a
                         href={`/mix-calculator?clone=${latestId}&contractor=${encodeURIComponent(contractor)}`}

@@ -125,6 +125,9 @@ import {
   mixEstimates,
   type MixEstimate,
   type InsertMixEstimate,
+  priceScenarios,
+  type PriceScenario,
+  type InsertPriceScenario,
   type VendorAlias,
   vendorRateCards,
   type VendorRateCard,
@@ -394,6 +397,9 @@ export interface IStorage {
   deleteMixEstimate(id: number): Promise<boolean>;
   fixNullContractorLabels(): Promise<{ updated: number }>;
   renameContractor(from: string, to: string): Promise<number>;
+  getPriceScenarios(estimateId: number): Promise<PriceScenario[]>;
+  createPriceScenario(data: InsertPriceScenario): Promise<PriceScenario>;
+  deletePriceScenario(id: number): Promise<boolean>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -6973,6 +6979,22 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMixEstimate(id: number): Promise<boolean> {
     const result = await db.delete(mixEstimates).where(eq(mixEstimates.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getPriceScenarios(estimateId: number): Promise<PriceScenario[]> {
+    return await db.select().from(priceScenarios)
+      .where(eq(priceScenarios.estimateId, estimateId))
+      .orderBy(desc(priceScenarios.createdAt));
+  }
+
+  async createPriceScenario(data: InsertPriceScenario): Promise<PriceScenario> {
+    const [row] = await db.insert(priceScenarios).values(data).returning();
+    return row;
+  }
+
+  async deletePriceScenario(id: number): Promise<boolean> {
+    const result = await db.delete(priceScenarios).where(eq(priceScenarios.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 }

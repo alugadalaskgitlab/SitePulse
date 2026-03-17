@@ -3258,6 +3258,42 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/price-scenarios", async (req, res) => {
+    try {
+      const estimateId = parseInt(req.query.estimateId as string);
+      if (isNaN(estimateId)) return res.status(400).json({ message: "estimateId required" });
+      const scenarios = await storage.getPriceScenarios(estimateId);
+      res.json(scenarios);
+    } catch (err) {
+      console.error("Error fetching price scenarios:", err);
+      res.status(500).json({ message: "Failed to fetch scenarios" });
+    }
+  });
+
+  app.post("/api/price-scenarios", async (req, res) => {
+    try {
+      const { estimateId, name, revisedPrices } = req.body;
+      if (!estimateId || !name || !revisedPrices) return res.status(400).json({ message: "estimateId, name, and revisedPrices required" });
+      const scenario = await storage.createPriceScenario({ estimateId, name, revisedPrices: typeof revisedPrices === "string" ? revisedPrices : JSON.stringify(revisedPrices) });
+      res.status(201).json(scenario);
+    } catch (err) {
+      console.error("Error creating price scenario:", err);
+      res.status(500).json({ message: "Failed to create scenario" });
+    }
+  });
+
+  app.delete("/api/price-scenarios/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deletePriceScenario(id);
+      if (!deleted) return res.status(404).json({ message: "Scenario not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting price scenario:", err);
+      res.status(500).json({ message: "Failed to delete scenario" });
+    }
+  });
+
   app.patch("/api/mix-estimates/rename-contractor", async (req, res) => {
     try {
       const { from, to } = req.body;

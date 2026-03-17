@@ -1027,6 +1027,18 @@ export const insertMixEstimateSchema = createInsertSchema(mixEstimates).omit({ i
 export type MixEstimate = typeof mixEstimates.$inferSelect;
 export type InsertMixEstimate = z.infer<typeof insertMixEstimateSchema>;
 
+export const priceScenarios = pgTable("price_scenarios", {
+  id: serial("id").primaryKey(),
+  estimateId: integer("estimate_id").references(() => mixEstimates.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  revisedPrices: text("revised_prices").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPriceScenarioSchema = createInsertSchema(priceScenarios).omit({ id: true, createdAt: true });
+export type PriceScenario = typeof priceScenarios.$inferSelect;
+export type InsertPriceScenario = z.infer<typeof insertPriceScenarioSchema>;
+
 export const vendorRateCards = pgTable("vendor_rate_cards", {
   id: serial("id").primaryKey(),
   vendorName: text("vendor_name").notNull(),
