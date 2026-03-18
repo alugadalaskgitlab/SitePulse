@@ -3,12 +3,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Printer, Save, Trash2, TrendingUp, TrendingDown, Minus, FlaskConical, BookOpen } from "lucide-react";
+import { ChevronLeft, Printer, Save, Trash2, TrendingUp, TrendingDown, GitCompare, FlaskConical, BookOpen } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
-import { calcMixRatesAndJobs, type CalcState } from "@/lib/mixCalc";
+import { calcMixRatesAndJobs, type CalcState, type RevisedPrices } from "@/lib/mixCalc";
 
 function fmtR(v: number) { return v.toFixed(2); }
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
@@ -65,6 +64,247 @@ interface PriceInputs {
   ldoRate: string;
 }
 
+// ── Scenario Comparison Component ──────────────────────────────────────────
+
+interface ScenarioCalcEntry {
+  scenario: PriceScenario;
+  prices: RevisedPrices;
+  calc: ReturnType<typeof calcMixRatesAndJobs>;
+}
+
+const PRICE_ROWS: { key: keyof RevisedPrices; label: string; unit: string }[] = [
+  { key: "aggRate",  label: "Aggregate Rate", unit: "₹/MT" },
+  { key: "bitPrice", label: "Bitumen Price",  unit: "₹/kg" },
+  { key: "hsdPrice", label: "HSD Price",      unit: "₹/L"  },
+  { key: "ldoRate",  label: "LDO Rate",       unit: "₹/L"  },
+];
+
+function ScenarioComparison({
+  scenarioCalcs,
+  basePrices,
+  baseCalc,
+}: {
+  scenarioCalcs: ScenarioCalcEntry[];
+  basePrices: Record<string, number>;
+  baseCalc: ReturnType<typeof calcMixRatesAndJobs>;
+}) {
+  const thCls = "px-3 py-2 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
+  const th1Cls = "px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
+  const tdBase = "px-3 py-2.5 text-right align-top";
+
+  function DeltaLine({ base, revised }: { base: number; revised: number }) {
+    const delta = revised - base;
+    if (Math.abs(delta) < 0.001) return <span className="block text-xs text-muted-foreground/60 mt-0.5">—</span>;
+    const sign = delta > 0 ? "+" : "";
+    const cls = delta > 0 ? "text-red-500" : "text-green-600";
+    return (
+      <span className={`block text-xs font-medium mt-0.5 ${cls}`}>
+        {sign}{delta.toFixed(2)}
+      </span>
+    );
+  }
+
+  function DeltaAmtLine({ base, revised }: { base: number; revised: number }) {
+    const delta = revised - base;
+    if (Math.abs(delta) < 1) return <span className="block text-xs text-muted-foreground/60 mt-0.5">—</span>;
+    const sign = delta > 0 ? "+" : "-";
+    const cls = delta > 0 ? "text-red-500" : "text-green-600";
+    return (
+      <span className={`block text-xs font-medium mt-0.5 ${cls}`}>
+        {sign}₹{Math.round(Math.abs(delta)).toLocaleString("en-IN")}
+      </span>
+    );
+  }
+
+  return (
+    <Card data-testid="card-scenario-comparison">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <GitCompare className="w-4 h-4 text-primary" /> Scenario Comparison
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5 p-0 pb-4">
+
+        {/* Table 1 — Revised Input Rates */}
+        <div>
+          <p className="px-4 pt-2 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Input Rates
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse min-w-[500px]">
+              <thead>
+                <tr className="bg-muted/40 border-b border-border">
+                  <th className={th1Cls}>Price Input</th>
+                  <th className={thCls}>Base</th>
+                  {scenarioCalcs.map(({ scenario }) => (
+                    <th key={scenario.id} className={thCls} title={scenario.name}>
+                      <span className="block max-w-[120px] truncate ml-auto">{scenario.name}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {PRICE_ROWS.map(({ key, label, unit }) => {
+                  const baseVal = basePrices[key] ?? 0;
+                  return (
+                    <tr key={key} className="border-t border-border/40 hover:bg-muted/20">
+                      <td className="px-3 py-2.5 font-medium text-sm">
+                        {label}
+                        <span className="block text-xs text-muted-foreground font-normal">{unit}</span>
+                      </td>
+                      <td className={`${tdBase} font-medium`}>
+                        ₹{baseVal.toFixed(2)}
+                      </td>
+                      {scenarioCalcs.map(({ scenario, prices }) => {
+                        const rev = prices[key] ?? baseVal;
+                        const changed = Math.abs(rev - baseVal) > 0.001;
+                        return (
+                          <td
+                            key={scenario.id}
+                            className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
+                            data-testid={`cmp-rate-${key}-${scenario.id}`}
+                          >
+                            <span className={`font-medium ${changed ? (rev > baseVal ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                              ₹{rev.toFixed(2)}
+                            </span>
+                            <DeltaLine base={baseVal} revised={rev} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Table 2 — Rate by Mix Type */}
+        {baseCalc.mixRates.length > 0 && (
+          <div>
+            <p className="px-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Final Laid Rate by Mix Type
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[500px]">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className={th1Cls}>Mix Type</th>
+                    <th className={thCls}>Base ₹/MT</th>
+                    {scenarioCalcs.map(({ scenario }) => (
+                      <th key={scenario.id} className={thCls} title={scenario.name}>
+                        <span className="block max-w-[120px] truncate ml-auto">{scenario.name}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {baseCalc.mixRates.map((baseMix, i) => (
+                    <tr key={baseMix.name} className="border-t border-border/40 hover:bg-muted/20">
+                      <td className="px-3 py-2.5 font-semibold">{baseMix.name}</td>
+                      <td className={`${tdBase} font-medium`}>₹{baseMix.finalLaid.toFixed(2)}</td>
+                      {scenarioCalcs.map(({ scenario, calc }) => {
+                        const rev = calc.mixRates[i]?.finalLaid ?? 0;
+                        const changed = Math.abs(rev - baseMix.finalLaid) > 0.01;
+                        return (
+                          <td
+                            key={scenario.id}
+                            className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
+                            data-testid={`cmp-mix-${baseMix.name}-${scenario.id}`}
+                          >
+                            <span className={`font-medium ${changed ? (rev > baseMix.finalLaid ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                              ₹{rev.toFixed(2)}
+                            </span>
+                            <DeltaLine base={baseMix.finalLaid} revised={rev} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Table 3 — Job-wise Cost */}
+        {baseCalc.jobResults.length > 0 && (
+          <div>
+            <p className="px-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Job-wise Cost Impact
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[500px]">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className={th1Cls}>Job</th>
+                    <th className={thCls}>MT</th>
+                    <th className={thCls}>Base ₹</th>
+                    {scenarioCalcs.map(({ scenario }) => (
+                      <th key={scenario.id} className={thCls} title={scenario.name}>
+                        <span className="block max-w-[120px] truncate ml-auto">{scenario.name}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {baseCalc.jobResults.map((baseJob, i) => (
+                    <tr key={baseJob.id} className="border-t border-border/40 hover:bg-muted/20" data-testid={`cmp-job-${baseJob.id}`}>
+                      <td className="px-3 py-2.5 font-mono font-medium text-xs">{baseJob.id}</td>
+                      <td className={`${tdBase} text-muted-foreground`}>{baseJob.totalMt > 0 ? baseJob.totalMt.toFixed(1) : "—"}</td>
+                      <td className={`${tdBase} font-medium`}>₹{Math.round(baseJob.totalAmt).toLocaleString("en-IN")}</td>
+                      {scenarioCalcs.map(({ scenario, calc }) => {
+                        const revJob = calc.jobResults[i];
+                        const rev = revJob?.totalAmt ?? 0;
+                        const changed = Math.abs(rev - baseJob.totalAmt) >= 1;
+                        return (
+                          <td
+                            key={scenario.id}
+                            className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
+                            data-testid={`cmp-job-amt-${baseJob.id}-${scenario.id}`}
+                          >
+                            <span className={`font-medium ${changed ? (rev > baseJob.totalAmt ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                              ₹{Math.round(rev).toLocaleString("en-IN")}
+                            </span>
+                            <DeltaAmtLine base={baseJob.totalAmt} revised={rev} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {/* Grand total */}
+                  <tr className="border-t-2 border-primary/40 bg-amber-50/60 dark:bg-amber-950/20 font-bold">
+                    <td className="px-3 py-3" colSpan={2}>Grand Total</td>
+                    <td className={`${tdBase}`}>₹{Math.round(baseCalc.grandTotalAmt).toLocaleString("en-IN")}</td>
+                    {scenarioCalcs.map(({ scenario, calc }) => {
+                      const rev = calc.grandTotalAmt;
+                      const changed = Math.abs(rev - baseCalc.grandTotalAmt) >= 1;
+                      return (
+                        <td
+                          key={scenario.id}
+                          className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
+                          data-testid={`cmp-grand-${scenario.id}`}
+                        >
+                          <span className={changed ? (rev > baseCalc.grandTotalAmt ? "text-red-600" : "text-green-600") : ""}>
+                            ₹{Math.round(rev).toLocaleString("en-IN")}
+                          </span>
+                          <DeltaAmtLine base={baseCalc.grandTotalAmt} revised={rev} />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
 export default function MixImpact() {
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -118,6 +358,17 @@ export default function MixImpact() {
     hsdPrice: getInputVal(state, "hsdPrice"),
     ldoRate: getInputVal(state, "ldoRate"),
   }), [state]);
+
+  // Per-scenario calcs for the comparison table
+  const scenarioCalcs = useMemo(() => {
+    if (!state) return [];
+    return scenarios.map((sc) => {
+      let prices: RevisedPrices = {};
+      try { prices = JSON.parse(sc.revisedPrices); } catch {}
+      const calc = calcMixRatesAndJobs(state, prices);
+      return { scenario: sc, prices, calc };
+    });
+  }, [scenarios, state]);
 
   const revisedPrices = useMemo(() => ({
     aggRate: revised.aggRate !== "" ? parseFloat(revised.aggRate) : basePrices.aggRate,
@@ -467,6 +718,15 @@ export default function MixImpact() {
               )}
             </CardContent>
           </Card>
+
+          {/* ── Scenario Comparison (visible when 2+ scenarios exist) ── */}
+          {scenarioCalcs.length >= 2 && (
+            <ScenarioComparison
+              scenarioCalcs={scenarioCalcs}
+              basePrices={basePrices}
+              baseCalc={baseCalc}
+            />
+          )}
         </>
       )}
     </div>
