@@ -617,7 +617,7 @@ function getDbState(){
   });
   var sitesClean = sites.map(function(s){
     return {
-      id: s.id, name: s.name,
+      id: s.id, name: s.name, transLead: s.transLead||null,
       jobs: s.jobs.map(function(j){
         var jc = Object.assign({},j);
         jc.mixes = j.mixes.map(function(mx){return {mixIdx:mx.mixIdx,qty_mt:mx.qty_mt};});
@@ -1247,12 +1247,12 @@ function renderFullBreakdown(mixRates){
 function addSite(){
   siteCounter++;
   sites.push({id:'S'+String(siteCounter).padStart(2,'0'),name:'',transLead:null,jobs:[]});
-  renderSites();
+  renderSites(); saveState();
 }
 function removeSite(si){
   if(!confirm('Remove this site and all its jobs?')) return;
   sites.splice(si,1);
-  renderSites(); recalc();
+  renderSites(); recalc(); saveState();
 }
 function addSiteJob(si){
   jobCounter++;
@@ -1264,11 +1264,11 @@ function addSiteJob(si){
     prime:true, tack:true,
     mixes:[{mixIdx:0, qty_mt:null}]
   });
-  renderSites(); recalc();
+  renderSites(); recalc(); saveState();
 }
 function removeSiteJob(si,ji){
   sites[si].jobs.splice(ji,1);
-  renderSites(); recalc();
+  renderSites(); recalc(); saveState();
 }
 function addSiteJobMix(si,ji){
   var nextIdx = sites[si].jobs[ji].mixes.length<mixTypes.length?sites[si].jobs[ji].mixes.length:0;
