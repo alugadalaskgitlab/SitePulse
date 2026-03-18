@@ -308,42 +308,21 @@ export default function PlantLdoLogs() {
               `).join('')}
             </tbody>
           </table>
+        <script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
         </body>
       </html>
     `;
     
-    // Use iframe with srcdoc - attach onload BEFORE setting srcdoc for Safari compatibility
     const iframe = document.createElement('iframe');
     iframe.style.position = 'absolute';
     iframe.style.width = '0';
     iframe.style.height = '0';
     iframe.style.border = 'none';
     iframe.style.left = '-9999px';
-    
-    let printed = false;
-    const doPrint = () => {
-      if (printed) return;
-      printed = true;
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        window.print();
-      }
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 1000);
-    };
-    
-    // Attach onload BEFORE adding to DOM and setting srcdoc
-    iframe.onload = () => setTimeout(doPrint, 100);
+
     document.body.appendChild(iframe);
     iframe.srcdoc = printContent;
-    
-    // Fallback timeout in case onload doesn't fire
-    setTimeout(() => {
-      if (!printed) doPrint();
-    }, 2000);
+    setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 30000);
   };
 
   return (

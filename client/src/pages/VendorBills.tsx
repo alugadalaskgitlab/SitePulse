@@ -1160,6 +1160,7 @@ export default function VendorBills() {
         </div>
       </div>
       <div class="footer">Generated on ${new Date().toLocaleString("en-IN")} | HIGH LANE CONSTRUCTIONS</div>
+      <script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
       </body></html>
     `;
 
@@ -1170,28 +1171,9 @@ export default function VendorBills() {
     iframe.style.border = 'none';
     iframe.style.left = '-9999px';
 
-    let printed = false;
-    const doPrint = () => {
-      if (printed) return;
-      printed = true;
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        window.print();
-      }
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 1000);
-    };
-
-    iframe.onload = () => setTimeout(doPrint, 100);
     document.body.appendChild(iframe);
     iframe.srcdoc = printContent;
-
-    setTimeout(() => {
-      if (!printed) doPrint();
-    }, 2000);
+    setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 30000);
   };
 
   const renderStatusSteps = (currentStatus: string) => {
