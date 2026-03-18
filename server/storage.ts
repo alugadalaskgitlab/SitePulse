@@ -398,7 +398,9 @@ export interface IStorage {
   fixNullContractorLabels(): Promise<{ updated: number }>;
   renameContractor(from: string, to: string): Promise<number>;
   getPriceScenarios(estimateId: number): Promise<PriceScenario[]>;
+  getPriceScenario(id: number): Promise<PriceScenario | undefined>;
   createPriceScenario(data: InsertPriceScenario): Promise<PriceScenario>;
+  updatePriceScenario(id: number, data: { name?: string; state?: string }): Promise<PriceScenario | undefined>;
   deletePriceScenario(id: number): Promise<boolean>;
 }
 
@@ -6988,8 +6990,21 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(priceScenarios.createdAt));
   }
 
+  async getPriceScenario(id: number): Promise<PriceScenario | undefined> {
+    const [row] = await db.select().from(priceScenarios).where(eq(priceScenarios.id, id));
+    return row;
+  }
+
   async createPriceScenario(data: InsertPriceScenario): Promise<PriceScenario> {
     const [row] = await db.insert(priceScenarios).values(data).returning();
+    return row;
+  }
+
+  async updatePriceScenario(id: number, data: { name?: string; state?: string }): Promise<PriceScenario | undefined> {
+    const [row] = await db.update(priceScenarios)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(priceScenarios.id, id))
+      .returning();
     return row;
   }
 

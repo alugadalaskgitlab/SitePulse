@@ -1031,11 +1031,13 @@ export const priceScenarios = pgTable("price_scenarios", {
   id: serial("id").primaryKey(),
   estimateId: integer("estimate_id").references(() => mixEstimates.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  revisedPrices: text("revised_prices").notNull(),
+  revisedPrices: text("revised_prices").notNull().default("{}"),
+  state: text("state"),
+  updatedAt: timestamp("updated_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertPriceScenarioSchema = createInsertSchema(priceScenarios).omit({ id: true, createdAt: true });
+export const insertPriceScenarioSchema = createInsertSchema(priceScenarios).omit({ id: true, createdAt: true, updatedAt: true });
 export type PriceScenario = typeof priceScenarios.$inferSelect;
 export type InsertPriceScenario = z.infer<typeof insertPriceScenarioSchema>;
 

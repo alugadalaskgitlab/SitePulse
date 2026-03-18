@@ -293,3 +293,58 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
 
   return { mixRates, jobResults, grandTotalMt, grandTotalAmt };
 }
+
+export interface InputDiff {
+  key: string;
+  label: string;
+  unit: string;
+  baseVal: number;
+  revVal: number;
+}
+
+export const INPUT_LABELS: Record<string, { label: string; unit: string }> = {
+  tph:              { label: "Plant Throughput",        unit: "MT/hr"    },
+  plantHrsMonth:    { label: "Plant Hrs/Month",         unit: "hrs"      },
+  aggRate:          { label: "Aggregate Rate",          unit: "₹/MT"     },
+  aggDist:          { label: "Agg. Lead Distance",      unit: "km"       },
+  aggFreightRate:   { label: "Agg. Freight Rate",       unit: "₹/trip"   },
+  aggPayload:       { label: "Agg. Payload",            unit: "MT"       },
+  bitPrice:         { label: "Bitumen Price",           unit: "₹/kg"     },
+  hsdConsump:       { label: "HSD Consumption",         unit: "L/hr"     },
+  hsdPrice:         { label: "HSD Price",               unit: "₹/L"      },
+  ldoConsump:       { label: "LDO Consumption",         unit: "L/MT"     },
+  ldoRate:          { label: "LDO Rate",                unit: "₹/L"      },
+  boilerProdLhr:    { label: "Boiler Fuel (Prod)",      unit: "L/hr"     },
+  boilerPreheatLhr: { label: "Boiler Fuel (Preheat)",   unit: "L/hr"     },
+  boilerFuelRate:   { label: "Boiler Fuel Rate",        unit: "₹/L"      },
+  boilerProdHrs:    { label: "Boiler Prod Hours",       unit: "hrs"      },
+  boilerPreheatHrs: { label: "Boiler Preheat Hours",    unit: "hrs"      },
+  boilerCampaignMt: { label: "Boiler Campaign MT",      unit: "MT"       },
+  crewMonthly:      { label: "Crew Cost/Month",         unit: "₹"        },
+  crewDays:         { label: "Working Days/Month",      unit: "days"     },
+  crewHrs:          { label: "Working Hrs/Day",         unit: "hrs"      },
+  transDist:        { label: "Transport Lead Dist.",    unit: "km"       },
+  transRate:        { label: "Transport Rate",          unit: "₹/trip"   },
+  transPayload:     { label: "Transport Payload",       unit: "MT"       },
+  primeSpray:       { label: "Prime Spray Rate",        unit: "kg/sqm"   },
+  primePrice:       { label: "Prime Price",             unit: "₹/kg"     },
+  primeDilution:    { label: "Prime Dilution",          unit: "%"        },
+  tackSpray:        { label: "Tack Spray Rate",         unit: "kg/sqm"   },
+  tackPrice:        { label: "Tack Price",              unit: "₹/kg"     },
+  tackDilution:     { label: "Tack Dilution",           unit: "%"        },
+  sprayBowser:      { label: "Spray Bowser Cost",       unit: "₹"        },
+  sprayCrew:        { label: "Spray Crew Cost",         unit: "₹"        },
+  sprayProd:        { label: "Spray Productivity",      unit: "sqm/hr"   },
+};
+
+export function diffCalcInputs(base: CalcState, revised: CalcState): InputDiff[] {
+  const result: InputDiff[] = [];
+  for (const [key, meta] of Object.entries(INPUT_LABELS)) {
+    const baseVal = parseFloat(base.inputs?.[key] ?? "0") || 0;
+    const revVal  = parseFloat(revised.inputs?.[key] ?? "0") || 0;
+    if (Math.abs(revVal - baseVal) > 0.0001) {
+      result.push({ key, label: meta.label, unit: meta.unit, baseVal, revVal });
+    }
+  }
+  return result;
+}

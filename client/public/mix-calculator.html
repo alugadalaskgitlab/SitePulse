@@ -104,6 +104,14 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .contractor-card td{padding:3px 0}
 .contractor-card td:last-child{text-align:right;font-weight:600}
 .hidden{display:none!important}
+.scenario-banner{background:var(--blue);color:#fff;padding:9px 24px;display:none;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;gap:12px}
+.scenario-banner.visible{display:flex}
+.sc-mode-label{opacity:.75;font-weight:600}
+.sc-mode-name{font-weight:700;margin-left:4px;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-save-btn{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 14px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer}
+.sc-save-btn:hover{background:rgba(255,255,255,.35)}
+.sc-back-link{color:rgba(255,255,255,.85);font-size:12px;text-decoration:none;white-space:nowrap}
+.sc-back-link:hover{color:#fff;text-decoration:underline}
 @media(max-width:900px){
 .main-layout{flex-direction:column}
 .left-col,.right-col{flex:1;max-width:100%;padding-right:0}
@@ -145,10 +153,20 @@ body{font-size:11px;background:#fff}
   </div>
   <div style="display:flex;gap:8px;align-items:center">
     <a href="/admin/mix-estimates" class="btn btn-secondary btn-sm no-print">← Overview</a>
-    <button class="btn btn-secondary btn-sm no-print" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
-    <button class="btn btn-secondary btn-sm no-print" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
+    <button class="btn btn-secondary btn-sm no-print" id="btnSaved" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
+    <button class="btn btn-secondary btn-sm no-print" id="btnSave" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
     <button class="btn btn-secondary btn-sm no-print" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
     <button class="btn btn-primary no-print" onclick="window.print()">🖨 Print</button>
+  </div>
+</div>
+<div id="scenarioBanner" class="scenario-banner no-print">
+  <div style="display:flex;align-items:center;gap:6px">
+    <span class="sc-mode-label">🔬 Scenario Edit Mode:</span>
+    <span id="scenarioBannerName" class="sc-mode-name">Loading…</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <button class="sc-save-btn" onclick="saveScenarioToDb()">💾 Save Scenario &amp; Return</button>
+    <a id="scenarioBackLink" href="/admin/mix-impact" class="sc-back-link">← Back to Price Impact</a>
   </div>
 </div>
 
@@ -455,6 +473,7 @@ var PERSIST_INPUTS = [
 var STORAGE_KEY = 'hlc_mix_calc_v3';
 
 function saveState(){
+  if(scenarioMode) return; // don't overwrite localStorage in scenario editing mode
   try {
     var inputs = {};
     PERSIST_INPUTS.forEach(function(id){
@@ -479,6 +498,7 @@ function saveState(){
 }
 
 function loadState(){
+  if(scenarioMode) return false; // state will be loaded from API
   try {
     var raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return false;
@@ -1498,6 +1518,94 @@ function initCloneMode(cloneId, presetContractor){
     });
 }
 
+// ====== SCENARIO EDITING MODE ======
+var scenarioMode = false;
+var scenarioModeId = null;
+var scenarioModeEstimateId = null;
+
+function loadScenarioState(state){
+  if(state.mixTypes && state.mixTypes.length >= 2) mixTypes = state.mixTypes;
+  if(state.equipDefs && state.equipDefs.length === equipDefs.length) equipDefs = state.equipDefs;
+  if(Array.isArray(state.jobs)){ jobs = state.jobs; jobCounter = state.jobCounter || jobs.length; }
+  if(state.activeMixIdx !== undefined && state.activeMixIdx < mixTypes.length) activeMixIdx = state.activeMixIdx;
+  if(state.aggBasis) aggBasis = state.aggBasis;
+  if(state.inputs){
+    PERSIST_INPUTS.forEach(function(id){
+      var el = document.getElementById(id);
+      if(el && state.inputs[id] !== undefined) el.value = state.inputs[id];
+    });
+  }
+  var b = aggBasis;
+  var mtBtn = document.getElementById('aggBasisMT');
+  var cftBtn = document.getElementById('aggBasisCFT');
+  var aggLbl = document.getElementById('aggRateLabel');
+  if(mtBtn) mtBtn.className = 'toggle-btn' + (b==='MT'?' active-amber':'');
+  if(cftBtn) cftBtn.className = 'toggle-btn' + (b==='CFT'?' active-amber':'');
+  if(aggLbl) aggLbl.textContent = 'Purchase Rate (₹/' + b + ')';
+}
+
+function initScenarioMode(estimateId){
+  if(!scenarioModeId) return;
+  scenarioModeEstimateId = estimateId ? parseInt(estimateId) : null;
+
+  var backLink = document.getElementById('scenarioBackLink');
+  if(backLink && scenarioModeEstimateId){
+    backLink.href = '/admin/mix-impact?estimateId=' + scenarioModeEstimateId;
+  }
+
+  var banner = document.getElementById('scenarioBanner');
+  if(banner) banner.classList.add('visible');
+
+  fetch('/api/price-scenarios/' + scenarioModeId)
+    .then(function(r){ return r.json(); })
+    .then(function(sc){
+      document.getElementById('scenarioBannerName').textContent = sc.name;
+      if(sc.state){
+        loadScenarioState(JSON.parse(sc.state));
+        renderMixTabs(); renderMixPanels(); renderEquipCards(); renderJobs(); recalc();
+      } else if(scenarioModeEstimateId){
+        return fetch('/api/mix-estimates/' + scenarioModeEstimateId)
+          .then(function(r){ return r.json(); })
+          .then(function(est){
+            if(est.state){
+              loadScenarioState(JSON.parse(est.state));
+              renderMixTabs(); renderMixPanels(); renderEquipCards(); renderJobs(); recalc();
+            }
+          });
+      }
+    })
+    .catch(function(){ showToast('Could not load scenario state', true); });
+}
+
+function saveScenarioToDb(){
+  if(!scenarioModeId){ showToast('No scenario to save', true); return; }
+  var stateJson = getDbState();
+  var btn = document.querySelector('.sc-save-btn');
+  if(btn) btn.textContent = 'Saving…';
+  fetch('/api/price-scenarios/' + scenarioModeId, {
+    method: 'PATCH',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ state: stateJson })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(sc){
+    var dt = sc.updatedAt ? new Date(sc.updatedAt) : new Date();
+    var parts = [String(dt.getDate()).padStart(2,'0'), ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()], dt.getFullYear()].join(' ');
+    var hrs = dt.getHours(), mins = String(dt.getMinutes()).padStart(2,'0');
+    var ampm = hrs >= 12 ? 'PM' : 'AM'; hrs = hrs % 12 || 12;
+    showToast('Scenario saved ✓ — ' + parts + ', ' + hrs + ':' + mins + ' ' + ampm);
+    setTimeout(function(){
+      var href = '/admin/mix-impact';
+      if(scenarioModeEstimateId) href += '?estimateId=' + scenarioModeEstimateId;
+      window.location.href = href;
+    }, 1800);
+  })
+  .catch(function(){
+    if(btn) btn.textContent = '💾 Save Scenario & Return';
+    showToast('Save failed — check connection', true);
+  });
+}
+
 // ====== INIT ======
 function init(){
   // Check for clone mode FIRST — do async fetch then reload (no further init needed this tick)
@@ -1508,6 +1616,10 @@ function init(){
     initCloneMode(cloneId, params.get('contractor'));
     return; // halt init — page will reload after clone setup
   }
+
+  // Detect scenario mode early so loadState() can skip localStorage
+  var scId = params.get('scenarioId');
+  if(scId){ scenarioMode = true; scenarioModeId = parseInt(scId); }
 
   document.getElementById('projDate').value = new Date().toISOString().slice(0,10);
   document.addEventListener('wheel', function(e){
@@ -1548,6 +1660,9 @@ function init(){
     badge.style.borderColor = '#16a34a';
     badge.style.background = '#f0fdf4';
   }
+
+  // Activate scenario editing mode (async — fetches scenario/estimate state)
+  if(scenarioMode){ initScenarioMode(params.get('estimateId')); }
 }
 init();
 </script>

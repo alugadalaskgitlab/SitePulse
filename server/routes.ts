@@ -3273,12 +3273,38 @@ export async function registerRoutes(
   app.post("/api/price-scenarios", async (req, res) => {
     try {
       const { estimateId, name, revisedPrices } = req.body;
-      if (!estimateId || !name || !revisedPrices) return res.status(400).json({ message: "estimateId, name, and revisedPrices required" });
-      const scenario = await storage.createPriceScenario({ estimateId, name, revisedPrices: typeof revisedPrices === "string" ? revisedPrices : JSON.stringify(revisedPrices) });
+      if (!estimateId || !name) return res.status(400).json({ message: "estimateId and name required" });
+      const rp = revisedPrices ? (typeof revisedPrices === "string" ? revisedPrices : JSON.stringify(revisedPrices)) : "{}";
+      const scenario = await storage.createPriceScenario({ estimateId, name, revisedPrices: rp });
       res.status(201).json(scenario);
     } catch (err) {
       console.error("Error creating price scenario:", err);
       res.status(500).json({ message: "Failed to create scenario" });
+    }
+  });
+
+  app.get("/api/price-scenarios/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const scenario = await storage.getPriceScenario(id);
+      if (!scenario) return res.status(404).json({ message: "Scenario not found" });
+      res.json(scenario);
+    } catch (err) {
+      console.error("Error fetching price scenario:", err);
+      res.status(500).json({ message: "Failed to fetch scenario" });
+    }
+  });
+
+  app.patch("/api/price-scenarios/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, state } = req.body;
+      const updated = await storage.updatePriceScenario(id, { name, state });
+      if (!updated) return res.status(404).json({ message: "Scenario not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating price scenario:", err);
+      res.status(500).json({ message: "Failed to update scenario" });
     }
   });
 
