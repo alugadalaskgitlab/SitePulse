@@ -713,6 +713,8 @@ function saveToDb(){
     .then(function(est){
       currentEstimateId = est.id;
       currentEstimateName = est.name;
+      localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
+      localStorage.setItem(STORAGE_KEY+'_estName', est.name);
       updateBadge();
       showToast('Saved ✓ — returning to overview…');
       setTimeout(function(){ window.location.href = '/admin/mix-estimates'; }, 1500);
@@ -722,6 +724,7 @@ function saveToDb(){
 
 function autoSaveToDb(){
   if(!currentEstimateId) return;
+  if(scenarioMode) return;
   var summary = getDbSummary();
   var contractorNames = [];
   getAllJobs().forEach(function(j){

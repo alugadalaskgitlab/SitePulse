@@ -107,6 +107,15 @@ function ScenarioComparison({
       </CardHeader>
       <CardContent className="space-y-5 p-0 pb-4">
 
+        {/* No-changes hint */}
+        {allChangedInputs.length === 0 && scenarioCalcs.length > 0 && (
+          <div className="mx-4 mt-3 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
+            No rate changes detected in {scenarioCalcs.length === 1 ? "this scenario" : "any scenario"}.
+            Click <strong>Edit</strong> next to a scenario, adjust any inputs in the calculator, then click
+            <strong> Save Scenario &amp; Return</strong> to record the changes.
+          </div>
+        )}
+
         {/* Table 1 — Changed Inputs (only rows changed in ≥1 scenario) */}
         {allChangedInputs.length > 0 && (
           <div>

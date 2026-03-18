@@ -83,9 +83,9 @@ export default function MixEstimates({ embedded = false }: Props) {
   function loadInCalculator(est: MixEstimate) {
     try {
       const state = JSON.parse(est.state);
-      localStorage.setItem("hlc_mix_calc_v3", JSON.stringify(state));
-      localStorage.setItem("hlc_mix_calc_v3_estId", String(est.id));
-      localStorage.setItem("hlc_mix_calc_v3_estName", est.name);
+      localStorage.setItem("hlc_mix_calc_v4", JSON.stringify(state));
+      localStorage.setItem("hlc_mix_calc_v4_estId", String(est.id));
+      localStorage.setItem("hlc_mix_calc_v4_estName", est.name);
     } catch {
       toast({ title: "Invalid estimate data", variant: "destructive" });
       return;
