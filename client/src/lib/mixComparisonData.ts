@@ -19,12 +19,15 @@ export interface LedgerRow {
   contractor: string;
   estimateName: string;
   jobId: string;
+  mixType: string;
   areaSqm: number;
   mt: number;
   plantPerMt: number;
   transPerMt: number;
   layPerMt: number;
   totalPerMt: number;
+  primeAmt: number;
+  tackAmt: number;
   totalAmt: number;
 }
 
@@ -113,16 +116,28 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
           const primeAmt = (j._primeAmt as number) ?? 0;
           const tackAmt = (j._tackAmt as number) ?? 0;
           const totalAmt = (j._totalAmt as number) ?? (plantAmt + transAmt + layAmt + primeAmt + tackAmt);
+
+          // Derive mix type label from mixes array + state.mixTypes
+          const jobMixes = (j.mixes as { mixIdx: number; qty_mt: number | null }[]) ?? [];
+          const mixNames = jobMixes
+            .filter((m) => (m.qty_mt ?? 0) > 0)
+            .map((m) => state.mixTypes?.[m.mixIdx]?.name ?? `Mix ${m.mixIdx + 1}`)
+            .filter(Boolean);
+          const mixType = mixNames.length > 0 ? mixNames.join(" / ") : "—";
+
           ledgerRows.push({
             contractor,
             estimateName: est.name,
             jobId: (j.id as string) ?? "—",
+            mixType,
             areaSqm: (j._area as number) ?? 0,
             mt,
             plantPerMt: mt > 0 ? plantAmt / mt : 0,
             transPerMt: mt > 0 ? transAmt / mt : 0,
             layPerMt: mt > 0 ? layAmt / mt : 0,
             totalPerMt: mt > 0 ? totalAmt / mt : 0,
+            primeAmt,
+            tackAmt,
             totalAmt,
           });
         });

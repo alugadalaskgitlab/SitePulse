@@ -24,16 +24,18 @@ async function doExport(data: ComparisonData) {
   ]);
 
   const ledgerHeaders = [
-    "Contractor", "Estimate", "Job", "Area (Sqm)", "MT",
-    "Plant ₹/MT", "Trans ₹/MT", "Lay ₹/MT", "Total ₹/MT", "Amount (₹)",
+    "Contractor", "Job", "Mix Type", "Area (Sqm)", "MT",
+    "Plant ₹/MT", "Trans ₹/MT", "Lay ₹/MT", "Prime ₹", "Tack ₹", "Total ₹/MT", "Amount (₹)",
   ];
   const ledgerData = ledgerRows.map((r) => [
-    r.contractor, r.estimateName, r.jobId,
+    r.contractor, r.jobId, r.mixType,
     r.areaSqm > 0 ? r.areaSqm.toFixed(1) : "",
     r.mt > 0 ? r.mt.toFixed(1) : "",
     r.plantPerMt > 0 ? r.plantPerMt.toFixed(2) : "",
     r.transPerMt > 0 ? r.transPerMt.toFixed(2) : "",
     r.layPerMt > 0 ? r.layPerMt.toFixed(2) : "",
+    r.primeAmt > 0 ? Math.round(r.primeAmt).toString() : "",
+    r.tackAmt > 0 ? Math.round(r.tackAmt).toString() : "",
     r.totalPerMt > 0 ? r.totalPerMt.toFixed(2) : "",
     r.totalAmt > 0 ? Math.round(r.totalAmt).toString() : "",
   ]);
@@ -157,13 +159,15 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
                   <th className="text-left px-4 py-2.5 font-semibold">Contractor</th>
-                  <th className="text-left px-4 py-2.5 font-semibold">Estimate</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Job</th>
+                  <th className="text-left px-4 py-2.5 font-semibold">Mix Type</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Area (Sqm)</th>
                   <th className="text-right px-4 py-2.5 font-semibold">MT</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Plant ₹/MT</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Trans ₹/MT</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Lay ₹/MT</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Prime ₹</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Tack ₹</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Total ₹/MT</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Amount (₹)</th>
                 </tr>
@@ -185,32 +189,34 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                           <td className="px-4 py-2.5">
                             {ri === 0 ? <span className="font-semibold">{contractor}</span> : ""}
                           </td>
-                          <td className="px-4 py-2.5 text-muted-foreground text-xs max-w-[180px] truncate">{row.estimateName}</td>
-                          <td className="px-4 py-2.5 font-medium">{row.jobId}</td>
+                          <td className="px-4 py-2.5 font-mono font-medium text-sm">{row.jobId}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground text-xs">{row.mixType}</td>
                           <td className="px-4 py-2.5 text-right font-mono">{row.areaSqm > 0 ? row.areaSqm.toFixed(1) : "—"}</td>
                           <td className="px-4 py-2.5 text-right font-mono">{row.mt > 0 ? row.mt.toFixed(1) : "—"}</td>
                           <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmt2(row.plantPerMt)}</td>
                           <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmt2(row.transPerMt)}</td>
                           <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmt2(row.layPerMt)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{row.primeAmt > 0 ? `₹${fmt0(row.primeAmt)}` : "—"}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{row.tackAmt > 0 ? `₹${fmt0(row.tackAmt)}` : "—"}</td>
                           <td className="px-4 py-2.5 text-right font-mono font-medium">{fmt2(row.totalPerMt)}</td>
                           <td className="px-4 py-2.5 text-right font-semibold">₹{fmt0(row.totalAmt)}</td>
                         </tr>
                       ))}
                       <tr className="border-t border-primary/20 bg-amber-50/50 dark:bg-amber-950/20">
-                        <td className="px-4 py-2 font-bold text-xs uppercase text-primary" colSpan={4}>
+                        <td className="px-4 py-2 font-bold text-xs uppercase text-primary" colSpan={5}>
                           {contractor} Subtotal
                         </td>
                         <td className="px-4 py-2 text-right font-bold font-mono">{subMt.toFixed(1)}</td>
-                        <td colSpan={4} />
+                        <td colSpan={5} />
                         <td className="px-4 py-2 text-right font-bold">₹{fmt0(subAmt)}</td>
                       </tr>
                     </Fragment>
                   );
                 })}
                 <tr className="border-t-2 border-primary/40 bg-amber-100/60 dark:bg-amber-950/40 font-bold">
-                  <td className="px-4 py-3 text-base" colSpan={4}>Grand Total</td>
+                  <td className="px-4 py-3 text-base" colSpan={5}>Grand Total</td>
                   <td className="px-4 py-3 text-right font-mono">{grandTotals.mt.toFixed(1)} MT</td>
-                  <td colSpan={4} />
+                  <td colSpan={5} />
                   <td className="px-4 py-3 text-right text-base">₹{fmt0(grandTotals.amt)}</td>
                 </tr>
               </tbody>
