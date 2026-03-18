@@ -99,19 +99,7 @@ function ScenarioComparison({
     const cls = delta > 0 ? "text-red-500" : "text-green-600";
     return (
       <span className={`block text-xs font-medium mt-0.5 ${cls}`}>
-        {sign}{delta.toFixed(2)}
-      </span>
-    );
-  }
-
-  function DeltaAmtLine({ base, revised }: { base: number; revised: number }) {
-    const delta = revised - base;
-    if (Math.abs(delta) < 1) return <span className="block text-xs text-muted-foreground/60 mt-0.5">—</span>;
-    const sign = delta > 0 ? "+" : "-";
-    const cls = delta > 0 ? "text-red-500" : "text-green-600";
-    return (
-      <span className={`block text-xs font-medium mt-0.5 ${cls}`}>
-        {sign}₹{Math.round(Math.abs(delta)).toLocaleString("en-IN")}
+        {sign}₹{delta.toFixed(2)}
       </span>
     );
   }
@@ -266,7 +254,7 @@ function ScenarioComparison({
                             <span className={`font-medium ${changed ? (rev > baseJob.totalAmt ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
                               ₹{Math.round(rev).toLocaleString("en-IN")}
                             </span>
-                            <DeltaAmtLine base={baseJob.totalAmt} revised={rev} />
+                            <span className="block mt-0.5 text-xs"><DeltaAmt base={baseJob.totalAmt} revised={rev} /></span>
                           </td>
                         );
                       })}
@@ -288,7 +276,7 @@ function ScenarioComparison({
                           <span className={changed ? (rev > baseCalc.grandTotalAmt ? "text-red-600" : "text-green-600") : ""}>
                             ₹{Math.round(rev).toLocaleString("en-IN")}
                           </span>
-                          <DeltaAmtLine base={baseCalc.grandTotalAmt} revised={rev} />
+                          <span className="block mt-0.5 text-xs"><DeltaAmt base={baseCalc.grandTotalAmt} revised={rev} /></span>
                         </td>
                       );
                     })}
