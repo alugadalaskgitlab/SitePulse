@@ -20,7 +20,10 @@ export async function registerRoutes(
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.sendFile('mix-calculator.html', { root: path.join(process.cwd(), 'client', 'public') });
+    const root = process.env.NODE_ENV === 'production'
+      ? path.join(process.cwd(), 'dist', 'public')
+      : path.join(process.cwd(), 'client', 'public');
+    res.sendFile('mix-calculator.html', { root });
   });
 
   // List DPRs with filters
