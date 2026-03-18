@@ -996,21 +996,10 @@ function recalc(){
   var bitPrice = n('bitPrice');
   var hsdPrice = n('hsdPrice');
 
-  // Equipment per MT display
+  // Equipment per MT fuel accumulation (badges updated via updateEquipBadges at end of recalc)
   var totalPlantFuelPerMT = 0;
-  equipDefs.forEach(function(eq,i){
-    var c = getEquipCostPerMT(eq);
-    var f = getEquipFuelPerMT(eq);
-    if(!eq.isLaying) totalPlantFuelPerMT += f;
-    var el = document.getElementById('eqRate_'+eq.id);
-    if(el){
-      if(eq.isLaying){
-        var d=getEquipDailyCost(eq);
-        el.textContent='₹/day → ₹'+fmtI(d);
-      } else {
-        el.textContent='₹/MT → '+fmtR(c);
-      }
-    }
+  equipDefs.forEach(function(eq){
+    if(!eq.isLaying) totalPlantFuelPerMT += getEquipFuelPerMT(eq);
   });
   document.getElementById('hsdDerived').textContent = 'Equipment HSD cost → ₹'+fmtR(totalPlantFuelPerMT)+'/MT (plant equip only)';
 
