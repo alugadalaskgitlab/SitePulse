@@ -21,7 +21,9 @@ function fmtAmt(v: number | null | undefined) {
 
 function fmtDate(d: Date | string | null | undefined) {
   if (!d) return "";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const dt = new Date(d);
+  return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) +
+    ", " + dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 interface Props {
