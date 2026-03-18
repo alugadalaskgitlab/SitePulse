@@ -20,6 +20,7 @@ export interface EquipDef {
   hireHrsMonth: number;
   enabled: boolean;
   isLaying: boolean;
+  fuelConsump?: number;
 }
 
 export interface JobDef {
@@ -30,16 +31,27 @@ export interface JobDef {
   width?: number;
   thickness?: number;
   volume?: number;
+  /** @deprecated prime/tack are now always shown */
   prime?: boolean;
+  /** @deprecated prime/tack are now always shown */
   tack?: boolean;
   mixes: { mixIdx: number; qty_mt: number | null }[];
+}
+
+export interface SiteDef {
+  id: string;
+  name: string;
+  jobs: JobDef[];
 }
 
 export interface CalcState {
   inputs: Record<string, string>;
   mixTypes: MixTypeDef[];
   equipDefs: EquipDef[];
-  jobs: JobDef[];
+  /** New format: sites array with nested jobs */
+  sites?: SiteDef[];
+  /** Legacy format: flat jobs array */
+  jobs?: JobDef[];
   aggBasis?: string;
 }
 
@@ -70,6 +82,7 @@ export interface MixRate {
 export interface JobResult {
   id: string;
   contractor: string;
+  siteName?: string;
   totalMt: number;
   totalAmt: number;
   mixes: {
@@ -81,9 +94,18 @@ export interface JobResult {
   }[];
 }
 
+export interface SiteResult {
+  siteId: string;
+  siteName: string;
+  jobs: JobResult[];
+  siteTotal: number;
+  siteMt: number;
+}
+
 export interface CalcResult {
   mixRates: MixRate[];
   jobResults: JobResult[];
+  siteResults?: SiteResult[];
   grandTotalMt: number;
   grandTotalAmt: number;
 }
@@ -93,7 +115,22 @@ function n(inputs: Record<string, string>, key: string, def = 0): number {
   return isNaN(v) ? def : v;
 }
 
-function equipCostPerMT(eq: EquipDef, tph: number, phm: number): number {
+/** Get all jobs from state, handling both new sites[] and legacy jobs[] format */
+function getAllJobs(state: CalcState): { job: JobDef; siteName: string; siteId: string }[] {
+  if (state.sites && state.sites.length > 0) {
+    const result: { job: JobDef; siteName: string; siteId: string }[] = [];
+    for (const site of state.sites) {
+      for (const job of site.jobs) {
+        result.push({ job, siteName: site.name || site.id, siteId: site.id });
+      }
+    }
+    return result;
+  }
+  // Legacy flat jobs array
+  return (state.jobs || []).map(job => ({ job, siteName: '', siteId: '' }));
+}
+
+function equipHireCostPerMT(eq: EquipDef, tph: number, phm: number): number {
   if (!eq.enabled || tph <= 0) return 0;
   if (eq.mode === 'owned') {
     if (eq.life <= 0 || phm <= 0) return 0;
@@ -113,7 +150,12 @@ function equipCostPerMT(eq: EquipDef, tph: number, phm: number): number {
   }
 }
 
-function equipDailyCost(eq: EquipDef): number {
+function equipFuelPerMT(eq: EquipDef, hsdPrice: number, tph: number): number {
+  if (!eq.enabled || eq.isLaying || tph <= 0) return 0;
+  return ((eq.fuelConsump ?? 0) * hsdPrice) / tph;
+}
+
+function equipHireDailyCost(eq: EquipDef): number {
   if (!eq.enabled) return 0;
   if (eq.mode === 'owned') {
     if (eq.life <= 0) return 0;
@@ -126,8 +168,18 @@ function equipDailyCost(eq: EquipDef): number {
   }
 }
 
+function equipFuelPerDay(eq: EquipDef, hsdPrice: number): number {
+  if (!eq.enabled || !eq.isLaying) return 0;
+  return (eq.fuelConsump ?? 0) * (eq.hireHrsDay || 8) * hsdPrice;
+}
+
+// Legacy compat: old equipDailyCost
+function equipDailyCost(eq: EquipDef, hsdPrice = 0): number {
+  return equipHireDailyCost(eq) + equipFuelPerDay(eq, hsdPrice);
+}
+
 export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices): CalcResult {
-  const { inputs, mixTypes, equipDefs, jobs, aggBasis } = state;
+  const { inputs, mixTypes, equipDefs, aggBasis } = state;
 
   const tph = n(inputs, 'tph');
   const phm = n(inputs, 'plantHrsMonth');
@@ -145,8 +197,6 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
 
   const bitPrice = overrides?.bitPrice ?? n(inputs, 'bitPrice');
   const hsdPrice = overrides?.hsdPrice ?? n(inputs, 'hsdPrice');
-  const hsdConsump = n(inputs, 'hsdConsump');
-  const hsdPerMT = tph > 0 ? (hsdConsump * hsdPrice / tph) : 0;
 
   const ldoRate = overrides?.ldoRate ?? n(inputs, 'ldoRate');
   const ldoConsump = n(inputs, 'ldoConsump');
@@ -169,23 +219,27 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
 
   const marginPct = n(inputs, 'marginPct');
 
-  let plantEquipPerMT = 0;
-  equipDefs.forEach((eq) => {
+  // Plant equipment: hire + fuel per MT
+  let plantEquipHirePerMT = 0;
+  let plantEquipFuelPerMT = 0;
+  (equipDefs || []).forEach((eq) => {
     if (!eq.isLaying) {
-      plantEquipPerMT += equipCostPerMT(eq, tph, phm);
+      plantEquipHirePerMT += equipHireCostPerMT(eq, tph, phm);
+      plantEquipFuelPerMT += equipFuelPerMT(eq, hsdPrice, tph);
     }
   });
+  const plantEquipPerMT = plantEquipHirePerMT + plantEquipFuelPerMT;
 
-  const paverEq = equipDefs.find((e) => e.id === 'paver');
-  const rollerEq = equipDefs.find((e) => e.id === 'roller');
-  const ptrEq = equipDefs.find((e) => e.id === 'ptr');
-  const layPaverD = paverEq ? equipDailyCost(paverEq) : 0;
-  const layRollerD = rollerEq ? equipDailyCost(rollerEq) : 0;
-  const layPtrD = ptrEq ? equipDailyCost(ptrEq) : 0;
+  // Laying equipment: daily cost (hire + fuel) → per MT
+  const paverEq = (equipDefs || []).find((e) => e.id === 'paver');
+  const rollerEq = (equipDefs || []).find((e) => e.id === 'roller');
+  const ptrEq = (equipDefs || []).find((e) => e.id === 'ptr');
   const layCrewD = n(inputs, 'layCrew');
-  const layFuelD = n(inputs, 'layFuel');
   const layProd = n(inputs, 'layProductivity');
-  const layTotalDaily = layPaverD + layRollerD + layPtrD + layCrewD + layFuelD;
+  const layPaverD = paverEq ? equipDailyCost(paverEq, hsdPrice) : 0;
+  const layRollerD = rollerEq ? equipDailyCost(rollerEq, hsdPrice) : 0;
+  const layPtrD = ptrEq ? equipDailyCost(ptrEq, hsdPrice) : 0;
+  const layTotalDaily = layPaverD + layRollerD + layPtrD + layCrewD;
   const layPerMT = layProd > 0 ? (layTotalDaily / layProd) : 0;
 
   const transDist = n(inputs, 'transDist');
@@ -194,19 +248,20 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   const transPerMT = transPayload > 0 ? (transDist * 2 * transRate / transPayload) : 0;
 
   const primeSpray = n(inputs, 'primeSpray');
-  const primePrice = n(inputs, 'primePrice');
+  const primePrice_ = n(inputs, 'primePrice');
   const primeDilution = n(inputs, 'primeDilution') || 1;
   const tackSpray = n(inputs, 'tackSpray');
-  const tackPrice = n(inputs, 'tackPrice');
+  const tackPrice_ = n(inputs, 'tackPrice');
   const tackDilution = n(inputs, 'tackDilution') || 1;
   const sprayBowser = n(inputs, 'sprayBowser');
   const sprayCrew = n(inputs, 'sprayCrew');
   const sprayProd = n(inputs, 'sprayProd');
   const sprayOpPerSqm = sprayProd > 0 ? ((sprayBowser + sprayCrew) / sprayProd) : 0;
-  const primePerSqm = (primeSpray * primePrice / primeDilution) + sprayOpPerSqm;
-  const tackPerSqm = (tackSpray * tackPrice / tackDilution) + sprayOpPerSqm;
+  const primePerSqm = (primeSpray * primePrice_ / primeDilution) + sprayOpPerSqm;
+  const tackPerSqm = (tackSpray * tackPrice_ / tackDilution) + sprayOpPerSqm;
 
-  const fuelTotal = hsdPerMT + ldoPerMT + boilerProdPerMT + boilerPreheatPerMT;
+  const hsdFuelTotal = plantEquipFuelPerMT;
+  const fuelTotal = hsdFuelTotal + ldoPerMT + boilerProdPerMT + boilerPreheatPerMT;
 
   const mixRates: MixRate[] = (mixTypes || []).map((m) => {
     const aggFrac = FRAC_KEYS.reduce((s, k) => s + (m.fractions?.[k] ?? 0), 0) / 100;
@@ -224,7 +279,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       bitumen: bitCostPerMT,
       equipment: plantEquipPerMT,
       fuel: fuelTotal,
-      hsd: hsdPerMT,
+      hsd: hsdFuelTotal,
       ldo: ldoPerMT,
       crew: crewPerMT,
       margin: marginAmt,
@@ -238,7 +293,11 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   let grandTotalMt = 0;
   let grandTotalAmt = 0;
 
-  const jobResults: JobResult[] = (jobs || []).map((j) => {
+  // Build flat jobResults + grouped siteResults
+  const allJobEntries = getAllJobs(state);
+  const siteMap = new Map<string, SiteResult>();
+
+  const jobResults: JobResult[] = allJobEntries.map(({ job: j, siteName, siteId }) => {
     const isGeo = j.basis === 'GEOMETRY';
     let cum: number;
     let area: number;
@@ -253,8 +312,8 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       area = len * (j.width ?? 0);
     }
 
-    const primeAmt = j.prime ? (area * primePerSqm) : 0;
-    const tackAmt = j.tack ? (area * tackPerSqm) : 0;
+    const primeAmt = area * primePerSqm;
+    const tackAmt = area * tackPerSqm;
 
     let jobMT = 0;
     let jobPlant = 0;
@@ -282,16 +341,32 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
     grandTotalMt += jobMT;
     grandTotalAmt += jobTotal;
 
-    return {
+    const jr: JobResult = {
       id: j.id,
       contractor: j.contractor || '',
+      siteName,
       totalMt: jobMT,
       totalAmt: jobTotal,
       mixes: mixDetails,
     };
+
+    // Accumulate into site map
+    if (siteId) {
+      if (!siteMap.has(siteId)) {
+        siteMap.set(siteId, { siteId, siteName, jobs: [], siteTotal: 0, siteMt: 0 });
+      }
+      const sr = siteMap.get(siteId)!;
+      sr.jobs.push(jr);
+      sr.siteTotal += jobTotal;
+      sr.siteMt += jobMT;
+    }
+
+    return jr;
   });
 
-  return { mixRates, jobResults, grandTotalMt, grandTotalAmt };
+  const siteResults = siteMap.size > 0 ? Array.from(siteMap.values()) : undefined;
+
+  return { mixRates, jobResults, siteResults, grandTotalMt, grandTotalAmt };
 }
 
 export interface InputDiff {
@@ -305,46 +380,76 @@ export interface InputDiff {
 export const INPUT_LABELS: Record<string, { label: string; unit: string }> = {
   tph:              { label: "Plant Throughput",        unit: "MT/hr"    },
   plantHrsMonth:    { label: "Plant Hrs/Month",         unit: "hrs"      },
-  aggRate:          { label: "Aggregate Rate",          unit: "₹/MT"     },
-  aggDist:          { label: "Agg. Lead Distance",      unit: "km"       },
-  aggFreightRate:   { label: "Agg. Freight Rate",       unit: "₹/trip"   },
-  aggPayload:       { label: "Agg. Payload",            unit: "MT"       },
-  bitPrice:         { label: "Bitumen Price",           unit: "₹/kg"     },
-  hsdConsump:       { label: "HSD Consumption",         unit: "L/hr"     },
-  hsdPrice:         { label: "HSD Price",               unit: "₹/L"      },
-  ldoConsump:       { label: "LDO Consumption",         unit: "L/MT"     },
-  ldoRate:          { label: "LDO Rate",                unit: "₹/L"      },
-  boilerProdLhr:    { label: "Boiler Fuel (Prod)",      unit: "L/hr"     },
-  boilerPreheatLhr: { label: "Boiler Fuel (Preheat)",   unit: "L/hr"     },
-  boilerFuelRate:   { label: "Boiler Fuel Rate",        unit: "₹/L"      },
-  boilerProdHrs:    { label: "Boiler Prod Hours",       unit: "hrs"      },
-  boilerPreheatHrs: { label: "Boiler Preheat Hours",    unit: "hrs"      },
-  boilerCampaignMt: { label: "Boiler Campaign MT",      unit: "MT"       },
-  crewMonthly:      { label: "Crew Cost/Month",         unit: "₹"        },
-  crewDays:         { label: "Working Days/Month",      unit: "days"     },
-  crewHrs:          { label: "Working Hrs/Day",         unit: "hrs"      },
-  transDist:        { label: "Transport Lead Dist.",    unit: "km"       },
-  transRate:        { label: "Transport Rate",          unit: "₹/trip"   },
-  transPayload:     { label: "Transport Payload",       unit: "MT"       },
-  primeSpray:       { label: "Prime Spray Rate",        unit: "kg/sqm"   },
-  primePrice:       { label: "Prime Price",             unit: "₹/kg"     },
-  primeDilution:    { label: "Prime Dilution",          unit: "%"        },
-  tackSpray:        { label: "Tack Spray Rate",         unit: "kg/sqm"   },
-  tackPrice:        { label: "Tack Price",              unit: "₹/kg"     },
-  tackDilution:     { label: "Tack Dilution",           unit: "%"        },
-  sprayBowser:      { label: "Spray Bowser Cost",       unit: "₹"        },
-  sprayCrew:        { label: "Spray Crew Cost",         unit: "₹"        },
-  sprayProd:        { label: "Spray Productivity",      unit: "sqm/hr"   },
+  aggRate:          { label: "Aggregate Rate",           unit: "₹"        },
+  aggDensity:       { label: "Agg Bulk Density",         unit: "MT/CUM"   },
+  aggDist:          { label: "Crusher→Plant Distance",   unit: "km"       },
+  aggFreightRate:   { label: "Freight Rate",             unit: "₹/km/load"},
+  aggPayload:       { label: "Freight Payload",          unit: "MT"       },
+  bitPrice:         { label: "Bitumen Price",            unit: "₹/kg"     },
+  hsdPrice:         { label: "Diesel (HSD) Price",       unit: "₹/L"      },
+  ldoConsump:       { label: "LDO Consumption (Dryer)",  unit: "L/MT"     },
+  ldoRate:          { label: "LDO Rate",                 unit: "₹/L"      },
+  boilerProdLhr:    { label: "Boiler Prod Fuel",         unit: "L/hr"     },
+  boilerPreheatLhr: { label: "Boiler Preheat Fuel",      unit: "L/hr"     },
+  boilerFuelRate:   { label: "Boiler Fuel Rate",         unit: "₹/L"      },
+  boilerProdHrs:    { label: "Boiler Prod Hrs/Cycle",    unit: "hrs"      },
+  boilerPreheatHrs: { label: "Boiler Preheat Hrs/Cycle", unit: "hrs"     },
+  boilerCampaignMt: { label: "Boiler Campaign MT",       unit: "MT"       },
+  crewMonthly:      { label: "Plant Crew Monthly",       unit: "₹"        },
+  crewDays:         { label: "Working Days/Month",       unit: "days"     },
+  crewHrs:          { label: "Working Hrs/Day",          unit: "hrs"      },
+  marginPct:        { label: "Margin %",                 unit: "%"        },
+  layCrew:          { label: "Laying Crew/Day",          unit: "₹"        },
+  layProductivity:  { label: "Laying Productivity",      unit: "MT/day"   },
+  transDist:        { label: "Transport Distance",       unit: "km"       },
+  transRate:        { label: "Transport Rate",           unit: "₹/km/load"},
+  transPayload:     { label: "Transport Payload",        unit: "MT"       },
+  primeSpray:       { label: "Prime Coat Spray Rate",    unit: "kg/sqm"   },
+  primePrice:       { label: "Prime Coat Emulsion Price",unit: "₹/kg"     },
+  primeDilution:    { label: "Prime Dilution Factor",    unit: "x"        },
+  tackSpray:        { label: "Tack Coat Spray Rate",     unit: "kg/sqm"   },
+  tackPrice:        { label: "Tack Coat Emulsion Price", unit: "₹/kg"     },
+  tackDilution:     { label: "Tack Dilution Factor",     unit: "x"        },
+  sprayBowser:      { label: "Bowser + Tractor",         unit: "₹/day"    },
+  sprayCrew:        { label: "Spray Crew + Diesel",      unit: "₹/day"    },
+  sprayProd:        { label: "Spray Productivity",       unit: "sqm/day"  },
 };
 
 export function diffCalcInputs(base: CalcState, revised: CalcState): InputDiff[] {
-  const result: InputDiff[] = [];
+  const diffs: InputDiff[] = [];
   for (const [key, meta] of Object.entries(INPUT_LABELS)) {
-    const baseVal = parseFloat(base.inputs?.[key] ?? "0") || 0;
-    const revVal  = parseFloat(revised.inputs?.[key] ?? "0") || 0;
-    if (Math.abs(revVal - baseVal) > 0.0001) {
-      result.push({ key, label: meta.label, unit: meta.unit, baseVal, revVal });
+    const bv = parseFloat(base.inputs?.[key] ?? '0') || 0;
+    const rv = parseFloat(revised.inputs?.[key] ?? '0') || 0;
+    if (Math.abs(bv - rv) > 0.0001) {
+      diffs.push({ key, label: meta.label, unit: meta.unit, baseVal: bv, revVal: rv });
     }
   }
-  return result;
+  // Also diff equipDef fuelConsump values
+  (base.equipDefs || []).forEach((beq, i) => {
+    const req = (revised.equipDefs || [])[i];
+    if (!req) return;
+    const bfc = beq.fuelConsump ?? 0;
+    const rfc = req.fuelConsump ?? 0;
+    if (Math.abs(bfc - rfc) > 0.001) {
+      diffs.push({
+        key: `eq_fuel_${beq.id}`,
+        label: `${beq.name} Fuel Consumption`,
+        unit: 'L/hr',
+        baseVal: bfc,
+        revVal: rfc,
+      });
+    }
+    const bhr = beq.hireRate ?? 0;
+    const rhr = req.hireRate ?? 0;
+    if (Math.abs(bhr - rhr) > 0.001) {
+      diffs.push({
+        key: `eq_hire_${beq.id}`,
+        label: `${beq.name} Hire Rate`,
+        unit: '₹',
+        baseVal: bhr,
+        revVal: rhr,
+      });
+    }
+  });
+  return diffs;
 }

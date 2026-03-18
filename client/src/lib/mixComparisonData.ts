@@ -107,7 +107,15 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
     sortByUpdatedAtDesc(contractorMap[contractor]).forEach((est) => {
       try {
         const state: CalcState = JSON.parse(est.state);
-        const jobs: Record<string, unknown>[] = ((state.jobs as unknown) as Record<string, unknown>[]) || [];
+        // Support both legacy flat jobs[] and new sites[].jobs[] format
+        let rawJobs: Record<string, unknown>[];
+        if (Array.isArray((state as unknown as Record<string, unknown>).sites)) {
+          rawJobs = ((state as unknown as Record<string, unknown>).sites as Record<string, unknown>[])
+            .flatMap((s) => (s.jobs as Record<string, unknown>[]) ?? []);
+        } else {
+          rawJobs = ((state.jobs as unknown) as Record<string, unknown>[]) || [];
+        }
+        const jobs: Record<string, unknown>[] = rawJobs;
         jobs.forEach((j) => {
           const mt = (j._mt as number) ?? 0;
           const plantAmt = (j._plantAmt as number) ?? 0;
