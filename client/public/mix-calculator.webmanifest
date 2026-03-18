@@ -1,0 +1,32 @@
+{
+  "name": "HLC Mix Calculator",
+  "short_name": "HLC Calc",
+  "description": "Bitumen Hot Mix Rate Calculator for Highlane Constructions",
+  "start_url": "/mix-calculator",
+  "id": "/mix-calculator",
+  "scope": "/mix-calculator",
+  "display": "standalone",
+  "background_color": "#fffbeb",
+  "theme_color": "#d97706",
+  "orientation": "any",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/mix-calc-icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/mix-calc-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/mix-calc-apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
