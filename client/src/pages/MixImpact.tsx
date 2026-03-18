@@ -108,13 +108,59 @@ function ScenarioComparison({
       <CardContent className="space-y-5 p-0 pb-4">
 
         {/* No-changes hint */}
-        {allChangedInputs.length === 0 && scenarioCalcs.length > 0 && (
-          <div className="mx-4 mt-3 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
-            No rate changes detected in {scenarioCalcs.length === 1 ? "this scenario" : "any scenario"}.
-            Click <strong>Edit</strong> next to a scenario, adjust any inputs in the calculator, then click
-            <strong> Save Scenario &amp; Return</strong> to record the changes.
-          </div>
-        )}
+        {allChangedInputs.length === 0 && scenarioCalcs.length > 0 && (() => {
+          const KEY_RATES = [
+            { key: "bitPrice", label: "Bitumen Price", unit: "₹/kg" },
+            { key: "hsdPrice", label: "HSD Price", unit: "₹/L" },
+            { key: "ldoRate",  label: "LDO Rate",   unit: "₹/L" },
+            { key: "aggRate",  label: "Agg Rate",    unit: "₹"   },
+          ];
+          return (
+            <div className="mx-4 mt-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+              <div className="p-3 text-sm text-amber-800 dark:text-amber-300">
+                No rate changes detected. The scenario state was saved but its key rates match the base estimate.
+                Click <strong>Edit</strong>, change any rates in the calculator, then click
+                <strong> Save Scenario &amp; Return</strong>.
+              </div>
+              <div className="overflow-x-auto border-t border-amber-200 dark:border-amber-800">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-amber-100/60 dark:bg-amber-900/30">
+                      <th className="px-3 py-1.5 text-left font-semibold text-amber-700 dark:text-amber-400">Rate Input</th>
+                      <th className="px-3 py-1.5 text-right font-semibold text-amber-700 dark:text-amber-400">Base</th>
+                      {scenarioCalcs.map(({ scenario }) => (
+                        <th key={scenario.id} className="px-3 py-1.5 text-right font-semibold text-amber-700 dark:text-amber-400">
+                          {scenario.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KEY_RATES.map(({ key, label, unit }) => {
+                      const bv = parseFloat(baseState.inputs?.[key] ?? "0") || 0;
+                      return (
+                        <tr key={key} className="border-t border-amber-200/50 dark:border-amber-800/50">
+                          <td className="px-3 py-1.5 text-amber-800 dark:text-amber-300">{label} <span className="text-amber-500">({unit})</span></td>
+                          <td className="px-3 py-1.5 text-right font-medium text-amber-900 dark:text-amber-200">₹{bv.toFixed(2)}</td>
+                          {scenarioCalcs.map((entry) => {
+                            const sv = entry.scState
+                              ? (parseFloat(entry.scState.inputs?.[key] ?? "0") || 0)
+                              : ((entry.prices[key as keyof RevisedPrices] as number | undefined) ?? bv);
+                            return (
+                              <td key={entry.scenario.id} className="px-3 py-1.5 text-right font-medium text-amber-900 dark:text-amber-200">
+                                ₹{sv.toFixed(2)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Table 1 — Changed Inputs (only rows changed in ≥1 scenario) */}
         {allChangedInputs.length > 0 && (
