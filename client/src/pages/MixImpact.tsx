@@ -455,6 +455,11 @@ export default function MixImpact() {
               {estimates.map((est) => (
                 <option key={est.id} value={est.id}>
                   {est.contractor ? `${est.contractor} — ` : ""}{est.name}
+                  {est.updatedAt
+                    ? ` · Edited ${fmtDateTime(est.updatedAt)}`
+                    : est.createdAt
+                    ? ` · Saved ${fmtDateTime(est.createdAt)}`
+                    : ""}
                 </option>
               ))}
             </select>
