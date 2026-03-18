@@ -912,10 +912,10 @@ function renderEquipCards(){
     html += '<div style="display:flex;flex-direction:column;align-items:flex-end">';
     if(eq.isLaying){
       html += '<span class="equip-rate" id="eqRate_'+eq.id+'">₹/day → ₹'+fmtI(totalDay)+'</span>';
-      if(fuelDay>0) html += '<span class="equip-rate-detail">Hire ₹'+fmtI(hireDay)+' + Fuel ₹'+fmtI(fuelDay)+'</span>';
+      html += '<span class="equip-rate-detail" id="eqRateDetail_'+eq.id+'">'+(fuelDay>0?'Hire ₹'+fmtI(hireDay)+' + Fuel ₹'+fmtI(fuelDay):'')+'</span>';
     } else {
       html += '<span class="equip-rate" id="eqRate_'+eq.id+'">₹/MT → '+fmtR(totalPerMT)+'</span>';
-      if(fuelPerMT>0) html += '<span class="equip-rate-detail">Hire ₹'+fmtR(hirePerMT)+' + Fuel ₹'+fmtR(fuelPerMT)+'</span>';
+      html += '<span class="equip-rate-detail" id="eqRateDetail_'+eq.id+'">'+(fuelPerMT>0?'Hire ₹'+fmtR(hirePerMT)+' + Fuel ₹'+fmtR(fuelPerMT):'')+'</span>';
     }
     html += '</div>';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-top:4px">';
@@ -928,29 +928,53 @@ function renderEquipCards(){
     } else {
       html += '<div class="form-grid-3" style="margin-top:8px">';
       if(isOwned){
-        html += '<div class="form-group"><label>Capex (₹)</label><input type="number" value="'+eq.capex+'" oninput="equipDefs['+i+'].capex=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
-        html += '<div class="form-group"><label>Life (years)</label><input type="number" value="'+eq.life+'" oninput="equipDefs['+i+'].life=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
-        html += '<div class="form-group"><label>Maintenance %</label><input type="number" value="'+eq.maint+'" oninput="equipDefs['+i+'].maint=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
+        html += '<div class="form-group"><label>Capex (₹)</label><input type="number" value="'+eq.capex+'" oninput="equipDefs['+i+'].capex=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Life (years)</label><input type="number" value="'+eq.life+'" oninput="equipDefs['+i+'].life=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Maintenance %</label><input type="number" value="'+eq.maint+'" oninput="equipDefs['+i+'].maint=parseFloat(this.value)||0;recalc()"></div>';
       } else {
         html += '<div class="form-group"><label>Hire Basis</label><select onchange="equipDefs['+i+'].hireBasis=this.value;renderEquipCards();recalc()"><option value="daily"'+(eq.hireBasis==='daily'?' selected':'')+'>Daily</option><option value="hourly"'+(eq.hireBasis==='hourly'?' selected':'')+'>Hourly</option><option value="monthly"'+(eq.hireBasis==='monthly'?' selected':'')+'>Monthly</option></select></div>';
         if(eq.hireBasis==='daily'){
-          html += '<div class="form-group"><label>Rate (₹/day)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
-          html += '<div class="form-group"><label>Working Hrs/Day</label><input type="number" value="'+eq.hireHrsDay+'" oninput="equipDefs['+i+'].hireHrsDay=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
+          html += '<div class="form-group"><label>Rate (₹/day)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+          html += '<div class="form-group"><label>Working Hrs/Day</label><input type="number" value="'+eq.hireHrsDay+'" oninput="equipDefs['+i+'].hireHrsDay=parseFloat(this.value)||0;recalc()"></div>';
         } else if(eq.hireBasis==='hourly'){
-          html += '<div class="form-group"><label>Rate (₹/hr)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
+          html += '<div class="form-group"><label>Rate (₹/hr)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
           html += '<div class="form-group"></div>';
         } else {
-          html += '<div class="form-group"><label>Rate (₹/month)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
-          html += '<div class="form-group"><label>Billed Hrs/Month</label><input type="number" value="'+eq.hireHrsMonth+'" oninput="equipDefs['+i+'].hireHrsMonth=parseFloat(this.value)||0;recalc();renderEquipCards()"></div>';
+          html += '<div class="form-group"><label>Rate (₹/month)</label><input type="number" value="'+eq.hireRate+'" oninput="equipDefs['+i+'].hireRate=parseFloat(this.value)||0;recalc()"></div>';
+          html += '<div class="form-group"><label>Billed Hrs/Month</label><input type="number" value="'+eq.hireHrsMonth+'" oninput="equipDefs['+i+'].hireHrsMonth=parseFloat(this.value)||0;recalc()"></div>';
         }
       }
       // Fuel consumption field for all equipment
-      html += '<div class="form-group"><label>Fuel (L/hr)</label><input type="number" value="'+(eq.fuelConsump||0)+'" step="0.5" oninput="equipDefs['+i+'].fuelConsump=parseFloat(this.value)||0;recalc();renderEquipCards()" style="border-color:'+((eq.fuelConsump||0)>0?'#16a34a':'var(--gray-300)')+'"></div>';
+      html += '<div class="form-group"><label>Fuel (L/hr)</label><input id="eqFuel_'+eq.id+'" type="number" value="'+(eq.fuelConsump||0)+'" step="0.5" oninput="equipDefs['+i+'].fuelConsump=parseFloat(this.value)||0;recalc()" style="border-color:'+((eq.fuelConsump||0)>0?'#16a34a':'var(--gray-300)')+'"></div>';
       html += '</div>';
     }
     html += '</div>';
   });
   container.innerHTML = html;
+}
+
+function updateEquipBadges(){
+  equipDefs.forEach(function(eq){
+    var hirePerMT = getEquipHireCostPerMT(eq);
+    var fuelPerMT = getEquipFuelPerMT(eq);
+    var hireDay = getEquipHireDailyCost(eq);
+    var fuelDay = getEquipFuelPerDay(eq);
+    var totalDay = hireDay + fuelDay;
+    var totalPerMT = hirePerMT + fuelPerMT;
+    var rateEl = document.getElementById('eqRate_'+eq.id);
+    var detailEl = document.getElementById('eqRateDetail_'+eq.id);
+    var fuelEl = document.getElementById('eqFuel_'+eq.id);
+    if(rateEl){
+      if(eq.isLaying){
+        rateEl.textContent = '₹/day → ₹'+fmtI(totalDay);
+        if(detailEl) detailEl.textContent = fuelDay>0?'Hire ₹'+fmtI(hireDay)+' + Fuel ₹'+fmtI(fuelDay):'';
+      } else {
+        rateEl.textContent = '₹/MT → '+fmtR(totalPerMT);
+        if(detailEl) detailEl.textContent = fuelPerMT>0?'Hire ₹'+fmtR(hirePerMT)+' + Fuel ₹'+fmtR(fuelPerMT):'';
+      }
+    }
+    if(fuelEl) fuelEl.style.borderColor = (eq.fuelConsump||0)>0?'#16a34a':'var(--gray-300)';
+  });
 }
 
 // ====== MAIN RECALC ======
@@ -1102,6 +1126,7 @@ function recalc(){
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(mixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution);
+  updateEquipBadges();
   saveState();
 }
 
