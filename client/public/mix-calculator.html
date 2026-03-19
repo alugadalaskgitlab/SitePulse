@@ -1633,8 +1633,10 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       j._cum = cum;
 
       // Per-job prime/tack amounts — respect checkbox flags
+      // Tack coat is applied once per layer (one before each mix), prime coat is once per job
+      var numLayers = j.mixes.length||1;
       var primeAmt = (j.prime !== false) ? area * primePerSqm : 0;
-      var tackAmt  = (j.tack  !== false) ? area * tackPerSqm  : 0;
+      var tackAmt  = (j.tack  !== false) ? area * numLayers * tackPerSqm : 0;
       j._primeAmt = primeAmt;
       j._tackAmt = tackAmt;
 
@@ -1691,7 +1693,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         el=document.getElementById('jPrimeAmt_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(primeAmt));
       }
       if(j.tack !== false){
-        el=document.getElementById('jTackArea_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(area))+' sqm';
+        el=document.getElementById('jTackArea_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(area*numLayers))+' sqm'+(numLayers>1?' ('+numLayers+'× '+fmtI(Math.round(area))+')':'');
         el=document.getElementById('jTackRate_'+si+'_'+ji); if(el) el.textContent=tackKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(tackPerSqm)+'/sqm'+(tackPerMT>0?' · ₹'+fmtR(tackPerMT)+'/MT':'');
         el=document.getElementById('jTackAmt_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(tackAmt));
       }
@@ -1770,7 +1772,7 @@ function renderContractorSummary(mixRates){
     cd.tack += j._tackAmt||0;
     cd.total += j._totalAmt||0;
     if(j.prime!==false) cd.primeArea += j._area||0;
-    if(j.tack!==false)  cd.tackArea  += j._area||0;
+    if(j.tack!==false)  cd.tackArea  += (j._area||0)*(j.mixes.length||1);
   });
   var html='';
   if(Object.keys(contractors).length>0&&getAllJobs().length>0){
@@ -1858,7 +1860,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
       totalBitMT += mt*(mix.binderPct/100);
     });
     if(j.prime !== false) totalPrimeKg += (j._area||0)*primeSpray/primeDilution;
-    if(j.tack  !== false) totalTackKg  += (j._area||0)*tackSpray/tackDilution;
+    if(j.tack  !== false) totalTackKg  += (j._area||0)*(j.mixes.length||1)*tackSpray/tackDilution;
   });
 
   var totalAggMT = FRAC_KEYS.reduce(function(s,k){return s+fracQtys[k];},0);
@@ -2045,7 +2047,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         mixQty[mix.name].cum+=mxCum;
       });
       if(j.prime!==false) primeArea+=j._area||0;
-      if(j.tack!==false) tackArea+=j._area||0;
+      if(j.tack!==false) tackArea+=(j._area||0)*(j.mixes.length||1);
       totalRoadLenM+=j.length||0;
     });
     var totalRoadKm=totalRoadLenM/1000;
