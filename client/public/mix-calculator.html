@@ -916,16 +916,19 @@ function onProcScenarioChange(){
     if(sc.state){
       // Full state saved — extract all fields including freight params
       var st = typeof sc.state==='string'?JSON.parse(sc.state):sc.state;
+      // prices may be nested under st.inputs (saveState format) or at top level
+      var inp = st.inputs || st;
+      var pf = function(v, fb){ var x=parseFloat(v); return isNaN(x)?fb:x; };
       prices = {
-        aggRate: parseFloat(st.aggRate)||0,
-        aggBasis: st.aggBasis||'MT',
-        aggDensity: parseFloat(st.aggDensity)||0,
-        aggDist: parseFloat(st.aggDist)||0,
-        aggFreightRate: parseFloat(st.aggFreightRate)||0,
-        aggPayload: parseFloat(st.aggPayload)||0,
-        bitPrice: parseFloat(st.bitPrice)||0,
-        hsdPrice: parseFloat(st.hsdPrice)||0,
-        ldoRate: parseFloat(st.ldoRate)||0
+        aggRate:        pf(inp.aggRate,        n('aggRate')),
+        aggBasis:       inp.aggBasis || st.aggBasis || aggBasis,
+        aggDensity:     pf(inp.aggDensity,     n('aggDensity')),
+        aggDist:        pf(inp.aggDist,        n('aggDist')),
+        aggFreightRate: pf(inp.aggFreightRate, n('aggFreightRate')),
+        aggPayload:     pf(inp.aggPayload,     n('aggPayload')),
+        bitPrice:       pf(inp.bitPrice,       n('bitPrice')),
+        hsdPrice:       pf(inp.hsdPrice,       n('hsdPrice')),
+        ldoRate:        pf(inp.ldoRate,        n('ldoRate'))
       };
     } else {
       // Legacy revisedPrices only — use current calculator freight settings
