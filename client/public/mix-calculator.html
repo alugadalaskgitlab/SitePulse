@@ -2034,13 +2034,13 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     primeAmt=totalPrimeKg*primePrice;
     html+='<tr><td>Prime Coat Emulsion</td><td style="text-align:right">'+totalPrimeKg.toFixed(0)+'</td><td>kg</td>'
         +'<td style="text-align:right">'+fmtR(primePrice)+'</td><td style="text-align:right">'+fmtI(Math.round(primeAmt))+'</td>'
-        +(rv?'<td colspan="3" style="text-align:center;color:var(--gray-400);font-size:11px">—</td>':'')+'</tr>';
+        +(rv?revCells(primePrice,primeAmt,primePrice,primeAmt):'')+'</tr>';
   }
   if(totalTackKg>0){
     tackAmt=totalTackKg*tackPrice;
     html+='<tr><td>Tack Coat Emulsion</td><td style="text-align:right">'+totalTackKg.toFixed(0)+'</td><td>kg</td>'
         +'<td style="text-align:right">'+fmtR(tackPrice)+'</td><td style="text-align:right">'+fmtI(Math.round(tackAmt))+'</td>'
-        +(rv?'<td colspan="3" style="text-align:center;color:var(--gray-400);font-size:11px">—</td>':'')+'</tr>';
+        +(rv?revCells(tackPrice,tackAmt,tackPrice,tackAmt):'')+'</tr>';
   }
 
   var grandTotal = totalAggAmt+bitAmt+ldoAmt+hsdAmt+primeAmt+tackAmt;
