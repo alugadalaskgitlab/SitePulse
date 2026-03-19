@@ -125,6 +125,27 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .contractor-card table{width:100%;font-size:13px}
 .contractor-card td{padding:3px 0}
 .contractor-card td:last-child{text-align:right;font-weight:600}
+/* Scope Quotation */
+.scope-preset-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.scope-preset-btn{padding:6px 15px;font-size:12px;font-weight:600;border:2px solid var(--gray-200);border-radius:20px;cursor:pointer;background:#fff;color:var(--gray-500);transition:all .15s}
+.scope-preset-btn:hover{border-color:var(--blue);color:var(--blue)}
+.scope-preset-btn.sp-active{border-color:var(--blue);background:var(--blue);color:#fff}
+.scope-group-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500);margin:14px 0 6px;padding:5px 0;border-bottom:2px solid var(--gray-200);display:flex;align-items:center;gap:6px}
+.scope-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--gray-100)}
+.scope-row:last-child{border-bottom:none}
+.scope-row label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gray-700);cursor:pointer;flex:1}
+.scope-row label input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);flex-shrink:0}
+.scope-row .sc-amt{font-size:13px;font-weight:600;min-width:90px;text-align:right}
+.scope-row .sc-amt.off{color:var(--gray-300)}
+.scope-always{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px dashed var(--amber-border);margin-top:3px;font-size:12px;color:var(--amber);font-style:italic}
+.scope-always .sc-amt{font-size:12px;font-weight:600;color:var(--amber)}
+.scope-margin-row{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:2px solid var(--gray-200)}
+.scope-output{background:var(--amber-bg);border:2px solid var(--amber);border-radius:var(--radius);padding:14px 16px;margin-top:14px}
+.scope-output-grid{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end}
+.scope-out-item{display:flex;flex-direction:column;gap:2px}
+.scope-out-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)}
+.scope-out-val{font-size:20px;font-weight:700;color:var(--amber)}
+.scope-out-val span{font-size:13px;color:var(--gray-500);font-weight:500}
 .hidden{display:none!important}
 .scenario-banner{background:var(--blue);color:#fff;padding:9px 24px;display:none;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;gap:12px}
 .scenario-banner.visible{display:flex}
@@ -461,6 +482,61 @@ body{font-size:11px;background:#fff}
   <div class="card-body open">
     <div id="profitabilityContainer">
       <p style="color:var(--gray-400);text-align:center;padding:20px">Add sites and jobs to see profitability analysis.</p>
+    </div>
+  </div>
+</div>
+
+<hr class="section-sep">
+
+<!-- ⑬ Scope Quotation -->
+<div class="card">
+  <div class="card-header" onclick="toggleCard(this)">
+    <h2>⑬ Scope Quotation</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body" id="scopeCardBody">
+    <p style="font-size:12px;color:var(--gray-500);margin-bottom:14px;line-height:1.6">
+      Select what HLC provides for this contractor. All costs are pulled live from the equipment cards and inputs above.
+      Set a <strong>separate margin</strong> here — partial-scope work typically carries a lower margin since procurement savings aren't available when the contractor controls materials or equipment.
+    </p>
+    <!-- Preset scope buttons -->
+    <div class="scope-preset-bar" id="scopePresetBar">
+      <button class="scope-preset-btn" onclick="scopePreset('mixing',this)">🏭 Mixing Only</button>
+      <button class="scope-preset-btn" onclick="scopePreset('mixing_spraying',this)">🏭💦 Mixing + Spraying</button>
+      <button class="scope-preset-btn" onclick="scopePreset('paving',this)">🛣️ Paving &amp; Rolling</button>
+      <button class="scope-preset-btn" onclick="scopePreset('all',this)">✅ All Inclusive</button>
+      <button class="scope-preset-btn" onclick="scopePreset('custom',this)">⚙️ Custom</button>
+    </div>
+
+    <!-- Group 1: Mixing -->
+    <div id="scopeGroupMixing" class="hidden">
+      <div class="scope-group-hdr">🏭 Group 1 — Mixing &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400)">(₹ per MT of mix)</span></div>
+      <div id="scopeRowsMixing"></div>
+    </div>
+
+    <!-- Group 2: Spraying -->
+    <div id="scopeGroupSpraying" class="hidden">
+      <div class="scope-group-hdr">💦 Group 2 — Spraying — Prime &amp; Tack &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400)">(₹ per sqm)</span></div>
+      <div id="scopeRowsSpraying"></div>
+    </div>
+
+    <!-- Group 3: Paving -->
+    <div id="scopeGroupPaving" class="hidden">
+      <div class="scope-group-hdr">🛣️ Group 3 — Paving &amp; Rolling &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400)">(₹ per MT)</span></div>
+      <div id="scopeRowsPaving"></div>
+    </div>
+
+    <!-- Scope Margin -->
+    <div class="scope-margin-row hidden" id="scopeMarginRow">
+      <label style="font-size:12px;font-weight:700;color:var(--gray-700);white-space:nowrap">Scope Margin %</label>
+      <input type="number" id="scopeMarginPct" value="0" step="0.5" min="0" max="100"
+        style="width:72px;padding:6px 8px;border:2px solid var(--blue-border);border-radius:6px;font-size:15px;font-weight:600;color:var(--blue);outline:none;text-align:right"
+        oninput="renderScopeQuotation()">
+      <span style="font-size:11px;color:var(--gray-400);line-height:1.4">Separate from main calculator margin. Lower for partial scopes — procurement upside doesn't apply.</span>
+    </div>
+
+    <!-- Output summary -->
+    <div class="scope-output hidden" id="scopeOutput">
+      <div class="scope-output-grid" id="scopeOutputGrid"></div>
     </div>
   </div>
 </div>
@@ -1403,6 +1479,7 @@ function recalc(){
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
   renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates);
+  renderScopeQuotation();
   saveState();
 }
 
@@ -2434,6 +2511,241 @@ function saveScenarioToDb(){
     if(btn) btn.textContent='💾 Save Scenario & Return';
     showToast('Save failed — check connection',true);
   });
+}
+
+// ====== SCOPE QUOTATION ======
+var scopeState = {
+  preset: null,
+  mixing:  {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true},
+  spraying:{operation:true, primeEmulsion:true, tackEmulsion:true},
+  paving:  {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true}
+};
+
+function scopePreset(preset, btn){
+  scopeState.preset = preset;
+  // Reset all toggles to "all on" for the visible groups
+  scopeState.mixing  = {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true};
+  scopeState.spraying= {operation:true, primeEmulsion:true, tackEmulsion:true};
+  scopeState.paving  = {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true};
+  // Highlight active preset button
+  document.querySelectorAll('.scope-preset-btn').forEach(function(b){ b.classList.remove('sp-active'); });
+  if(btn) btn.classList.add('sp-active');
+  // Determine which groups to show
+  var showMix  = (preset==='mixing'||preset==='mixing_spraying'||preset==='all'||preset==='custom');
+  var showSpray= (preset==='mixing_spraying'||preset==='all'||preset==='custom');
+  var showPav  = (preset==='paving'||preset==='all'||preset==='custom');
+  document.getElementById('scopeGroupMixing').classList.toggle('hidden',!showMix);
+  document.getElementById('scopeGroupSpraying').classList.toggle('hidden',!showSpray);
+  document.getElementById('scopeGroupPaving').classList.toggle('hidden',!showPav);
+  // Show margin row and output
+  document.getElementById('scopeMarginRow').classList.remove('hidden');
+  document.getElementById('scopeOutput').classList.remove('hidden');
+  // Default scope margin to global margin on first selection
+  var scopeMarginEl = document.getElementById('scopeMarginPct');
+  if(parseFloat(scopeMarginEl.value)===0){
+    var globalMargin = n('marginPct');
+    if(globalMargin>0) scopeMarginEl.value = globalMargin;
+  }
+  renderScopeQuotation();
+}
+
+function calcScopeComponents(){
+  var tph     = n('tph');
+  var layProd = n('layProductivity');
+  var hsdP    = n('hsdPrice');
+  var ldoC    = n('ldoConsump'), ldoR = n('ldoRate');
+  var bProdL  = n('boilerProdLhr'), bPreL = n('boilerPreheatLhr');
+  var bFuelR  = n('boilerFuelRate');
+  var bProdH  = n('boilerProdHrs'), bPreH = n('boilerPreheatHrs');
+  var bCamp   = n('boilerCampaignMt');
+  var crewMon = n('crewMonthly'), crewD = n('crewDays'), crewH = n('crewHrs');
+  var sprayBow= n('sprayBowser'), sprayCrw = n('sprayCrew'), sprayPr = n('sprayProd');
+  var primeSp = n('primeSpray'), primeP = n('primePrice'), primeDil = n('primeDilution')||1;
+  var tackSp  = n('tackSpray'),  tackP  = n('tackPrice'),  tackDil  = n('tackDilution')||1;
+  var layCrewD= n('layCrew');
+
+  var hotmixEq = equipDefs.find(function(e){return e.id==='hotmix';});
+  var dgEq     = equipDefs.find(function(e){return e.id==='dg';});
+  var jcbEq    = equipDefs.find(function(e){return e.id==='jcb';});
+  var tipperEq = equipDefs.find(function(e){return e.id==='tipper';});
+  var paverEq  = equipDefs.find(function(e){return e.id==='paver';});
+  var rollerEq = equipDefs.find(function(e){return e.id==='roller';});
+  var ptrEq    = equipDefs.find(function(e){return e.id==='ptr';});
+
+  var ldoPerMT      = ldoC * ldoR;
+  var boilerProdPMT = bCamp>0 ? (bProdL*bFuelR*bProdH/bCamp) : 0;
+  var boilerPrePMT  = bCamp>0 ? (bPreL*bFuelR*bPreH/bCamp)   : 0;
+  var crewPerMT     = (crewD>0&&crewH>0&&tph>0) ? (crewMon/crewD/crewH/tph) : 0;
+  var sprayOpSqm    = sprayPr>0 ? ((sprayBow+sprayCrw)/sprayPr) : 0;
+  var layCrewPerMT  = layProd>0 ? layCrewD/layProd : 0;
+
+  function layHirePerMT(eq){ return (eq&&eq.enabled&&layProd>0) ? getEquipHireDailyCost(eq)/layProd : 0; }
+  function layFuelPerMT(eq){ return (eq&&eq.enabled&&layProd>0) ? getEquipFuelPerDay(eq)/layProd    : 0; }
+
+  return {
+    hotmixHire : getEquipHireCostPerMT(hotmixEq),
+    ldo        : ldoPerMT + boilerProdPMT + boilerPrePMT,
+    dgHire     : getEquipHireCostPerMT(dgEq),
+    dgHsd      : getEquipFuelPerMT(dgEq),
+    jcbHire    : getEquipHireCostPerMT(jcbEq),
+    jcbHsd     : getEquipFuelPerMT(jcbEq),
+    tipperHire : getEquipHireCostPerMT(tipperEq),
+    tipperHsd  : getEquipFuelPerMT(tipperEq),
+    crewPerMT  : crewPerMT,
+    sprayOp    : sprayOpSqm,
+    primeEm    : primeSp*primeP/primeDil,
+    tackEm     : tackSp*tackP/tackDil,
+    paverHire  : layHirePerMT(paverEq),
+    paverHsd   : layFuelPerMT(paverEq),
+    rollerHire : layHirePerMT(rollerEq),
+    rollerHsd  : layFuelPerMT(rollerEq),
+    ptrHire    : layHirePerMT(ptrEq),
+    ptrHsd     : layFuelPerMT(ptrEq),
+    layCrewPerMT: layCrewPerMT,
+    ptrEnabled : ptrEq&&ptrEq.enabled
+  };
+}
+
+function renderScopeRow(container, stateObj, key, label, val, unit){
+  var on = stateObj[key];
+  var row = document.createElement('div');
+  row.className = 'scope-row';
+  row.innerHTML =
+    '<label>'+
+      '<input type="checkbox" '+(on?'checked':'')+
+        ' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;renderScopeQuotation()"> '+
+      label+
+    '</label>'+
+    '<span class="sc-amt'+(on?'':' off')+'">'+fmtR(val)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
+  return row;
+}
+
+function renderScopeAlwaysRow(label, val, unit){
+  var row = document.createElement('div');
+  row.className = 'scope-always';
+  row.innerHTML =
+    '<span>✓ '+label+' <em style="font-size:11px">(always included)</em></span>'+
+    '<span class="sc-amt">'+fmtR(val)+' <span style="font-size:10px;font-weight:400">/'+unit+'</span></span>';
+  return row;
+}
+
+function renderScopeQuotation(){
+  if(!scopeState.preset) return;
+  var sc = calcScopeComponents();
+  var scopeMargin = parseFloat(document.getElementById('scopeMarginPct').value)||0;
+  var showMix  = !document.getElementById('scopeGroupMixing').classList.contains('hidden');
+  var showSpray= !document.getElementById('scopeGroupSpraying').classList.contains('hidden');
+  var showPav  = !document.getElementById('scopeGroupPaving').classList.contains('hidden');
+
+  // --- Mixing rows ---
+  if(showMix){
+    var mixCont = document.getElementById('scopeRowsMixing');
+    mixCont.innerHTML = '';
+    var mixItems = [
+      {key:'hotmixHire', label:'Hot Mix Plant — hire',     val:sc.hotmixHire},
+      {key:'ldo',        label:'LDO — Dryer + Boiler fuel',val:sc.ldo},
+      {key:'dgHire',     label:'DG / Generator — hire',    val:sc.dgHire},
+      {key:'dgHsd',      label:'DG HSD (fuel)',             val:sc.dgHsd},
+      {key:'jcbHire',    label:'JCB / Wheel Loader — hire',val:sc.jcbHire},
+      {key:'jcbHsd',     label:'JCB HSD (fuel)',            val:sc.jcbHsd},
+      {key:'tipperHire', label:'Tipper (inter-cart) — hire',val:sc.tipperHire},
+      {key:'tipperHsd',  label:'Tipper HSD (fuel)',         val:sc.tipperHsd}
+    ];
+    mixItems.forEach(function(it){
+      mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, it.key, it.label, it.val, 'MT'));
+    });
+    mixCont.appendChild(renderScopeAlwaysRow('Plant Crew + Overhead', sc.crewPerMT, 'MT'));
+  }
+
+  // --- Spraying rows ---
+  if(showSpray){
+    var sprayCont = document.getElementById('scopeRowsSpraying');
+    sprayCont.innerHTML = '';
+    var sprayItems = [
+      {key:'operation',    label:'Bowser + Tractor + Crew', val:sc.sprayOp},
+      {key:'primeEmulsion',label:'Prime Coat Emulsion',     val:sc.primeEm},
+      {key:'tackEmulsion', label:'Tack Coat Emulsion',      val:sc.tackEm}
+    ];
+    sprayItems.forEach(function(it){
+      sprayCont.appendChild(renderScopeRow('spraying', scopeState.spraying, it.key, it.label, it.val, 'sqm'));
+    });
+  }
+
+  // --- Paving rows ---
+  if(showPav){
+    var pavCont = document.getElementById('scopeRowsPaving');
+    pavCont.innerHTML = '';
+    var pavItems = [
+      {key:'paverHire',  label:'Paver — hire',          val:sc.paverHire},
+      {key:'paverHsd',   label:'Paver HSD (fuel)',       val:sc.paverHsd},
+      {key:'rollerHire', label:'Tandem Roller — hire',   val:sc.rollerHire},
+      {key:'rollerHsd',  label:'Roller HSD (fuel)',      val:sc.rollerHsd}
+    ];
+    if(sc.ptrEnabled){
+      pavItems.push({key:'ptrHire', label:'PTR — hire',     val:sc.ptrHire});
+      pavItems.push({key:'ptrHsd',  label:'PTR HSD (fuel)', val:sc.ptrHsd});
+    }
+    pavItems.forEach(function(it){
+      pavCont.appendChild(renderScopeRow('paving', scopeState.paving, it.key, it.label, it.val, 'MT'));
+    });
+    pavCont.appendChild(renderScopeAlwaysRow('Laying Crew', sc.layCrewPerMT, 'MT'));
+  }
+
+  // --- Compute totals ---
+  var mf = 1 + scopeMargin/100;
+
+  var mixBase = 0;
+  if(showMix){
+    if(scopeState.mixing.hotmixHire) mixBase += sc.hotmixHire;
+    if(scopeState.mixing.ldo)        mixBase += sc.ldo;
+    if(scopeState.mixing.dgHire)     mixBase += sc.dgHire;
+    if(scopeState.mixing.dgHsd)      mixBase += sc.dgHsd;
+    if(scopeState.mixing.jcbHire)    mixBase += sc.jcbHire;
+    if(scopeState.mixing.jcbHsd)     mixBase += sc.jcbHsd;
+    if(scopeState.mixing.tipperHire) mixBase += sc.tipperHire;
+    if(scopeState.mixing.tipperHsd)  mixBase += sc.tipperHsd;
+    mixBase += sc.crewPerMT;
+    mixBase *= mf;
+  }
+
+  var primeSprayTotal = 0, tackSprayTotal = 0;
+  if(showSpray){
+    var spOp = scopeState.spraying.operation    ? sc.sprayOp : 0;
+    var prEm = scopeState.spraying.primeEmulsion? sc.primeEm : 0;
+    var tkEm = scopeState.spraying.tackEmulsion ? sc.tackEm  : 0;
+    primeSprayTotal = (spOp + prEm) * mf;
+    tackSprayTotal  = (spOp + tkEm) * mf;
+  }
+
+  var pavBase = 0;
+  if(showPav){
+    if(scopeState.paving.paverHire)  pavBase += sc.paverHire;
+    if(scopeState.paving.paverHsd)   pavBase += sc.paverHsd;
+    if(scopeState.paving.rollerHire) pavBase += sc.rollerHire;
+    if(scopeState.paving.rollerHsd)  pavBase += sc.rollerHsd;
+    if(sc.ptrEnabled){
+      if(scopeState.paving.ptrHire)  pavBase += sc.ptrHire;
+      if(scopeState.paving.ptrHsd)   pavBase += sc.ptrHsd;
+    }
+    pavBase += sc.layCrewPerMT;
+    pavBase *= mf;
+  }
+
+  // --- Render output ---
+  var marginNote = scopeMargin>0 ? ' <span style="font-size:10px;color:var(--gray-500);font-weight:500">(incl. '+scopeMargin+'% margin)</span>' : '';
+  var outHtml = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">Quoted Scope Rate'+marginNote+'</div><div class="scope-output-grid">';
+  if(showMix){
+    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Mixing</div><div class="scope-out-val">'+fmtR(mixBase)+' <span>/MT</span></div></div>';
+  }
+  if(showSpray){
+    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Prime</div><div class="scope-out-val" style="font-size:17px">'+fmtR(primeSprayTotal)+' <span>/sqm</span></div></div>';
+    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Tack</div><div class="scope-out-val" style="font-size:17px">'+fmtR(tackSprayTotal)+' <span>/sqm</span></div></div>';
+  }
+  if(showPav){
+    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Paving &amp; Rolling</div><div class="scope-out-val">'+fmtR(pavBase)+' <span>/MT</span></div></div>';
+  }
+  outHtml += '</div>';
+  document.getElementById('scopeOutputGrid').innerHTML = outHtml;
 }
 
 // ====== INIT ======
