@@ -893,7 +893,10 @@ function fetchProcScenarios(){
   fetch('/api/price-scenarios?estimateId='+currentEstimateId)
     .then(function(r){return r.json();})
     .then(function(list){
-      _procScenariosList = (list||[]).filter(function(s){return s.state;});
+      _procScenariosList = (list||[]).filter(function(s){
+        if(s.state) return true;
+        try{ var rp=JSON.parse(s.revisedPrices||'{}'); return Object.keys(rp).length>0; }catch(e){return false;}
+      });
       if(!_procScenariosList.length){ bar.style.display='none'; procScenarioPrices=null; return; }
       bar.style.display='flex';
       var opts='<option value="">— Base prices only —</option>';
@@ -915,22 +918,39 @@ function onProcScenarioChange(){
   var scId = sel ? parseInt(sel.value) : 0;
   if(!scId){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
   var sc = _procScenariosList.find(function(s){return s.id===scId;});
-  if(!sc||!sc.state){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
+  if(!sc){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
   try{
-    var st = typeof sc.state==='string'?JSON.parse(sc.state):sc.state;
-    procScenarioPrices = {
-      _id: sc.id,
-      _name: sc.name,
-      aggRate: parseFloat(st.aggRate)||0,
-      aggBasis: st.aggBasis||'MT',
-      aggDensity: parseFloat(st.aggDensity)||0,
-      aggDist: parseFloat(st.aggDist)||0,
-      aggFreightRate: parseFloat(st.aggFreightRate)||0,
-      aggPayload: parseFloat(st.aggPayload)||0,
-      bitPrice: parseFloat(st.bitPrice)||0,
-      hsdPrice: parseFloat(st.hsdPrice)||0,
-      ldoRate: parseFloat(st.ldoRate)||0
-    };
+    var prices;
+    if(sc.state){
+      // Full state saved — extract all fields including freight params
+      var st = typeof sc.state==='string'?JSON.parse(sc.state):sc.state;
+      prices = {
+        aggRate: parseFloat(st.aggRate)||0,
+        aggBasis: st.aggBasis||'MT',
+        aggDensity: parseFloat(st.aggDensity)||0,
+        aggDist: parseFloat(st.aggDist)||0,
+        aggFreightRate: parseFloat(st.aggFreightRate)||0,
+        aggPayload: parseFloat(st.aggPayload)||0,
+        bitPrice: parseFloat(st.bitPrice)||0,
+        hsdPrice: parseFloat(st.hsdPrice)||0,
+        ldoRate: parseFloat(st.ldoRate)||0
+      };
+    } else {
+      // Legacy revisedPrices only — use current calculator freight settings
+      var rp = typeof sc.revisedPrices==='string'?JSON.parse(sc.revisedPrices):sc.revisedPrices;
+      prices = {
+        aggRate: parseFloat(rp.aggRate)||0,
+        aggBasis: aggBasis,           // use current calculator basis
+        aggDensity: n('aggDensity'),  // use current calculator density
+        aggDist: n('aggDist'),        // use current calculator freight params
+        aggFreightRate: n('aggFreightRate'),
+        aggPayload: n('aggPayload'),
+        bitPrice: parseFloat(rp.bitPrice)||0,
+        hsdPrice: parseFloat(rp.hsdPrice)||0,
+        ldoRate: parseFloat(rp.ldoRate)||0
+      };
+    }
+    procScenarioPrices = Object.assign({_id:sc.id, _name:sc.name}, prices);
   } catch(e){ procScenarioPrices=null; }
   updateProcBadge();
   recalc();
