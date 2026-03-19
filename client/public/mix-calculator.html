@@ -445,19 +445,11 @@ body{font-size:11px;background:#fff}
       </select>
       <span id="procScenarioBadge" style="display:none;font-size:11px;background:#2563eb;color:#fff;padding:2px 10px;border-radius:10px"></span>
     </div>
-    <div class="procurement-grid">
-      <div>
-        <h3 style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px">Material Requirements</h3>
-        <table class="proc-table" id="procTable">
-          <thead><tr><th>Material</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount (₹)</th></tr></thead>
-          <tbody id="procTableBody"></tbody>
-        </table>
-      </div>
-      <div>
-        <h3 style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px">Job-wise Cost Split</h3>
-        <div id="jobCostSplit"></div>
-      </div>
-    </div>
+    <h3 style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px">Material Requirements</h3>
+    <table class="proc-table" id="procTable" style="width:100%">
+      <thead><tr><th>Material</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount (₹)</th></tr></thead>
+      <tbody id="procTableBody"></tbody>
+    </table>
   </div>
 </div>
 
@@ -1913,7 +1905,6 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
   var colSpan = rv ? 8 : 5;
   if(allJobs.length===0){
     document.getElementById('procTableBody').innerHTML='<tr><td colspan="'+colSpan+'" style="text-align:center;color:var(--gray-400);padding:16px">Add sites and jobs to see procurement summary</td></tr>';
-    document.getElementById('jobCostSplit').innerHTML='';
     // reset header
     document.querySelector('#procTable thead tr').innerHTML='<th>Material</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount (₹)</th>';
     return;
@@ -2056,33 +2047,6 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
         +'<td style="text-align:right;color:'+gcol+';font-weight:700">'+(gd>=0?'+':'')+fmtI(Math.round(gd))+'</td></tr>';
   }
   document.getElementById('procTableBody').innerHTML = html;
-
-  // Job-wise cost split
-  var splitHtml='<table class="proc-table"><thead><tr><th>Site</th><th>Job</th><th>Mix</th><th style="text-align:right">MT</th><th style="text-align:right">Plant ₹</th><th style="text-align:right">Trans ₹</th><th style="text-align:right">Lay ₹</th><th style="text-align:right">Total ₹</th></tr></thead><tbody>';
-  sites.forEach(function(s){
-    var siteName = s.name||s.id;
-    var firstSiteRow = true;
-    s.jobs.forEach(function(j){
-      j.mixes.forEach(function(mx){
-        var mixName=(mixTypes[mx.mixIdx]||mixTypes[0]).name;
-        splitHtml+='<tr><td style="font-size:11px;color:var(--blue)">'+(firstSiteRow?esc(siteName):'')+'</td><td>'+esc(j.id)+'</td><td>'+mixName+'</td>';
-        splitHtml+='<td style="text-align:right">'+(mx._mt||0).toFixed(1)+'</td>';
-        splitHtml+='<td style="text-align:right">'+fmtI(Math.round(mx._plantAmt||0))+'</td>';
-        splitHtml+='<td style="text-align:right">'+fmtI(Math.round(mx._transAmt||0))+'</td>';
-        splitHtml+='<td style="text-align:right">'+fmtI(Math.round(mx._layAmt||0))+'</td>';
-        splitHtml+='<td style="text-align:right;font-weight:600">'+fmtI(Math.round((mx._plantAmt||0)+(mx._transAmt||0)+(mx._layAmt||0)))+'</td>';
-        splitHtml+='</tr>';
-        firstSiteRow=false;
-      });
-      if(j._primeAmt>0||j._tackAmt>0){
-        splitHtml+='<tr style="color:var(--green);font-size:11px"><td></td><td>'+esc(j.id)+'</td><td>Prime/Tack</td><td></td><td></td><td></td><td></td><td style="text-align:right">'+fmtI(Math.round((j._primeAmt||0)+(j._tackAmt||0)))+'</td></tr>';
-      }
-    });
-  });
-  var jobGrandTotal = getAllJobs().reduce(function(s,j){return s+(j._totalAmt||0);},0);
-  splitHtml+='<tr class="grand-total"><td colspan="7">TOTAL</td><td style="text-align:right">₹ '+fmtI(Math.round(jobGrandTotal))+'</td></tr>';
-  splitHtml+='</tbody></table>';
-  document.getElementById('jobCostSplit').innerHTML = splitHtml;
 }
 
 function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates){
