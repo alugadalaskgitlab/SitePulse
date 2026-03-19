@@ -2911,6 +2911,22 @@ function renderScopeQuotation(){
     pavBase *= mf;
   }
 
+  // --- Compute job totals for grand total ---
+  var allJobsScope = getAllJobs();
+  var scopeTotalMT = 0, scopePrimeArea = 0, scopeTackArea = 0;
+  allJobsScope.forEach(function(j){
+    j.mixes.forEach(function(mx){ scopeTotalMT += mx._mt || 0; });
+    if(j.prime !== false) scopePrimeArea += j._area || 0;
+    if(j.tack  !== false) scopeTackArea  += (j._area||0) * (j.mixes.length||1);
+  });
+  var combinedRatePerMT = mixBase + transTotal + pavBase;
+  var mtCost    = combinedRatePerMT * scopeTotalMT;
+  var primeCost = primeSprayTotal * scopePrimeArea;
+  var tackCost  = tackSprayTotal  * scopeTackArea;
+  var grandScopeTotal = mtCost + primeCost + tackCost;
+  var marginAmt = (scopeMargin > 0 && mf > 0) ? grandScopeTotal * (1 - 1/mf) : 0;
+  var baseAmt   = grandScopeTotal - marginAmt;
+
   // --- Render output ---
   var marginNote = scopeMargin>0 ? ' <span style="font-size:10px;color:var(--gray-500);font-weight:500">(incl. '+scopeMargin+'% margin)</span>' : '';
   var outHtml = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">Quoted Scope Rate'+marginNote+'</div><div class="scope-output-grid">';
@@ -2922,6 +2938,40 @@ function renderScopeQuotation(){
   }
   if(showPav)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Paving &amp; Rolling</div><div class="scope-out-val">'+fmtR(pavBase)+' <span>/MT</span></div></div>';
   outHtml += '</div>';
+
+  // --- Grand total box ---
+  if(grandScopeTotal > 0){
+    outHtml += '<div style="margin-top:14px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px">';
+    outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#15803d;margin-bottom:10px">'
+              +'Total Quoted Value'
+              +(scopeTotalMT>0?' <span style="font-weight:400;color:var(--gray-500)">('+scopeTotalMT.toFixed(1)+' MT)</span>':'')
+              +'</div>';
+    outHtml += '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end">';
+    if(combinedRatePerMT > 0){
+      outHtml += '<div>'
+               +'<div style="font-size:11px;color:var(--gray-500);margin-bottom:2px">Combined Rate</div>'
+               +'<div style="font-size:22px;font-weight:700;color:#15803d">'+fmtR(combinedRatePerMT)+' <span style="font-size:13px;font-weight:400;color:var(--gray-500)">/MT</span></div>'
+               +'</div>';
+    }
+    outHtml += '<div style="margin-left:auto;text-align:right">'
+             +'<div style="font-size:11px;color:var(--gray-500);margin-bottom:2px">Grand Total</div>'
+             +'<div style="font-size:26px;font-weight:800;color:#15803d">₹ '+fmtI(Math.round(grandScopeTotal))+'</div>';
+    if(marginAmt > 0){
+      outHtml += '<div style="font-size:11px;color:var(--gray-500);margin-top:3px">'
+               +'Base ₹&thinsp;'+fmtI(Math.round(baseAmt))
+               +' &nbsp;+&nbsp; Margin ('+scopeMargin+'%) ₹&thinsp;'+fmtI(Math.round(marginAmt))
+               +'</div>';
+    }
+    outHtml += '</div></div>';
+    if(showSpray && (primeCost > 0 || tackCost > 0)){
+      outHtml += '<div style="margin-top:8px;font-size:11px;color:var(--gray-500)">';
+      if(primeCost > 0) outHtml += 'Prime coat: ₹&thinsp;'+fmtI(Math.round(primeCost))+'&emsp;';
+      if(tackCost  > 0) outHtml += 'Tack coat: ₹&thinsp;'+fmtI(Math.round(tackCost));
+      outHtml += '</div>';
+    }
+    outHtml += '</div>';
+  }
+
   document.getElementById('scopeOutputGrid').innerHTML = outHtml;
 }
 
