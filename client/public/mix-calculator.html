@@ -1896,8 +1896,8 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant+jobTrans+jobLay));
       }
 
-      var primeKgSqm = primeSpray/primeDilution;
-      var tackKgSqm = tackSpray/tackDilution;
+      var primeKgSqm = primeSpray;   // full surface application rate (dilution only affects procurement qty)
+      var tackKgSqm = tackSpray;    // full surface application rate
       var el;
       if(j.prime !== false){
         el=document.getElementById('jPrimeArea_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(area))+' sqm';
@@ -2921,8 +2921,8 @@ function renderScopeQuotation(){
   });
   var combinedRatePerMT = mixBase + transTotal + pavBase;
   var mtCost    = combinedRatePerMT * scopeTotalMT;
-  var primeCost = primeSprayTotal * scopePrimeArea;
-  var tackCost  = tackSprayTotal  * scopeTackArea;
+  var primeCost = (showSpray && scopeState.spraying.primeEmulsion) ? primeSprayTotal * scopePrimeArea : 0;
+  var tackCost  = (showSpray && scopeState.spraying.tackEmulsion)  ? tackSprayTotal  * scopeTackArea  : 0;
   var grandScopeTotal = mtCost + primeCost + tackCost;
   var marginAmt = (scopeMargin > 0 && mf > 0) ? grandScopeTotal * (1 - 1/mf) : 0;
   var baseAmt   = grandScopeTotal - marginAmt;
@@ -2933,8 +2933,8 @@ function renderScopeQuotation(){
   if(showMix)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Mixing</div><div class="scope-out-val">'+fmtR(mixBase)+' <span>/MT</span></div></div>';
   if(showTrans) outHtml += '<div class="scope-out-item"><div class="scope-out-label">Transport</div><div class="scope-out-val">'+fmtR(transTotal)+' <span>/MT</span></div></div>';
   if(showSpray){
-    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Prime</div><div class="scope-out-val" style="font-size:17px">'+fmtR(primeSprayTotal)+' <span>/sqm</span></div></div>';
-    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Tack</div><div class="scope-out-val" style="font-size:17px">'+fmtR(tackSprayTotal)+' <span>/sqm</span></div></div>';
+    if(scopeState.spraying.primeEmulsion) outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Prime</div><div class="scope-out-val" style="font-size:17px">'+fmtR(primeSprayTotal)+' <span>/sqm</span></div></div>';
+    if(scopeState.spraying.tackEmulsion)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Tack</div><div class="scope-out-val" style="font-size:17px">'+fmtR(tackSprayTotal)+' <span>/sqm</span></div></div>';
   }
   if(showPav)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Paving &amp; Rolling</div><div class="scope-out-val">'+fmtR(pavBase)+' <span>/MT</span></div></div>';
   outHtml += '</div>';
