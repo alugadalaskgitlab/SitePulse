@@ -126,11 +126,11 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .contractor-card td{padding:3px 0}
 .contractor-card td:last-child{text-align:right;font-weight:600}
 /* Scope Quotation */
-.scope-preset-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-.scope-preset-btn{padding:6px 15px;font-size:12px;font-weight:600;border:2px solid var(--gray-200);border-radius:20px;cursor:pointer;background:#fff;color:var(--gray-500);transition:all .15s}
-.scope-preset-btn:hover{border-color:var(--blue);color:var(--blue)}
-.scope-preset-btn.sp-active{border-color:var(--blue);background:var(--blue);color:#fff}
-.scope-group-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500);margin:14px 0 6px;padding:5px 0;border-bottom:2px solid var(--gray-200);display:flex;align-items:center;gap:6px}
+.scope-chk-group{margin-bottom:4px;border:1px solid var(--gray-200);border-radius:var(--radius);overflow:hidden}
+.scope-group-hdr{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-600);padding:9px 12px;background:var(--gray-50);border-bottom:1px solid var(--gray-200);display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0}
+.scope-group-hdr:hover{background:var(--blue-bg)}
+.scope-group-hdr input[type=checkbox]{accent-color:var(--blue);cursor:pointer}
+.scope-group-body{padding:8px 12px 4px}
 .scope-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--gray-100)}
 .scope-row:last-child{border-bottom:none}
 .scope-row label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gray-700);cursor:pointer;flex:1}
@@ -498,31 +498,40 @@ body{font-size:11px;background:#fff}
       Select what HLC provides for this contractor. All costs are pulled live from the equipment cards and inputs above.
       Set a <strong>separate margin</strong> here — partial-scope work typically carries a lower margin since procurement savings aren't available when the contractor controls materials or equipment.
     </p>
-    <!-- Preset scope buttons -->
-    <div class="scope-preset-bar" id="scopePresetBar">
-      <button class="scope-preset-btn" onclick="scopePreset('mixing',this)">🏭 Mixing Only</button>
-      <button class="scope-preset-btn" onclick="scopePreset('mixing_spraying',this)">🏭💦 Mixing + Spraying</button>
-      <button class="scope-preset-btn" onclick="scopePreset('paving',this)">🛣️ Paving &amp; Rolling</button>
-      <button class="scope-preset-btn" onclick="scopePreset('all',this)">✅ All Inclusive</button>
-      <button class="scope-preset-btn" onclick="scopePreset('custom',this)">⚙️ Custom</button>
-    </div>
-
     <!-- Group 1: Mixing -->
-    <div id="scopeGroupMixing" class="hidden">
-      <div class="scope-group-hdr">🏭 Group 1 — Mixing &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400)">(₹ per MT of mix)</span></div>
-      <div id="scopeRowsMixing"></div>
+    <div class="scope-chk-group">
+      <label class="scope-group-hdr">
+        <input type="checkbox" id="scopeChkMixing" style="width:17px;height:17px" onchange="scopeToggleGroup('mixing',this.checked)">
+        🏭 Mixing &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT)</span>
+      </label>
+      <div id="scopeBodyMixing" class="scope-group-body hidden"></div>
     </div>
 
-    <!-- Group 2: Spraying -->
-    <div id="scopeGroupSpraying" class="hidden">
-      <div class="scope-group-hdr">💦 Group 2 — Spraying — Prime &amp; Tack &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400)">(₹ per sqm)</span></div>
-      <div id="scopeRowsSpraying"></div>
+    <!-- Group 2: Transport -->
+    <div class="scope-chk-group">
+      <label class="scope-group-hdr">
+        <input type="checkbox" id="scopeChkTransport" style="width:17px;height:17px" onchange="scopeToggleGroup('transport',this.checked)">
+        🚛 Transport to Site &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT — from Section ⑧)</span>
+      </label>
+      <div id="scopeBodyTransport" class="scope-group-body hidden"></div>
     </div>
 
-    <!-- Group 3: Paving -->
-    <div id="scopeGroupPaving" class="hidden">
-      <div class="scope-group-hdr">🛣️ Group 3 — Paving &amp; Rolling &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400)">(₹ per MT)</span></div>
-      <div id="scopeRowsPaving"></div>
+    <!-- Group 3: Spraying -->
+    <div class="scope-chk-group">
+      <label class="scope-group-hdr">
+        <input type="checkbox" id="scopeChkSpraying" style="width:17px;height:17px" onchange="scopeToggleGroup('spraying',this.checked)">
+        💦 Spraying — Prime &amp; Tack &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/sqm)</span>
+      </label>
+      <div id="scopeBodySpraying" class="scope-group-body hidden"></div>
+    </div>
+
+    <!-- Group 4: Paving -->
+    <div class="scope-chk-group">
+      <label class="scope-group-hdr">
+        <input type="checkbox" id="scopeChkPaving" style="width:17px;height:17px" onchange="scopeToggleGroup('paving',this.checked)">
+        🛣️ Paving &amp; Rolling &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT)</span>
+      </label>
+      <div id="scopeBodyPaving" class="scope-group-body hidden"></div>
     </div>
 
     <!-- Scope Margin -->
@@ -1646,6 +1655,7 @@ function renderSites(){
     html += '<input class="site-name" value="'+esc(s.name||'')+'" placeholder="e.g. NH-44 KM 105–115" oninput="sites['+si+'].name=this.value.toUpperCase();saveState()">';
     html += '<span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-600);white-space:nowrap"><span style="font-weight:600">Lead:</span><input type="number" value="'+(s.transLead!=null?s.transLead:'')+'" placeholder="'+n('transDist')+'" oninput="sites['+si+'].transLead=parseFloat(this.value)||null;recalc()" style="width:58px;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"><span style="font-weight:600">km</span></span>';
     html += '<button class="btn btn-primary btn-sm no-print" onclick="addSiteJob('+si+')">+ Add Job</button>';
+    html += '<button class="btn btn-secondary btn-sm no-print" onclick="openScopeSection()" title="Set scope of work for this contractor" style="color:var(--blue);border-color:var(--blue-border)">⚙ Scope</button>';
     html += '<div style="margin-left:auto;display:flex;gap:6px">';
     html += '<span class="jc-derived" id="siteTotalBadge_'+si+'"></span>';
     html += '<button class="btn btn-danger btn-sm no-print" onclick="removeSite('+si+')" style="padding:3px 8px">× Site</button>';
@@ -2515,44 +2525,39 @@ function saveScenarioToDb(){
 
 // ====== SCOPE QUOTATION ======
 var scopeState = {
-  preset: null,
+  groups:  {mixing:false, transport:false, spraying:false, paving:false},
   mixing:  {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true},
   spraying:{operation:true, primeEmulsion:true, tackEmulsion:true},
   paving:  {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true}
 };
 
-function scopePreset(preset, btn){
-  scopeState.preset = preset;
-  // Reset all toggles to "all on" for the visible groups
-  scopeState.mixing  = {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true};
-  scopeState.spraying= {operation:true, primeEmulsion:true, tackEmulsion:true};
-  scopeState.paving  = {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true};
-  // Highlight active preset button
-  document.querySelectorAll('.scope-preset-btn').forEach(function(b){ b.classList.remove('sp-active'); });
-  if(btn) btn.classList.add('sp-active');
-  // Determine which groups to show
-  var showMix  = (preset==='mixing'||preset==='mixing_spraying'||preset==='all'||preset==='custom');
-  var showSpray= (preset==='mixing_spraying'||preset==='all'||preset==='custom');
-  var showPav  = (preset==='paving'||preset==='all'||preset==='custom');
-  document.getElementById('scopeGroupMixing').classList.toggle('hidden',!showMix);
-  document.getElementById('scopeGroupSpraying').classList.toggle('hidden',!showSpray);
-  document.getElementById('scopeGroupPaving').classList.toggle('hidden',!showPav);
-  // Show margin row and output
-  document.getElementById('scopeMarginRow').classList.remove('hidden');
-  document.getElementById('scopeOutput').classList.remove('hidden');
-  // Default scope margin to global margin on first selection
-  var scopeMarginEl = document.getElementById('scopeMarginPct');
-  if(parseFloat(scopeMarginEl.value)===0){
-    var globalMargin = n('marginPct');
-    if(globalMargin>0) scopeMarginEl.value = globalMargin;
+function scopeToggleGroup(group, checked){
+  scopeState.groups[group] = checked;
+  var bodyId = {mixing:'scopeBodyMixing', transport:'scopeBodyTransport', spraying:'scopeBodySpraying', paving:'scopeBodyPaving'}[group];
+  document.getElementById(bodyId).classList.toggle('hidden', !checked);
+  var anyActive = scopeState.groups.mixing||scopeState.groups.transport||scopeState.groups.spraying||scopeState.groups.paving;
+  document.getElementById('scopeMarginRow').classList.toggle('hidden', !anyActive);
+  document.getElementById('scopeOutput').classList.toggle('hidden', !anyActive);
+  if(checked){
+    var el = document.getElementById('scopeMarginPct');
+    if(parseFloat(el.value)===0){ var gm=n('marginPct'); if(gm>0) el.value=gm; }
   }
   renderScopeQuotation();
+}
+
+function openScopeSection(){
+  var body = document.getElementById('scopeCardBody');
+  if(body && !body.classList.contains('open')){
+    var hdr = body.previousElementSibling;
+    if(hdr){ hdr.classList.add('open'); body.classList.add('open'); }
+  }
+  var card = body ? body.closest('.card') : null;
+  if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 function calcScopeComponents(){
   var tph     = n('tph');
   var layProd = n('layProductivity');
-  var hsdP    = n('hsdPrice');
   var ldoC    = n('ldoConsump'), ldoR = n('ldoRate');
   var bProdL  = n('boilerProdLhr'), bPreL = n('boilerPreheatLhr');
   var bFuelR  = n('boilerFuelRate');
@@ -2563,6 +2568,8 @@ function calcScopeComponents(){
   var primeSp = n('primeSpray'), primeP = n('primePrice'), primeDil = n('primeDilution')||1;
   var tackSp  = n('tackSpray'),  tackP  = n('tackPrice'),  tackDil  = n('tackDilution')||1;
   var layCrewD= n('layCrew');
+  var transDist= n('transDist'), transRate= n('transRate'), transPayload= n('transPayload');
+  var transPerMT = transPayload>0 ? (transDist*2*transRate/transPayload) : 0;
 
   var hotmixEq = equipDefs.find(function(e){return e.id==='hotmix';});
   var dgEq     = equipDefs.find(function(e){return e.id==='dg';});
@@ -2592,6 +2599,7 @@ function calcScopeComponents(){
     tipperHire : getEquipHireCostPerMT(tipperEq),
     tipperHsd  : getEquipFuelPerMT(tipperEq),
     crewPerMT  : crewPerMT,
+    transPerMT : transPerMT,
     sprayOp    : sprayOpSqm,
     primeEm    : primeSp*primeP/primeDil,
     tackEm     : tackSp*tackP/tackDil,
@@ -2630,26 +2638,25 @@ function renderScopeAlwaysRow(label, val, unit){
 }
 
 function renderScopeQuotation(){
-  if(!scopeState.preset) return;
+  var g = scopeState.groups;
+  if(!g.mixing && !g.transport && !g.spraying && !g.paving) return;
   var sc = calcScopeComponents();
   var scopeMargin = parseFloat(document.getElementById('scopeMarginPct').value)||0;
-  var showMix  = !document.getElementById('scopeGroupMixing').classList.contains('hidden');
-  var showSpray= !document.getElementById('scopeGroupSpraying').classList.contains('hidden');
-  var showPav  = !document.getElementById('scopeGroupPaving').classList.contains('hidden');
+  var showMix  = g.mixing, showTrans = g.transport, showSpray = g.spraying, showPav = g.paving;
 
   // --- Mixing rows ---
   if(showMix){
-    var mixCont = document.getElementById('scopeRowsMixing');
+    var mixCont = document.getElementById('scopeBodyMixing');
     mixCont.innerHTML = '';
     var mixItems = [
-      {key:'hotmixHire', label:'Hot Mix Plant — hire',     val:sc.hotmixHire},
-      {key:'ldo',        label:'LDO — Dryer + Boiler fuel',val:sc.ldo},
-      {key:'dgHire',     label:'DG / Generator — hire',    val:sc.dgHire},
-      {key:'dgHsd',      label:'DG HSD (fuel)',             val:sc.dgHsd},
-      {key:'jcbHire',    label:'JCB / Wheel Loader — hire',val:sc.jcbHire},
-      {key:'jcbHsd',     label:'JCB HSD (fuel)',            val:sc.jcbHsd},
+      {key:'hotmixHire', label:'Hot Mix Plant — hire',      val:sc.hotmixHire},
+      {key:'ldo',        label:'LDO — Dryer + Boiler fuel', val:sc.ldo},
+      {key:'dgHire',     label:'DG / Generator — hire',     val:sc.dgHire},
+      {key:'dgHsd',      label:'DG HSD (fuel)',              val:sc.dgHsd},
+      {key:'jcbHire',    label:'JCB / Wheel Loader — hire', val:sc.jcbHire},
+      {key:'jcbHsd',     label:'JCB HSD (fuel)',             val:sc.jcbHsd},
       {key:'tipperHire', label:'Tipper (inter-cart) — hire',val:sc.tipperHire},
-      {key:'tipperHsd',  label:'Tipper HSD (fuel)',         val:sc.tipperHsd}
+      {key:'tipperHsd',  label:'Tipper HSD (fuel)',          val:sc.tipperHsd}
     ];
     mixItems.forEach(function(it){
       mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, it.key, it.label, it.val, 'MT'));
@@ -2657,14 +2664,27 @@ function renderScopeQuotation(){
     mixCont.appendChild(renderScopeAlwaysRow('Plant Crew + Overhead', sc.crewPerMT, 'MT'));
   }
 
+  // --- Transport row ---
+  if(showTrans){
+    var transCont = document.getElementById('scopeBodyTransport');
+    transCont.innerHTML = '';
+    var tRow = document.createElement('div');
+    tRow.className = 'scope-row';
+    tRow.innerHTML =
+      '<span style="font-size:13px;color:var(--gray-700);flex:1">Transport to Site' +
+      ' <span style="font-size:11px;color:var(--gray-400)">(lead '+n('transDist')+' km × 2 × ₹'+n('transRate')+'/km ÷ '+n('transPayload')+' MT)</span></span>' +
+      '<span class="sc-amt">'+fmtR(sc.transPerMT)+' <span style="font-size:11px;font-weight:400;color:var(--gray-400)">/MT</span></span>';
+    transCont.appendChild(tRow);
+  }
+
   // --- Spraying rows ---
   if(showSpray){
-    var sprayCont = document.getElementById('scopeRowsSpraying');
+    var sprayCont = document.getElementById('scopeBodySpraying');
     sprayCont.innerHTML = '';
     var sprayItems = [
-      {key:'operation',    label:'Bowser + Tractor + Crew', val:sc.sprayOp},
-      {key:'primeEmulsion',label:'Prime Coat Emulsion',     val:sc.primeEm},
-      {key:'tackEmulsion', label:'Tack Coat Emulsion',      val:sc.tackEm}
+      {key:'operation',    label:'Bowser + Tractor + Crew',val:sc.sprayOp},
+      {key:'primeEmulsion',label:'Prime Coat Emulsion',    val:sc.primeEm},
+      {key:'tackEmulsion', label:'Tack Coat Emulsion',     val:sc.tackEm}
     ];
     sprayItems.forEach(function(it){
       sprayCont.appendChild(renderScopeRow('spraying', scopeState.spraying, it.key, it.label, it.val, 'sqm'));
@@ -2673,17 +2693,17 @@ function renderScopeQuotation(){
 
   // --- Paving rows ---
   if(showPav){
-    var pavCont = document.getElementById('scopeRowsPaving');
+    var pavCont = document.getElementById('scopeBodyPaving');
     pavCont.innerHTML = '';
     var pavItems = [
-      {key:'paverHire',  label:'Paver — hire',          val:sc.paverHire},
-      {key:'paverHsd',   label:'Paver HSD (fuel)',       val:sc.paverHsd},
-      {key:'rollerHire', label:'Tandem Roller — hire',   val:sc.rollerHire},
-      {key:'rollerHsd',  label:'Roller HSD (fuel)',      val:sc.rollerHsd}
+      {key:'paverHire',  label:'Paver — hire',         val:sc.paverHire},
+      {key:'paverHsd',   label:'Paver HSD (fuel)',      val:sc.paverHsd},
+      {key:'rollerHire', label:'Tandem Roller — hire',  val:sc.rollerHire},
+      {key:'rollerHsd',  label:'Roller HSD (fuel)',     val:sc.rollerHsd}
     ];
     if(sc.ptrEnabled){
-      pavItems.push({key:'ptrHire', label:'PTR — hire',     val:sc.ptrHire});
-      pavItems.push({key:'ptrHsd',  label:'PTR HSD (fuel)', val:sc.ptrHsd});
+      pavItems.push({key:'ptrHire', label:'PTR — hire',    val:sc.ptrHire});
+      pavItems.push({key:'ptrHsd',  label:'PTR HSD (fuel)',val:sc.ptrHsd});
     }
     pavItems.forEach(function(it){
       pavCont.appendChild(renderScopeRow('paving', scopeState.paving, it.key, it.label, it.val, 'MT'));
@@ -2707,7 +2727,7 @@ function renderScopeQuotation(){
     mixBase += sc.crewPerMT;
     mixBase *= mf;
   }
-
+  var transTotal  = showTrans  ? sc.transPerMT * mf : 0;
   var primeSprayTotal = 0, tackSprayTotal = 0;
   if(showSpray){
     var spOp = scopeState.spraying.operation    ? sc.sprayOp : 0;
@@ -2716,7 +2736,6 @@ function renderScopeQuotation(){
     primeSprayTotal = (spOp + prEm) * mf;
     tackSprayTotal  = (spOp + tkEm) * mf;
   }
-
   var pavBase = 0;
   if(showPav){
     if(scopeState.paving.paverHire)  pavBase += sc.paverHire;
@@ -2734,16 +2753,13 @@ function renderScopeQuotation(){
   // --- Render output ---
   var marginNote = scopeMargin>0 ? ' <span style="font-size:10px;color:var(--gray-500);font-weight:500">(incl. '+scopeMargin+'% margin)</span>' : '';
   var outHtml = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">Quoted Scope Rate'+marginNote+'</div><div class="scope-output-grid">';
-  if(showMix){
-    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Mixing</div><div class="scope-out-val">'+fmtR(mixBase)+' <span>/MT</span></div></div>';
-  }
+  if(showMix)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Mixing</div><div class="scope-out-val">'+fmtR(mixBase)+' <span>/MT</span></div></div>';
+  if(showTrans) outHtml += '<div class="scope-out-item"><div class="scope-out-label">Transport</div><div class="scope-out-val">'+fmtR(transTotal)+' <span>/MT</span></div></div>';
   if(showSpray){
     outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Prime</div><div class="scope-out-val" style="font-size:17px">'+fmtR(primeSprayTotal)+' <span>/sqm</span></div></div>';
     outHtml += '<div class="scope-out-item"><div class="scope-out-label">Spraying — Tack</div><div class="scope-out-val" style="font-size:17px">'+fmtR(tackSprayTotal)+' <span>/sqm</span></div></div>';
   }
-  if(showPav){
-    outHtml += '<div class="scope-out-item"><div class="scope-out-label">Paving &amp; Rolling</div><div class="scope-out-val">'+fmtR(pavBase)+' <span>/MT</span></div></div>';
-  }
+  if(showPav)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Paving &amp; Rolling</div><div class="scope-out-val">'+fmtR(pavBase)+' <span>/MT</span></div></div>';
   outHtml += '</div>';
   document.getElementById('scopeOutputGrid').innerHTML = outHtml;
 }
