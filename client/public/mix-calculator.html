@@ -499,12 +499,9 @@ var sites = [];
 var siteCounter = 0;
 var jobCounter = 0;
 var contractRates = {};
-var _profitDebounceTimer = null;
 function profitInputChanged(key, val){
   contractRates[key] = parseFloat(val) || null;
   saveState();
-  clearTimeout(_profitDebounceTimer);
-  _profitDebounceTimer = setTimeout(function(){ recalc(); }, 400);
 }
 
 // ====== PERSISTENCE ======
@@ -1939,7 +1936,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm){
       html+='<td style="text-align:right;padding:6px 8px">'+qty.toFixed(2)+'</td>';
       html+='<td style="text-align:center;padding:6px 8px;color:var(--gray-500)">CUM</td>';
       html+='<td style="text-align:right;padding:6px 8px">'+fmtR(costPerCum)+'</td>';
-      html+='<td style="text-align:center;padding:4px"><input id="profitInput_'+key+'" type="number" value="'+(contractRate!=null?contractRate:'')+'" placeholder="Enter rate" oninput="profitInputChanged(\''+key+'\',this.value)" style="width:90px;text-align:right;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"></td>';
+      html+='<td style="text-align:center;padding:4px"><input id="profitInput_'+key+'" type="number" value="'+(contractRate!=null?contractRate:'')+'" placeholder="Enter rate" oninput="profitInputChanged(\''+key+'\',this.value)" onblur="recalc()" style="width:90px;text-align:right;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"></td>';
       html+='<td style="text-align:right;padding:6px 8px">'+(revenue!=null?'₹'+fmtI(Math.round(revenue)):'—')+'</td>';
       html+='<td style="text-align:right;padding:6px 8px">₹'+fmtI(Math.round(cost))+'</td>';
       html+='<td style="text-align:right;padding:6px 8px;font-weight:600;color:'+(profit!=null?(profit>=0?'var(--green)':'#ef4444'):'inherit')+'">'+(profit!=null?(profit>=0?'+':'')+fmtI(Math.round(profit)):'—')+'</td>';
@@ -1961,7 +1958,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm){
       html+='<td style="text-align:right;padding:6px 8px">'+fmtI(Math.round(area))+'</td>';
       html+='<td style="text-align:center;padding:6px 8px;color:var(--gray-500)">sqm</td>';
       html+='<td style="text-align:right;padding:6px 8px">'+fmtR(perSqm)+'</td>';
-      html+='<td style="text-align:center;padding:4px"><input id="profitInput_'+key+'" type="number" value="'+(contractRate!=null?contractRate:'')+'" placeholder="Enter rate" oninput="profitInputChanged(\''+key+'\',this.value)" style="width:90px;text-align:right;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"></td>';
+      html+='<td style="text-align:center;padding:4px"><input id="profitInput_'+key+'" type="number" value="'+(contractRate!=null?contractRate:'')+'" placeholder="Enter rate" oninput="profitInputChanged(\''+key+'\',this.value)" onblur="recalc()" style="width:90px;text-align:right;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"></td>';
       html+='<td style="text-align:right;padding:6px 8px">'+(revenue!=null?'₹'+fmtI(Math.round(revenue)):'—')+'</td>';
       html+='<td style="text-align:right;padding:6px 8px">₹'+fmtI(Math.round(cost))+'</td>';
       html+='<td style="text-align:right;padding:6px 8px;font-weight:600;color:'+(profit!=null?(profit>=0?'var(--green)':'#ef4444'):'inherit')+'">'+(profit!=null?(profit>=0?'+':'')+fmtI(Math.round(profit)):'—')+'</td>';
