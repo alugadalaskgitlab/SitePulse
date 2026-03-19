@@ -438,6 +438,7 @@ body{font-size:11px;background:#fff}
     <h2>⑪ Procurement & Cost Summary</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
+    <div id="procWhatIfPanel"></div>
     <div id="procScenarioBar" style="display:none;margin-bottom:14px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;align-items:center;gap:12px;flex-wrap:wrap">
       <span style="font-size:12px;font-weight:700;color:#1d4ed8">📊 Compare prices with scenario:</span>
       <select id="procScenarioSelect" onchange="onProcScenarioChange()" style="padding:4px 8px;border:1px solid #93c5fd;border-radius:4px;font-size:13px;background:#fff;min-width:180px">
@@ -1913,6 +1914,57 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
   var boilerCampaignMt = n('boilerCampaignMt');
   var tph = n('tph');
   var layProd = n('layProductivity');
+
+  // ====== RENDER WHAT-IF PANEL IN PROCUREMENT ======
+  var panelEl = document.getElementById('procWhatIfPanel');
+  if(panelEl){
+    var revAggOvrP = contractRates['__REV_AGG']!=null ? contractRates['__REV_AGG'] : null;
+    var revBitOvrP = contractRates['__REV_BIT']!=null ? contractRates['__REV_BIT'] : null;
+    var revHsdOvrP = contractRates['__REV_HSD']!=null ? contractRates['__REV_HSD'] : null;
+    var revLdoOvrP = contractRates['__REV_LDO']!=null ? contractRates['__REV_LDO'] : null;
+    var activeCountP = [revAggOvrP,revBitOvrP,revHsdOvrP,revLdoOvrP].filter(function(v){return v!=null;}).length;
+    var hasRevP = activeCountP > 0; // has manual overrides (independent of scenario)
+    var panelOpenP = !!(contractRates['__PANEL_OPEN'] || hasRevP);
+    var currentAggInputP = n('aggRate');
+    var currentAggLandedP = parseFloat((document.getElementById('aggLanded')||{}).value||'0')||0;
+    var currentBitP = n('bitPrice'), currentHsdP = n('hsdPrice'), currentLdoP = n('ldoRate');
+    var aggUnitP = aggBasis==='CFT'?'CFT':'MT';
+    var borderCol = hasRevP ? '#93c5fd' : 'var(--gray-200)';
+    var bgCol = hasRevP ? '#eff6ff' : 'var(--gray-50)';
+    var labelCol = hasRevP ? '#1d4ed8' : 'var(--gray-600)';
+    var ph='';
+    ph+='<div style="margin-bottom:14px;border:1px solid '+borderCol+';border-radius:8px;overflow:hidden">';
+    ph+='<div onclick="contractRates[\'__PANEL_OPEN\']=contractRates[\'__PANEL_OPEN\']?0:1;saveState();recalc()" style="background:'+bgCol+';padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px">';
+    ph+='<span style="font-weight:700;font-size:12px;color:'+labelCol+'">📊 Revised Prices — What-If Analysis</span>';
+    if(hasRevP&&activeCountP>0) ph+='<span style="font-size:11px;background:#2563eb;color:#fff;padding:1px 8px;border-radius:10px;white-space:nowrap">'+activeCountP+' override'+(activeCountP!==1?'s':'')+' active</span>';
+    ph+='<span style="font-size:11px;color:var(--gray-400);margin-left:auto">'+(panelOpenP?'▲ collapse':'▼ expand')+'</span>';
+    ph+='</div>';
+    if(panelOpenP){
+      ph+='<div style="padding:12px 16px;background:#f8fafc;border-top:1px solid #e2e8f0">';
+      ph+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:10px">';
+      var pFields=[
+        {key:'__REV_AGG',label:'Aggregate (₹/'+aggUnitP+')',hint:'landed: ₹'+fmtR(currentAggLandedP),val:revAggOvrP,ph:fmtR(currentAggInputP)},
+        {key:'__REV_BIT',label:'Bitumen (₹/kg)',hint:'current: ₹'+fmtR(currentBitP),val:revBitOvrP,ph:fmtR(currentBitP)},
+        {key:'__REV_HSD',label:'HSD Diesel (₹/L)',hint:'current: ₹'+fmtR(currentHsdP),val:revHsdOvrP,ph:fmtR(currentHsdP)},
+        {key:'__REV_LDO',label:'LDO (₹/L)',hint:'current: ₹'+fmtR(currentLdoP),val:revLdoOvrP,ph:fmtR(currentLdoP)}
+      ];
+      pFields.forEach(function(f){
+        ph+='<div><label style="font-size:11px;color:var(--gray-500);display:block;margin-bottom:2px">'+f.label+'<br><span style="color:var(--gray-400)">'+f.hint+'</span></label>';
+        ph+='<input type="number" value="'+(f.val!=null?f.val:'')+'" placeholder="'+f.ph+'" oninput="revisedPriceChanged(\''+f.key+'\',this.value)" onblur="recalc()" style="width:100%;padding:5px 8px;border:1px solid '+(f.val!=null?'#2563eb':'var(--gray-300)')+';border-radius:4px;font-size:13px;box-sizing:border-box">';
+        ph+='</div>';
+      });
+      ph+='</div>';
+      if(hasRevP){
+        ph+='<button onclick="resetRevisedRates()" style="padding:4px 12px;font-size:12px;border:1px solid #ef4444;border-radius:4px;background:#fff;color:#ef4444;cursor:pointer">✕ Reset All</button>';
+        ph+='<span style="font-size:11px;color:var(--gray-500);margin-left:10px">Revised amounts shown in blue · Δ cost in red/green</span>';
+      } else {
+        ph+='<span style="font-size:11px;color:var(--gray-400)">Enter revised prices above to see impact on material costs</span>';
+      }
+      ph+='</div>';
+    }
+    ph+='</div>';
+    panelEl.innerHTML = ph;
+  }
 
   // Update table header
   var theadRow = document.querySelector('#procTable thead tr');
