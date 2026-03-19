@@ -2199,7 +2199,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
       var siteProfit=siteRevenue-siteCostItemised;
       var siteMargin=siteRevenue>0?siteProfit/siteRevenue*100:null;
-      var cs1=hasRevised?7:5;
+      var cs1=5;
       html+='<tr style="background:var(--gray-50);font-weight:700;border-top:2px solid #fde68a">';
       html+='<td colspan="'+cs1+'" style="padding:6px 8px">Site Total</td>';
       html+='<td style="text-align:right;padding:6px 8px">'+(siteHasRev?'₹'+fmtI(Math.round(siteRevenue)):'—')+'</td>';
