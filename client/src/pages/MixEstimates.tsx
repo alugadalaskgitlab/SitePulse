@@ -90,6 +90,7 @@ export default function MixEstimates({ embedded = false }: Props) {
       toast({ title: "Invalid estimate data", variant: "destructive" });
       return;
     }
+    localStorage.setItem("hlc_mix_calc_focus", "jobs");
     window.location.href = "/mix-calculator";
   }
 
