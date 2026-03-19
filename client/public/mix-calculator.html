@@ -2162,9 +2162,49 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     }
 
   } else {
-    // ===== SCOPE MODE: HLC-supplied materials only =====
+    // ===== SCOPE MODE =====
+    // Contractor-supplied items: show qty only (no rate, no amount)
+    // HLC-supplied items (LDO / HSD / emulsion): show qty + rate + amount only when checkbox is on
 
-    // Scope HSD: only from equipment in active scope groups
+    function qtyOnlyCell(label, qty, unit, subLabel){
+      var sub = subLabel ? ' <span style="font-size:10px;color:var(--gray-400)">'+subLabel+'</span>' : '';
+      return '<tr style="color:var(--gray-400)">'
+        +'<td>'+label+sub+'</td>'
+        +'<td style="text-align:right">'+qty+'</td>'
+        +'<td>'+unit+'</td>'
+        +'<td style="text-align:right">—</td>'
+        +'<td style="text-align:right">—</td>'
+        +(rv?'<td></td><td></td><td></td>':'')
+        +'</tr>';
+    }
+
+    // --- Contractor-supplied: Aggregates (qty only) ---
+    if(totalAggMT>0){
+      FRAC_KEYS.forEach(function(k,fi){
+        var qty=fracQtys[k];
+        if(qty>0) html+=qtyOnlyCell(FRAC_LABELS[fi], qty.toFixed(1), 'MT', '(contractor-supplied)');
+      });
+      html+='<tr style="color:var(--gray-500);font-weight:600;background:var(--gray-50)">'
+          +'<td>Total Aggregates <span style="font-size:10px;font-weight:400;color:var(--gray-400)">(contractor-supplied)</span></td>'
+          +'<td style="text-align:right">'+totalAggMT.toFixed(1)+'</td><td>MT</td>'
+          +'<td style="text-align:right">—</td><td style="text-align:right">—</td>'
+          +(rv?'<td></td><td></td><td></td>':'')+'</tr>';
+    }
+
+    // --- Contractor-supplied: Bitumen (qty only) ---
+    if(totalBitMT>0){
+      html+=qtyOnlyCell(
+        'Bitumen (VG30)',
+        (totalBitMT*1000).toFixed(0)+' kg <span style="font-size:10px">('+totalBitMT.toFixed(2)+' MT)</span>',
+        '',
+        '(contractor-supplied)'
+      );
+    }
+
+    // --- Separator line before HLC items ---
+    html+='<tr><td colspan="5" style="padding:2px 0;border-top:1px dashed var(--gray-300)"></td></tr>';
+
+    // --- Scope HSD: calculate from active scope equipment ---
     var scopeHsdLPerMT = 0;
     if(g.mixing){
       equipDefs.forEach(function(eq){
@@ -2183,59 +2223,73 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     var scopeHsdAmt = scopeHsdL*hsdPrice;
     var scopeGrandTotal = 0;
 
-    // LDO — only if Mixing checked AND ldo item on
-    if(g.mixing && scopeState.mixing.ldo && totalLdoL>0){
-      html+='<tr><td>LDO — Dryer + Boiler</td><td style="text-align:right">'+totalLdoL.toFixed(0)+'</td><td>L</td>'
-          +'<td style="text-align:right">'+fmtR(ldoRate)+'</td><td style="text-align:right">'+fmtI(Math.round(ldoAmt))+'</td>'
-          +(rv?revCells(ldoRate,ldoAmt,rv.ldoRate||ldoRate,totalLdoL*(rv.ldoRate||ldoRate)):'')+'</tr>';
-      scopeGrandTotal += ldoAmt;
-    }
-    // HSD — from scope equipment
-    if(scopeHsdL>0){
-      var hsdLabel = [];
-      if(g.mixing) hsdLabel.push('Plant');
-      if(g.paving) hsdLabel.push('Laying');
-      html+='<tr><td>Diesel / HSD ('+(hsdLabel.join(' + '))+' Equipment)</td><td style="text-align:right">'+scopeHsdL.toFixed(0)+'</td><td>L</td>'
-          +'<td style="text-align:right">'+fmtR(hsdPrice)+'</td><td style="text-align:right">'+fmtI(Math.round(scopeHsdAmt))+'</td>'
-          +(rv?revCells(hsdPrice,scopeHsdAmt,rv.hsdPrice||hsdPrice,scopeHsdL*(rv.hsdPrice||hsdPrice)):'')+'</tr>';
-      scopeGrandTotal += scopeHsdAmt;
-    }
-    // Spraying area info (always shown when Spraying group is on — even if emulsion unchecked)
-    if(g.spraying){
-      if(totalPrimeAreaSqm>0){
-        html+='<tr style="background:#f0fdf4"><td>🟢 Prime Coat Area <span style="font-size:11px;color:var(--gray-500)">(for reference)</span></td>'
-            +'<td style="text-align:right">'+fmtI(Math.round(totalPrimeAreaSqm))+'</td><td>sqm</td>'
-            +'<td style="text-align:right;color:var(--gray-400)">—</td><td style="text-align:right;color:var(--gray-400)">—</td>'
-            +(rv?'<td></td><td></td><td></td>':'')+'</tr>';
+    // LDO — qty always shown; rate+amount only if Mixing checked AND ldo checkbox on
+    if(totalLdoL>0){
+      if(g.mixing && scopeState.mixing.ldo){
+        html+='<tr><td>LDO — Dryer + Boiler <span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 5px;border-radius:4px;margin-left:4px">HLC-supplied</span></td>'
+            +'<td style="text-align:right">'+totalLdoL.toFixed(0)+'</td><td>L</td>'
+            +'<td style="text-align:right">'+fmtR(ldoRate)+'</td>'
+            +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(ldoAmt))+'</td>'
+            +(rv?revCells(ldoRate,ldoAmt,rv.ldoRate||ldoRate,totalLdoL*(rv.ldoRate||ldoRate)):'')+'</tr>';
+        scopeGrandTotal += ldoAmt;
+      } else {
+        html+=qtyOnlyCell('LDO — Dryer + Boiler', totalLdoL.toFixed(0), 'L', g.mixing?'(ldo unchecked)':'(mixing unchecked)');
       }
-      if(totalTackAreaSqm>0){
-        html+='<tr style="background:#f0fdf4"><td>🟡 Tack Coat Area <span style="font-size:11px;color:var(--gray-500)">(for reference)</span></td>'
-            +'<td style="text-align:right">'+fmtI(Math.round(totalTackAreaSqm))+'</td><td>sqm</td>'
-            +'<td style="text-align:right;color:var(--gray-400)">—</td><td style="text-align:right;color:var(--gray-400)">—</td>'
-            +(rv?'<td></td><td></td><td></td>':'')+'</tr>';
+    }
+
+    // HSD — qty always shown; rate+amount only if mixing or paving is checked
+    if(scopeHsdL>0 || totalHsdL>0){
+      var showHsdAmt = (g.mixing || g.paving) && scopeHsdL>0;
+      if(showHsdAmt){
+        var hsdLabel=[]; if(g.mixing) hsdLabel.push('Plant'); if(g.paving) hsdLabel.push('Laying');
+        html+='<tr><td>Diesel / HSD ('+(hsdLabel.join(' + '))+' equip.) <span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 5px;border-radius:4px;margin-left:4px">HLC-supplied</span></td>'
+            +'<td style="text-align:right">'+scopeHsdL.toFixed(0)+'</td><td>L</td>'
+            +'<td style="text-align:right">'+fmtR(hsdPrice)+'</td>'
+            +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(scopeHsdAmt))+'</td>'
+            +(rv?revCells(hsdPrice,scopeHsdAmt,rv.hsdPrice||hsdPrice,scopeHsdL*(rv.hsdPrice||hsdPrice)):'')+'</tr>';
+        scopeGrandTotal += scopeHsdAmt;
+      } else {
+        html+=qtyOnlyCell('Diesel / HSD (Equipment)', totalHsdL.toFixed(0), 'L', '(scope unchecked)');
       }
-      // Prime emulsion — only if primeEmulsion checkbox on
-      if(scopeState.spraying.primeEmulsion && totalPrimeKg>0){
-        var spPrimeAmt = totalPrimeKg*primePrice;
-        html+='<tr><td>Prime Coat Emulsion (HLC-supplied)</td><td style="text-align:right">'+totalPrimeKg.toFixed(0)+'</td><td>kg</td>'
-            +'<td style="text-align:right">'+fmtR(primePrice)+'</td><td style="text-align:right">'+fmtI(Math.round(spPrimeAmt))+'</td>'
+    }
+
+    // Prime coat — area shown as reference; emulsion qty + cost only if spraying+primeEmulsion checked
+    if(totalPrimeAreaSqm>0||totalPrimeKg>0){
+      if(g.spraying && scopeState.spraying.primeEmulsion && totalPrimeKg>0){
+        html+='<tr style="color:var(--gray-400);font-size:11px"><td colspan="5" style="padding:3px 8px">🟢 Prime coat area: '+fmtI(Math.round(totalPrimeAreaSqm))+' sqm</td></tr>';
+        var spPrimeAmt=totalPrimeKg*primePrice;
+        html+='<tr><td>Prime Coat Emulsion <span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 5px;border-radius:4px;margin-left:4px">HLC-supplied</span></td>'
+            +'<td style="text-align:right">'+totalPrimeKg.toFixed(0)+'</td><td>kg</td>'
+            +'<td style="text-align:right">'+fmtR(primePrice)+'</td>'
+            +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(spPrimeAmt))+'</td>'
             +(rv?revCells(primePrice,spPrimeAmt,primePrice,spPrimeAmt):'')+'</tr>';
-        scopeGrandTotal += spPrimeAmt;
+        scopeGrandTotal+=spPrimeAmt;
+      } else if(totalPrimeKg>0){
+        html+=qtyOnlyCell('🟢 Prime Coat Emulsion', totalPrimeKg.toFixed(0)+' kg', '',
+          g.spraying?'(primeEmulsion unchecked)':'(spraying unchecked)');
       }
-      // Tack emulsion — only if tackEmulsion checkbox on
-      if(scopeState.spraying.tackEmulsion && totalTackKg>0){
-        var spTackAmt = totalTackKg*tackPrice;
-        html+='<tr><td>Tack Coat Emulsion (HLC-supplied)</td><td style="text-align:right">'+totalTackKg.toFixed(0)+'</td><td>kg</td>'
-            +'<td style="text-align:right">'+fmtR(tackPrice)+'</td><td style="text-align:right">'+fmtI(Math.round(spTackAmt))+'</td>'
+    }
+
+    // Tack coat — same pattern
+    if(totalTackAreaSqm>0||totalTackKg>0){
+      if(g.spraying && scopeState.spraying.tackEmulsion && totalTackKg>0){
+        html+='<tr style="color:var(--gray-400);font-size:11px"><td colspan="5" style="padding:3px 8px">🟡 Tack coat area: '+fmtI(Math.round(totalTackAreaSqm))+' sqm</td></tr>';
+        var spTackAmt=totalTackKg*tackPrice;
+        html+='<tr><td>Tack Coat Emulsion <span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 5px;border-radius:4px;margin-left:4px">HLC-supplied</span></td>'
+            +'<td style="text-align:right">'+totalTackKg.toFixed(0)+'</td><td>kg</td>'
+            +'<td style="text-align:right">'+fmtR(tackPrice)+'</td>'
+            +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(spTackAmt))+'</td>'
             +(rv?revCells(tackPrice,spTackAmt,tackPrice,spTackAmt):'')+'</tr>';
-        scopeGrandTotal += spTackAmt;
+        scopeGrandTotal+=spTackAmt;
+      } else if(totalTackKg>0){
+        html+=qtyOnlyCell('🟡 Tack Coat Emulsion', totalTackKg.toFixed(0)+' kg', '',
+          g.spraying?'(tackEmulsion unchecked)':'(spraying unchecked)');
       }
     }
-    if(scopeGrandTotal===0 && !html){
-      html='<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:16px;font-style:italic">No HLC-supplied materials selected. Check the scope group checkboxes in Section ⑬.</td></tr>';
-    } else {
-      html+='<tr class="grand-total"><td>TOTAL HLC-SUPPLIED MATERIALS (COST)</td><td></td><td></td><td></td><td style="text-align:right">₹ '+fmtI(Math.round(scopeGrandTotal))+'</td></tr>';
-    }
+
+    // Grand total — HLC-supplied items only
+    html+='<tr class="grand-total"><td>TOTAL HLC-SUPPLIED MATERIALS (COST)</td><td></td><td></td><td></td>'
+        +'<td style="text-align:right">₹ '+fmtI(Math.round(scopeGrandTotal))+'</td></tr>';
   }
 
   document.getElementById('procTableBody').innerHTML = html;
@@ -2653,6 +2707,7 @@ function scopeToggleGroup(group, checked){
     if(parseFloat(el.value)===0){ var gm=n('marginPct'); if(gm>0) el.value=gm; }
   }
   renderScopeQuotation();
+  recalc();
 }
 
 function openScopeSection(){
