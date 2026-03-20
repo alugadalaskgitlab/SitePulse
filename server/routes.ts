@@ -2022,6 +2022,7 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/notify", async (req, res) => {
     try {
       const id = Number(req.params.id);
+      const customMessage = typeof req.body?.message === "string" ? req.body.message.trim() : "";
       const indent = await storage.getPurchaseIndent(id);
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
@@ -2031,7 +2032,8 @@ export async function registerRoutes(
         return sum + (ea || 0);
       }, 0);
       const estStr = totalEst > 0 ? ` | Est. ₹${Math.round(totalEst).toLocaleString("en-IN")}` : "";
-      const body = `${indent.indentNo} by ${indent.raisedBy} — ${indent.items.length} item(s)${estStr}. Pending review.`;
+      const baseBody = `${indent.indentNo} by ${indent.raisedBy} — ${indent.items.length} item(s)${estStr}. Pending review.`;
+      const body = customMessage ? `${baseBody}\n📝 ${customMessage}` : baseBody;
       sendPushToAll("PI Review Requested", body, "/plant/purchase-indents").catch(() => {});
       await storage.createNotification({
         type: "info",

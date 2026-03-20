@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, Send } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -347,6 +348,7 @@ export default function PurchaseIndents() {
   const [pinAction, setPinAction] = useState<"approve" | "reject" | "cancel_item" | "force_close" | "edit" | "delete" | null>(null);
   const [approvalRemarks, setApprovalRemarks] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
+  const [notifyMessage, setNotifyMessage] = useState("");
   const [approvedQtys, setApprovedQtys] = useState<Record<number, number>>({});
   const [savedPin, setSavedPin] = useState("");
 
@@ -507,9 +509,14 @@ export default function PurchaseIndents() {
     },
   });
 
+  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+
   const notifyMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/purchase-indents/${id}/notify`, {}),
+    mutationFn: ({ id, message }: { id: number; message: string }) =>
+      apiRequest("POST", `/api/purchase-indents/${id}/notify`, { message }),
     onSuccess: () => {
+      setShowNotifyDialog(false);
+      setNotifyMessage("");
       toast({ title: "Stakeholders notified", description: "Push notification sent to all subscribed devices." });
     },
     onError: (err: Error) => {
@@ -1372,11 +1379,10 @@ export default function PurchaseIndents() {
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                        onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)}
-                        disabled={notifyMutation.isPending}
+                        onClick={() => setShowNotifyDialog(true)}
                         data-testid="button-notify-stakeholders"
                       >
-                        {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <span className="mr-1">🔔</span>}
+                        <span className="mr-1">🔔</span>
                         NOTIFY
                       </Button>
                     </div>
@@ -2037,6 +2043,46 @@ export default function PurchaseIndents() {
           ) : null}
         </>
       )}
+
+      <Dialog open={showNotifyDialog} onOpenChange={(open) => { if (!open) { setShowNotifyDialog(false); setNotifyMessage(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 uppercase text-base">
+              <span>🔔</span> Notify Stakeholders
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-xs text-muted-foreground uppercase">
+              {selectedIndent ? `${selectedIndent.indentNo} · ${selectedIndent.items.length} item(s)` : ""}
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs uppercase">Message / Note (optional)</Label>
+              <Textarea
+                value={notifyMessage}
+                onChange={(e) => setNotifyMessage(e.target.value)}
+                placeholder="E.g. Please review item 2 pricing before approving..."
+                rows={3}
+                data-testid="input-notify-message"
+              />
+              <p className="text-xs text-muted-foreground">Leave blank to send the default notification.</p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowNotifyDialog(false); setNotifyMessage(""); }} data-testid="button-notify-cancel">
+              CANCEL
+            </Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-1"
+              disabled={notifyMutation.isPending}
+              onClick={() => selectedIndentId && notifyMutation.mutate({ id: selectedIndentId, message: notifyMessage })}
+              data-testid="button-notify-send"
+            >
+              {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              SEND
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
