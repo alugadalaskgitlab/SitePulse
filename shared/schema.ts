@@ -902,6 +902,7 @@ export const dieselRequirementItems = pgTable("diesel_requirement_items", {
   purpose: text("purpose"),
   estHours: real("est_hours"),
   norm: real("norm"),
+  normType: text("norm_type").default("hourly"),
   plannedQty: real("planned_qty").notNull(),
   approvedQty: real("approved_qty"),
 });

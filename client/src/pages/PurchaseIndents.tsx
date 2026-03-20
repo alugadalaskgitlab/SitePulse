@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,128 @@ import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry, PlantMaterial } from "@shared/schema";
+
+function FreeTextCombobox({
+  value,
+  onChange,
+  options,
+  placeholder,
+  className,
+  "data-testid": testId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const filtered = value
+    ? options.filter(o => o.toLowerCase().includes(value.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className={`relative ${className ?? ""}`}>
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value.toUpperCase()); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        data-testid={testId}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-52 overflow-y-auto text-sm">
+          {filtered.map(opt => (
+            <div
+              key={opt}
+              className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              onMouseDown={e => { e.preventDefault(); onChange(opt); setOpen(false); }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaterialCombobox({
+  description,
+  materialId,
+  materials,
+  onChange,
+  "data-testid": testId,
+}: {
+  description: string;
+  materialId: number | null;
+  materials: PlantMaterial[];
+  onChange: (desc: string, materialId: number | null, uom?: string) => void;
+  "data-testid"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const activeList = materials.filter(m => m.isActive === 1 || m.id === materialId);
+  const filtered = description
+    ? activeList.filter(m => m.name.toLowerCase().includes(description.toLowerCase()))
+    : activeList;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        value={description}
+        onChange={e => {
+          onChange(e.target.value.toUpperCase(), null);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="TYPE ITEM NAME OR SELECT FROM LIST"
+        data-testid={testId}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-52 overflow-y-auto text-sm">
+          {filtered.map(m => (
+            <div
+              key={m.id}
+              className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2"
+              onMouseDown={e => {
+                e.preventDefault();
+                onChange(m.name.toUpperCase(), m.id, (m.defaultUom || "NOS").toUpperCase());
+                setOpen(false);
+              }}
+            >
+              <span>{m.name.toUpperCase()}</span>
+              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{(m.defaultUom || "").toUpperCase()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {materialId && (
+        <p className="text-[10px] text-green-700 dark:text-green-400 mt-0.5">✓ Linked to materials master</p>
+      )}
+    </div>
+  );
+}
 
 type ViewMode = "list" | "form" | "detail" | "purchase" | "report";
 
@@ -1018,51 +1140,23 @@ export default function PurchaseIndents() {
                     <div className="flex-1 space-y-2">
                       <div>
                         <Label className="text-xs">ITEM</Label>
-                        <Select
-                          value={item.materialId ? String(item.materialId) : "__other__"}
-                          onValueChange={(v) => {
-                            if (v === "__other__") {
-                              const updated = [...formItems];
-                              updated[index] = { ...updated[index], materialId: null, description: "" };
-                              setFormItems(updated);
-                            } else {
-                              const mat = plantMaterialsList?.find(m => m.id === Number(v));
-                              if (mat) {
-                                const updated = [...formItems];
-                                updated[index] = {
-                                  ...updated[index],
-                                  materialId: mat.id,
-                                  description: mat.name.toUpperCase(),
-                                  uom: (mat.defaultUom || "NOS").toUpperCase(),
-                                };
-                                setFormItems(updated);
-                              }
-                            }
+                        <MaterialCombobox
+                          description={item.description}
+                          materialId={item.materialId ?? null}
+                          materials={plantMaterialsList || []}
+                          onChange={(desc, matId, uom) => {
+                            const updated = [...formItems];
+                            updated[index] = {
+                              ...updated[index],
+                              description: desc,
+                              materialId: matId,
+                              ...(uom ? { uom } : {}),
+                            };
+                            setFormItems(updated);
                           }}
-                        >
-                          <SelectTrigger data-testid={`select-item-material-${index}`}>
-                            <SelectValue placeholder="SELECT MATERIAL OR OTHER" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(plantMaterialsList || []).filter(m => m.isActive === 1 || m.id === item.materialId).map(m => (
-                              <SelectItem key={m.id} value={String(m.id)}>
-                                {m.name.toUpperCase()} ({(m.defaultUom || "").toUpperCase()})
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="__other__">OTHER (FREE TEXT)</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          data-testid={`input-item-desc-${index}`}
+                        />
                       </div>
-                      {!item.materialId && (
-                        <div>
-                          <Input
-                            value={item.description}
-                            onChange={(e) => updateItem(index, "description", e.target.value.toUpperCase())}
-                            placeholder="ENTER ITEM DESCRIPTION"
-                            data-testid={`input-item-desc-${index}`}
-                          />
-                        </div>
-                      )}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
                           <Label className="text-xs">QTY</Label>
@@ -1089,16 +1183,13 @@ export default function PurchaseIndents() {
                         </div>
                         <div>
                           <Label className="text-xs">PURPOSE</Label>
-                          <Select value={item.purpose} onValueChange={(v) => updateItem(index, "purpose", v)}>
-                            <SelectTrigger data-testid={`select-item-purpose-${index}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PURPOSE_OPTIONS.map(p => (
-                                <SelectItem key={p} value={p}>{p}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FreeTextCombobox
+                            value={item.purpose}
+                            onChange={(v) => updateItem(index, "purpose", v)}
+                            options={[...PURPOSE_OPTIONS]}
+                            placeholder="PURPOSE"
+                            data-testid={`input-item-purpose-${index}`}
+                          />
                         </div>
                         <div>
                           <Label className="text-xs">PRIORITY</Label>

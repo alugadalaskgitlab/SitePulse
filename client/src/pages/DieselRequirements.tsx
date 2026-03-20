@@ -24,6 +24,7 @@ interface FormItem {
   purpose: string;
   estHours: string;
   norm: string;
+  normType: "hourly" | "distance";
   plannedQty: string;
 }
 
@@ -206,16 +207,26 @@ export default function DieselRequirements() {
     setFormDate(format(new Date(), "yyyy-MM-dd"));
     setFormRaisedBy("");
     setFormRemarks("");
-    setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", plannedQty: "" }]);
+    setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "" }]);
   };
 
   const addFormRow = () => {
-    setFormItems([...formItems, { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", plannedQty: "" }]);
+    setFormItems([...formItems, { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "" }]);
   };
 
   const removeFormRow = (index: number) => {
     if (formItems.length <= 1) return;
     setFormItems(formItems.filter((_, i) => i !== index));
+  };
+
+  const calcPlannedQty = (item: FormItem): string => {
+    const workQty = parseFloat(item.estHours) || 0;
+    const norm = parseFloat(item.norm) || 0;
+    if (!workQty || !norm) return "";
+    if (item.normType === "distance") {
+      return String(Math.ceil(workQty * norm));
+    }
+    return String(Math.ceil(workQty * norm));
   };
 
   const updateFormItem = (index: number, field: keyof FormItem, value: any) => {
@@ -227,16 +238,15 @@ export default function DieselRequirements() {
       if (eq) {
         updated[index].equipmentName = eq.name + (eq.registrationNumber ? ` (${eq.registrationNumber})` : "") + ` | ${(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}`;
         updated[index].norm = String(eq.consumptionNorm || "");
-        const hours = parseFloat(updated[index].estHours) || 0;
-        const norm = eq.consumptionNorm || 0;
-        updated[index].plannedQty = hours && norm ? String(Math.ceil(hours * norm)) : "";
+        const newNormType = (eq as any).meterType === "hour_meter" ? "hourly" : "distance";
+        updated[index].normType = newNormType;
+        updated[index].estHours = "";
+        updated[index].plannedQty = "";
       }
     }
 
     if (field === "estHours" || field === "norm") {
-      const hours = parseFloat(field === "estHours" ? String(value) : updated[index].estHours) || 0;
-      const norm = parseFloat(field === "norm" ? String(value) : updated[index].norm) || 0;
-      updated[index].plannedQty = hours && norm ? String(Math.ceil(hours * norm)) : "";
+      updated[index].plannedQty = calcPlannedQty(updated[index]);
     }
 
     setFormItems(updated);
@@ -257,6 +267,7 @@ export default function DieselRequirements() {
         purpose: (i.purpose || "").toUpperCase() || null,
         estHours: parseFloat(i.estHours) || null,
         norm: parseFloat(i.norm) || null,
+        normType: i.normType || "hourly",
         plannedQty: parseFloat(i.plannedQty) || 0,
       }));
     const payload = {
@@ -318,6 +329,7 @@ export default function DieselRequirements() {
         purpose: item.purpose || "",
         estHours: item.estHours != null ? String(item.estHours) : "",
         norm: item.norm != null ? String(item.norm) : "",
+        normType: ((item as any).normType || "hourly") as "hourly" | "distance",
         plannedQty: String(item.plannedQty),
       })));
       setView("form");
@@ -668,15 +680,19 @@ export default function DieselRequirements() {
                   <tr className="border-b">
                     <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[5%]">#</th>
                     <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[30%]">EQUIPMENT / DG</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[18%]">PURPOSE</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">EST. HOURS</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[10%]">NORM (L/HR)</th>
-                    <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2 w-[14%]">DIESEL REQ (L)</th>
+                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[16%]">PURPOSE</th>
+                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">HRS / KM</th>
+                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">NORM</th>
+                    <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">DIESEL (L)</th>
                     <th className="p-2 w-[5%]"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {formItems.map((item, i) => (
+                  {formItems.map((item, i) => {
+                    const isDistance = item.normType === "distance";
+                    const normVal = parseFloat(item.norm) || 0;
+                    const mileageHint = isDistance && normVal > 0 ? `${(1 / normVal).toFixed(2)} km/L` : null;
+                    return (
                     <tr key={i} className="border-b last:border-b-0">
                       <td className="p-2 text-muted-foreground">{i + 1}</td>
                       <td className="p-2">
@@ -695,6 +711,11 @@ export default function DieselRequirements() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {item.equipmentId && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {isDistance ? "📏 vehicle (km-based)" : "⏱ machinery (hrs-based)"}
+                          </p>
+                        )}
                       </td>
                       <td className="p-2">
                         <Input
@@ -709,12 +730,14 @@ export default function DieselRequirements() {
                           type="number"
                           value={item.estHours}
                           onChange={(e) => updateFormItem(i, "estHours", e.target.value)}
-                          placeholder="0"
+                          placeholder={isDistance ? "km" : "hrs"}
                           data-testid={`input-hours-${i}`}
                         />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{isDistance ? "Est. km" : "Est. hours"}</p>
                       </td>
-                      <td className="p-2 text-center text-muted-foreground">
-                        {item.norm || "\u2014"}
+                      <td className="p-2 text-muted-foreground text-sm">
+                        <p>{normVal > 0 ? `${item.norm} ${isDistance ? "L/km" : "L/hr"}` : "—"}</p>
+                        {mileageHint && <p className="text-[10px] text-blue-600 font-medium">({mileageHint})</p>}
                       </td>
                       <td className="p-2 text-right font-bold bg-amber-50 dark:bg-amber-900/10" data-testid={`text-planned-qty-${i}`}>
                         {item.plannedQty || 0}
@@ -731,7 +754,8 @@ export default function DieselRequirements() {
                         </Button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="bg-amber-50 dark:bg-amber-900/10 border-t-2 border-amber-500">
@@ -855,8 +879,8 @@ export default function DieselRequirements() {
                         <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">#</th>
                         <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
                         <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">PURPOSE</th>
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">EST. HOURS</th>
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">NORM (L/HR)</th>
+                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">HRS / KM</th>
+                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">NORM</th>
                         <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
                         {(selectedRequirement.status === "pending" || selectedRequirement.status === "approved" || selectedRequirement.status === "purchased") && (
                           <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">
@@ -874,8 +898,21 @@ export default function DieselRequirements() {
                             <td className="p-2 text-muted-foreground">{i + 1}</td>
                             <td className="p-2 font-semibold" data-testid={`text-equip-name-${item.id}`}>{item.equipmentName}</td>
                             <td className="p-2">{item.purpose || "\u2014"}</td>
-                            <td className="p-2">{item.estHours ?? "\u2014"}</td>
-                            <td className="p-2">{item.norm ?? "\u2014"}</td>
+                            <td className="p-2">
+                              {item.estHours != null
+                                ? `${item.estHours} ${(item as any).normType === "distance" ? "km" : "hrs"}`
+                                : "\u2014"}
+                            </td>
+                            <td className="p-2">
+                              {item.norm != null ? (
+                                <span>
+                                  {item.norm} {(item as any).normType === "distance" ? "L/km" : "L/hr"}
+                                  {(item as any).normType === "distance" && item.norm > 0 && (
+                                    <span className="text-[10px] text-blue-600 ml-1">({(1/item.norm).toFixed(2)} km/L)</span>
+                                  )}
+                                </span>
+                              ) : "\u2014"}
+                            </td>
                             <td className="p-2 text-right text-muted-foreground">{Math.round(item.plannedQty)}</td>
                             {selectedRequirement.status === "pending" ? (
                               <td className="p-2 text-right">
