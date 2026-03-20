@@ -347,9 +347,9 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
-      const adjL = (result.adjustment || 0) * 1000 / 0.84;
+      const adjL = result.adjustment || 0;
       const sign = adjL >= 0 ? "+" : "";
-      const newL = (result.newBalance || 0) * 1000 / 0.84;
+      const newL = result.newBalance || 0;
       toast({ title: "Diesel stock correction posted", description: `Adjustment: ${sign}${adjL.toFixed(0)} L. Book stock now ${newL.toFixed(0)} L.` });
       setShowDieselCorrForm(false);
       setDieselCorrPhysicalL("");
@@ -630,13 +630,12 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
                     onClick={() => {
                       if (!dieselMaterialId || !dieselCorrPartyId) return;
                       const physL = parseFloat(dieselCorrPhysicalL);
-                      const physMT = physL * 0.84 / 1000;
                       const partyName = allParties?.find(p => String(p.id) === dieselCorrPartyId)?.name || `Party ${dieselCorrPartyId}`;
                       dieselCorrectionMutation.mutate({
                         materialId: dieselMaterialId,
                         partyId: parseInt(dieselCorrPartyId),
-                        physicalQty: physMT,
-                        uom: "MT",
+                        physicalQty: physL,
+                        uom: "Liters",
                         date: dieselCorrDate,
                         notes: dieselCorrNotes || `Diesel dip stick reconciliation (${partyName})`,
                         correctedBy: "admin",
