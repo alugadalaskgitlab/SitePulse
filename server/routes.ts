@@ -2019,6 +2019,33 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/purchase-indents/:id/notify", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const indent = await storage.getPurchaseIndent(id);
+      if (!indent) {
+        return res.status(404).json({ message: "Purchase indent not found" });
+      }
+      const totalEst = indent.items.reduce((sum, item: any) => {
+        const ea = item.estAmount ?? (item.estRate && item.qty ? item.estRate * item.qty : null);
+        return sum + (ea || 0);
+      }, 0);
+      const estStr = totalEst > 0 ? ` | Est. ₹${Math.round(totalEst).toLocaleString("en-IN")}` : "";
+      const body = `${indent.indentNo} by ${indent.raisedBy} — ${indent.items.length} item(s)${estStr}. Pending review.`;
+      sendPushToAll("PI Review Requested", body, "/plant/purchase-indents").catch(() => {});
+      await storage.createNotification({
+        type: "info",
+        title: "PI Review Requested",
+        message: body,
+        isRead: 0,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Error notifying for purchase indent:", err);
+      res.status(500).json({ message: "Failed to send notification" });
+    }
+  });
+
   app.patch("/api/purchase-indent-items/:id/purchase-update", async (req, res) => {
     try {
       const itemId = Number(req.params.id);

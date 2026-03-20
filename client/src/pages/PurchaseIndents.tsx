@@ -156,6 +156,7 @@ interface ItemRow {
   priority: string;
   materialId: number | null;
   estRate: number | null;
+  estAmount: number | null;
 }
 
 interface PurchaseUpdateData {
@@ -600,11 +601,11 @@ export default function PurchaseIndents() {
     setFormProposedBy("");
     setFormRaisedBy("");
     setFormRemarks("");
-    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null }]);
+    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null }]);
   };
 
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null }]);
+    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -644,6 +645,7 @@ export default function PurchaseIndents() {
         priority: item.priority,
         materialId: item.materialId || undefined,
         estRate: item.estRate || undefined,
+        estAmount: item.estAmount || undefined,
       })),
     };
 
@@ -711,6 +713,7 @@ export default function PurchaseIndents() {
           priority: item.priority,
           materialId: item.materialId || null,
           estRate: item.estRate || null,
+          estAmount: (item as any).estAmount || null,
         })));
         setSavedPin(pin);
         setView("form");
@@ -1218,26 +1221,43 @@ export default function PurchaseIndents() {
                           </Select>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
-                        <div className="flex items-center gap-2 flex-1">
+                      <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
+                        <div className="flex items-center gap-2">
                           <Label className="text-xs whitespace-nowrap text-muted-foreground">EST. RATE (₹)</Label>
                           <Input
                             type="number"
                             min="0"
                             value={item.estRate ?? ""}
-                            onChange={(e) => updateItem(index, "estRate", e.target.value ? parseFloat(e.target.value) : null as any)}
-                            placeholder="approx ₹ per unit"
-                            className="w-36 text-sm"
+                            onChange={(e) => {
+                              const rate = e.target.value ? parseFloat(e.target.value) : null;
+                              const updated = [...formItems];
+                              updated[index] = {
+                                ...updated[index],
+                                estRate: rate,
+                                estAmount: rate != null ? Math.round(rate * updated[index].qty) : updated[index].estAmount,
+                              };
+                              setFormItems(updated);
+                            }}
+                            placeholder="rate per unit"
+                            className="w-28 text-sm"
                             data-testid={`input-item-est-rate-${index}`}
                           />
                         </div>
-                        {item.estRate && item.estRate > 0 && (
-                          <div className="text-sm font-semibold text-amber-700 dark:text-amber-400 whitespace-nowrap">
-                            ≈ ₹{(item.qty * item.estRate).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                          </div>
-                        )}
-                        {!item.estRate && (
-                          <p className="text-[11px] text-muted-foreground italic">Optional — helps admin estimate total value</p>
+                        <span className="text-xs text-muted-foreground">OR</span>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs whitespace-nowrap text-muted-foreground font-semibold text-amber-700">EST. AMOUNT (₹)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={item.estAmount ?? ""}
+                            onChange={(e) => updateItem(index, "estAmount", e.target.value ? parseFloat(e.target.value) : null as any)}
+                            placeholder="total est. ₹"
+                            className="w-32 text-sm font-semibold"
+                            data-testid={`input-item-est-amount-${index}`}
+                          />
+                        </div>
+                        {!item.estRate && !item.estAmount && (
+                          <p className="text-[11px] text-muted-foreground italic">Optional — enter rate or total amount to help admin evaluate</p>
                         )}
                       </div>
                     </div>
@@ -1346,17 +1366,40 @@ export default function PurchaseIndents() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between gap-2">
                     <CardTitle className="text-base uppercase">ITEMS - REVIEW & APPROVE QUANTITIES</CardTitle>
-                    <p className="text-xs text-muted-foreground">ADMIN CAN REDUCE QTY PER ITEM IF NEEDED</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground hidden sm:block">ADMIN CAN REDUCE QTY PER ITEM IF NEEDED</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                        onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)}
+                        disabled={notifyMutation.isPending}
+                        data-testid="button-notify-stakeholders"
+                      >
+                        {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <span className="mr-1">🔔</span>}
+                        NOTIFY
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {selectedIndent.items.map((item, index) => (
+                    {selectedIndent.items.map((item, index) => {
+                      const estAmt = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
+                      return (
                       <Card key={item.id} className="p-4" data-testid={`card-approval-item-${item.id}`}>
                         <div className="flex justify-between items-start gap-2 flex-wrap">
                           <div>
                             <p className="font-bold uppercase">{index + 1}. {item.description}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
                           </div>
-                          {getPriorityBadge(item.priority)}
+                          <div className="flex items-center gap-2">
+                            {(item.estRate || estAmt) && (
+                              <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
+                                ≈ ₹{estAmt?.toLocaleString("en-IN") ?? "—"}
+                                {item.estRate && <span className="text-muted-foreground ml-1">@ ₹{item.estRate}/unit</span>}
+                              </span>
+                            )}
+                            {getPriorityBadge(item.priority)}
+                          </div>
                         </div>
                         <div className="flex items-center gap-4 mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-md flex-wrap">
                           <div className="text-sm">
@@ -1385,7 +1428,20 @@ export default function PurchaseIndents() {
                           </div>
                         </div>
                       </Card>
-                    ))}
+                      );
+                    })}
+                    {(() => {
+                      const totalEst = selectedIndent.items.reduce((sum, item) => {
+                        const ea = (item as any).estAmount ?? (item.estRate && item.qty ? item.estRate * item.qty : null);
+                        return sum + (ea || 0);
+                      }, 0);
+                      return totalEst > 0 ? (
+                        <div className="flex justify-end items-center gap-2 pt-1 border-t">
+                          <span className="text-xs text-muted-foreground uppercase">Total Est. Value:</span>
+                          <span className="font-bold text-amber-700 dark:text-amber-400">₹{Math.round(totalEst).toLocaleString("en-IN")}</span>
+                        </div>
+                      ) : null;
+                    })()}
 
                     <div className="pt-2">
                       <Label className="text-xs uppercase">APPROVAL REMARKS (OPTIONAL)</Label>
@@ -1447,18 +1503,27 @@ export default function PurchaseIndents() {
                             {getPriorityBadge(item.priority)}
                           </div>
                         </div>
-                        <div className="text-sm mt-2">
-                          <span className="text-muted-foreground">QTY:</span> <strong>{item.qty} {item.uom}</strong>
+                        <div className="text-sm mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span><span className="text-muted-foreground">QTY:</span> <strong>{item.qty} {item.uom}</strong></span>
                           {item.approvedQty != null && (
                             <>
-                              <span className="mx-2 text-muted-foreground">{"\u2192"}</span>
-                              <span className="text-muted-foreground">APPROVED:</span>{" "}
+                              <span className="text-muted-foreground">{"\u2192"}</span>
+                              <span><span className="text-muted-foreground">APPROVED:</span>{" "}
                               <strong className="text-emerald-600">{item.approvedQty} {item.uom}</strong>
                               {item.approvedQty < item.qty && (
                                 <span className="text-xs text-amber-600 ml-1">(REDUCED)</span>
-                              )}
+                              )}</span>
                             </>
                           )}
+                          {(() => {
+                            const ea = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
+                            return ea ? (
+                              <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
+                                ≈ ₹{ea.toLocaleString("en-IN")}
+                                {item.estRate ? ` @ ₹${item.estRate}/unit` : ""}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                         <div className="mt-2">
                           <Button
