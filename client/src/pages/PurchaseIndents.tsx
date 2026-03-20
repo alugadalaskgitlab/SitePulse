@@ -1452,9 +1452,9 @@ export default function PurchaseIndents() {
                           <span className="text-xs text-muted-foreground whitespace-nowrap">🔔 Note:</span>
                           <Input
                             value={reviewerNotes[item.id] ?? ""}
-                            onChange={(e) => setReviewerNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
+                            onChange={(e) => setReviewerNotes(prev => ({ ...prev, [item.id]: e.target.value.toUpperCase() }))}
                             onBlur={(e) => {
-                              const note = e.target.value.trim();
+                              const note = e.target.value.toUpperCase().trim();
                               reviewerNoteMutation.mutate({ itemId: item.id, note });
                             }}
                             placeholder="Query or note for this item (optional)..."
