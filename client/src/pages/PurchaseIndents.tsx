@@ -1388,6 +1388,14 @@ export default function PurchaseIndents() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {(selectedIndent as any).notifyMessage && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md flex items-start gap-2">
+                        <span className="text-base leading-none mt-0.5">🔔</span>
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                          <strong className="uppercase">Reviewer Note:</strong> {(selectedIndent as any).notifyMessage}
+                        </p>
+                      </div>
+                    )}
                     {selectedIndent.items.map((item, index) => {
                       const estAmt = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
                       return (
@@ -1558,6 +1566,14 @@ export default function PurchaseIndents() {
                       <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md">
                         <p className="text-sm text-amber-700 dark:text-amber-300">
                           <strong>APPROVAL REMARKS:</strong> {selectedIndent.approvalRemarks}
+                        </p>
+                      </div>
+                    )}
+                    {(selectedIndent as any).notifyMessage && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md flex items-start gap-2">
+                        <span className="text-base leading-none mt-0.5">🔔</span>
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                          <strong className="uppercase">Reviewer Note:</strong> {(selectedIndent as any).notifyMessage}
                         </p>
                       </div>
                     )}

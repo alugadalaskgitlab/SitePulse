@@ -356,6 +356,7 @@ export interface IStorage {
   getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]>;
   getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }>;
   updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined>;
+  setIndentNotifyMessage(id: number, message: string): Promise<void>;
   deletePurchaseIndent(id: number): Promise<boolean>;
 
   // Daily Diesel Requirements
@@ -5185,6 +5186,10 @@ export class DatabaseStorage implements IStorage {
       const [updatedIndent] = await tx.select().from(purchaseIndents).where(eq(purchaseIndents.id, id));
       return { ...updatedIndent, items };
     });
+  }
+
+  async setIndentNotifyMessage(id: number, message: string): Promise<void> {
+    await db.update(purchaseIndents).set({ notifyMessage: message }).where(eq(purchaseIndents.id, id));
   }
 
   async deletePurchaseIndent(id: number): Promise<boolean> {

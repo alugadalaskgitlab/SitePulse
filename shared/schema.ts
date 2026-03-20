@@ -799,6 +799,7 @@ export const purchaseIndents = pgTable("purchase_indents", {
   approvedBy: text("approved_by"),
   approvedAt: text("approved_at"),
   rejectionReason: text("rejection_reason"),
+  notifyMessage: text("notify_message"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

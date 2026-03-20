@@ -2034,6 +2034,9 @@ export async function registerRoutes(
       const estStr = totalEst > 0 ? ` | Est. ₹${Math.round(totalEst).toLocaleString("en-IN")}` : "";
       const baseBody = `${indent.indentNo} by ${indent.raisedBy} — ${indent.items.length} item(s)${estStr}. Pending review.`;
       const body = customMessage ? `${baseBody}\n📝 ${customMessage}` : baseBody;
+      if (customMessage) {
+        await storage.setIndentNotifyMessage(id, customMessage);
+      }
       sendPushToAll("PI Review Requested", body, "/plant/purchase-indents").catch(() => {});
       await storage.createNotification({
         type: "info",
