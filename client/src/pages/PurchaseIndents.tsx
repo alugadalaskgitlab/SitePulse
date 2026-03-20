@@ -155,6 +155,7 @@ interface ItemRow {
   purpose: string;
   priority: string;
   materialId: number | null;
+  estRate: number | null;
 }
 
 interface PurchaseUpdateData {
@@ -505,6 +506,16 @@ export default function PurchaseIndents() {
     },
   });
 
+  const notifyMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/purchase-indents/${id}/notify`, {}),
+    onSuccess: () => {
+      toast({ title: "Stakeholders notified", description: "Push notification sent to all subscribed devices." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to send notification", description: err.message, variant: "destructive" });
+    },
+  });
+
   const reportQueryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (reportFilterDateFrom) params.set("dateFrom", reportFilterDateFrom);
@@ -589,11 +600,11 @@ export default function PurchaseIndents() {
     setFormProposedBy("");
     setFormRaisedBy("");
     setFormRemarks("");
-    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null }]);
+    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null }]);
   };
 
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null }]);
+    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -632,6 +643,7 @@ export default function PurchaseIndents() {
         purpose: item.purpose,
         priority: item.priority,
         materialId: item.materialId || undefined,
+        estRate: item.estRate || undefined,
       })),
     };
 
@@ -698,6 +710,7 @@ export default function PurchaseIndents() {
           purpose: item.purpose,
           priority: item.priority,
           materialId: item.materialId || null,
+          estRate: item.estRate || null,
         })));
         setSavedPin(pin);
         setView("form");
@@ -1204,6 +1217,28 @@ export default function PurchaseIndents() {
                             </SelectContent>
                           </Select>
                         </div>
+                      </div>
+                      <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
+                        <div className="flex items-center gap-2 flex-1">
+                          <Label className="text-xs whitespace-nowrap text-muted-foreground">EST. RATE (₹)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={item.estRate ?? ""}
+                            onChange={(e) => updateItem(index, "estRate", e.target.value ? parseFloat(e.target.value) : null as any)}
+                            placeholder="approx ₹ per unit"
+                            className="w-36 text-sm"
+                            data-testid={`input-item-est-rate-${index}`}
+                          />
+                        </div>
+                        {item.estRate && item.estRate > 0 && (
+                          <div className="text-sm font-semibold text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                            ≈ ₹{(item.qty * item.estRate).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                          </div>
+                        )}
+                        {!item.estRate && (
+                          <p className="text-[11px] text-muted-foreground italic">Optional — helps admin estimate total value</p>
+                        )}
                       </div>
                     </div>
                     {formItems.length > 1 && (

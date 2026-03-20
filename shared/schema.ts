@@ -811,6 +811,7 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   purpose: text("purpose").notNull(),
   priority: text("priority").default("normal").notNull(),
   materialId: integer("material_id").references(() => plantMaterials.id, { onDelete: "set null" }),
+  estRate: real("est_rate"),
   approvedQty: real("approved_qty"),
   purchaseStatus: text("purchase_status"),
   qtyPurchased: real("qty_purchased"),
