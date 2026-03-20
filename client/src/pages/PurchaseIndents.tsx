@@ -9,8 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, Send } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -348,7 +347,6 @@ export default function PurchaseIndents() {
   const [pinAction, setPinAction] = useState<"approve" | "reject" | "cancel_item" | "force_close" | "edit" | "delete" | null>(null);
   const [approvalRemarks, setApprovalRemarks] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const [notifyMessage, setNotifyMessage] = useState("");
   const [approvedQtys, setApprovedQtys] = useState<Record<number, number>>({});
   const [savedPin, setSavedPin] = useState("");
 
@@ -509,19 +507,22 @@ export default function PurchaseIndents() {
     },
   });
 
-  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  const [reviewerNotes, setReviewerNotes] = useState<Record<number, string>>({});
 
   const notifyMutation = useMutation({
-    mutationFn: ({ id, message }: { id: number; message: string }) =>
-      apiRequest("POST", `/api/purchase-indents/${id}/notify`, { message }),
+    mutationFn: (id: number) => apiRequest("POST", `/api/purchase-indents/${id}/notify`, {}),
     onSuccess: () => {
-      setShowNotifyDialog(false);
-      setNotifyMessage("");
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
       toast({ title: "Stakeholders notified", description: "Push notification sent to all subscribed devices." });
     },
     onError: (err: Error) => {
       toast({ title: "Failed to send notification", description: err.message, variant: "destructive" });
     },
+  });
+
+  const reviewerNoteMutation = useMutation({
+    mutationFn: ({ itemId, note }: { itemId: number; note: string }) =>
+      apiRequest("PATCH", `/api/purchase-indent-items/${itemId}/reviewer-note`, { note }),
   });
 
   const reportQueryParams = useMemo(() => {
@@ -667,8 +668,13 @@ export default function PurchaseIndents() {
     setSelectedIndentId(indent.id);
     if (indent.status === "pending") {
       const qtys: Record<number, number> = {};
-      indent.items.forEach(item => { qtys[item.id] = item.qty; });
+      const notes: Record<number, string> = {};
+      indent.items.forEach(item => {
+        qtys[item.id] = item.qty;
+        notes[item.id] = (item as any).reviewerNote || "";
+      });
       setApprovedQtys(qtys);
+      setReviewerNotes(notes);
       setApprovalRemarks("");
       setView("detail");
     } else if (indent.status === "approved" || indent.status === "completed") {
@@ -1379,10 +1385,11 @@ export default function PurchaseIndents() {
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                        onClick={() => setShowNotifyDialog(true)}
+                        onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)}
+                        disabled={notifyMutation.isPending}
                         data-testid="button-notify-stakeholders"
                       >
-                        <span className="mr-1">🔔</span>
+                        {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <span className="mr-1">🔔</span>}
                         NOTIFY
                       </Button>
                     </div>
@@ -1440,6 +1447,20 @@ export default function PurchaseIndents() {
                               <span className="text-xs text-amber-600 font-semibold">(REDUCED FROM {item.qty})</span>
                             )}
                           </div>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">🔔 Note:</span>
+                          <Input
+                            value={reviewerNotes[item.id] ?? ""}
+                            onChange={(e) => setReviewerNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
+                            onBlur={(e) => {
+                              const note = e.target.value.trim();
+                              reviewerNoteMutation.mutate({ itemId: item.id, note });
+                            }}
+                            placeholder="Query or note for this item (optional)..."
+                            className="h-7 text-xs border-blue-200 focus:border-blue-400"
+                            data-testid={`input-reviewer-note-${item.id}`}
+                          />
                         </div>
                       </Card>
                       );
@@ -1756,6 +1777,12 @@ export default function PurchaseIndents() {
                             )}
                           </div>
                         )}
+                        {(item as any).reviewerNote && (
+                          <div className="mt-2 flex items-start gap-1.5">
+                            <span className="text-xs">🔔</span>
+                            <p className="text-xs text-blue-700 dark:text-blue-300 italic">{(item as any).reviewerNote}</p>
+                          </div>
+                        )}
 
                         {canCancel && (
                           <div className="mt-2 flex justify-end">
@@ -2060,45 +2087,6 @@ export default function PurchaseIndents() {
         </>
       )}
 
-      <Dialog open={showNotifyDialog} onOpenChange={(open) => { if (!open) { setShowNotifyDialog(false); setNotifyMessage(""); } }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 uppercase text-base">
-              <span>🔔</span> Notify Stakeholders
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-1">
-            <p className="text-xs text-muted-foreground uppercase">
-              {selectedIndent ? `${selectedIndent.indentNo} · ${selectedIndent.items.length} item(s)` : ""}
-            </p>
-            <div className="space-y-1">
-              <Label className="text-xs uppercase">Message / Note (optional)</Label>
-              <Textarea
-                value={notifyMessage}
-                onChange={(e) => setNotifyMessage(e.target.value)}
-                placeholder="E.g. Please review item 2 pricing before approving..."
-                rows={3}
-                data-testid="input-notify-message"
-              />
-              <p className="text-xs text-muted-foreground">Leave blank to send the default notification.</p>
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setShowNotifyDialog(false); setNotifyMessage(""); }} data-testid="button-notify-cancel">
-              CANCEL
-            </Button>
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white gap-1"
-              disabled={notifyMutation.isPending}
-              onClick={() => selectedIndentId && notifyMutation.mutate({ id: selectedIndentId, message: notifyMessage })}
-              data-testid="button-notify-send"
-            >
-              {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              SEND
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

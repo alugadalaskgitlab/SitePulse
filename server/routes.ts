@@ -2033,9 +2033,14 @@ export async function registerRoutes(
       }, 0);
       const estStr = totalEst > 0 ? ` | Est. ₹${Math.round(totalEst).toLocaleString("en-IN")}` : "";
       const baseBody = `${indent.indentNo} by ${indent.raisedBy} — ${indent.items.length} item(s)${estStr}. Pending review.`;
-      const body = customMessage ? `${baseBody}\n📝 ${customMessage}` : baseBody;
-      if (customMessage) {
-        await storage.setIndentNotifyMessage(id, customMessage);
+      const itemNotes = (indent.items as any[])
+        .filter((item) => item.reviewerNote?.trim())
+        .map((item, i) => `${i + 1}. ${item.description}: ${item.reviewerNote.trim()}`)
+        .join(" | ");
+      const combinedNote = [customMessage, itemNotes].filter(Boolean).join(" | ");
+      const body = combinedNote ? `${baseBody}\n📝 ${combinedNote}` : baseBody;
+      if (combinedNote) {
+        await storage.setIndentNotifyMessage(id, combinedNote);
       }
       sendPushToAll("PI Review Requested", body, "/plant/purchase-indents").catch(() => {});
       await storage.createNotification({
@@ -2113,6 +2118,18 @@ export async function registerRoutes(
       }
       console.error("Error cancelling purchase indent item:", err);
       res.status(500).json({ message: "Failed to cancel purchase indent item" });
+    }
+  });
+
+  app.patch("/api/purchase-indent-items/:id/reviewer-note", async (req, res) => {
+    try {
+      const itemId = Number(req.params.id);
+      const note = typeof req.body?.note === "string" ? req.body.note : "";
+      await storage.setItemReviewerNote(itemId, note);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Error saving reviewer note:", err);
+      res.status(500).json({ message: "Failed to save reviewer note" });
     }
   });
 

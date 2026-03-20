@@ -824,6 +824,7 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   purchaseRemarks: text("purchase_remarks"),
   cancelledBy: text("cancelled_by"),
   cancelledAt: text("cancelled_at"),
+  reviewerNote: text("reviewer_note"),
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {
