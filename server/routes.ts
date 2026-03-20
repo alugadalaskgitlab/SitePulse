@@ -3555,4 +3555,13 @@ async function seedDatabase() {
   } catch (err) {
     console.error("Startup: Failed to fix null contractor labels:", err);
   }
+
+  try {
+    const badStockResult = await storage.fixBadStockBalanceEntries();
+    if (!badStockResult.skipped) {
+      console.log(`Startup: Fix bad stock balance entries - fixed: ${badStockResult.fixed} rows`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to fix bad stock balance entries:", err);
+  }
 }

@@ -30,6 +30,7 @@ export default function PlantStock() {
   const [selectedPartyId, setSelectedPartyId] = useState<string>("all");
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>("all");
   const [selectedTransactionType, setSelectedTransactionType] = useState<string>("all");
+  const [issuedToFilter, setIssuedToFilter] = useState<string>("");
 
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -171,14 +172,18 @@ export default function PlantStock() {
     });
   }, [ledger, materials]);
 
-  // For display, reverse to show most recent first and filter by transaction type
+  // For display, reverse to show most recent first and filter by transaction type + issuedTo search
   const ledgerForDisplay = useMemo(() => {
     let entries = [...processedLedger].reverse();
     if (selectedTransactionType !== "all") {
       entries = entries.filter(e => e.transactionType === selectedTransactionType);
     }
+    if (issuedToFilter.trim()) {
+      const q = issuedToFilter.trim().toLowerCase();
+      entries = entries.filter(e => (e.notes || "").toLowerCase().includes(q));
+    }
     return entries;
-  }, [processedLedger, selectedTransactionType]);
+  }, [processedLedger, selectedTransactionType, issuedToFilter]);
 
   // Calculate totals for filtered ledger data - with UOM conversion
   const ledgerTotals = useMemo(() => {
@@ -902,6 +907,19 @@ export default function PlantStock() {
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="input-date-to" />
             </div>
           </div>
+          {activeTab === "ledger" && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Issued / Equipment (search notes)</Label>
+                <Input
+                  value={issuedToFilter}
+                  onChange={(e) => setIssuedToFilter(e.target.value)}
+                  placeholder="e.g. 600 KVA, JCB, Hot Oil..."
+                  data-testid="input-issued-to-filter"
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

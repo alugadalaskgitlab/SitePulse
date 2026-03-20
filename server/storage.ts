@@ -273,6 +273,9 @@ export interface IStorage {
 
   // Update historical DPR engineer names to "NAME - ROLE" from Personnel Master
   migrateEngineerNamesToPersonnelFormat(): Promise<{ updated: number; unmatched: number; errors: number }>;
+
+  // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
+  fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
   
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -6982,6 +6985,52 @@ export class DatabaseStorage implements IStorage {
     }
     return duplicates;
   }
+  async fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }> {
+    try {
+      // Check if the bad entries still exist (guard against running twice)
+      const bal12 = await db.select({ id: stockBalances.id }).from(stockBalances).where(eq(stockBalances.id, 12)).limit(1);
+      const bal13 = await db.select({ id: stockBalances.id }).from(stockBalances).where(eq(stockBalances.id, 13)).limit(1);
+      if (bal12.length === 0 && bal13.length === 0) {
+        return { fixed: 0, skipped: true };
+      }
+      let fixed = 0;
+      // --- Fix 1: PRIVATE VENTURE 10/12MM opening stock (ledger id=245 + balance id=12) ---
+      if (bal12.length > 0) {
+        const led245 = await db.select({ id: stockLedger.id }).from(stockLedger)
+          .where(and(eq(stockLedger.id, 245), eq(stockLedger.partyId, 5))).limit(1);
+        if (led245.length > 0) {
+          await db.delete(stockLedger).where(eq(stockLedger.id, 245));
+          fixed++;
+          console.log('fixBadStockBalanceEntries: Deleted PRIVATE VENTURE 10/12MM stock_ledger entry id=245');
+        }
+        await db.delete(stockBalances).where(eq(stockBalances.id, 12));
+        fixed++;
+        console.log('fixBadStockBalanceEntries: Deleted PRIVATE VENTURE 10/12MM stock_balance id=12');
+      }
+      // --- Fix 2: Null-party Diesel equipment_usage (ledger id=8364 + balance id=13) ---
+      if (bal13.length > 0) {
+        const led8364 = await db.select({ id: stockLedger.id, quantityOut: stockLedger.quantityOut })
+          .from(stockLedger).where(and(eq(stockLedger.id, 8364), isNull(stockLedger.partyId))).limit(1);
+        if (led8364.length > 0) {
+          const qtyOut = led8364[0].quantityOut ?? 63;
+          // Reassign ledger entry to HLC (party_id=1)
+          await db.update(stockLedger).set({ partyId: 1 }).where(eq(stockLedger.id, 8364));
+          // Deduct from HLC's diesel balance (balance id=1, stored in Liters)
+          await db.execute(sql`UPDATE stock_balances SET balance = balance - ${qtyOut} WHERE id = 1`);
+          fixed += 2;
+          console.log(`fixBadStockBalanceEntries: Moved null-party diesel ledger 8364 to HLC, deducted ${qtyOut} L from HLC diesel balance`);
+        }
+        await db.delete(stockBalances).where(eq(stockBalances.id, 13));
+        fixed++;
+        console.log('fixBadStockBalanceEntries: Deleted null-party diesel stock_balance id=13');
+      }
+      return { fixed, skipped: false };
+    } catch (err) {
+      console.error('fixBadStockBalanceEntries: Error:', err);
+      return { fixed: 0, skipped: false };
+    }
+  }
+
   // ====== MIX ESTIMATES ======
 
   async fixNullContractorLabels(): Promise<{ updated: number }> {

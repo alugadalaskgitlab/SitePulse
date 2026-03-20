@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Fuel, TrendingUp, Package, MapPin, Loader2, Download, Printer } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronRight, Fuel, TrendingUp, Package, MapPin, Loader2, Download, Printer } from "lucide-react";
 import { format } from "date-fns";
 import type { StockLedgerEntry, PlantMaterial, MaterialReceipt, Party } from "@shared/schema";
 import * as XLSX from "xlsx";
@@ -40,6 +40,8 @@ export default function PlantDieselProcurementReport() {
   
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const [plantReceiptsOpen, setPlantReceiptsOpen] = useState(true);
+  const [directPurchasesOpen, setDirectPurchasesOpen] = useState(true);
 
   const { data: materials } = useQuery<PlantMaterial[]>({
     queryKey: ["/api/plant-module/materials"],
@@ -288,81 +290,101 @@ export default function PlantDieselProcurementReport() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Plant Stock Receipts
+        <CardHeader
+          className="cursor-pointer select-none hover:bg-muted/40 transition-colors rounded-t-lg"
+          onClick={() => setPlantReceiptsOpen(o => !o)}
+          data-testid="toggle-plant-receipts"
+        >
+          <CardTitle className="text-base flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              Plant Stock Receipts
+              <span className="text-xs font-normal text-muted-foreground">({plantStockReceipts.length} entries)</span>
+            </div>
+            {plantReceiptsOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : plantStockReceipts.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No plant diesel receipts in selected period</p>
-          ) : (
-            <div className="space-y-2">
-              {plantStockReceipts.map((receipt, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                  <div className="flex-1">
-                    <p className="font-medium">{format(new Date(receipt.date), "dd MMM yyyy")}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {receipt.supplier || "Unknown Supplier"} | {getPartyName(receipt.partyId)}
-                    </p>
+        {plantReceiptsOpen && (
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : plantStockReceipts.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No plant diesel receipts in selected period</p>
+            ) : (
+              <div className="space-y-2">
+                {plantStockReceipts.map((receipt, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <div className="flex-1">
+                      <p className="font-medium">{format(new Date(receipt.date), "dd MMM yyyy")}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {receipt.supplier || "Unknown Supplier"} | {getPartyName(receipt.partyId)}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="font-bold">{(receipt.quantity || 0).toFixed(3)} L</Badge>
                   </div>
-                  <Badge variant="outline" className="font-bold">{(receipt.quantity || 0).toFixed(3)} L</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            Direct Site Purchases
+        <CardHeader
+          className="cursor-pointer select-none hover:bg-muted/40 transition-colors rounded-t-lg"
+          onClick={() => setDirectPurchasesOpen(o => !o)}
+          data-testid="toggle-direct-purchases"
+        >
+          <CardTitle className="text-base flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              Direct Site Purchases
+              <span className="text-xs font-normal text-muted-foreground">({directPurchaseEntries.length} entries)</span>
+            </div>
+            {directPurchasesOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : directPurchaseEntries.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No direct site purchases recorded in selected period</p>
-          ) : (
-            <div className="space-y-2">
-              {directPurchaseEntries.map((entry, idx) => {
-                const fuelStationMatch = entry.notes?.match(/at ([^,]+)/);
-                const billMatch = entry.notes?.match(/Bill: ([^,]+)/);
-                const amountMatch = entry.notes?.match(/Rs\.\s*([\d.]+)/);
-                const equipMatch = entry.notes?.match(/ - ([^-]+) at /);
-                
-                return (
-                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                    <div className="flex-1">
-                      <p className="font-medium">{format(new Date(entry.date), "dd MMM yyyy")}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {fuelStationMatch ? fuelStationMatch[1] : "Fuel Station"}
-                        {billMatch && <span className="ml-2">Bill: {billMatch[1]}</span>}
-                        {equipMatch && <span className="ml-2">| {equipMatch[1]}</span>}
-                      </p>
+        {directPurchasesOpen && (
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : directPurchaseEntries.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No direct site purchases recorded in selected period</p>
+            ) : (
+              <div className="space-y-2">
+                {directPurchaseEntries.map((entry, idx) => {
+                  const fuelStationMatch = entry.notes?.match(/at ([^,]+)/);
+                  const billMatch = entry.notes?.match(/Bill: ([^,]+)/);
+                  const amountMatch = entry.notes?.match(/Rs\.\s*([\d.]+)/);
+                  const equipMatch = entry.notes?.match(/ - ([^-]+) at /);
+                  
+                  return (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                      <div className="flex-1">
+                        <p className="font-medium">{format(new Date(entry.date), "dd MMM yyyy")}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {fuelStationMatch ? fuelStationMatch[1] : "Fuel Station"}
+                          {billMatch && <span className="ml-2">Bill: {billMatch[1]}</span>}
+                          {equipMatch && <span className="ml-2">| {equipMatch[1]}</span>}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="secondary" className="font-bold">{(entry.quantityIn || 0).toFixed(3)} L</Badge>
+                        {amountMatch && (
+                          <p className="text-xs text-muted-foreground mt-1">Rs. {parseFloat(amountMatch[1]).toFixed(0)}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <Badge variant="secondary" className="font-bold">{(entry.quantityIn || 0).toFixed(3)} L</Badge>
-                      {amountMatch && (
-                        <p className="text-xs text-muted-foreground mt-1">Rs. {parseFloat(amountMatch[1]).toFixed(0)}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
     </div>
   );

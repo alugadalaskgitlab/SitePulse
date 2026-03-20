@@ -802,9 +802,20 @@ export default function PlantMaterialReceipts() {
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {
                 const dayReceipts = groupedReceipts[dateKey].sort((a, b) => (b.time || "").localeCompare(a.time || ""));
+                const dayTotal = filterMaterialId !== "all"
+                  ? dayReceipts.reduce((sum, r) => sum + r.quantity, 0)
+                  : null;
+                const dayUom = dayTotal !== null && dayReceipts.length > 0 ? dayReceipts[0].uom : null;
                 return (
                   <div key={dateKey}>
-                    <h3 className="font-semibold text-lg mb-3 border-b pb-2">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
+                    <h3 className="font-semibold text-lg mb-3 border-b pb-2 flex items-center justify-between gap-2">
+                      <span>{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</span>
+                      {dayTotal !== null && (
+                        <span className="text-sm font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
+                          Total: {dayTotal.toFixed(3)} {dayUom}
+                        </span>
+                      )}
+                    </h3>
                     <div className="space-y-2">
                       {dayReceipts.map((receipt) => (
                         <div key={receipt.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
