@@ -1623,12 +1623,13 @@ export async function registerRoutes(
   // Physical stock correction — reconcile book stock to physical measurement
   app.post("/api/plant-module/stock-correction", async (req, res) => {
     try {
-      const { materialId, physicalQty, uom, date, notes, correctedBy } = req.body;
-      if (!materialId || physicalQty === undefined || !uom || !date) {
-        return res.status(400).json({ message: "materialId, physicalQty, uom and date are required" });
+      const { materialId, partyId, physicalQty, uom, date, notes, correctedBy } = req.body;
+      if (!materialId || !partyId || physicalQty === undefined || !uom || !date) {
+        return res.status(400).json({ message: "materialId, partyId, physicalQty, uom and date are required" });
       }
       const result = await storage.postStockCorrection({
         materialId: Number(materialId),
+        partyId: Number(partyId),
         physicalQty: Number(physicalQty),
         uom,
         date,

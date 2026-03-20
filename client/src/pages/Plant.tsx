@@ -291,6 +291,7 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
   const { toast } = useToast();
 
   const [dieselCorrPhysicalL, setDieselCorrPhysicalL] = useState("");
+  const [dieselCorrPartyId, setDieselCorrPartyId] = useState<string>("");
   const [dieselCorrDate, setDieselCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [dieselCorrNotes, setDieselCorrNotes] = useState("");
   const [showDieselCorrForm, setShowDieselCorrForm] = useState(false);
@@ -313,22 +314,33 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
     queryKey: ["/api/plant-module/stock-balances"],
   });
 
+  const { data: allParties } = useQuery<Party[]>({
+    queryKey: ["/api/plant-module/parties"],
+  });
+
+  const dieselBalToL = (balance: number, uom: string) => {
+    const u = (uom || "").toUpperCase();
+    if (u === "MT" || u === "TON" || u === "TONS") return balance * 1000 / 0.84;
+    if (u === "KG") return balance / 0.84;
+    return balance;
+  };
+
   const dieselMaterialId = materials?.find(m => m.name.toUpperCase() === "DIESEL")?.id ?? null;
 
-  const dieselBookStockL = (() => {
-    if (!stockBalances || !dieselMaterialId) return null;
-    return stockBalances
-      .filter(b => b.materialId === dieselMaterialId)
-      .reduce((s, b) => {
-        const u = (b.uom || "").toUpperCase();
-        if (u === "MT" || u === "TON" || u === "TONS") return s + (b.balance * 1000 / 0.84);
-        if (u === "KG") return s + (b.balance / 0.84);
-        return s + b.balance;
-      }, 0);
+  const dieselPartyBalances = (stockBalances && dieselMaterialId)
+    ? stockBalances.filter(b => b.materialId === dieselMaterialId)
+    : [];
+
+  const dieselBookStockL = dieselPartyBalances.reduce((s, b) => s + dieselBalToL(b.balance, b.uom), 0);
+
+  const dieselSelectedPartyBalanceL = (() => {
+    if (!dieselCorrPartyId) return null;
+    const b = dieselPartyBalances.find(b => String(b.partyId) === dieselCorrPartyId);
+    return b ? dieselBalToL(b.balance, b.uom) : 0;
   })();
 
   const dieselCorrectionMutation = useMutation({
-    mutationFn: async (data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
+    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
       const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
       return res.json();
     },
@@ -504,33 +516,77 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
                 <CardTitle className="text-base font-semibold">Diesel Book Stock Correction</CardTitle>
               </div>
               {!showDieselCorrForm && (
-                <Button size="sm" variant="outline" onClick={() => setShowDieselCorrForm(true)} data-testid="button-show-diesel-correction-form">
+                <Button size="sm" variant="outline" onClick={() => {
+                  if (!dieselCorrPartyId && dieselPartyBalances.length > 0) setDieselCorrPartyId(String(dieselPartyBalances[0].partyId));
+                  setShowDieselCorrForm(true);
+                }} data-testid="button-show-diesel-correction-form">
                   Post Correction
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Book Stock (Ledger)</div>
-                <div className={`font-bold text-lg ${dieselBookStockL !== null && dieselBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
-                  {dieselBookStockL !== null ? `${dieselBookStockL.toFixed(0)} L` : "—"}
+                <div className="text-muted-foreground text-xs mb-1">Total Book Stock (All Parties)</div>
+                <div className={`font-bold text-lg ${dieselBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
+                  {dieselBookStockL.toFixed(0)} L
                 </div>
-                <div className="text-xs text-muted-foreground">From receipts − issue deductions</div>
+                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                  {dieselPartyBalances.map(b => (
+                    <div key={b.id} className="flex justify-between gap-2">
+                      <span>{allParties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
+                      <span className={dieselBalToL(b.balance, b.uom) < 0 ? "text-red-500" : ""}>{dieselBalToL(b.balance, b.uom).toFixed(0)} L</span>
+                    </div>
+                  ))}
+                  {dieselPartyBalances.length === 0 && <span className="italic">No balances yet</span>}
+                </div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">About this correction</div>
+                <div className="text-muted-foreground text-xs mb-1">How to use</div>
                 <div className="text-sm text-muted-foreground">
-                  Enter the physically measured diesel quantity (dip stick reading) to post an adjustment entry to the stock ledger.
+                  Select a party, enter their physical diesel quantity from a dip-stick reading, and post the correction to align the book stock.
                 </div>
               </div>
             </div>
 
             {showDieselCorrForm && (
-              <div className="border rounded-lg p-4 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
+              <div className="border rounded-lg p-4 space-y-4 bg-blue-50/50 dark:bg-blue-950/20">
                 <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical Diesel Stock Correction</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                {/* Party + date */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Party to Correct</Label>
+                    <Select value={dieselCorrPartyId} onValueChange={id => setDieselCorrPartyId(id)}>
+                      <SelectTrigger data-testid="select-diesel-corr-party">
+                        <SelectValue placeholder="Select party" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allParties?.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                            {dieselPartyBalances.find(b => b.partyId === p.id) !== undefined &&
+                              ` (${dieselBalToL(dieselPartyBalances.find(b => b.partyId === p.id)?.balance ?? 0, dieselPartyBalances.find(b => b.partyId === p.id)?.uom ?? "L").toFixed(0)} L)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {dieselCorrPartyId && dieselSelectedPartyBalanceL !== null && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Current book stock: <span className={dieselSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{dieselSelectedPartyBalanceL.toFixed(0)} L</span>
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs">As on Date</Label>
+                    <Input type="date" value={dieselCorrDate} onChange={e => setDieselCorrDate(e.target.value)} data-testid="input-diesel-corr-date" />
+                  </div>
+                </div>
+
+                {/* Physical qty + preview */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                   <div>
                     <Label className="text-xs">Physical Stock (Liters)</Label>
                     <Input
@@ -540,30 +596,49 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
                       placeholder="e.g. 850"
                       data-testid="input-diesel-corr-physical-l"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">From dip-stick reading</p>
                   </div>
-                  <div>
-                    <Label className="text-xs">As on Date</Label>
-                    <Input type="date" value={dieselCorrDate} onChange={e => setDieselCorrDate(e.target.value)} data-testid="input-diesel-corr-date" />
-                  </div>
+                  {dieselCorrPartyId && dieselSelectedPartyBalanceL !== null && dieselCorrPhysicalL && (
+                    <div className={`rounded-lg p-2 text-center ${
+                      parseFloat(dieselCorrPhysicalL) - dieselSelectedPartyBalanceL > 0
+                        ? "bg-green-50 dark:bg-green-900/20"
+                        : "bg-red-50 dark:bg-red-900/20"
+                    }`}>
+                      <div className="text-xs text-muted-foreground">Adjustment</div>
+                      <div className={`font-bold text-base ${
+                        parseFloat(dieselCorrPhysicalL) - dieselSelectedPartyBalanceL > 0
+                          ? "text-green-700 dark:text-green-400"
+                          : "text-red-700 dark:text-red-400"
+                      }`}>
+                        {(() => {
+                          const adj = parseFloat(dieselCorrPhysicalL) - dieselSelectedPartyBalanceL;
+                          return `${adj > 0 ? "+" : ""}${adj.toFixed(0)} L`;
+                        })()}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <Label className="text-xs">Notes (optional)</Label>
                     <Input value={dieselCorrNotes} onChange={e => setDieselCorrNotes(e.target.value)} placeholder="e.g. Dip stick reading" data-testid="input-diesel-corr-notes" />
                   </div>
                 </div>
+
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    disabled={!dieselCorrPhysicalL || dieselCorrectionMutation.isPending}
+                    disabled={!dieselCorrPartyId || !dieselCorrPhysicalL || dieselCorrectionMutation.isPending}
                     onClick={() => {
-                      if (!dieselMaterialId) return;
+                      if (!dieselMaterialId || !dieselCorrPartyId) return;
                       const physL = parseFloat(dieselCorrPhysicalL);
                       const physMT = physL * 0.84 / 1000;
+                      const partyName = allParties?.find(p => String(p.id) === dieselCorrPartyId)?.name || `Party ${dieselCorrPartyId}`;
                       dieselCorrectionMutation.mutate({
                         materialId: dieselMaterialId,
+                        partyId: parseInt(dieselCorrPartyId),
                         physicalQty: physMT,
                         uom: "MT",
                         date: dieselCorrDate,
-                        notes: dieselCorrNotes || "Diesel physical stock reconciliation",
+                        notes: dieselCorrNotes || `Diesel dip stick reconciliation (${partyName})`,
                         correctedBy: "admin",
                       });
                     }}

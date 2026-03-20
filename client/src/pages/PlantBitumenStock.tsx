@@ -54,7 +54,9 @@ export default function PlantBitumenStock() {
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
   const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
 
-  const [corrPhysicalMT, setCorrPhysicalMT] = useState("");
+  const [corrTank1MT, setCorrTank1MT] = useState("");
+  const [corrTank2MT, setCorrTank2MT] = useState("");
+  const [corrPartyId, setCorrPartyId] = useState<string>("");
   const [corrDate, setCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [corrNotes, setCorrNotes] = useState("");
   const [showCorrForm, setShowCorrForm] = useState(false);
@@ -100,16 +102,23 @@ export default function PlantBitumenStock() {
     queryKey: ["/api/plant-module/stock-balances"],
   });
 
-  const bitumenBookStockMT = useMemo(() => {
-    if (!stockBalances || !bitumenMaterialId) return null;
-    const total = stockBalances
-      .filter(b => b.materialId === bitumenMaterialId)
-      .reduce((s, b) => s + (b.balance || 0), 0);
-    return total; // stored in MT (Ton)
+  const bitumenPartyBalances = useMemo(() => {
+    if (!stockBalances || !bitumenMaterialId) return [];
+    return stockBalances.filter(b => b.materialId === bitumenMaterialId);
   }, [stockBalances, bitumenMaterialId]);
 
+  const bitumenBookStockMT = useMemo(() => {
+    return bitumenPartyBalances.reduce((s, b) => s + (b.balance || 0), 0);
+  }, [bitumenPartyBalances]);
+
+  const selectedPartyBalance = useMemo(() => {
+    if (!corrPartyId) return null;
+    const b = bitumenPartyBalances.find(b => String(b.partyId) === corrPartyId);
+    return b?.balance ?? 0;
+  }, [bitumenPartyBalances, corrPartyId]);
+
   const correctionMutation = useMutation({
-    mutationFn: async (data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
+    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
       const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
       return res.json();
     },
@@ -120,7 +129,8 @@ export default function PlantBitumenStock() {
       const sign = result.adjustment >= 0 ? "+" : "";
       toast({ title: "Stock correction posted", description: `Adjustment: ${sign}${adjMT} MT. Book stock now ${result.newBalance?.toFixed(3)} MT.` });
       setShowCorrForm(false);
-      setCorrPhysicalMT("");
+      setCorrTank1MT("");
+      setCorrTank2MT("");
       setCorrNotes("");
     },
     onError: (err: any) => {
@@ -740,83 +750,177 @@ export default function PlantBitumenStock() {
                 <CardTitle className="text-base font-semibold">Book vs Physical Stock Correction</CardTitle>
               </div>
               {!showCorrForm && (
-                <Button size="sm" variant="outline" onClick={() => setShowCorrForm(true)} data-testid="button-show-correction-form">
+                <Button size="sm" variant="outline" onClick={() => {
+                  if (!corrPartyId && bitumenPartyBalances.length > 0) {
+                    setCorrPartyId(String(bitumenPartyBalances[0].partyId));
+                  }
+                  const t1MT = (tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3);
+                  const t2MT = (tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3);
+                  if (!corrTank1MT) setCorrTank1MT(t1MT);
+                  if (!corrTank2MT) setCorrTank2MT(t2MT);
+                  setShowCorrForm(true);
+                }} data-testid="button-show-correction-form">
                   Post Correction
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Summary grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Book Stock (Ledger)</div>
-                <div className={`font-bold text-lg ${bitumenBookStockMT !== null && bitumenBookStockMT < 0 ? "text-red-600" : "text-foreground"}`}>
-                  {bitumenBookStockMT !== null ? `${bitumenBookStockMT.toFixed(3)} MT` : "—"}
+                <div className="text-muted-foreground text-xs mb-1">Total Book Stock (All Parties)</div>
+                <div className={`font-bold text-lg ${bitumenBookStockMT < 0 ? "text-red-600" : "text-foreground"}`}>
+                  {bitumenBookStockMT.toFixed(3)} MT
                 </div>
-                <div className="text-xs text-muted-foreground">From receipts − dispatch deductions</div>
+                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                  {bitumenPartyBalances.map(b => (
+                    <div key={b.id} className="flex justify-between gap-2">
+                      <span>{parties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
+                      <span className={b.balance < 0 ? "text-red-500" : ""}>{b.balance.toFixed(3)} {b.uom}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
                 <div className="text-muted-foreground text-xs mb-1">Physical Stock (Dip)</div>
                 <div className="font-bold text-lg text-amber-700 dark:text-amber-400">
                   {latestTank1 || latestTank2 ? `${(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT` : "No dip readings"}
                 </div>
-                <div className="text-xs text-muted-foreground">T1: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT + T2: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                <div className="text-xs text-muted-foreground">T1: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                <div className="text-xs text-muted-foreground">T2: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
                 <div className="text-muted-foreground text-xs mb-1">Difference (Physical − Book)</div>
-                {bitumenBookStockMT !== null && (latestTank1 || latestTank2) ? (() => {
+                {(latestTank1 || latestTank2) ? (() => {
                   const physMT = combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000;
                   const diff = physMT - bitumenBookStockMT;
                   return (
                     <div className={`font-bold text-lg ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-foreground"}`}>
                       {diff > 0 ? "+" : ""}{diff.toFixed(3)} MT
                       <span className="text-xs font-normal ml-2 text-muted-foreground">
-                        {diff > 0 ? "Surplus (bitumen savings accumulated)" : diff < 0 ? "Deficit — check receipts" : "Balanced"}
+                        {diff > 0 ? "Surplus (bitumen savings)" : diff < 0 ? "Deficit — check receipts" : "Balanced"}
                       </span>
                     </div>
                   );
                 })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-xs text-muted-foreground mt-1">Post a correction to align book stock with physical dip reading</div>
+                <div className="text-xs text-muted-foreground mt-1">Post a correction to align a party's book stock with actual physical measurement</div>
               </div>
             </div>
 
             {showCorrForm && (
-              <div className="border rounded-lg p-4 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
+              <div className="border rounded-lg p-4 space-y-4 bg-blue-50/50 dark:bg-blue-950/20">
                 <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical Stock Correction</p>
-                <p className="text-xs text-muted-foreground">Enter the physical quantity from the latest dip reading. The system will compute and post the adjustment entry to the stock ledger.</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                {/* Party selector */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Physical Stock (MT)</Label>
-                    <Input
-                      type="number" step="0.001" min="0"
-                      value={corrPhysicalMT}
-                      onChange={e => setCorrPhysicalMT(e.target.value)}
-                      placeholder={latestTank1 || latestTank2 ? (combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "e.g. 12.500"}
-                      data-testid="input-corr-physical-mt"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Dip reading: {(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
+                    <Label className="text-xs">Party to Correct</Label>
+                    <Select value={corrPartyId} onValueChange={id => setCorrPartyId(id)}>
+                      <SelectTrigger data-testid="select-corr-party">
+                        <SelectValue placeholder="Select party" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {parties?.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                            {bitumenPartyBalances.find(b => b.partyId === p.id) !== undefined &&
+                              ` (${(bitumenPartyBalances.find(b => b.partyId === p.id)?.balance ?? 0).toFixed(3)} MT)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {corrPartyId && selectedPartyBalance !== null && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Current book stock: <span className={selectedPartyBalance < 0 ? "text-red-500 font-medium" : "font-medium"}>{selectedPartyBalance.toFixed(3)} MT</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">As on Date</Label>
                     <Input type="date" value={corrDate} onChange={e => setCorrDate(e.target.value)} data-testid="input-corr-date" />
                   </div>
-                  <div>
-                    <Label className="text-xs">Notes (optional)</Label>
-                    <Input value={corrNotes} onChange={e => setCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation" data-testid="input-corr-notes" />
+                </div>
+
+                {/* Per-tank inputs */}
+                <div>
+                  <Label className="text-xs mb-2 block">Physical Stock from Dip Readings (MT)</Label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Tank 1</Label>
+                      <Input
+                        type="number" step="0.001" min="0"
+                        value={corrTank1MT}
+                        onChange={e => setCorrTank1MT(e.target.value)}
+                        placeholder={(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}
+                        data-testid="input-corr-tank1-mt"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Dip: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Tank 2</Label>
+                      <Input
+                        type="number" step="0.001" min="0"
+                        value={corrTank2MT}
+                        onChange={e => setCorrTank2MT(e.target.value)}
+                        placeholder={(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}
+                        data-testid="input-corr-tank2-mt"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Dip: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <div className="text-xs text-muted-foreground">Total Physical</div>
+                      <div className="font-bold text-base">
+                        {corrTank1MT || corrTank2MT
+                          ? ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)).toFixed(3)
+                          : "—"} MT
+                      </div>
+                    </div>
+                    {corrPartyId && selectedPartyBalance !== null && (corrTank1MT || corrTank2MT) && (
+                      <div className={`rounded-lg p-2 text-center ${
+                        ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - selectedPartyBalance > 0
+                          ? "bg-green-50 dark:bg-green-900/20"
+                          : "bg-red-50 dark:bg-red-900/20"
+                      }`}>
+                        <div className="text-xs text-muted-foreground">Adjustment</div>
+                        <div className={`font-bold text-base ${
+                          ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - selectedPartyBalance > 0
+                            ? "text-green-700 dark:text-green-400"
+                            : "text-red-700 dark:text-red-400"
+                        }`}>
+                          {(() => {
+                            const total = (parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0);
+                            const adj = total - selectedPartyBalance;
+                            return `${adj > 0 ? "+" : ""}${adj.toFixed(3)} MT`;
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                <div>
+                  <Label className="text-xs">Notes (optional)</Label>
+                  <Input value={corrNotes} onChange={e => setCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — T1: 6.5 MT, T2: 4.2 MT" data-testid="input-corr-notes" />
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    disabled={!corrPhysicalMT || correctionMutation.isPending}
+                    disabled={!corrPartyId || (!corrTank1MT && !corrTank2MT) || correctionMutation.isPending}
                     onClick={() => {
-                      if (!bitumenMaterialId) return;
+                      if (!bitumenMaterialId || !corrPartyId) return;
+                      const t1 = parseFloat(corrTank1MT) || 0;
+                      const t2 = parseFloat(corrTank2MT) || 0;
+                      const total = t1 + t2;
+                      const partyName = parties?.find(p => String(p.id) === corrPartyId)?.name || `Party ${corrPartyId}`;
                       correctionMutation.mutate({
                         materialId: bitumenMaterialId,
-                        physicalQty: parseFloat(corrPhysicalMT),
-                        uom: "Ton",
+                        partyId: parseInt(corrPartyId),
+                        physicalQty: total,
+                        uom: "MT",
                         date: corrDate,
-                        notes: corrNotes || `Bitumen physical dip reconciliation`,
+                        notes: corrNotes || `Bitumen dip reconciliation — T1: ${t1.toFixed(3)} MT, T2: ${t2.toFixed(3)} MT (${partyName})`,
                         correctedBy: "admin",
                       });
                     }}
@@ -824,7 +928,7 @@ export default function PlantBitumenStock() {
                   >
                     {correctionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Post Correction"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setShowCorrForm(false); setCorrPhysicalMT(""); setCorrNotes(""); }}>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowCorrForm(false); setCorrTank1MT(""); setCorrTank2MT(""); setCorrNotes(""); }}>
                     Cancel
                   </Button>
                 </div>

@@ -43,7 +43,9 @@ export default function PlantLdoFlowMeter() {
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
   const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print" | "dip-delete" | "dip-edit"; readingId?: number } | null>(null);
 
-  const [ldoCorrPhysicalL, setLdoCorrPhysicalL] = useState("");
+  const [ldoCorrTank1L, setLdoCorrTank1L] = useState("");
+  const [ldoCorrTank2L, setLdoCorrTank2L] = useState("");
+  const [ldoCorrPartyId, setLdoCorrPartyId] = useState<string>("");
   const [ldoCorrDate, setLdoCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [ldoCorrNotes, setLdoCorrNotes] = useState("");
   const [showLdoCorrForm, setShowLdoCorrForm] = useState(false);
@@ -102,21 +104,30 @@ export default function PlantLdoFlowMeter() {
     queryKey: ["/api/plant-module/stock-balances"],
   });
 
-  const ldoBookStockL = useMemo(() => {
-    if (!stockBalances || !ldoMaterialId) return null;
-    const total = stockBalances
-      .filter(b => b.materialId === ldoMaterialId)
-      .reduce((s, b) => {
-        const uomL = (b.uom || "").toUpperCase();
-        if (uomL === "MT" || uomL === "TON" || uomL === "TONS") return s + (b.balance * 1000 / LDO_DENSITY_KG_PER_LITER);
-        if (uomL === "KG") return s + (b.balance / LDO_DENSITY_KG_PER_LITER);
-        return s + b.balance; // Liters
-      }, 0);
-    return total;
+  const balanceToL = (balance: number, uom: string) => {
+    const u = (uom || "").toUpperCase();
+    if (u === "MT" || u === "TON" || u === "TONS") return balance * 1000 / LDO_DENSITY_KG_PER_LITER;
+    if (u === "KG") return balance / LDO_DENSITY_KG_PER_LITER;
+    return balance; // Liters
+  };
+
+  const ldoPartyBalances = useMemo(() => {
+    if (!stockBalances || !ldoMaterialId) return [];
+    return stockBalances.filter(b => b.materialId === ldoMaterialId);
   }, [stockBalances, ldoMaterialId]);
 
+  const ldoBookStockL = useMemo(() => {
+    return ldoPartyBalances.reduce((s, b) => s + balanceToL(b.balance, b.uom), 0);
+  }, [ldoPartyBalances]);
+
+  const ldoSelectedPartyBalanceL = useMemo(() => {
+    if (!ldoCorrPartyId) return null;
+    const b = ldoPartyBalances.find(b => String(b.partyId) === ldoCorrPartyId);
+    return b ? balanceToL(b.balance, b.uom) : 0;
+  }, [ldoPartyBalances, ldoCorrPartyId]);
+
   const ldoCorrectionMutation = useMutation({
-    mutationFn: async (data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
+    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
       const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
       return res.json();
     },
@@ -128,7 +139,8 @@ export default function PlantLdoFlowMeter() {
       const newL = (result.newBalance || 0) * 1000 / LDO_DENSITY_KG_PER_LITER;
       toast({ title: "LDO stock correction posted", description: `Adjustment: ${sign}${adjL.toFixed(0)} L. Book stock now ${newL.toFixed(0)} L.` });
       setShowLdoCorrForm(false);
-      setLdoCorrPhysicalL("");
+      setLdoCorrTank1L("");
+      setLdoCorrTank2L("");
       setLdoCorrNotes("");
     },
     onError: (err: any) => {
@@ -1411,20 +1423,33 @@ export default function PlantLdoFlowMeter() {
                 <CardTitle className="text-base font-semibold">Book vs Physical LDO Stock Correction</CardTitle>
               </div>
               {!showLdoCorrForm && (
-                <Button size="sm" variant="outline" onClick={() => setShowLdoCorrForm(true)} data-testid="button-show-ldo-correction-form">
+                <Button size="sm" variant="outline" onClick={() => {
+                  if (!ldoCorrPartyId && ldoPartyBalances.length > 0) setLdoCorrPartyId(String(ldoPartyBalances[0].partyId));
+                  if (!ldoCorrTank1L) setLdoCorrTank1L(String(Math.round(latestDipTank1?.volumeLiters || 0)));
+                  if (!ldoCorrTank2L) setLdoCorrTank2L(String(Math.round(latestDipTank2?.volumeLiters || 0)));
+                  setShowLdoCorrForm(true);
+                }} data-testid="button-show-ldo-correction-form">
                   Post Correction
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Summary grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Book Stock (Ledger)</div>
-                <div className={`font-bold text-lg ${ldoBookStockL !== null && ldoBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
-                  {ldoBookStockL !== null ? `${ldoBookStockL.toFixed(0)} L` : "—"}
+                <div className="text-muted-foreground text-xs mb-1">Total Book Stock (All Parties)</div>
+                <div className={`font-bold text-lg ${ldoBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
+                  {ldoBookStockL.toFixed(0)} L
                 </div>
-                <div className="text-xs text-muted-foreground">From receipts − consumption deductions</div>
+                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                  {ldoPartyBalances.map(b => (
+                    <div key={b.id} className="flex justify-between gap-2">
+                      <span>{parties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
+                      <span className={balanceToL(b.balance, b.uom) < 0 ? "text-red-500" : ""}>{balanceToL(b.balance, b.uom).toFixed(0)} L</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
                 <div className="text-muted-foreground text-xs mb-1">Physical Stock (Dip)</div>
@@ -1433,13 +1458,12 @@ export default function PlantLdoFlowMeter() {
                     ? `${((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L`
                     : "No dip readings"}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  T1: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L + T2: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L
-                </div>
+                <div className="text-xs text-muted-foreground">T1: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</div>
+                <div className="text-xs text-muted-foreground">T2: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
                 <div className="text-muted-foreground text-xs mb-1">Difference (Physical − Book)</div>
-                {ldoBookStockL !== null && (latestDipTank1 || latestDipTank2) ? (() => {
+                {(latestDipTank1 || latestDipTank2) ? (() => {
                   const physL = (latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0);
                   const diff = physL - ldoBookStockL;
                   return (
@@ -1451,51 +1475,124 @@ export default function PlantLdoFlowMeter() {
                     </div>
                   );
                 })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-xs text-muted-foreground mt-1">Post a correction to align book stock with physical dip reading</div>
+                <div className="text-xs text-muted-foreground mt-1">Post a correction to align a party's book stock with physical measurement</div>
               </div>
             </div>
 
             {showLdoCorrForm && (
-              <div className="border rounded-lg p-4 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
+              <div className="border rounded-lg p-4 space-y-4 bg-blue-50/50 dark:bg-blue-950/20">
                 <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical LDO Stock Correction</p>
-                <p className="text-xs text-muted-foreground">Enter the physical quantity from the latest dip reading. The system will compute and post the adjustment to the stock ledger.</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                {/* Party + date */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Physical Stock (Liters)</Label>
-                    <Input
-                      type="number" step="1" min="0"
-                      value={ldoCorrPhysicalL}
-                      onChange={e => setLdoCorrPhysicalL(e.target.value)}
-                      placeholder={latestDipTank1 || latestDipTank2 ? String(Math.round((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0))) : "e.g. 2500"}
-                      data-testid="input-ldo-corr-physical-l"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Dip reading: {((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L
-                    </p>
+                    <Label className="text-xs">Party to Correct</Label>
+                    <Select value={ldoCorrPartyId} onValueChange={id => setLdoCorrPartyId(id)}>
+                      <SelectTrigger data-testid="select-ldo-corr-party">
+                        <SelectValue placeholder="Select party" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {parties?.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                            {ldoPartyBalances.find(b => b.partyId === p.id) !== undefined &&
+                              ` (${balanceToL(ldoPartyBalances.find(b => b.partyId === p.id)?.balance ?? 0, ldoPartyBalances.find(b => b.partyId === p.id)?.uom ?? "L").toFixed(0)} L)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {ldoCorrPartyId && ldoSelectedPartyBalanceL !== null && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Current book stock: <span className={ldoSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{ldoSelectedPartyBalanceL.toFixed(0)} L</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">As on Date</Label>
                     <Input type="date" value={ldoCorrDate} onChange={e => setLdoCorrDate(e.target.value)} data-testid="input-ldo-corr-date" />
                   </div>
-                  <div>
-                    <Label className="text-xs">Notes (optional)</Label>
-                    <Input value={ldoCorrNotes} onChange={e => setLdoCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation" data-testid="input-ldo-corr-notes" />
+                </div>
+
+                {/* Per-tank inputs */}
+                <div>
+                  <Label className="text-xs mb-2 block">Physical Stock from Dip Readings (Liters)</Label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Tank 1</Label>
+                      <Input
+                        type="number" step="1" min="0"
+                        value={ldoCorrTank1L}
+                        onChange={e => setLdoCorrTank1L(e.target.value)}
+                        placeholder={String(Math.round(latestDipTank1?.volumeLiters || 0))}
+                        data-testid="input-ldo-corr-tank1-l"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Dip: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Tank 2</Label>
+                      <Input
+                        type="number" step="1" min="0"
+                        value={ldoCorrTank2L}
+                        onChange={e => setLdoCorrTank2L(e.target.value)}
+                        placeholder={String(Math.round(latestDipTank2?.volumeLiters || 0))}
+                        data-testid="input-ldo-corr-tank2-l"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Dip: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <div className="text-xs text-muted-foreground">Total Physical</div>
+                      <div className="font-bold text-base">
+                        {ldoCorrTank1L || ldoCorrTank2L
+                          ? ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)).toFixed(0)
+                          : "—"} L
+                      </div>
+                    </div>
+                    {ldoCorrPartyId && ldoSelectedPartyBalanceL !== null && (ldoCorrTank1L || ldoCorrTank2L) && (
+                      <div className={`rounded-lg p-2 text-center ${
+                        ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)) - ldoSelectedPartyBalanceL > 0
+                          ? "bg-green-50 dark:bg-green-900/20"
+                          : "bg-red-50 dark:bg-red-900/20"
+                      }`}>
+                        <div className="text-xs text-muted-foreground">Adjustment</div>
+                        <div className={`font-bold text-base ${
+                          ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)) - ldoSelectedPartyBalanceL > 0
+                            ? "text-green-700 dark:text-green-400"
+                            : "text-red-700 dark:text-red-400"
+                        }`}>
+                          {(() => {
+                            const total = (parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0);
+                            const adj = total - ldoSelectedPartyBalanceL;
+                            return `${adj > 0 ? "+" : ""}${adj.toFixed(0)} L`;
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                <div>
+                  <Label className="text-xs">Notes (optional)</Label>
+                  <Input value={ldoCorrNotes} onChange={e => setLdoCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — T1: 1500L, T2: 1000L" data-testid="input-ldo-corr-notes" />
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    disabled={!ldoCorrPhysicalL || ldoCorrectionMutation.isPending}
+                    disabled={!ldoCorrPartyId || (!ldoCorrTank1L && !ldoCorrTank2L) || ldoCorrectionMutation.isPending}
                     onClick={() => {
-                      if (!ldoMaterialId) return;
-                      const physL = parseFloat(ldoCorrPhysicalL);
-                      const physMT = physL * LDO_DENSITY_KG_PER_LITER / 1000;
+                      if (!ldoMaterialId || !ldoCorrPartyId) return;
+                      const t1L = parseFloat(ldoCorrTank1L) || 0;
+                      const t2L = parseFloat(ldoCorrTank2L) || 0;
+                      const totalL = t1L + t2L;
+                      const totalMT = totalL * LDO_DENSITY_KG_PER_LITER / 1000;
+                      const partyName = parties?.find(p => String(p.id) === ldoCorrPartyId)?.name || `Party ${ldoCorrPartyId}`;
                       ldoCorrectionMutation.mutate({
                         materialId: ldoMaterialId,
-                        physicalQty: physMT,
+                        partyId: parseInt(ldoCorrPartyId),
+                        physicalQty: totalMT,
                         uom: "MT",
                         date: ldoCorrDate,
-                        notes: ldoCorrNotes || "LDO physical dip reconciliation",
+                        notes: ldoCorrNotes || `LDO dip reconciliation — T1: ${t1L.toFixed(0)} L, T2: ${t2L.toFixed(0)} L (${partyName})`,
                         correctedBy: "admin",
                       });
                     }}
@@ -1503,7 +1600,7 @@ export default function PlantLdoFlowMeter() {
                   >
                     {ldoCorrectionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Post Correction"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setShowLdoCorrForm(false); setLdoCorrPhysicalL(""); setLdoCorrNotes(""); }}>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowLdoCorrForm(false); setLdoCorrTank1L(""); setLdoCorrTank2L(""); setLdoCorrNotes(""); }}>
                     Cancel
                   </Button>
                 </div>

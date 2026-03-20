@@ -242,7 +242,7 @@ export interface IStorage {
   createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
 
   // Physical stock correction (reconcile book stock to physical measurement)
-  postStockCorrection(data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }>;
+  postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }>;
   
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number; varianceFixed: number }>;
@@ -2461,6 +2461,7 @@ export class DatabaseStorage implements IStorage {
 
   async postStockCorrection(data: {
     materialId: number;
+    partyId: number;
     physicalQty: number;
     uom: string;
     date: string;
@@ -2468,38 +2469,27 @@ export class DatabaseStorage implements IStorage {
     correctedBy: string;
   }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }> {
     return db.transaction(async (tx) => {
-      // Sum current balance across all parties for this material
-      const allBalances = await tx.select().from(stockBalances)
-        .where(eq(stockBalances.materialId, data.materialId));
-      const previousBalance = allBalances.reduce((sum, b) => sum + (b.balance || 0), 0);
+      // Get the selected party's current balance for this material
+      const condition = and(eq(stockBalances.partyId, data.partyId), eq(stockBalances.materialId, data.materialId));
+      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      const previousBalance = existing?.balance ?? 0;
       const adjustment = data.physicalQty - previousBalance;
 
-      // Find HLC party for the adjustment entry
-      const allParties = await tx.select().from(parties).orderBy(parties.id);
-      const hlcParty = allParties.find(p => p.name?.toUpperCase() === 'HLC')
-        || allParties.find(p => p.name?.toUpperCase().includes('HLC'))
-        || allParties[0];
-      const hlcPartyId = hlcParty?.id ?? null;
-
-      // Update the HLC party balance (add the adjustment delta)
-      if (hlcPartyId) {
-        const condition = and(eq(stockBalances.partyId, hlcPartyId), eq(stockBalances.materialId, data.materialId));
-        const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-        if (existing) {
-          await tx.update(stockBalances)
-            .set({ balance: existing.balance + adjustment, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, existing.id));
-        } else {
-          await tx.insert(stockBalances).values({
-            partyId: hlcPartyId, materialId: data.materialId, balance: adjustment, uom: data.uom,
-          });
-        }
+      // Update or create the party's balance
+      if (existing) {
+        await tx.update(stockBalances)
+          .set({ balance: data.physicalQty, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, existing.id));
+      } else {
+        await tx.insert(stockBalances).values({
+          partyId: data.partyId, materialId: data.materialId, balance: data.physicalQty, uom: data.uom,
+        });
       }
 
       // Write ledger entry
       const [entry] = await tx.insert(stockLedger).values({
         date: data.date,
-        partyId: hlcPartyId,
+        partyId: data.partyId,
         materialId: data.materialId,
         transactionType: "adjustment",
         quantityIn: adjustment > 0 ? adjustment : 0,
