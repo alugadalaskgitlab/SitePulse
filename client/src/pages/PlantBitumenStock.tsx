@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Droplets, Pencil, Lock, Filter, BarChart3, TrendingDown, TrendingUp, Info } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Droplets, Pencil, Lock, Filter, BarChart3, TrendingDown, TrendingUp, Info, Scale } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -54,6 +54,11 @@ export default function PlantBitumenStock() {
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
   const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
 
+  const [corrPhysicalMT, setCorrPhysicalMT] = useState("");
+  const [corrDate, setCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [corrNotes, setCorrNotes] = useState("");
+  const [showCorrForm, setShowCorrForm] = useState(false);
+
   const [tankNumber, setTankNumber] = useState("1");
   const [depthCm, setDepthCm] = useState("");
   const [readingType, setReadingType] = useState("adhoc");
@@ -89,6 +94,38 @@ export default function PlantBitumenStock() {
 
   const { data: allReceipts } = useQuery<{ id: number; date: string; materialId: number; quantity: number; uom: string; tankNumber?: number | null }[]>({
     queryKey: ["/api/plant-module/material-receipts"],
+  });
+
+  const { data: stockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
+    queryKey: ["/api/plant-module/stock-balances"],
+  });
+
+  const bitumenBookStockMT = useMemo(() => {
+    if (!stockBalances || !bitumenMaterialId) return null;
+    const total = stockBalances
+      .filter(b => b.materialId === bitumenMaterialId)
+      .reduce((s, b) => s + (b.balance || 0), 0);
+    return total; // stored in MT (Ton)
+  }, [stockBalances, bitumenMaterialId]);
+
+  const correctionMutation = useMutation({
+    mutationFn: async (data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
+      const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
+      return res.json();
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      const adjMT = result.adjustment?.toFixed(3);
+      const sign = result.adjustment >= 0 ? "+" : "";
+      toast({ title: "Stock correction posted", description: `Adjustment: ${sign}${adjMT} MT. Book stock now ${result.newBalance?.toFixed(3)} MT.` });
+      setShowCorrForm(false);
+      setCorrPhysicalMT("");
+      setCorrNotes("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
   });
 
   const bitumenReceipts = useMemo(() => {
@@ -692,6 +729,110 @@ export default function PlantBitumenStock() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Physical Stock Correction Card ── */}
+      {isAdmin && bitumenMaterialId && (
+        <Card className="border-blue-200 dark:border-blue-800">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Scale className="w-5 h-5 text-blue-600" />
+                <CardTitle className="text-base font-semibold">Book vs Physical Stock Correction</CardTitle>
+              </div>
+              {!showCorrForm && (
+                <Button size="sm" variant="outline" onClick={() => setShowCorrForm(true)} data-testid="button-show-correction-form">
+                  Post Correction
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="text-muted-foreground text-xs mb-1">Book Stock (Ledger)</div>
+                <div className={`font-bold text-lg ${bitumenBookStockMT !== null && bitumenBookStockMT < 0 ? "text-red-600" : "text-foreground"}`}>
+                  {bitumenBookStockMT !== null ? `${bitumenBookStockMT.toFixed(3)} MT` : "—"}
+                </div>
+                <div className="text-xs text-muted-foreground">From receipts − dispatch deductions</div>
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                <div className="text-muted-foreground text-xs mb-1">Physical Stock (Dip)</div>
+                <div className="font-bold text-lg text-amber-700 dark:text-amber-400">
+                  {latestTank1 || latestTank2 ? `${(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT` : "No dip readings"}
+                </div>
+                <div className="text-xs text-muted-foreground">T1: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT + T2: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-3 col-span-2">
+                <div className="text-muted-foreground text-xs mb-1">Difference (Physical − Book)</div>
+                {bitumenBookStockMT !== null && (latestTank1 || latestTank2) ? (() => {
+                  const physMT = combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+                  const diff = physMT - bitumenBookStockMT;
+                  return (
+                    <div className={`font-bold text-lg ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-foreground"}`}>
+                      {diff > 0 ? "+" : ""}{diff.toFixed(3)} MT
+                      <span className="text-xs font-normal ml-2 text-muted-foreground">
+                        {diff > 0 ? "Surplus (bitumen savings accumulated)" : diff < 0 ? "Deficit — check receipts" : "Balanced"}
+                      </span>
+                    </div>
+                  );
+                })() : <div className="text-muted-foreground">—</div>}
+                <div className="text-xs text-muted-foreground mt-1">Post a correction to align book stock with physical dip reading</div>
+              </div>
+            </div>
+
+            {showCorrForm && (
+              <div className="border rounded-lg p-4 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical Stock Correction</p>
+                <p className="text-xs text-muted-foreground">Enter the physical quantity from the latest dip reading. The system will compute and post the adjustment entry to the stock ledger.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Physical Stock (MT)</Label>
+                    <Input
+                      type="number" step="0.001" min="0"
+                      value={corrPhysicalMT}
+                      onChange={e => setCorrPhysicalMT(e.target.value)}
+                      placeholder={latestTank1 || latestTank2 ? (combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3) : "e.g. 12.500"}
+                      data-testid="input-corr-physical-mt"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Dip reading: {(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs">As on Date</Label>
+                    <Input type="date" value={corrDate} onChange={e => setCorrDate(e.target.value)} data-testid="input-corr-date" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Notes (optional)</Label>
+                    <Input value={corrNotes} onChange={e => setCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation" data-testid="input-corr-notes" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={!corrPhysicalMT || correctionMutation.isPending}
+                    onClick={() => {
+                      if (!bitumenMaterialId) return;
+                      correctionMutation.mutate({
+                        materialId: bitumenMaterialId,
+                        physicalQty: parseFloat(corrPhysicalMT),
+                        uom: "Ton",
+                        date: corrDate,
+                        notes: corrNotes || `Bitumen physical dip reconciliation`,
+                        correctedBy: "admin",
+                      });
+                    }}
+                    data-testid="button-post-correction"
+                  >
+                    {correctionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Post Correction"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowCorrForm(false); setCorrPhysicalMT(""); setCorrNotes(""); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">

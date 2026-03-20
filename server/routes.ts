@@ -1620,6 +1620,27 @@ export async function registerRoutes(
     }
   });
 
+  // Physical stock correction — reconcile book stock to physical measurement
+  app.post("/api/plant-module/stock-correction", async (req, res) => {
+    try {
+      const { materialId, physicalQty, uom, date, notes, correctedBy } = req.body;
+      if (!materialId || physicalQty === undefined || !uom || !date) {
+        return res.status(400).json({ message: "materialId, physicalQty, uom and date are required" });
+      }
+      const result = await storage.postStockCorrection({
+        materialId: Number(materialId),
+        physicalQty: Number(physicalQty),
+        uom,
+        date,
+        notes: notes || "",
+        correctedBy: correctedBy || "admin",
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to post stock correction" });
+    }
+  });
+
   // Reconcile stock balances from ledger (admin maintenance endpoint)
   app.post("/api/plant-module/reconcile-stock-balances", async (req, res) => {
     try {

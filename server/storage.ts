@@ -240,6 +240,9 @@ export interface IStorage {
   
   // Enhanced dispatch with stock deduction
   createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
+
+  // Physical stock correction (reconcile book stock to physical measurement)
+  postStockCorrection(data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }>;
   
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number; varianceFixed: number }>;
@@ -2454,6 +2457,60 @@ export class DatabaseStorage implements IStorage {
   async addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry> {
     const [result] = await db.insert(stockLedger).values(entry).returning();
     return result;
+  }
+
+  async postStockCorrection(data: {
+    materialId: number;
+    physicalQty: number;
+    uom: string;
+    date: string;
+    notes: string;
+    correctedBy: string;
+  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }> {
+    return db.transaction(async (tx) => {
+      // Sum current balance across all parties for this material
+      const allBalances = await tx.select().from(stockBalances)
+        .where(eq(stockBalances.materialId, data.materialId));
+      const previousBalance = allBalances.reduce((sum, b) => sum + (b.balance || 0), 0);
+      const adjustment = data.physicalQty - previousBalance;
+
+      // Find HLC party for the adjustment entry
+      const allParties = await tx.select().from(parties).orderBy(parties.id);
+      const hlcParty = allParties.find(p => p.name?.toUpperCase() === 'HLC')
+        || allParties.find(p => p.name?.toUpperCase().includes('HLC'))
+        || allParties[0];
+      const hlcPartyId = hlcParty?.id ?? null;
+
+      // Update the HLC party balance (add the adjustment delta)
+      if (hlcPartyId) {
+        const condition = and(eq(stockBalances.partyId, hlcPartyId), eq(stockBalances.materialId, data.materialId));
+        const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+        if (existing) {
+          await tx.update(stockBalances)
+            .set({ balance: existing.balance + adjustment, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, existing.id));
+        } else {
+          await tx.insert(stockBalances).values({
+            partyId: hlcPartyId, materialId: data.materialId, balance: adjustment, uom: data.uom,
+          });
+        }
+      }
+
+      // Write ledger entry
+      const [entry] = await tx.insert(stockLedger).values({
+        date: data.date,
+        partyId: hlcPartyId,
+        materialId: data.materialId,
+        transactionType: "adjustment",
+        quantityIn: adjustment > 0 ? adjustment : 0,
+        quantityOut: adjustment < 0 ? Math.abs(adjustment) : 0,
+        balanceAfter: data.physicalQty,
+        uom: data.uom,
+        notes: `Physical stock correction by ${data.correctedBy}. ${data.notes}`,
+      }).returning();
+
+      return { adjustment, previousBalance, newBalance: data.physicalQty, ledgerEntry: entry };
+    });
   }
 
   // Enhanced truck dispatch with automatic stock deduction

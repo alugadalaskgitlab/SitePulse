@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
@@ -286,7 +286,14 @@ function OperationsTab() {
 
 function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const { appendOrigin } = useOrigin();
+  const isAdmin = unlockedRole === "admin";
   const isManager = unlockedRole === "manager";
+  const { toast } = useToast();
+
+  const [dieselCorrPhysicalL, setDieselCorrPhysicalL] = useState("");
+  const [dieselCorrDate, setDieselCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dieselCorrNotes, setDieselCorrNotes] = useState("");
+  const [showDieselCorrForm, setShowDieselCorrForm] = useState(false);
 
   const appendRoleAndTab = (path: string) => {
     const base = appendOrigin(path);
@@ -296,6 +303,49 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
 
   const { data: ldoFlowReadings } = useQuery<{ id: number; date: string; time: string | null; tankNumber: number; meterReading: number; readingType: string; quantityLiters: number | null }[]>({
     queryKey: ["/api/plant-module/ldo-flow-readings"],
+  });
+
+  const { data: materials } = useQuery<{ id: number; name: string; defaultUom: string }[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
+
+  const { data: stockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
+    queryKey: ["/api/plant-module/stock-balances"],
+  });
+
+  const dieselMaterialId = materials?.find(m => m.name.toUpperCase() === "DIESEL")?.id ?? null;
+
+  const dieselBookStockL = (() => {
+    if (!stockBalances || !dieselMaterialId) return null;
+    return stockBalances
+      .filter(b => b.materialId === dieselMaterialId)
+      .reduce((s, b) => {
+        const u = (b.uom || "").toUpperCase();
+        if (u === "MT" || u === "TON" || u === "TONS") return s + (b.balance * 1000 / 0.84);
+        if (u === "KG") return s + (b.balance / 0.84);
+        return s + b.balance;
+      }, 0);
+  })();
+
+  const dieselCorrectionMutation = useMutation({
+    mutationFn: async (data: { materialId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
+      const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
+      return res.json();
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      const adjL = (result.adjustment || 0) * 1000 / 0.84;
+      const sign = adjL >= 0 ? "+" : "";
+      const newL = (result.newBalance || 0) * 1000 / 0.84;
+      toast({ title: "Diesel stock correction posted", description: `Adjustment: ${sign}${adjL.toFixed(0)} L. Book stock now ${newL.toFixed(0)} L.` });
+      setShowDieselCorrForm(false);
+      setDieselCorrPhysicalL("");
+      setDieselCorrNotes("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
   });
 
   const ldoTankSummary = (() => {
@@ -443,6 +493,93 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </Card>
       </Link>
       </div>
+
+      {/* ── Diesel Physical Stock Correction Card (admin only) ── */}
+      {isAdmin && dieselMaterialId && (
+        <Card className="border-blue-200 dark:border-blue-800">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Scale className="w-5 h-5 text-blue-600" />
+                <CardTitle className="text-base font-semibold">Diesel Book Stock Correction</CardTitle>
+              </div>
+              {!showDieselCorrForm && (
+                <Button size="sm" variant="outline" onClick={() => setShowDieselCorrForm(true)} data-testid="button-show-diesel-correction-form">
+                  Post Correction
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="text-muted-foreground text-xs mb-1">Book Stock (Ledger)</div>
+                <div className={`font-bold text-lg ${dieselBookStockL !== null && dieselBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
+                  {dieselBookStockL !== null ? `${dieselBookStockL.toFixed(0)} L` : "—"}
+                </div>
+                <div className="text-xs text-muted-foreground">From receipts − issue deductions</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="text-muted-foreground text-xs mb-1">About this correction</div>
+                <div className="text-sm text-muted-foreground">
+                  Enter the physically measured diesel quantity (dip stick reading) to post an adjustment entry to the stock ledger.
+                </div>
+              </div>
+            </div>
+
+            {showDieselCorrForm && (
+              <div className="border rounded-lg p-4 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical Diesel Stock Correction</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Physical Stock (Liters)</Label>
+                    <Input
+                      type="number" step="1" min="0"
+                      value={dieselCorrPhysicalL}
+                      onChange={e => setDieselCorrPhysicalL(e.target.value)}
+                      placeholder="e.g. 850"
+                      data-testid="input-diesel-corr-physical-l"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">As on Date</Label>
+                    <Input type="date" value={dieselCorrDate} onChange={e => setDieselCorrDate(e.target.value)} data-testid="input-diesel-corr-date" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Notes (optional)</Label>
+                    <Input value={dieselCorrNotes} onChange={e => setDieselCorrNotes(e.target.value)} placeholder="e.g. Dip stick reading" data-testid="input-diesel-corr-notes" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={!dieselCorrPhysicalL || dieselCorrectionMutation.isPending}
+                    onClick={() => {
+                      if (!dieselMaterialId) return;
+                      const physL = parseFloat(dieselCorrPhysicalL);
+                      const physMT = physL * 0.84 / 1000;
+                      dieselCorrectionMutation.mutate({
+                        materialId: dieselMaterialId,
+                        physicalQty: physMT,
+                        uom: "MT",
+                        date: dieselCorrDate,
+                        notes: dieselCorrNotes || "Diesel physical stock reconciliation",
+                        correctedBy: "admin",
+                      });
+                    }}
+                    data-testid="button-post-diesel-correction"
+                  >
+                    {dieselCorrectionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Post Correction"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowDieselCorrForm(false); setDieselCorrPhysicalL(""); setDieselCorrNotes(""); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="mt-2">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Procurement & Finance</h3>
