@@ -1038,6 +1038,7 @@ export const priceScenarios = pgTable("price_scenarios", {
   name: text("name").notNull(),
   revisedPrices: text("revised_prices").notNull().default("{}"),
   state: text("state"),
+  baseState: text("base_state"),
   updatedAt: timestamp("updated_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });

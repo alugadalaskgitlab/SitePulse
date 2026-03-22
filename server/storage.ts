@@ -408,7 +408,7 @@ export interface IStorage {
   getPriceScenarios(estimateId: number): Promise<PriceScenario[]>;
   getPriceScenario(id: number): Promise<PriceScenario | undefined>;
   createPriceScenario(data: InsertPriceScenario): Promise<PriceScenario>;
-  updatePriceScenario(id: number, data: { name?: string; state?: string }): Promise<PriceScenario | undefined>;
+  updatePriceScenario(id: number, data: { name?: string; state?: string; baseState?: string }): Promise<PriceScenario | undefined>;
   deletePriceScenario(id: number): Promise<boolean>;
 }
 
@@ -7106,9 +7106,16 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updatePriceScenario(id: number, data: { name?: string; state?: string }): Promise<PriceScenario | undefined> {
+  async updatePriceScenario(id: number, data: { name?: string; state?: string; baseState?: string }): Promise<PriceScenario | undefined> {
+    const updateData: any = { ...data, updatedAt: new Date() };
+    if (data.baseState !== undefined) {
+      const existing = await this.getPriceScenario(id);
+      if (existing?.baseState) {
+        delete updateData.baseState;
+      }
+    }
     const [row] = await db.update(priceScenarios)
-      .set({ ...data, updatedAt: new Date() })
+      .set(updateData)
       .where(eq(priceScenarios.id, id))
       .returning();
     return row;

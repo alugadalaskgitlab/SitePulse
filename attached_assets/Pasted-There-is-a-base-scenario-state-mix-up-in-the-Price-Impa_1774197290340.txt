@@ -1,0 +1,141 @@
+There is a base/scenario state mix-up in the Price Impact flow. Please fix this first before any further UI enhancements.
+
+PROBLEM OBSERVED
+- In Scenario Comparison report, base and revised values appear reversed or inconsistent.
+- When opening the scenario in calculator edit mode, the revised scenario values entered earlier are still intact and correct.
+- This means the saved scenario itself is likely correct, but the comparison report is pulling the wrong baseline/current state or reversing base and revised during rendering.
+- Also, in the revised calculator view, it is not clear whether Job Estimator values shown are base or revised.
+- In Final Laid Rate by Mix Type, one of the headers/group headers is visually missing or broken.
+
+REQUIRED FIX — DATA MODEL / SNAPSHOT LOGIC
+
+1) USE IMMUTABLE SNAPSHOTS
+For every saved scenario, store and use 3 clearly separated states:
+- baseSnapshot = exact estimate state at the moment the scenario is created
+- scenarioSnapshot = edited scenario state saved by the user
+- workingCalculatorState = temporary live state while editing
+
+The Price Impact report must NEVER compare against the current working calculator state.
+It must compare only:
+- Base = baseSnapshot
+- Revised = scenarioSnapshot
+
+2) SCENARIO CREATION
+When user clicks “New Scenario”:
+- create a deep copy of the currently selected estimate state as baseSnapshot
+- create another deep copy as initial scenarioSnapshot
+- edits must apply only to scenarioSnapshot
+- baseSnapshot must remain frozen forever for that scenario
+
+3) SCENARIO SAVE
+When user clicks save scenario:
+- preserve original baseSnapshot unchanged
+- save the edited scenarioSnapshot unchanged
+- do not overwrite baseSnapshot when navigating back, saving, or going to overview
+
+4) PRICE IMPACT REPORT SOURCE OF TRUTH
+All Scenario Comparison sections must pull from:
+- baseSnapshot for base values
+- scenarioSnapshot for revised values
+
+This applies to:
+- Variation Summary
+- Changed Input Rates
+- Final Laid Rate by Mix Type
+- Job-wise Cost Impact
+- Procurement Impact
+- Internal Check (Post-Variation)
+
+Do not derive “base” from current live calculator state, latest estimate state, or scenario state by mistake.
+
+5) EDIT SCENARIO BEHAVIOR
+When user clicks Edit on a saved scenario:
+- load scenarioSnapshot into calculator for editing
+- do not load baseSnapshot into editable fields
+- do not mutate baseSnapshot during editing
+- when user saves again, update only scenarioSnapshot
+
+6) BACK / OVERVIEW / SAVE NAVIGATION
+Audit the flow when user:
+- clicks Back
+- clicks Back to Overview
+- clicks Save Scenario
+- switches between comparison and calculator
+
+Make sure none of these actions accidentally:
+- overwrite baseSnapshot
+- replace scenarioSnapshot with current estimate state
+- replace base values with revised values
+- reverse labels in report rendering
+
+7) ADD CLEAR MODE LABELING IN CALCULATOR
+When calculator is opened from Edit Scenario, show a clear visible label near top:
+- Editing Scenario: [Scenario Name]
+
+If possible also show:
+- Base Snapshot Locked
+- Current View: Revised Scenario
+
+This is only a simple readable label, no redesign needed.
+
+8) JOB ESTIMATOR CLARITY
+When calculator is opened for scenario editing, the Job Estimator and live rate summary must clearly reflect scenarioSnapshot values, not base values.
+
+Please verify:
+- section input rates
+- live rate summary
+- job estimator totals
+- procurement values
+all come from scenarioSnapshot in edit mode.
+
+9) HEADER / TABLE DISPLAY BUG
+In the Final Laid Rate by Mix Type section of Scenario Comparison, fix the missing/broken header/group header.
+Check for:
+- wrong colspan
+- hidden header row
+- sticky header issue
+- accordion render issue
+- overflow clipping
+
+The header should remain fully visible and aligned in both collapsed and expanded states.
+
+10) ADD A DEBUG CHECK TEMPORARILY
+While fixing, please log or inspect for one scenario:
+- baseSnapshot bitumen price
+- scenarioSnapshot bitumen price
+- report-rendered base bitumen price
+- report-rendered revised bitumen price
+
+Do this for a few sensitive fields:
+- bitumen price
+- LDO rate
+- transport rate
+- margin if applicable
+
+This will confirm whether the issue is:
+- wrong snapshot source
+- reversed rendering
+- state overwrite during navigation
+
+11) DO NOT REDESIGN THE FLOW
+Do not replace Price Impact report with full non-editable calculator page.
+Keep current flow:
+- Price Impact report = comparison view
+- Edit Scenario = calculator editor
+
+Only fix the state separation and display consistency first.
+
+ACCEPTANCE CHECKLIST
+1. In Scenario Comparison, base values match the original frozen base snapshot.
+2. Revised values match the saved scenario snapshot.
+3. Opening Edit Scenario shows the scenario values entered by user.
+4. Returning to report shows the same scenario values correctly under revised.
+5. Base does not change after editing scenario multiple times.
+6. Job Estimator in scenario edit mode clearly reflects revised scenario state.
+7. Final Laid Rate by Mix Type header displays properly.
+8. No reversal of base/revised values anywhere.
+
+After fixing, tell me:
+- where baseSnapshot and scenarioSnapshot are stored
+- which file(s) were using the wrong source of truth
+- whether the issue was snapshot overwrite, reversed render mapping, or navigation-state mutation

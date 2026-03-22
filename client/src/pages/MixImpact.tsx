@@ -105,6 +105,8 @@ interface ScenarioCalcEntry {
   prices: RevisedPrices;
   calc: ReturnType<typeof calcMixRatesAndJobs>;
   scState: CalcState | null;
+  frozenBaseState: CalcState;
+  frozenBaseCalc: ReturnType<typeof calcMixRatesAndJobs>;
 }
 
 const LEGACY_PRICE_ROWS: { key: keyof RevisedPrices; label: string; unit: string }[] = [
@@ -135,7 +137,7 @@ function ScenarioComparison({
   const th1Cls = "px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
   const tdBase = "px-3 py-2.5 text-right align-top";
 
-  const [openSections, setOpenSections] = useState({ inputs: false, rates: false, jobs: true });
+  const [openSections, setOpenSections] = useState({ inputs: false, rates: true, jobs: true });
   const toggleSection = (key: keyof typeof openSections) => setOpenSections(p => ({ ...p, [key]: !p[key] }));
 
   function DeltaLine({ base, revised }: { base: number; revised: number }) {
@@ -153,21 +155,21 @@ function ScenarioComparison({
   // Build union of changed input keys across all scenarios
   const allChangedInputs = useMemo(() => {
     const byKey: Record<string, { key: string; label: string; unit: string }> = {};
-    scenarioCalcs.forEach(({ scState, prices }) => {
+    scenarioCalcs.forEach(({ scState, prices, frozenBaseState: fbs }) => {
       if (scState) {
-        diffCalcInputs(baseState, scState).forEach(d => {
+        diffCalcInputs(fbs, scState).forEach(d => {
           byKey[d.key] = { key: d.key, label: d.label, unit: d.unit };
         });
       } else {
         LEGACY_PRICE_ROWS.forEach(({ key, label, unit }) => {
-          const baseVal = parseFloat(baseState.inputs?.[key] ?? "0") || 0;
+          const baseVal = parseFloat(fbs.inputs?.[key] ?? "0") || 0;
           const revVal = (prices[key as keyof RevisedPrices] as number | undefined) ?? baseVal;
           if (Math.abs(revVal - baseVal) > 0.001) byKey[key] = { key, label, unit };
         });
       }
     });
     return Object.values(byKey);
-  }, [scenarioCalcs, baseState]);
+  }, [scenarioCalcs]);
 
   return (
     <Card data-testid="card-scenario-comparison">
@@ -180,17 +182,17 @@ function ScenarioComparison({
 
         {/* Variation Summary */}
         {(() => {
-          const totalMT = baseCalc.grandTotalMt;
-          const totalCUM = computeGrandCum(baseCalc);
-          if (totalMT <= 0) return null;
-          const baseCostPerMT = baseCalc.grandTotalAmt / totalMT;
-          const anyChange = scenarioCalcs.some(({ calc }) => Math.abs(calc.grandTotalAmt - baseCalc.grandTotalAmt) >= 1);
+          const anyChange = scenarioCalcs.some(({ calc, frozenBaseCalc: fbc }) => Math.abs(calc.grandTotalAmt - fbc.grandTotalAmt) >= 1);
           if (!anyChange) return null;
           return (
             <div className="mx-4 mt-3 space-y-2" data-testid="variation-summary">
-              {scenarioCalcs.map(({ scenario, calc }) => {
-                const ci = calc.grandTotalAmt - baseCalc.grandTotalAmt;
+              {scenarioCalcs.map(({ scenario, calc, frozenBaseCalc: fbc }) => {
+                const totalMT = fbc.grandTotalMt;
+                const totalCUM = computeGrandCum(fbc);
+                if (totalMT <= 0) return null;
+                const ci = calc.grandTotalAmt - fbc.grandTotalAmt;
                 if (Math.abs(ci) < 1) return null;
+                const baseCostPerMT = fbc.grandTotalAmt / totalMT;
                 const iMT = ci / totalMT;
                 const iCUM = totalCUM > 0 ? ci / totalCUM : 0;
                 const rMT = calc.grandTotalAmt / totalMT;
@@ -296,7 +298,7 @@ function ScenarioComparison({
                 </thead>
                 <tbody>
                   {allChangedInputs.map(({ key, label, unit }) => {
-                    const baseVal = parseFloat(baseState.inputs?.[key] ?? "0") || 0;
+                    const displayBaseVal = parseFloat(baseState.inputs?.[key] ?? "0") || 0;
                     return (
                       <tr key={key} className="border-t border-border/40 hover:bg-muted/20">
                         <td className="px-3 py-2.5 font-medium text-sm">
@@ -304,22 +306,23 @@ function ScenarioComparison({
                           <span className="block text-xs text-muted-foreground font-normal">{unit}</span>
                         </td>
                         <td className={`${tdBase} font-medium`}>
-                          ₹{baseVal.toFixed(2)}
+                          ₹{displayBaseVal.toFixed(2)}
                         </td>
                         {scenarioCalcs.map((entry) => {
-                          const rev = getScenarioVal(entry, key, baseVal);
-                          const changed = Math.abs(rev - baseVal) > 0.001;
-                          const impact = changed ? computeInputImpact(key, baseVal, rev, baseState, baseCalc) : null;
+                          const entryBaseVal = parseFloat(entry.frozenBaseState.inputs?.[key] ?? "0") || 0;
+                          const rev = getScenarioVal(entry, key, entryBaseVal);
+                          const changed = Math.abs(rev - entryBaseVal) > 0.001;
+                          const impact = changed ? computeInputImpact(key, entryBaseVal, rev, entry.frozenBaseState, entry.frozenBaseCalc) : null;
                           return (
                             <Fragment key={entry.scenario.id}>
                               <td
                                 className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
                                 data-testid={`cmp-rate-${key}-${entry.scenario.id}`}
                               >
-                                <span className={`font-medium ${changed ? (rev > baseVal ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                                <span className={`font-medium ${changed ? (rev > entryBaseVal ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
                                   ₹{rev.toFixed(2)}
                                 </span>
-                                <DeltaLine base={baseVal} revised={rev} />
+                                <DeltaLine base={entryBaseVal} revised={rev} />
                               </td>
                               <td className={tdBase} data-testid={`cmp-impact-${key}-${entry.scenario.id}`}>
                                 {impact != null && Math.abs(impact) >= 1
@@ -394,14 +397,18 @@ function ScenarioComparison({
                         <td className={`${tdBase} text-muted-foreground`}>
                           {baseAmts[i] > 0 ? `₹${Math.round(baseAmts[i]).toLocaleString("en-IN")}` : "—"}
                         </td>
-                        {scenarioCalcs.map(({ scenario, calc }) => {
+                        {scenarioCalcs.map(({ scenario, calc, frozenBaseCalc: fbc }) => {
+                          const fMix = fbc.mixRates[i];
+                          const fLaid = fMix?.finalLaid ?? baseMix.finalLaid;
+                          const fCum = fMix?.finalLaidPerCum ?? baseMix.finalLaidPerCum;
+                          const fAmts = mixAmts(fbc);
                           const revRateMt = calc.mixRates[i]?.finalLaid ?? 0;
                           const revRateCum = calc.mixRates[i]?.finalLaidPerCum ?? 0;
                           const revAmts = mixAmts(calc);
                           const revAmt = revAmts[i] ?? 0;
-                          const rateChanged = Math.abs(revRateMt - baseMix.finalLaid) > 0.01;
-                          const amtChanged = Math.abs(revAmt - (baseAmts[i] ?? 0)) > 1;
-                          const rateColor = rateChanged ? (revRateMt > baseMix.finalLaid ? "text-red-600" : "text-green-600") : "text-muted-foreground";
+                          const rateChanged = Math.abs(revRateMt - fLaid) > 0.01;
+                          const amtChanged = Math.abs(revAmt - (fAmts[i] ?? 0)) > 1;
+                          const rateColor = rateChanged ? (revRateMt > fLaid ? "text-red-600" : "text-green-600") : "text-muted-foreground";
                           return (
                             <Fragment key={scenario.id}>
                               <td
@@ -412,23 +419,23 @@ function ScenarioComparison({
                                 <span className={`block font-medium ${rateColor}`}>₹{revRateCum.toFixed(2)} /CUM</span>
                                 {rateChanged && (
                                   <>
-                                    <span className={`block text-sm font-semibold mt-1 ${revRateMt > baseMix.finalLaid ? "text-red-600" : "text-green-600"}`}>
-                                      {revRateMt > baseMix.finalLaid ? "+" : ""}₹{(revRateMt - baseMix.finalLaid).toFixed(2)} /MT
+                                    <span className={`block text-sm font-semibold mt-1 ${revRateMt > fLaid ? "text-red-600" : "text-green-600"}`}>
+                                      {revRateMt > fLaid ? "+" : ""}₹{(revRateMt - fLaid).toFixed(2)} /MT
                                     </span>
-                                    {baseMix.finalLaidPerCum > 0 && (
-                                      <span className={`block text-sm font-semibold ${revRateCum > baseMix.finalLaidPerCum ? "text-red-600" : "text-green-600"}`}>
-                                        {revRateCum > baseMix.finalLaidPerCum ? "+" : ""}₹{(revRateCum - baseMix.finalLaidPerCum).toFixed(2)} /CUM
+                                    {fCum > 0 && (
+                                      <span className={`block text-sm font-semibold ${revRateCum > fCum ? "text-red-600" : "text-green-600"}`}>
+                                        {revRateCum > fCum ? "+" : ""}₹{(revRateCum - fCum).toFixed(2)} /CUM
                                       </span>
                                     )}
                                   </>
                                 )}
                               </td>
                               <td className={`${tdBase} ${amtChanged ? "bg-primary/5" : ""}`}>
-                                <span className={`font-medium ${amtChanged ? (revAmt > (baseAmts[i] ?? 0) ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                                <span className={`font-medium ${amtChanged ? (revAmt > (fAmts[i] ?? 0) ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
                                   {revAmt > 0 ? `₹${Math.round(revAmt).toLocaleString("en-IN")}` : "—"}
                                 </span>
                                 {amtChanged && (
-                                  <DeltaAmt base={baseAmts[i] ?? 0} revised={revAmt} />
+                                  <DeltaAmt base={fAmts[i] ?? 0} revised={revAmt} />
                                 )}
                               </td>
                             </Fragment>
@@ -479,23 +486,25 @@ function ScenarioComparison({
                       <td className={`${tdBase} text-muted-foreground`}>{baseJob.totalMt > 0 ? baseJob.totalMt.toFixed(1) : "—"}</td>
                       <td className={`${tdBase} text-muted-foreground`}>{(baseJob.totalCum ?? 0) > 0 ? (baseJob.totalCum ?? 0).toFixed(2) : "—"}</td>
                       <td className={`${tdBase} font-medium`}>₹{Math.round(baseJob.totalAmt).toLocaleString("en-IN")}</td>
-                      {scenarioCalcs.map(({ scenario, calc }) => {
+                      {scenarioCalcs.map(({ scenario, calc, frozenBaseCalc: fbc }) => {
+                        const fBaseJob = fbc.jobResults[i];
                         const revJob = calc.jobResults[i];
                         const rev = revJob?.totalAmt ?? 0;
-                        const changed = Math.abs(rev - baseJob.totalAmt) >= 1;
-                        const jobDelta = rev - baseJob.totalAmt;
-                        const bMT = baseJob.totalMt;
-                        const bCUM = baseJob.totalCum ?? 0;
+                        const fBaseAmt = fBaseJob?.totalAmt ?? baseJob.totalAmt;
+                        const changed = Math.abs(rev - fBaseAmt) >= 1;
+                        const jobDelta = rev - fBaseAmt;
+                        const bMT = fBaseJob?.totalMt ?? baseJob.totalMt;
+                        const bCUM = fBaseJob?.totalCum ?? baseJob.totalCum ?? 0;
                         return (
                           <td
                             key={scenario.id}
                             className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
                             data-testid={`cmp-job-amt-${baseJob.id}-${scenario.id}`}
                           >
-                            <span className={`font-medium ${changed ? (rev > baseJob.totalAmt ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                            <span className={`font-medium ${changed ? (rev > fBaseAmt ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
                               ₹{Math.round(rev).toLocaleString("en-IN")}
                             </span>
-                            <span className="block mt-0.5 text-xs"><DeltaAmt base={baseJob.totalAmt} revised={rev} /></span>
+                            <span className="block mt-0.5 text-xs"><DeltaAmt base={fBaseAmt} revised={rev} /></span>
                             {changed && bMT > 0 && (
                               <span className={`block text-xs font-semibold mt-0.5 ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
                                 {jobDelta > 0 ? "+" : "\u2212"}₹{Math.abs(jobDelta / bMT).toFixed(2)} /MT
@@ -514,22 +523,23 @@ function ScenarioComparison({
                   <tr className="border-t-2 border-primary/40 bg-amber-50/60 dark:bg-amber-950/20 font-bold text-base">
                     <td className="px-3 py-4" colSpan={3}>Grand Total</td>
                     <td className={`${tdBase} text-base`}>₹{Math.round(baseCalc.grandTotalAmt).toLocaleString("en-IN")}</td>
-                    {scenarioCalcs.map(({ scenario, calc }) => {
+                    {scenarioCalcs.map(({ scenario, calc, frozenBaseCalc: fbc }) => {
                       const rev = calc.grandTotalAmt;
-                      const changed = Math.abs(rev - baseCalc.grandTotalAmt) >= 1;
-                      const gDelta = rev - baseCalc.grandTotalAmt;
-                      const gMT = baseCalc.grandTotalMt;
-                      const gCUM = computeGrandCum(baseCalc);
+                      const fBaseGrand = fbc.grandTotalAmt;
+                      const changed = Math.abs(rev - fBaseGrand) >= 1;
+                      const gDelta = rev - fBaseGrand;
+                      const gMT = fbc.grandTotalMt;
+                      const gCUM = computeGrandCum(fbc);
                       return (
                         <td
                           key={scenario.id}
                           className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
                           data-testid={`cmp-grand-${scenario.id}`}
                         >
-                          <span className={changed ? (rev > baseCalc.grandTotalAmt ? "text-red-600" : "text-green-600") : ""}>
+                          <span className={changed ? (rev > fBaseGrand ? "text-red-600" : "text-green-600") : ""}>
                             ₹{Math.round(rev).toLocaleString("en-IN")}
                           </span>
-                          <span className="block mt-0.5 text-xs"><DeltaAmt base={baseCalc.grandTotalAmt} revised={rev} /></span>
+                          <span className="block mt-0.5 text-xs"><DeltaAmt base={fBaseGrand} revised={rev} /></span>
                           {changed && gMT > 0 && (
                             <span className={`block text-xs font-semibold mt-0.5 ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
                               {gDelta > 0 ? "+" : "\u2212"}₹{Math.abs(gDelta / gMT).toFixed(2)} /MT
@@ -583,7 +593,7 @@ export default function MixImpact() {
   });
 
   const createScenarioMutation = useMutation({
-    mutationFn: async (payload: { estimateId: number; name: string }) => {
+    mutationFn: async (payload: { estimateId: number; name: string; baseState?: string }) => {
       const res = await apiRequest("POST", "/api/price-scenarios", payload);
       return res.json() as Promise<PriceScenario>;
     },
@@ -604,23 +614,30 @@ export default function MixImpact() {
     },
   });
 
-  const state = useMemo(() => estimate ? parseState(estimate.state) : null, [estimate]);
-  const baseCalc = useMemo(() => state ? calcMixRatesAndJobs(state) : null, [state]);
+  const estimateState = useMemo(() => estimate ? parseState(estimate.state) : null, [estimate]);
 
   const scenarioCalcs = useMemo((): ScenarioCalcEntry[] => {
-    if (!state) return [];
+    if (!estimateState) return [];
     return scenarios.map((sc) => {
+      const frozenBaseState: CalcState = sc.baseState
+        ? (() => { try { return JSON.parse(sc.baseState) as CalcState; } catch { return estimateState; } })()
+        : estimateState;
+      const frozenBaseCalc = calcMixRatesAndJobs(frozenBaseState);
+
       if (sc.state) {
         try {
           const scState = JSON.parse(sc.state) as CalcState;
-          return { scenario: sc, prices: {}, calc: calcMixRatesAndJobs(scState), scState };
+          return { scenario: sc, prices: {}, calc: calcMixRatesAndJobs(scState), scState, frozenBaseState, frozenBaseCalc };
         } catch {}
       }
       let prices: RevisedPrices = {};
       try { prices = JSON.parse(sc.revisedPrices); } catch {}
-      return { scenario: sc, prices, calc: calcMixRatesAndJobs(state, prices), scState: null };
+      return { scenario: sc, prices, calc: calcMixRatesAndJobs(frozenBaseState, prices), scState: null, frozenBaseState, frozenBaseCalc };
     });
-  }, [scenarios, state]);
+  }, [scenarios, estimateState]);
+
+  const displayBaseState = scenarioCalcs.length > 0 ? scenarioCalcs[0].frozenBaseState : estimateState;
+  const displayBaseCalc = scenarioCalcs.length > 0 ? scenarioCalcs[0].frozenBaseCalc : (estimateState ? calcMixRatesAndJobs(estimateState) : null);
 
   function handleEstimateChange(id: number) {
     setSelectedId(id);
@@ -633,7 +650,11 @@ export default function MixImpact() {
       toast({ title: "Enter a scenario name", variant: "destructive" });
       return;
     }
-    createScenarioMutation.mutate({ estimateId: selectedId, name: newScenarioName.trim() });
+    createScenarioMutation.mutate({
+      estimateId: selectedId,
+      name: newScenarioName.trim(),
+      baseState: estimate?.state || undefined,
+    });
   }
 
   function openInCalculator(scenarioId: number) {
@@ -705,11 +726,11 @@ export default function MixImpact() {
         </div>
       )}
 
-      {selectedId && !state && (
+      {selectedId && !estimateState && (
         <div className="text-center py-12 text-muted-foreground">Loading estimate…</div>
       )}
 
-      {state && baseCalc && (
+      {estimateState && (
         <>
           {/* Print header */}
           <div className="print-only hidden print:block mb-4">
@@ -819,11 +840,11 @@ export default function MixImpact() {
           </Card>
 
           {/* Scenario Comparison (visible when 1+ scenarios exist) */}
-          {scenarioCalcs.length >= 1 && (
+          {scenarioCalcs.length >= 1 && displayBaseState && displayBaseCalc && (
             <ScenarioComparison
               scenarioCalcs={scenarioCalcs}
-              baseState={state}
-              baseCalc={baseCalc}
+              baseState={displayBaseState}
+              baseCalc={displayBaseCalc}
             />
           )}
         </>

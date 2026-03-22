@@ -210,9 +210,12 @@ body{font-size:11px;background:#fff}
       <span class="sc-mode-label">🔬 Scenario Edit Mode:</span>
       <span id="scenarioBannerName" class="sc-mode-name">Loading…</span>
     </div>
+    <div id="scenarioModeLabel" style="font-size:11px;color:rgba(255,255,255,.8);display:none">
+      <span style="background:rgba(0,0,0,.25);padding:1px 6px;border-radius:3px;margin-right:6px">🔒 Base Snapshot Locked</span>
+      <span style="background:rgba(255,255,255,.15);padding:1px 6px;border-radius:3px">Current View: Revised Scenario</span>
+    </div>
     <div id="scenarioBaseRates" style="font-size:11px;color:rgba(255,255,255,.75);display:none">
       Base rates: <span id="scenarioBaseRatesText">loading…</span>
-      &nbsp;·&nbsp; <em>Change any of these values, then click Save Scenario &amp; Return</em>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
@@ -1033,32 +1036,35 @@ function onProcScenarioChange(){
   var sel = document.getElementById('procScenarioSelect');
   var rawVal = sel ? sel.value : '';
   var scId = rawVal ? parseInt(rawVal) : 0;
-  // Special case: -1 = "Base Estimate" in scenario edit mode
-  if(scId===-1 && scenarioMode && scenarioModeEstimateId){
-    fetch('/api/mix-estimates/'+scenarioModeEstimateId)
-      .then(function(r){return r.json();})
-      .then(function(est){
-        if(est.state){
-          try{
-            var st = JSON.parse(est.state);
-            var inp = st.inputs||{};
-            var pf = function(v){ var x=parseFloat(v); return isNaN(x)?null:x; };
-            procScenarioPrices = {
-              _id: -1, _name: 'Base Estimate',
-              aggRate:        pf(inp.aggRate),
-              aggBasis:       inp.aggBasis || st.aggBasis || aggBasis,
-              aggDensity:     pf(inp.aggDensity),
-              aggDist:        pf(inp.aggDist),
-              aggFreightRate: pf(inp.aggFreightRate),
-              aggPayload:     pf(inp.aggPayload),
-              bitPrice:       pf(inp.bitPrice),
-              hsdPrice:       pf(inp.hsdPrice),
-              ldoRate:        pf(inp.ldoRate)
-            };
-          }catch(e){ procScenarioPrices=null; }
-        } else { procScenarioPrices=null; }
-        updateProcBadge(); recalc();
-      }).catch(function(){ procScenarioPrices=null; updateProcBadge(); recalc(); });
+  if(scId===-1 && scenarioMode){
+    var baseSrc = scenarioBaseSnapshot;
+    function applyBaseCompare(st){
+      if(!st){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
+      var inp = st.inputs||{};
+      var pf = function(v){ var x=parseFloat(v); return isNaN(x)?null:x; };
+      procScenarioPrices = {
+        _id: -1, _name: 'Base Estimate',
+        aggRate:        pf(inp.aggRate),
+        aggBasis:       inp.aggBasis || st.aggBasis || aggBasis,
+        aggDensity:     pf(inp.aggDensity),
+        aggDist:        pf(inp.aggDist),
+        aggFreightRate: pf(inp.aggFreightRate),
+        aggPayload:     pf(inp.aggPayload),
+        bitPrice:       pf(inp.bitPrice),
+        hsdPrice:       pf(inp.hsdPrice),
+        ldoRate:        pf(inp.ldoRate)
+      };
+      updateProcBadge(); recalc();
+    }
+    if(baseSrc){ applyBaseCompare(baseSrc); }
+    else if(scenarioModeEstimateId){
+      fetch('/api/mix-estimates/'+scenarioModeEstimateId)
+        .then(function(r){return r.json();})
+        .then(function(est){
+          if(est.state){ try{ applyBaseCompare(JSON.parse(est.state)); }catch(e){ applyBaseCompare(null); } }
+          else applyBaseCompare(null);
+        }).catch(function(){ applyBaseCompare(null); });
+    } else { applyBaseCompare(null); }
     return;
   }
   if(!scId){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
@@ -2728,10 +2734,11 @@ function loadScenarioState(state){
   if(aggLbl) aggLbl.textContent='Purchase Rate (₹/'+b+')';
 }
 
+var scenarioBaseSnapshot = null;
+
 function initScenarioMode(estimateId){
   if(!scenarioModeId) return;
   scenarioModeEstimateId = estimateId?parseInt(estimateId):null;
-  // Set currentEstimateId so fetchProcScenarios works for the right estimate
   if(scenarioModeEstimateId) currentEstimateId = scenarioModeEstimateId;
   var backLink = document.getElementById('scenarioBackLink');
   if(backLink&&scenarioModeEstimateId) backLink.href='/admin/mix-impact?estimateId='+scenarioModeEstimateId;
@@ -2741,8 +2748,13 @@ function initScenarioMode(estimateId){
     .then(function(r){return r.json();})
     .then(function(sc){
       document.getElementById('scenarioBannerName').textContent=sc.name;
-      function showBaseRatesFromObj(stateObj){
-        var inp=stateObj&&stateObj.inputs?stateObj.inputs:{};
+
+      if(sc.baseState){
+        try{ scenarioBaseSnapshot = JSON.parse(sc.baseState); }catch(e){ scenarioBaseSnapshot=null; }
+      }
+
+      function showBaseRatesFromSnapshot(){
+        var inp = scenarioBaseSnapshot&&scenarioBaseSnapshot.inputs ? scenarioBaseSnapshot.inputs : {};
         var parts=[];
         if(inp.bitPrice) parts.push('Bitumen ₹'+inp.bitPrice+'/kg');
         if(inp.hsdPrice) parts.push('HSD ₹'+inp.hsdPrice+'/L');
@@ -2753,35 +2765,55 @@ function initScenarioMode(estimateId){
           document.getElementById('scenarioBaseRates').style.display='block';
         }
       }
-      // Always fetch the estimate for "base rates" display in banner
-      function fetchAndShowEstimateRates(){
-        if(!scenarioModeEstimateId) return;
-        fetch('/api/mix-estimates/'+scenarioModeEstimateId)
-          .then(function(r){return r.json();})
-          .then(function(est){
-            if(est.state){ try{ showBaseRatesFromObj(JSON.parse(est.state)); }catch(e){} }
-          }).catch(function(){});
+
+      function showModeLabel(){
+        var el = document.getElementById('scenarioModeLabel');
+        if(el) el.style.display='block';
       }
+
       if(sc.state){
         var parsed=JSON.parse(sc.state);
         loadScenarioState(parsed);
         renderMixTabs(); renderMixPanels(); renderEquipCards(); renderSites(); recalc();
-        fetchAndShowEstimateRates();
+        if(scenarioBaseSnapshot) showBaseRatesFromSnapshot();
+        else {
+          if(scenarioModeEstimateId){
+            fetch('/api/mix-estimates/'+scenarioModeEstimateId)
+              .then(function(r){return r.json();})
+              .then(function(est){
+                if(est.state){ try{ scenarioBaseSnapshot=JSON.parse(est.state); showBaseRatesFromSnapshot(); }catch(e){} }
+              }).catch(function(){});
+          }
+        }
+        showModeLabel();
         fetchProcScenarios();
         setTimeout(collapseSectionsForJobView, 200);
-      } else if(scenarioModeEstimateId){
-        return fetch('/api/mix-estimates/'+scenarioModeEstimateId)
-          .then(function(r){return r.json();})
-          .then(function(est){
-            if(est.state){
-              var parsed=JSON.parse(est.state);
-              loadScenarioState(parsed);
-              renderMixTabs(); renderMixPanels(); renderEquipCards(); renderSites(); recalc();
-              showBaseRatesFromObj(parsed);
-              fetchProcScenarios();
-              setTimeout(collapseSectionsForJobView, 200);
-            }
-          });
+      } else {
+        var baseSource = scenarioBaseSnapshot;
+        if(!baseSource && scenarioModeEstimateId){
+          return fetch('/api/mix-estimates/'+scenarioModeEstimateId)
+            .then(function(r){return r.json();})
+            .then(function(est){
+              if(est.state){
+                var parsed=JSON.parse(est.state);
+                scenarioBaseSnapshot = parsed;
+                loadScenarioState(JSON.parse(est.state));
+                renderMixTabs(); renderMixPanels(); renderEquipCards(); renderSites(); recalc();
+                showBaseRatesFromSnapshot();
+                showModeLabel();
+                fetchProcScenarios();
+                setTimeout(collapseSectionsForJobView, 200);
+              }
+            });
+        }
+        if(baseSource){
+          loadScenarioState(JSON.parse(JSON.stringify(baseSource)));
+          renderMixTabs(); renderMixPanels(); renderEquipCards(); renderSites(); recalc();
+          showBaseRatesFromSnapshot();
+          showModeLabel();
+          fetchProcScenarios();
+          setTimeout(collapseSectionsForJobView, 200);
+        }
       }
     })
     .catch(function(){ showToast('Could not load scenario state', true); });
@@ -2792,9 +2824,13 @@ function saveScenarioToDb(){
   var stateJson = getDbState();
   var btn = document.querySelector('.sc-save-btn');
   if(btn) btn.textContent='Saving…';
+  var patchBody = {state:stateJson};
+  if(scenarioBaseSnapshot){
+    patchBody.baseState = JSON.stringify(scenarioBaseSnapshot);
+  }
   fetch('/api/price-scenarios/'+scenarioModeId,{
     method:'PATCH', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({state:stateJson})
+    body:JSON.stringify(patchBody)
   })
   .then(function(r){return r.json();})
   .then(function(sc){
