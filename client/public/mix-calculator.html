@@ -519,7 +519,7 @@ body{font-size:11px;background:#fff}
 <!-- ⑪ Procurement & Cost Summary -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑪ Procurement & Cost Summary</h2><span class="chevron">▼</span>
+    <h2>⑪ Procurement Impact</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div id="procScenarioBar" style="display:none;margin-bottom:14px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;align-items:center;gap:12px;flex-wrap:wrap">
@@ -544,7 +544,7 @@ body{font-size:11px;background:#fff}
 <!-- ⑫ Contract Profitability -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑫ Contract Profitability</h2><span class="chevron">▼</span>
+    <h2>⑫ Internal Check (Post-Variation)</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div id="profitabilityContainer">
@@ -1555,7 +1555,7 @@ function recalc(){
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution);
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
-  renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates);
+  renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices);
   renderScopeQuotation();
   saveState();
 }
@@ -2354,7 +2354,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
   document.getElementById('procTableBody').innerHTML = html;
 }
 
-function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates){
+function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revProcPrices){
   var container = document.getElementById('profitabilityContainer');
   if(!container) return;
 
@@ -2370,12 +2370,71 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   var grandRevenue=0, grandCost=0, grandRevisedCost=0, hasRevenue=false;
   var html='';
 
+  // ====== SCOPE-BASED COST ======
+  var _sg=scopeState.groups;
+  var _scopeActive=_sg.mixing||_sg.transport||_sg.spraying||_sg.paving;
+  var _smf=1, _scopeMix=0, _scopePav=0, _sPrime=primePerSqm, _sTack=tackPerSqm;
+  var _rScopeMix=0, _rScopePav=0;
+  if(_scopeActive){
+    var _sc=calcScopeComponents();
+    _smf=1+(parseFloat(document.getElementById('scopeMarginPct').value)||0)/100;
+    function _sumMixPav(hm,lm){
+      var mx=0,pv=0;
+      if(_sg.mixing){
+        if(scopeState.mixing.hotmixHire) mx+=_sc.hotmixHire;
+        if(scopeState.mixing.ldo) mx+=_sc.ldo*lm;
+        if(scopeState.mixing.dgHire) mx+=_sc.dgHire;
+        if(scopeState.mixing.dgHsd) mx+=_sc.dgHsd*hm;
+        if(scopeState.mixing.jcbHire) mx+=_sc.jcbHire;
+        if(scopeState.mixing.jcbHsd) mx+=_sc.jcbHsd*hm;
+        if(scopeState.mixing.tipperHire) mx+=_sc.tipperHire;
+        if(scopeState.mixing.tipperHsd) mx+=_sc.tipperHsd*hm;
+        mx+=_sc.crewPerMT;
+      }
+      if(_sg.paving){
+        if(scopeState.paving.paverHire) pv+=_sc.paverHire;
+        if(scopeState.paving.paverHsd) pv+=_sc.paverHsd*hm;
+        if(scopeState.paving.rollerHire) pv+=_sc.rollerHire;
+        if(scopeState.paving.rollerHsd) pv+=_sc.rollerHsd*hm;
+        if(_sc.ptrEnabled){
+          if(scopeState.paving.ptrHire) pv+=_sc.ptrHire;
+          if(scopeState.paving.ptrHsd) pv+=_sc.ptrHsd*hm;
+        }
+        pv+=_sc.layCrewPerMT;
+      }
+      return {mix:mx,pav:pv};
+    }
+    var _base=_sumMixPav(1,1);
+    _scopeMix=_base.mix; _scopePav=_base.pav;
+    if(_sg.spraying){
+      var _sOp=scopeState.spraying.operation?_sc.sprayOp:0;
+      _sPrime=(_sOp+(scopeState.spraying.primeEmulsion?_sc.primeEm:0))*_smf;
+      _sTack=(_sOp+(scopeState.spraying.tackEmulsion?_sc.tackEm:0))*_smf;
+    } else { _sPrime=0; _sTack=0; }
+    _rScopeMix=_scopeMix; _rScopePav=_scopePav;
+    if(hasRevised&&revProcPrices){
+      var _bH=n('hsdPrice'),_bL=n('ldoRate');
+      var _hr=(_bH>0&&revProcPrices.hsdPrice)?revProcPrices.hsdPrice/_bH:1;
+      var _lr=(_bL>0&&revProcPrices.ldoRate)?revProcPrices.ldoRate/_bL:1;
+      if(Math.abs(_hr-1)>0.001||Math.abs(_lr-1)>0.001){
+        var _rev=_sumMixPav(_hr,_lr);
+        _rScopeMix=_rev.mix; _rScopePav=_rev.pav;
+      }
+    }
+  }
+  function _effCPM(stpm,rev){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav))*_smf; }
+
   // ====== SCENARIO BANNER (when revised rates are scenario-driven) ======
   if(hasRevised && procScenarioPrices){
     html+='<div style="margin-bottom:14px;padding:8px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:flex;align-items:center;gap:8px;font-size:12px">';
     html+='<span style="font-weight:700;color:#1d4ed8">📊 Revised rates from scenario:</span>';
     html+='<span style="background:#2563eb;color:#fff;padding:1px 10px;border-radius:10px;font-weight:600">'+esc(procScenarioPrices._name)+'</span>';
     html+='<span style="color:var(--gray-500);margin-left:4px">— revised cost shown in blue · Δ in red/green</span>';
+    html+='</div>';
+  }
+  if(_scopeActive){
+    html+='<div style="margin-bottom:10px;padding:6px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:11px;color:#15803d;display:flex;align-items:center;gap:6px">';
+    html+='<span>📋</span><span>Cost reflects <strong>Scope Quotation</strong> selections (Section ⑬). Aggregates, bitumen, and other items outside HLC scope are excluded from cost.</span>';
     html+='</div>';
   }
 
@@ -2398,7 +2457,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       if(j.tack!==false) tackArea+=(j._area||0)*(j.mixes.length||1);
     });
     var totalRoadKm=(s.roadLengthM||0)/1000;
-    var coatCost=primeArea*primePerSqm+tackArea*tackPerSqm;
+    var coatCost=primeArea*(_scopeActive?_sPrime:primePerSqm)+tackArea*(_scopeActive?_sTack:tackPerSqm);
 
     // Base and revised total site cost (mix + coats)
     var siteCostBase=coatCost, siteCostRevised=coatCost;
@@ -2406,10 +2465,12 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mq=mixQty[mn];
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-      siteCostBase+=mq.cum*(mr.exPlant+siteTransPerMT+layPerMT)*mix.density;
+      var _ec=_effCPM(siteTransPerMT,false);
+      siteCostBase+=mq.cum*(_ec!=null?_ec:(mr.exPlant+siteTransPerMT+layPerMT))*mix.density;
       if(revisedMixRates){
-        var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0];
-        siteCostRevised+=mq.cum*(rmr.exPlant+siteTransPerMT+rmr.laying)*mix.density;
+        var _ecr=_effCPM(siteTransPerMT,true);
+        if(_ecr!=null) siteCostRevised+=mq.cum*_ecr*mix.density;
+        else { var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0]; siteCostRevised+=mq.cum*(rmr.exPlant+siteTransPerMT+rmr.laying)*mix.density; }
       }
     });
 
@@ -2443,7 +2504,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var mq=mixQty[mixName];
         var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
         var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-        var costPerCum=(mr.exPlant+siteTransPerMT+layPerMT)*mix.density;
+        var _eci=_effCPM(siteTransPerMT,false);
+        var costPerCum=_eci!=null?_eci*mix.density:(mr.exPlant+siteTransPerMT+layPerMT)*mix.density;
         var qty=mq.cum;
         var key=s.id+'_'+mixName.toUpperCase().replace(/[\s-]+/g,'_');
         var contractRate=contractRates[key]||null;
@@ -2451,8 +2513,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var cost=qty*costPerCum;
         var revCost=null;
         if(revisedMixRates){
-          var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0];
-          revCost=qty*(rmr.exPlant+siteTransPerMT+rmr.laying)*mix.density;
+          var _ecri=_effCPM(siteTransPerMT,true);
+          if(_ecri!=null) revCost=qty*_ecri*mix.density;
+          else { var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0]; revCost=qty*(rmr.exPlant+siteTransPerMT+rmr.laying)*mix.density; }
         }
         var profit=revenue!=null?revenue-cost:null;
         var margin=revenue!=null&&revenue>0?profit/revenue*100:null;
@@ -2501,8 +2564,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         html+='</tr>';
         if(revenue!=null){siteRevenue+=revenue;siteHasRev=true;} siteCostItemised+=cost;
       };
-      coatFn('🟢','Prime Coat',primeArea,primePerSqm,'PRIME');
-      coatFn('🟡','Tack Coat',tackArea,tackPerSqm,'TACK');
+      coatFn('🟢','Prime Coat',primeArea,_scopeActive?_sPrime:primePerSqm,'PRIME');
+      coatFn('🟡','Tack Coat',tackArea,_scopeActive?_sTack:tackPerSqm,'TACK');
 
       var siteProfit=siteRevenue-siteCostItemised;
       var siteMargin=siteRevenue>0?siteProfit/siteRevenue*100:null;

@@ -30,6 +30,74 @@ function DeltaAmt({ base, revised }: { base: number; revised: number }) {
   return <span className="text-green-600 font-semibold">-₹{fmtI(Math.abs(delta))}</span>;
 }
 
+function computeGrandCum(calc: ReturnType<typeof calcMixRatesAndJobs>): number {
+  return calc.jobResults.reduce((s, j) => s + (j.totalCum ?? 0), 0);
+}
+
+function computeInputImpact(
+  key: string, baseVal: number, revVal: number,
+  state: CalcState, baseCalc: ReturnType<typeof calcMixRatesAndJobs>,
+): number | null {
+  const delta = revVal - baseVal;
+  if (Math.abs(delta) < 0.0001) return 0;
+  const totalMT = baseCalc.grandTotalMt;
+  if (totalMT <= 0) return null;
+  const inputs = state.inputs || {};
+  const pf = (k: string) => parseFloat(inputs[k] || '0') || 0;
+  const mf = 1 + pf('marginPct') / 100;
+  const mts = state.mixTypes || [];
+  const mixMTs: number[] = Array(mts.length).fill(0);
+  baseCalc.jobResults.forEach(j => j.mixes.forEach(m => {
+    if (m.mixIdx < mixMTs.length) mixMTs[m.mixIdx] += m.mt;
+  }));
+  switch (key) {
+    case 'aggRate': {
+      let f = 1;
+      if ((state.aggBasis || 'MT') === 'CFT') { const d = pf('aggDensity'); if (d > 0) f = 35.3147 / d; }
+      let tAgg = 0;
+      for (let i = 0; i < mts.length; i++) {
+        const fr = ['f20mm','f10mm','f6mm','fDust','fFiller'].reduce(
+          (s, fk) => s + ((mts[i].fractions as Record<string, number>)?.[fk] ?? 0), 0) / 100;
+        tAgg += (mixMTs[i] || 0) * fr;
+      }
+      return tAgg * delta * f * mf;
+    }
+    case 'bitPrice': {
+      let bk = 0;
+      for (let i = 0; i < mts.length; i++) bk += (mixMTs[i] || 0) * (mts[i].binderPct / 100) * 1000;
+      return bk * delta * mf;
+    }
+    case 'hsdPrice': {
+      const tph = pf('tph'), lp = pf('layProductivity');
+      let pL = 0, lL = 0;
+      (state.equipDefs || []).forEach(eq => {
+        if (!eq.enabled) return;
+        const fc = eq.fuelConsump ?? 0;
+        if (!eq.isLaying) { if (tph > 0) pL += fc / tph; }
+        else { if (lp > 0) lL += fc * (eq.hireHrsDay || 8) / lp; }
+      });
+      return totalMT * (pL * mf + lL) * delta;
+    }
+    case 'ldoRate': return totalMT * pf('ldoConsump') * delta * mf;
+    case 'boilerFuelRate': {
+      const bc = pf('boilerCampaignMt'); if (bc <= 0) return 0;
+      const bl = (pf('boilerProdLhr') * pf('boilerProdHrs') + pf('boilerPreheatLhr') * pf('boilerPreheatHrs')) / bc;
+      return totalMT * bl * delta * mf;
+    }
+    case 'transRate': { const p = pf('transPayload'); return p > 0 ? totalMT * (pf('transDist') * 2 / p) * delta : 0; }
+    case 'transDist': { const p = pf('transPayload'); return p > 0 ? totalMT * (2 * pf('transRate') / p) * delta : 0; }
+    case 'marginPct': {
+      let weightedSub = 0;
+      for (let i = 0; i < baseCalc.mixRates.length; i++) {
+        const mr = baseCalc.mixRates[i];
+        weightedSub += (mixMTs[i] || 0) * (mr.exPlant - mr.margin);
+      }
+      return weightedSub > 0 ? weightedSub * delta / 100 : null;
+    }
+    default: return null;
+  }
+}
+
 // ── Scenario Comparison Component ──────────────────────────────────────────
 
 interface ScenarioCalcEntry {
@@ -110,6 +178,40 @@ function ScenarioComparison({
       </CardHeader>
       <CardContent className="space-y-5 p-0 pb-4">
 
+        {/* Variation Summary */}
+        {(() => {
+          const totalMT = baseCalc.grandTotalMt;
+          const totalCUM = computeGrandCum(baseCalc);
+          if (totalMT <= 0) return null;
+          const baseCostPerMT = baseCalc.grandTotalAmt / totalMT;
+          const anyChange = scenarioCalcs.some(({ calc }) => Math.abs(calc.grandTotalAmt - baseCalc.grandTotalAmt) >= 1);
+          if (!anyChange) return null;
+          return (
+            <div className="mx-4 mt-3 space-y-2" data-testid="variation-summary">
+              {scenarioCalcs.map(({ scenario, calc }) => {
+                const ci = calc.grandTotalAmt - baseCalc.grandTotalAmt;
+                if (Math.abs(ci) < 1) return null;
+                const iMT = ci / totalMT;
+                const iCUM = totalCUM > 0 ? ci / totalCUM : 0;
+                const rMT = calc.grandTotalAmt / totalMT;
+                const up = ci > 0;
+                const cls = up ? "text-red-600" : "text-green-600";
+                const sign = up ? "+" : "\u2212";
+                return (
+                  <div key={scenario.id} className="rounded-md border border-border p-3" data-testid={`variation-summary-${scenario.id}`}>
+                    {scenarioCalcs.length > 1 && <div className="text-xs font-semibold text-muted-foreground mb-1.5">{scenario.name}</div>}
+                    <div className="space-y-0.5 text-sm">
+                      <div>{up ? "Cost Increase" : "Cost Decrease"}: <span className={`font-bold ${cls}`}>{sign}₹{fmtI(Math.abs(Math.round(ci)))}</span></div>
+                      <div>Impact: <span className={`font-bold ${cls}`}>{sign}₹{Math.abs(iMT).toFixed(2)} /MT</span>{totalCUM > 0 && <>{" | "}<span className={`font-bold ${cls}`}>{sign}₹{Math.abs(iCUM).toFixed(2)} /CUM</span></>}</div>
+                      <div>Revised Cost: <span className="font-bold">₹{baseCostPerMT.toFixed(2)}</span>{" → "}<span className={`font-bold ${cls}`}>₹{rMT.toFixed(2)} /MT</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* No-changes hint */}
         {allChangedInputs.length === 0 && scenarioCalcs.length > 0 && (() => {
           const KEY_RATES = [
@@ -183,9 +285,12 @@ function ScenarioComparison({
                     <th className={th1Cls}>Input</th>
                     <th className={thCls}>Base</th>
                     {scenarioCalcs.map(({ scenario }) => (
-                      <th key={scenario.id} className={thCls} title={scenario.name}>
-                        <span className="block max-w-[120px] truncate ml-auto">{scenario.name}</span>
-                      </th>
+                      <Fragment key={scenario.id}>
+                        <th className={thCls} title={scenario.name}>
+                          <span className="block max-w-[120px] truncate ml-auto">{scenario.name}</span>
+                        </th>
+                        <th className={thCls}>Impact ₹</th>
+                      </Fragment>
                     ))}
                   </tr>
                 </thead>
@@ -204,17 +309,24 @@ function ScenarioComparison({
                         {scenarioCalcs.map((entry) => {
                           const rev = getScenarioVal(entry, key, baseVal);
                           const changed = Math.abs(rev - baseVal) > 0.001;
+                          const impact = changed ? computeInputImpact(key, baseVal, rev, baseState, baseCalc) : null;
                           return (
-                            <td
-                              key={entry.scenario.id}
-                              className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
-                              data-testid={`cmp-rate-${key}-${entry.scenario.id}`}
-                            >
-                              <span className={`font-medium ${changed ? (rev > baseVal ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
-                                ₹{rev.toFixed(2)}
-                              </span>
-                              <DeltaLine base={baseVal} revised={rev} />
-                            </td>
+                            <Fragment key={entry.scenario.id}>
+                              <td
+                                className={`${tdBase} ${changed ? "bg-primary/5" : ""}`}
+                                data-testid={`cmp-rate-${key}-${entry.scenario.id}`}
+                              >
+                                <span className={`font-medium ${changed ? (rev > baseVal ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
+                                  ₹{rev.toFixed(2)}
+                                </span>
+                                <DeltaLine base={baseVal} revised={rev} />
+                              </td>
+                              <td className={tdBase} data-testid={`cmp-impact-${key}-${entry.scenario.id}`}>
+                                {impact != null && Math.abs(impact) >= 1
+                                  ? <span className={`font-bold ${impact > 0 ? "text-red-600" : "text-green-600"}`}>{impact > 0 ? "+" : "\u2212"}₹{fmtI(Math.abs(Math.round(impact)))}</span>
+                                  : <span className="text-muted-foreground">—</span>}
+                              </td>
+                            </Fragment>
                           );
                         })}
                       </tr>
@@ -298,7 +410,18 @@ function ScenarioComparison({
                               >
                                 <span className={`block font-medium ${rateColor}`}>₹{revRateMt.toFixed(2)} /MT</span>
                                 <span className={`block font-medium ${rateColor}`}>₹{revRateCum.toFixed(2)} /CUM</span>
-                                <DeltaLine base={baseMix.finalLaid} revised={revRateMt} />
+                                {rateChanged && (
+                                  <>
+                                    <span className={`block text-sm font-semibold mt-1 ${revRateMt > baseMix.finalLaid ? "text-red-600" : "text-green-600"}`}>
+                                      {revRateMt > baseMix.finalLaid ? "+" : ""}₹{(revRateMt - baseMix.finalLaid).toFixed(2)} /MT
+                                    </span>
+                                    {baseMix.finalLaidPerCum > 0 && (
+                                      <span className={`block text-sm font-semibold ${revRateCum > baseMix.finalLaidPerCum ? "text-red-600" : "text-green-600"}`}>
+                                        {revRateCum > baseMix.finalLaidPerCum ? "+" : ""}₹{(revRateCum - baseMix.finalLaidPerCum).toFixed(2)} /CUM
+                                      </span>
+                                    )}
+                                  </>
+                                )}
                               </td>
                               <td className={`${tdBase} ${amtChanged ? "bg-primary/5" : ""}`}>
                                 <span className={`font-medium ${amtChanged ? (revAmt > (baseAmts[i] ?? 0) ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
@@ -360,6 +483,9 @@ function ScenarioComparison({
                         const revJob = calc.jobResults[i];
                         const rev = revJob?.totalAmt ?? 0;
                         const changed = Math.abs(rev - baseJob.totalAmt) >= 1;
+                        const jobDelta = rev - baseJob.totalAmt;
+                        const bMT = baseJob.totalMt;
+                        const bCUM = baseJob.totalCum ?? 0;
                         return (
                           <td
                             key={scenario.id}
@@ -370,6 +496,16 @@ function ScenarioComparison({
                               ₹{Math.round(rev).toLocaleString("en-IN")}
                             </span>
                             <span className="block mt-0.5 text-xs"><DeltaAmt base={baseJob.totalAmt} revised={rev} /></span>
+                            {changed && bMT > 0 && (
+                              <span className={`block text-xs font-semibold mt-0.5 ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                                {jobDelta > 0 ? "+" : "\u2212"}₹{Math.abs(jobDelta / bMT).toFixed(2)} /MT
+                              </span>
+                            )}
+                            {changed && bCUM > 0 && (
+                              <span className={`block text-xs font-semibold ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                                {jobDelta > 0 ? "+" : "\u2212"}₹{Math.abs(jobDelta / bCUM).toFixed(2)} /CUM
+                              </span>
+                            )}
                           </td>
                         );
                       })}
@@ -381,6 +517,9 @@ function ScenarioComparison({
                     {scenarioCalcs.map(({ scenario, calc }) => {
                       const rev = calc.grandTotalAmt;
                       const changed = Math.abs(rev - baseCalc.grandTotalAmt) >= 1;
+                      const gDelta = rev - baseCalc.grandTotalAmt;
+                      const gMT = baseCalc.grandTotalMt;
+                      const gCUM = computeGrandCum(baseCalc);
                       return (
                         <td
                           key={scenario.id}
@@ -391,6 +530,16 @@ function ScenarioComparison({
                             ₹{Math.round(rev).toLocaleString("en-IN")}
                           </span>
                           <span className="block mt-0.5 text-xs"><DeltaAmt base={baseCalc.grandTotalAmt} revised={rev} /></span>
+                          {changed && gMT > 0 && (
+                            <span className={`block text-xs font-semibold mt-0.5 ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                              {gDelta > 0 ? "+" : "\u2212"}₹{Math.abs(gDelta / gMT).toFixed(2)} /MT
+                            </span>
+                          )}
+                          {changed && gCUM > 0 && (
+                            <span className={`block text-xs font-semibold ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                              {gDelta > 0 ? "+" : "\u2212"}₹{Math.abs(gDelta / gCUM).toFixed(2)} /CUM
+                            </span>
+                          )}
                         </td>
                       );
                     })}

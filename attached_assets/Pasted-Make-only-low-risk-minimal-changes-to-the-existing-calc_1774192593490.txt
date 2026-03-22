@@ -1,0 +1,246 @@
+Make only low-risk, minimal changes to the existing calculator/estimator. Do not redesign pages, do not add new major sections, and do not disturb existing saved data or scenario logic. Goal: improve clarity in Price Impact screens and correct profitability logic so revenue remains contract-based while cost is counted only for selected HLC scope items.
+
+IMPORTANT CONSTRAINTS
+- Keep current layout and section order.
+- Keep existing sections, accordions, tables, and saved scenarios.
+- No new pages.
+- No charts or dashboards.
+- No major UI redesign.
+- Prefer small display additions and one logic correction only.
+- Reuse existing calculations wherever possible.
+- Keep readability strong: do not use faint/light text that is hard to read.
+- Do not use too many colors, background bands, or visual clutter.
+- Use normal readable font size and normal text color. Bold important values only.
+
+PART A — PRICE IMPACT / SCENARIO COMPARISON: SMALL UI IMPROVEMENTS ONLY
+
+1) ADD A COMPACT “VARIATION SUMMARY” BLOCK
+Place this directly below the Estimate/Base block on the Price Impact Analysis page.
+
+Show only these 3 lines:
+- Cost Increase: ₹X
+- Impact: +₹Y / MT | +₹Z / CUM
+- Revised Cost: ₹A → ₹B / MT
+
+Display style:
+- Plain clean block or simple bordered row.
+- No colored band required.
+- Keep text readable in normal font size.
+- Bold the main values only.
+- Use only simple color indication where needed:
+  - increase can be shown in red
+  - decrease can be shown in green
+  - otherwise normal text color
+- No buttons, no recommendations, no action text.
+
+Formula basis:
+- Base Total Cost = base scenario total job cost
+- Revised Total Cost = selected scenario total job cost
+- Cost Increase = Revised Total Cost - Base Total Cost
+- Impact per MT = Cost Increase / Total MT
+- Impact per CUM = Cost Increase / Total CUM
+- Base Cost per MT = Base Total Cost / Total MT
+- Revised Cost per MT = Revised Total Cost / Total MT
+
+If Total CUM is zero or not applicable, suppress the /CUM part cleanly.
+
+2) CHANGED INPUT RATES — ADD ONE EXTRA COLUMN
+In the existing “Changed Input Rates” table, add one extra right-side column:
+- Impact ₹
+
+Purpose:
+This should show the total cost impact attributable to that changed input for the selected scenario versus base.
+
+Display style:
+- Normal table text, readable size.
+- Bold numbers if needed.
+- Red for positive increase, green for decrease, otherwise normal text color.
+- No extra notes, no tiny subtext.
+
+Formula basis:
+Use direct impact calculation wherever possible:
+- Impact ₹ = Quantity Basis × (Revised Rate - Base Rate)
+
+Examples:
+- Aggregates: aggregate quantity × delta rate
+- Bitumen: total bitumen quantity × delta rate
+- LDO / boiler fuel: total liters × delta rate
+- Diesel / HSD: total liters × delta rate
+- Prime emulsion: total qty × delta rate
+- Tack emulsion: total qty × delta rate
+- Transport / freight: use the scenario transport delta already being calculated
+- Any unchanged item: show em dash or 0
+
+If an input affects cost through an existing derived calculation rather than direct qty × rate, use that existing delta value instead of inventing a new approximation.
+
+3) FINAL LAID RATE BY MIX TYPE — ADD ONE EXTRA LINE INSIDE EACH SCENARIO CELL
+Do not add columns.
+Inside each scenario cell, keep the current revised rate display as-is.
+Below it, add one more normal readable line:
+- Variation: +₹___ / MT
+and if available and applicable:
+- Variation: +₹___ / CUM
+
+Display style:
+- Same cell
+- Normal readable text
+- No tiny or faint text
+- Red for increase, green for decrease, otherwise normal text color
+
+Formula basis:
+- Variation per MT = Revised Mix Rate per MT - Base Mix Rate per MT
+- Variation per CUM = Revised Mix Rate per CUM - Base Mix Rate per CUM
+
+If /CUM is not used for that row, suppress it.
+
+4) JOB-WISE COST IMPACT — ADD ONE EXTRA LINE INSIDE EACH SCENARIO CELL
+Do not add columns.
+Inside existing scenario value cells, below the delta amount, add:
+- +₹___ / MT
+and if available:
+- +₹___ / CUM
+
+Display style:
+- Same cell
+- Normal readable text
+- No tiny or faint text
+- Red if increase, green if decrease, otherwise normal text color
+
+Formula basis:
+- Job Delta Amount = Scenario Job Total Cost - Base Job Total Cost
+- Delta per MT = Job Delta Amount / Job MT
+- Delta per CUM = Job Delta Amount / Job CUM
+
+If Job CUM is zero or not used, suppress that line.
+
+5) RENAME SECTION HEADERS ONLY
+Change:
+- “Procurement & Cost Summary” → “Procurement Impact”
+
+Change:
+- “Contract Profitability” → “Internal Check (Post-Variation)”
+
+No redesign of these sections. Only header rename.
+
+PART B — PROFITABILITY LOGIC: MINIMAL BUT IMPORTANT CORRECTION
+
+6) KEEP REVENUE CONTRACT-BASED, MAKE COST SCOPE-BASED
+In the profitability section, keep the layout mostly the same. Only correct the logic.
+
+Required logic:
+- Revenue should remain contract-based.
+- Estimated Cost in profitability should include only those cost items that fall within selected HLC scope.
+- Profit = Contract Revenue - Estimated Cost
+- Profit % = (Profit / Contract Revenue) × 100
+
+7) VERY IMPORTANT SCOPE RULE
+Technical quantities must still continue to be calculated fully in the estimator and procurement sections.
+
+Example:
+- Even if bitumen is client-supplied, the app must still calculate bitumen quantity for technical mix design and procurement understanding.
+- But if bitumen is not in HLC scope, bitumen cost must NOT be counted in profitability cost.
+
+Apply this same principle to all items.
+
+8) SCOPE-BASED PROFITABILITY COST MAPPING
+Use the existing Section 13 “Scope Quotation” selections as the driver for what cost is included in profitability.
+
+Profitability Cost should include only the in-scope items.
+
+Use the current scope structure already present in the app. Do not create a new checkbox redesign.
+
+General rule:
+- Technical estimator and procurement can continue to show total technical cost.
+- Profitability must show only HLC in-scope cost.
+
+Apply current scope selections approximately as follows:
+
+A. If MIXING is selected:
+Include only those mixing-related costs that are actually in HLC scope.
+Examples may include:
+- plant running / plant hire
+- operator / crew if part of mixing scope
+- any selected fuel item only if HLC is bearing it
+Do NOT automatically include aggregates, bitumen, LDO, HSD etc unless current scope settings show that HLC is bearing them.
+
+B. If TRANSPORT TO SITE is selected:
+Include transport-to-site cost.
+
+C. If SPRAYING — PRIME & TACK is selected:
+Include prime/tack-related execution costs and material cost only if those are in HLC scope.
+
+D. If PAVING & ROLLING is selected:
+Include paver / roller / labour / laying-related costs that fall within HLC scope.
+
+If current UI already has sub-item selections inside these groups, use them.
+If only group-level selection exists, use group-level inclusion.
+Do not introduce a new granular sub-scope UI in this round.
+
+9) DO NOT LET EXCLUDED COSTS DISTORT PROFITABILITY
+If a cost item is excluded from HLC scope:
+- do not count it in profitability cost
+- but continue showing it in technical calculations, estimator tables, procurement comparison, and scenario impact where those sections are meant to show total technical/job cost
+
+10) PROFITABILITY DISPLAY — KEEP IT SIMPLE
+Do not redesign the profitability table.
+Just ensure the displayed values obey the corrected logic:
+
+Formula basis:
+- Contract Revenue = Contract Rate × Quantity
+  or use stored contract revenue if that is already the source of truth
+- Base In-Scope Cost = sum of base cost items that are within HLC scope
+- Revised In-Scope Cost = sum of revised cost items that are within HLC scope
+- Cost Delta = Revised In-Scope Cost - Base In-Scope Cost
+- Base Profit = Contract Revenue - Base In-Scope Cost
+- Revised Profit = Contract Revenue - Revised In-Scope Cost
+- Base Margin % = Base Profit / Contract Revenue × 100
+- Revised Margin % = Revised Profit / Contract Revenue × 100
+
+11) FIX UNIT CONSISTENCY
+Where revenue, cost, and profit are shown:
+- make sure they are all on the same basis
+- do not mix total revenue with per-unit cost in the same formula
+- if the section is showing totals, all values should be totals
+- if per MT or per CUM values are shown, derive them separately from totals
+- use MT basis and CUM basis consistently
+
+12) DO NOT ADD NEW COMPLEX FEATURES NOW
+For this round, do NOT add:
+- new scope redesign
+- new profitability redesign
+- extra scenario dashboards
+- auto quotation update actions
+- client note generator
+- charts
+- extra tabs
+- more colored status cards
+
+IMPLEMENTATION NOTES
+- Reuse existing selectors/state from scope quotation and profitability.
+- Reuse existing base/scenario totals wherever possible.
+- Keep all code changes modular and low risk.
+- Add helper functions if needed for:
+  - in-scope cost calculation
+  - delta per MT / CUM
+  - currency formatting
+  - rate variation formatting
+
+ACCEPTANCE CHECKLIST
+1. Price Impact page shows a compact Variation Summary block below the Estimate block.
+2. Changed Input Rates table has an “Impact ₹” column.
+3. Final Laid Rate by Mix Type shows an extra “Variation: ₹/MT” line under revised rate.
+4. Job-wise Cost Impact cells show an extra “₹/MT” line.
+5. Procurement section title is “Procurement Impact”.
+6. Profitability section title is “Internal Check (Post-Variation)”.
+7. Profitability now uses:
+   Revenue = contract-based
+   Cost = selected HLC scope only
+8. Excluded items still remain visible in technical/procurement/scenario sections, but are not counted in profitability cost.
+9. Readability remains strong and UI does not become cluttered.
+10. Existing saved scenarios still work.
+
+After implementation, tell me:
+- what files changed
+- exactly how in-scope profitability cost is being derived
+- any assumptions made where current scope selections were not granular enough
+- whether any impact values had to use existing derived deltas instead of direct qty × rate
