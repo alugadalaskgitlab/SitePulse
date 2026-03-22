@@ -253,7 +253,7 @@ function ScenarioComparison({
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
                       <th className={th1Cls}>Mix Type</th>
-                      <th className={thCls}>Base ₹/MT</th>
+                      <th className={thCls}>Base Rate</th>
                       <th className={thCls}>Base Amt ₹</th>
                       {scenarioCalcs.map(({ scenario }) => (
                         <th key={scenario.id} className={thCls} title={scenario.name} colSpan={2}>
@@ -262,10 +262,10 @@ function ScenarioComparison({
                       ))}
                     </tr>
                     <tr className="bg-muted/20 border-b border-border text-xs text-muted-foreground">
-                      <th /><th /><th />
+                      <th /><th className={thCls}>₹/MT · ₹/CUM</th><th />
                       {scenarioCalcs.map(({ scenario }) => (
                         <Fragment key={scenario.id}>
-                          <th className={thCls}>₹/MT</th>
+                          <th className={thCls}>₹/MT · ₹/CUM</th>
                           <th className={thCls}>Amt ₹</th>
                         </Fragment>
                       ))}
@@ -275,26 +275,30 @@ function ScenarioComparison({
                     {baseCalc.mixRates.map((baseMix, i) => (
                       <tr key={baseMix.name} className="border-t border-border/40 hover:bg-muted/20">
                         <td className="px-3 py-2.5 font-semibold">{baseMix.name}</td>
-                        <td className={`${tdBase} font-medium`}>₹{baseMix.finalLaid.toFixed(2)}</td>
+                        <td className={`${tdBase} font-medium`}>
+                          <span className="block">₹{baseMix.finalLaid.toFixed(2)} /MT</span>
+                          <span className="block">₹{baseMix.finalLaidPerCum.toFixed(2)} /CUM</span>
+                        </td>
                         <td className={`${tdBase} text-muted-foreground`}>
                           {baseAmts[i] > 0 ? `₹${Math.round(baseAmts[i]).toLocaleString("en-IN")}` : "—"}
                         </td>
                         {scenarioCalcs.map(({ scenario, calc }) => {
-                          const revRate = calc.mixRates[i]?.finalLaid ?? 0;
+                          const revRateMt = calc.mixRates[i]?.finalLaid ?? 0;
+                          const revRateCum = calc.mixRates[i]?.finalLaidPerCum ?? 0;
                           const revAmts = mixAmts(calc);
                           const revAmt = revAmts[i] ?? 0;
-                          const rateChanged = Math.abs(revRate - baseMix.finalLaid) > 0.01;
+                          const rateChanged = Math.abs(revRateMt - baseMix.finalLaid) > 0.01;
                           const amtChanged = Math.abs(revAmt - (baseAmts[i] ?? 0)) > 1;
+                          const rateColor = rateChanged ? (revRateMt > baseMix.finalLaid ? "text-red-600" : "text-green-600") : "text-muted-foreground";
                           return (
                             <Fragment key={scenario.id}>
                               <td
                                 className={`${tdBase} ${rateChanged ? "bg-primary/5" : ""}`}
                                 data-testid={`cmp-mix-${baseMix.name}-${scenario.id}`}
                               >
-                                <span className={`font-medium ${rateChanged ? (revRate > baseMix.finalLaid ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
-                                  ₹{revRate.toFixed(2)}
-                                </span>
-                                <DeltaLine base={baseMix.finalLaid} revised={revRate} />
+                                <span className={`block font-medium ${rateColor}`}>₹{revRateMt.toFixed(2)} /MT</span>
+                                <span className={`block font-medium ${rateColor}`}>₹{revRateCum.toFixed(2)} /CUM</span>
+                                <DeltaLine base={baseMix.finalLaid} revised={revRateMt} />
                               </td>
                               <td className={`${tdBase} ${amtChanged ? "bg-primary/5" : ""}`}>
                                 <span className={`font-medium ${amtChanged ? (revAmt > (baseAmts[i] ?? 0) ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
@@ -333,6 +337,7 @@ function ScenarioComparison({
                   <tr className="bg-muted/40 border-b border-border">
                     <th className={th1Cls}>Job</th>
                     <th className={thCls}>MT</th>
+                    <th className={thCls}>CUM</th>
                     <th className={thCls}>Base ₹</th>
                     {scenarioCalcs.map(({ scenario }) => (
                       <th key={scenario.id} className={thCls} title={scenario.name}>
@@ -349,6 +354,7 @@ function ScenarioComparison({
                         {baseJob.id}
                       </td>
                       <td className={`${tdBase} text-muted-foreground`}>{baseJob.totalMt > 0 ? baseJob.totalMt.toFixed(1) : "—"}</td>
+                      <td className={`${tdBase} text-muted-foreground`}>{(baseJob.totalCum ?? 0) > 0 ? (baseJob.totalCum ?? 0).toFixed(2) : "—"}</td>
                       <td className={`${tdBase} font-medium`}>₹{Math.round(baseJob.totalAmt).toLocaleString("en-IN")}</td>
                       {scenarioCalcs.map(({ scenario, calc }) => {
                         const revJob = calc.jobResults[i];
@@ -370,7 +376,7 @@ function ScenarioComparison({
                     </tr>
                   ))}
                   <tr className="border-t-2 border-primary/40 bg-amber-50/60 dark:bg-amber-950/20 font-bold text-base">
-                    <td className="px-3 py-4" colSpan={2}>Grand Total</td>
+                    <td className="px-3 py-4" colSpan={3}>Grand Total</td>
                     <td className={`${tdBase} text-base`}>₹{Math.round(baseCalc.grandTotalAmt).toLocaleString("en-IN")}</td>
                     {scenarioCalcs.map(({ scenario, calc }) => {
                       const rev = calc.grandTotalAmt;

@@ -4,9 +4,13 @@ import type { MixEstimate } from "@shared/schema";
 export interface MixRateEntry {
   name: string;
   exPlant: number;
+  exPlantPerCum: number;
   transport: number;
+  transPerCum: number;
   laying: number;
+  layPerCum: number;
   finalLaid: number;
+  finalLaidPerCum: number;
 }
 
 export interface ContractorRates {
@@ -22,10 +26,15 @@ export interface LedgerRow {
   mixType: string;
   areaSqm: number;
   mt: number;
+  cum: number;
   plantPerMt: number;
+  plantPerCum: number;
   transPerMt: number;
+  transPerCum: number;
   layPerMt: number;
+  layPerCum: number;
   totalPerMt: number;
+  totalPerCum: number;
   primeAmt: number;
   tackAmt: number;
   totalAmt: number;
@@ -86,9 +95,13 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
             ratesByMixName[mr.name] = {
               name: mr.name,
               exPlant: mr.exPlant,
+              exPlantPerCum: mr.exPlantPerCum,
               transport: mr.transport,
+              transPerCum: mr.transPerCum,
               laying: mr.laying,
+              layPerCum: mr.layPerCum,
               finalLaid: mr.finalLaid,
+              finalLaidPerCum: mr.finalLaidPerCum,
             };
           }
         });
@@ -125,6 +138,16 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
           const tackAmt = (j._tackAmt as number) ?? 0;
           const totalAmt = (j._totalAmt as number) ?? (plantAmt + transAmt + layAmt + primeAmt + tackAmt);
 
+          // Compute CUM from job geometry (same logic as calcMixRatesAndJobs)
+          const isGeo = (j.basis as string) === 'GEOMETRY';
+          let cum: number;
+          if (isGeo) {
+            const thickM = ((j.thickness as number) ?? 0) / 1000;
+            cum = ((j.length as number) ?? 0) * ((j.width as number) ?? 0) * thickM;
+          } else {
+            cum = (j.volume as number) ?? 0;
+          }
+
           // Derive mix type label from mixes array + state.mixTypes
           const jobMixes = (j.mixes as { mixIdx: number; qty_mt: number | null }[]) ?? [];
           const mixNames = jobMixes
@@ -140,10 +163,15 @@ export function buildMixComparisonData(estimates: MixEstimate[]): ComparisonData
             mixType,
             areaSqm: (j._area as number) ?? 0,
             mt,
+            cum,
             plantPerMt: mt > 0 ? plantAmt / mt : 0,
+            plantPerCum: cum > 0 ? plantAmt / cum : 0,
             transPerMt: mt > 0 ? transAmt / mt : 0,
+            transPerCum: cum > 0 ? transAmt / cum : 0,
             layPerMt: mt > 0 ? layAmt / mt : 0,
+            layPerCum: cum > 0 ? layAmt / cum : 0,
             totalPerMt: mt > 0 ? totalAmt / mt : 0,
+            totalPerCum: cum > 0 ? totalAmt / cum : 0,
             primeAmt,
             tackAmt,
             totalAmt,

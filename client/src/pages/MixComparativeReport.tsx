@@ -14,29 +14,40 @@ async function doExport(data: ComparisonData) {
   const { allMixNames, contractors, rateMap, ledgerRows } = data;
   const XLSX = await import("xlsx");
 
-  const rateHeaders = ["Mix Type", ...contractors];
+  const rateHeaders = ["Mix Type", ...contractors.flatMap((c) => [`${c} ₹/MT`, `${c} ₹/CUM`])];
   const rateRows = allMixNames.map((mixName) => [
     mixName,
-    ...contractors.map((c) => {
+    ...contractors.flatMap((c) => {
       const r = rateMap[c]?.rates.find((x) => x.name === mixName);
-      return r ? r.finalLaid.toFixed(2) : "";
+      return r ? [r.finalLaid.toFixed(2), r.finalLaidPerCum.toFixed(2)] : ["", ""];
     }),
   ]);
 
   const ledgerHeaders = [
-    "Contractor", "Job", "Mix Type", "Area (Sqm)", "MT",
-    "Plant ₹/MT", "Trans ₹/MT", "Lay ₹/MT", "Prime ₹", "Tack ₹", "Total ₹/MT", "Amount (₹)",
+    "Contractor", "Job", "Mix Type", "Area (Sqm)",
+    "MT", "CUM",
+    "Plant ₹/MT", "Plant ₹/CUM",
+    "Trans ₹/MT", "Trans ₹/CUM",
+    "Lay ₹/MT", "Lay ₹/CUM",
+    "Prime ₹", "Tack ₹",
+    "Total ₹/MT", "Total ₹/CUM",
+    "Amount (₹)",
   ];
   const ledgerData = ledgerRows.map((r) => [
     r.contractor, r.jobId, r.mixType,
     r.areaSqm > 0 ? r.areaSqm.toFixed(1) : "",
     r.mt > 0 ? r.mt.toFixed(1) : "",
+    r.cum > 0 ? r.cum.toFixed(2) : "",
     r.plantPerMt > 0 ? r.plantPerMt.toFixed(2) : "",
+    r.plantPerCum > 0 ? r.plantPerCum.toFixed(2) : "",
     r.transPerMt > 0 ? r.transPerMt.toFixed(2) : "",
+    r.transPerCum > 0 ? r.transPerCum.toFixed(2) : "",
     r.layPerMt > 0 ? r.layPerMt.toFixed(2) : "",
+    r.layPerCum > 0 ? r.layPerCum.toFixed(2) : "",
     r.primeAmt > 0 ? Math.round(r.primeAmt).toString() : "",
     r.tackAmt > 0 ? Math.round(r.tackAmt).toString() : "",
     r.totalPerMt > 0 ? r.totalPerMt.toFixed(2) : "",
+    r.totalPerCum > 0 ? r.totalPerCum.toFixed(2) : "",
     r.totalAmt > 0 ? Math.round(r.totalAmt).toString() : "",
   ]);
 
@@ -55,7 +66,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
   const { contractors, allMixNames, rateMap, ledgerRows } = data;
 
   const grandTotals = useMemo(
-    () => ledgerRows.reduce((s, r) => ({ mt: s.mt + r.mt, amt: s.amt + r.totalAmt }), { mt: 0, amt: 0 }),
+    () => ledgerRows.reduce((s, r) => ({ mt: s.mt + r.mt, cum: s.cum + r.cum, amt: s.amt + r.totalAmt }), { mt: 0, cum: 0, amt: 0 }),
     [ledgerRows]
   );
 
@@ -83,7 +94,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
       {/* Section 1: Rate Comparison */}
       <Card>
         <CardHeader className="pb-2 pt-4">
-          <CardTitle className="text-base">Section 1 — Rate Comparison (Final Laid ₹/MT)</CardTitle>
+          <CardTitle className="text-base">Section 1 — Rate Comparison (Final Laid ₹/MT & ₹/CUM)</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
           {contractors.length < 2 ? (
@@ -106,7 +117,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                 {allMixNames.map((mixName) => {
                   const cells = contractors.map((c) => {
                     const r = rateMap[c]?.rates.find((x) => x.name === mixName);
-                    return { contractor: c, rate: r?.finalLaid ?? 0 };
+                    return { contractor: c, rate: r?.finalLaid ?? 0, rateCum: r?.finalLaidPerCum ?? 0 };
                   });
                   const validRates = cells.filter((x) => x.rate > 0).map((x) => x.rate);
                   const minRate = validRates.length ? Math.min(...validRates) : 0;
@@ -116,7 +127,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                   return (
                     <tr key={mixName} className="border-t border-border/50 hover:bg-muted/10" data-testid={`row-rate-${mixName}`}>
                       <td className="px-4 py-2.5 font-semibold">{mixName}</td>
-                      {cells.map(({ contractor, rate }) => {
+                      {cells.map(({ contractor, rate, rateCum }) => {
                         const isMin = spread && rate > 0 && rate === minRate;
                         const isMax = spread && rate > 0 && rate === maxRate;
                         return (
@@ -132,7 +143,10 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                             data-testid={`cell-rate-${mixName}-${contractor}`}
                           >
                             {rate > 0 ? (
-                              <>₹{rate.toFixed(2)}{isMin && <span className="ml-1 text-xs">(L)</span>}{isMax && <span className="ml-1 text-xs">(H)</span>}</>
+                              <>
+                                <span className="block">₹{rate.toFixed(2)} /MT{isMin && <span className="ml-1 text-xs">(L)</span>}{isMax && <span className="ml-1 text-xs">(H)</span>}</span>
+                                <span className="block">₹{rateCum.toFixed(2)} /CUM</span>
+                              </>
                             ) : "—"}
                           </td>
                         );
@@ -162,13 +176,13 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                   <th className="text-left px-4 py-2.5 font-semibold">Job</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Mix Type</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Area (Sqm)</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">MT</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Plant ₹/MT</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Trans ₹/MT</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Lay ₹/MT</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">MT · CUM</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Plant /MT · /CUM</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Trans /MT · /CUM</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Lay /MT · /CUM</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Prime ₹</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Tack ₹</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Total ₹/MT</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Total /MT · /CUM</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Amount (₹)</th>
                 </tr>
               </thead>
@@ -177,6 +191,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                   const rows = ledgerRows.filter((r) => r.contractor === contractor);
                   if (rows.length === 0) return null;
                   const subMt = rows.reduce((s, r) => s + r.mt, 0);
+                  const subCum = rows.reduce((s, r) => s + r.cum, 0);
                   const subAmt = rows.reduce((s, r) => s + r.totalAmt, 0);
                   return (
                     <Fragment key={`grp-${contractor}`}>
@@ -192,13 +207,28 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                           <td className="px-4 py-2.5 font-mono font-medium text-sm">{row.jobId}</td>
                           <td className="px-4 py-2.5 text-muted-foreground text-xs">{row.mixType}</td>
                           <td className="px-4 py-2.5 text-right font-mono">{row.areaSqm > 0 ? row.areaSqm.toFixed(1) : "—"}</td>
-                          <td className="px-4 py-2.5 text-right font-mono">{row.mt > 0 ? row.mt.toFixed(1) : "—"}</td>
-                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmt2(row.plantPerMt)}</td>
-                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmt2(row.transPerMt)}</td>
-                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmt2(row.layPerMt)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono">
+                            <span className="block">{row.mt > 0 ? `${row.mt.toFixed(1)} MT` : "—"}</span>
+                            <span className="block">{row.cum > 0 ? `${row.cum.toFixed(2)} CUM` : "—"}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
+                            <span className="block">{fmt2(row.plantPerMt)} /MT</span>
+                            <span className="block">{fmt2(row.plantPerCum)} /CUM</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
+                            <span className="block">{fmt2(row.transPerMt)} /MT</span>
+                            <span className="block">{fmt2(row.transPerCum)} /CUM</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
+                            <span className="block">{fmt2(row.layPerMt)} /MT</span>
+                            <span className="block">{fmt2(row.layPerCum)} /CUM</span>
+                          </td>
                           <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{row.primeAmt > 0 ? `₹${fmt0(row.primeAmt)}` : "—"}</td>
                           <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{row.tackAmt > 0 ? `₹${fmt0(row.tackAmt)}` : "—"}</td>
-                          <td className="px-4 py-2.5 text-right font-mono font-medium">{fmt2(row.totalPerMt)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono font-medium">
+                            <span className="block">{fmt2(row.totalPerMt)} /MT</span>
+                            <span className="block">{fmt2(row.totalPerCum)} /CUM</span>
+                          </td>
                           <td className="px-4 py-2.5 text-right font-semibold">₹{fmt0(row.totalAmt)}</td>
                         </tr>
                       ))}
@@ -206,7 +236,10 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                         <td className="px-4 py-2 font-bold text-xs uppercase text-primary" colSpan={5}>
                           {contractor} Subtotal
                         </td>
-                        <td className="px-4 py-2 text-right font-bold font-mono">{subMt.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold font-mono">
+                          <span className="block">{subMt.toFixed(1)} MT</span>
+                          <span className="block">{subCum.toFixed(2)} CUM</span>
+                        </td>
                         <td colSpan={5} />
                         <td className="px-4 py-2 text-right font-bold">₹{fmt0(subAmt)}</td>
                       </tr>
@@ -215,7 +248,10 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                 })}
                 <tr className="border-t-2 border-primary/40 bg-amber-100/60 dark:bg-amber-950/40 font-bold">
                   <td className="px-4 py-3 text-base" colSpan={5}>Grand Total</td>
-                  <td className="px-4 py-3 text-right font-mono">{grandTotals.mt.toFixed(1)} MT</td>
+                  <td className="px-4 py-3 text-right font-mono">
+                    <span className="block">{grandTotals.mt.toFixed(1)} MT</span>
+                    <span className="block">{grandTotals.cum.toFixed(2)} CUM</span>
+                  </td>
                   <td colSpan={5} />
                   <td className="px-4 py-3 text-right text-base">₹{fmt0(grandTotals.amt)}</td>
                 </tr>

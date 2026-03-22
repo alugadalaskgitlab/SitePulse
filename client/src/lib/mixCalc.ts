@@ -74,9 +74,13 @@ export interface MixRate {
   crew: number;
   margin: number;
   exPlant: number;
+  exPlantPerCum: number;
   transport: number;
+  transPerCum: number;
   laying: number;
+  layPerCum: number;
   finalLaid: number;
+  finalLaidPerCum: number;
 }
 
 export interface JobResult {
@@ -84,6 +88,7 @@ export interface JobResult {
   contractor: string;
   siteName?: string;
   totalMt: number;
+  totalCum: number;
   totalAmt: number;
   mixes: {
     mixIdx: number;
@@ -272,9 +277,10 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
     const marginAmt = plantSubtotal * marginPct / 100;
     const exPlant = plantSubtotal + marginAmt;
     const finalLaid = exPlant + transPerMT + layPerMT;
+    const d = m.density;
     return {
       name: m.name,
-      density: m.density,
+      density: d,
       aggregate: aggCostPerMT,
       bitumen: bitCostPerMT,
       equipment: plantEquipPerMT,
@@ -284,9 +290,13 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       crew: crewPerMT,
       margin: marginAmt,
       exPlant,
+      exPlantPerCum: d > 0 ? exPlant * d : 0,
       transport: transPerMT,
+      transPerCum: d > 0 ? transPerMT * d : 0,
       laying: layPerMT,
+      layPerCum: d > 0 ? layPerMT * d : 0,
       finalLaid,
+      finalLaidPerCum: d > 0 ? finalLaid * d : 0,
     };
   });
 
@@ -346,6 +356,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       contractor: j.contractor || '',
       siteName,
       totalMt: jobMT,
+      totalCum: cum,
       totalAmt: jobTotal,
       mixes: mixDetails,
     };
