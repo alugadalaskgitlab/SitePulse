@@ -2127,6 +2127,16 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     }
   });
 
+  // In scenario mode, swap base/revised: snapshot values are "base", current calculator values are "revised"
+  if(scenarioMode && rv){
+    var _sa=aggLanded, _sb=bitPrice, _sh=hsdPrice, _sl=ldoRate;
+    aggLanded = rv.aggLanded!=null ? rv.aggLanded : aggLanded;
+    bitPrice  = rv.bitPrice!=null  ? rv.bitPrice  : bitPrice;
+    hsdPrice  = rv.hsdPrice!=null  ? rv.hsdPrice  : hsdPrice;
+    ldoRate   = rv.ldoRate!=null   ? rv.ldoRate   : ldoRate;
+    rv = {aggLanded:_sa, bitPrice:_sb, hsdPrice:_sh, ldoRate:_sl};
+  }
+
   // Scope mode detection
   var g = scopeState.groups;
   var scopeMode = g.mixing || g.transport || g.spraying || g.paving;
@@ -2428,14 +2438,29 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       }
     }
   }
+  // In scenario mode, swap base/revised: mixRates holds scenario (revised), revisedMixRates holds base snapshot
+  if(scenarioMode && revisedMixRates){
+    var _tmpR=mixRates; mixRates=revisedMixRates; revisedMixRates=_tmpR;
+    var _tmpSM=_scopeMix,_tmpSP=_scopePav;
+    _scopeMix=_rScopeMix; _rScopeMix=_tmpSM;
+    _scopePav=_rScopePav; _rScopePav=_tmpSP;
+    hasRevised=true;
+  }
+
   function _effCPM(stpm,rev){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav))*_smf; }
 
   // ====== SCENARIO BANNER (when revised rates are scenario-driven) ======
   if(hasRevised && procScenarioPrices){
     html+='<div style="margin-bottom:14px;padding:8px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:flex;align-items:center;gap:8px;font-size:12px">';
-    html+='<span style="font-weight:700;color:#1d4ed8">📊 Revised rates from scenario:</span>';
-    html+='<span style="background:#2563eb;color:#fff;padding:1px 10px;border-radius:10px;font-weight:600">'+esc(procScenarioPrices._name)+'</span>';
-    html+='<span style="color:var(--gray-500);margin-left:4px">— revised cost shown in blue · Δ in red/green</span>';
+    if(scenarioMode){
+      html+='<span style="font-weight:700;color:#1d4ed8">📊 Comparing against:</span>';
+      html+='<span style="background:#2563eb;color:#fff;padding:1px 10px;border-radius:10px;font-weight:600">'+esc(procScenarioPrices._name)+'</span>';
+      html+='<span style="color:var(--gray-500);margin-left:4px">— base cost from snapshot · scenario cost in blue</span>';
+    } else {
+      html+='<span style="font-weight:700;color:#1d4ed8">📊 Revised rates from scenario:</span>';
+      html+='<span style="background:#2563eb;color:#fff;padding:1px 10px;border-radius:10px;font-weight:600">'+esc(procScenarioPrices._name)+'</span>';
+      html+='<span style="color:var(--gray-500);margin-left:4px">— revised cost shown in blue · Δ in red/green</span>';
+    }
     html+='</div>';
   }
   if(_scopeActive){
