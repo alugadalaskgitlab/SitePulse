@@ -49,9 +49,11 @@ function FreeTextCombobox({
     <div ref={ref} className={`relative ${className ?? ""}`}>
       <Input
         value={value}
-        onChange={e => { onChange(e.target.value.toUpperCase()); setOpen(true); }}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onBlur={e => onChange(e.target.value.toUpperCase())}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
+        className="uppercase"
         data-testid={testId}
         autoComplete="off"
       />
@@ -105,11 +107,13 @@ function MaterialCombobox({
       <Input
         value={description}
         onChange={e => {
-          onChange(e.target.value.toUpperCase(), null);
+          onChange(e.target.value, null);
           setOpen(true);
         }}
+        onBlur={e => onChange(e.target.value.toUpperCase(), null)}
         onFocus={() => setOpen(true)}
         placeholder="TYPE ITEM NAME OR SELECT FROM LIST"
+        className="uppercase"
         data-testid={testId}
         autoComplete="off"
       />
@@ -834,8 +838,10 @@ export default function PurchaseIndents() {
               <Label className="text-xs uppercase">REASON FOR CANCELLATION</Label>
               <Textarea
                 value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value.toUpperCase())}
+                onChange={(e) => setCancelReason(e.target.value)}
+                onBlur={(e) => setCancelReason(e.target.value.toUpperCase())}
                 placeholder="ENTER REASON FOR CANCELLING THIS ITEM..."
+                className="uppercase"
                 data-testid="input-cancel-reason"
               />
             </div>
@@ -871,8 +877,10 @@ export default function PurchaseIndents() {
               <Label className="text-xs uppercase">REASON FOR FORCE CLOSING</Label>
               <Textarea
                 value={forceCloseReason}
-                onChange={(e) => setForceCloseReason(e.target.value.toUpperCase())}
+                onChange={(e) => setForceCloseReason(e.target.value)}
+                onBlur={(e) => setForceCloseReason(e.target.value.toUpperCase())}
                 placeholder="ENTER REASON FOR FORCE CLOSING THIS INDENT..."
+                className="uppercase"
                 data-testid="input-force-close-reason"
               />
             </div>
@@ -1125,8 +1133,10 @@ export default function PurchaseIndents() {
                   <Label className="text-xs uppercase">PROPOSED BY</Label>
                   <Input
                     value={formProposedBy}
-                    onChange={(e) => setFormProposedBy(e.target.value.toUpperCase())}
+                    onChange={(e) => setFormProposedBy(e.target.value)}
+                    onBlur={(e) => setFormProposedBy(e.target.value.toUpperCase())}
                     placeholder="WHO PROPOSED THIS"
+                    className="uppercase"
                     data-testid="input-proposed-by"
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">PERSON WHO IDENTIFIED THE NEED</p>
@@ -1135,8 +1145,10 @@ export default function PurchaseIndents() {
                   <Label className="text-xs uppercase">RAISED BY</Label>
                   <Input
                     value={formRaisedBy}
-                    onChange={(e) => setFormRaisedBy(e.target.value.toUpperCase())}
+                    onChange={(e) => setFormRaisedBy(e.target.value)}
+                    onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())}
                     placeholder="WHO IS RAISING"
+                    className="uppercase"
                     data-testid="input-raised-by"
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">PERSON CREATING THIS INDENT</p>
@@ -1146,8 +1158,10 @@ export default function PurchaseIndents() {
                 <Label className="text-xs uppercase">GENERAL REMARKS (OPTIONAL)</Label>
                 <Textarea
                   value={formRemarks}
-                  onChange={(e) => setFormRemarks(e.target.value.toUpperCase())}
+                  onChange={(e) => setFormRemarks(e.target.value)}
+                  onBlur={(e) => setFormRemarks(e.target.value.toUpperCase())}
                   placeholder="ANY GENERAL NOTES ABOUT THIS INDENT..."
+                  className="uppercase"
                   data-testid="input-remarks"
                 />
               </div>
@@ -1452,13 +1466,15 @@ export default function PurchaseIndents() {
                           <span className="text-xs text-muted-foreground whitespace-nowrap">🔔 Note:</span>
                           <Input
                             value={reviewerNotes[item.id] ?? ""}
-                            onChange={(e) => setReviewerNotes(prev => ({ ...prev, [item.id]: e.target.value.toUpperCase() }))}
+                            onChange={(e) => setReviewerNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
                             onBlur={(e) => {
-                              const note = e.target.value.toUpperCase().trim();
+                              const upper = e.target.value.toUpperCase();
+                              setReviewerNotes(prev => ({ ...prev, [item.id]: upper }));
+                              const note = upper.trim();
                               reviewerNoteMutation.mutate({ itemId: item.id, note });
                             }}
                             placeholder="Query or note for this item (optional)..."
-                            className="h-7 text-xs border-blue-200 focus:border-blue-400"
+                            className="h-7 text-xs border-blue-200 focus:border-blue-400 uppercase"
                             data-testid={`input-reviewer-note-${item.id}`}
                           />
                         </div>
@@ -1482,8 +1498,10 @@ export default function PurchaseIndents() {
                       <Label className="text-xs uppercase">APPROVAL REMARKS (OPTIONAL)</Label>
                       <Textarea
                         value={approvalRemarks}
-                        onChange={(e) => setApprovalRemarks(e.target.value.toUpperCase())}
+                        onChange={(e) => setApprovalRemarks(e.target.value)}
+                        onBlur={(e) => setApprovalRemarks(e.target.value.toUpperCase())}
                         placeholder="REASON FOR PARTIAL APPROVAL OR ANY NOTES..."
+                        className="uppercase"
                         data-testid="input-approval-remarks"
                       />
                     </div>
@@ -1492,8 +1510,10 @@ export default function PurchaseIndents() {
                       <Label className="text-xs uppercase">REJECTION REASON (IF REJECTING)</Label>
                       <Textarea
                         value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value.toUpperCase())}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        onBlur={(e) => setRejectionReason(e.target.value.toUpperCase())}
                         placeholder="REASON FOR REJECTION..."
+                        className="uppercase"
                         data-testid="input-rejection-reason"
                       />
                     </div>
@@ -1852,8 +1872,10 @@ export default function PurchaseIndents() {
                                 <Label className="text-xs">VENDOR / SUPPLIER</Label>
                                 <Input
                                   value={update?.vendor || ""}
-                                  onChange={(e) => updatePurchaseField(item.id, "vendor", e.target.value.toUpperCase())}
+                                  onChange={(e) => updatePurchaseField(item.id, "vendor", e.target.value)}
+                                  onBlur={(e) => updatePurchaseField(item.id, "vendor", e.target.value.toUpperCase())}
                                   placeholder="VENDOR NAME"
+                                  className="uppercase"
                                   data-testid={`input-vendor-${item.id}`}
                                 />
                               </div>
@@ -1861,8 +1883,10 @@ export default function PurchaseIndents() {
                                 <Label className="text-xs">BILL NO.</Label>
                                 <Input
                                   value={update?.billNo || ""}
-                                  onChange={(e) => updatePurchaseField(item.id, "billNo", e.target.value.toUpperCase())}
+                                  onChange={(e) => updatePurchaseField(item.id, "billNo", e.target.value)}
+                                  onBlur={(e) => updatePurchaseField(item.id, "billNo", e.target.value.toUpperCase())}
                                   placeholder="BILL NUMBER"
+                                  className="uppercase"
                                   data-testid={`input-bill-no-${item.id}`}
                                 />
                               </div>
@@ -1894,8 +1918,10 @@ export default function PurchaseIndents() {
                               <Label className="text-xs">REMARKS / REASON</Label>
                               <Textarea
                                 value={update?.purchaseRemarks || ""}
-                                onChange={(e) => updatePurchaseField(item.id, "purchaseRemarks", e.target.value.toUpperCase())}
+                                onChange={(e) => updatePurchaseField(item.id, "purchaseRemarks", e.target.value)}
+                                onBlur={(e) => updatePurchaseField(item.id, "purchaseRemarks", e.target.value.toUpperCase())}
                                 placeholder="REASON IF NOT PURCHASED OR PARTIAL, OR ANY NOTES..."
+                                className="uppercase"
                                 data-testid={`input-purchase-remarks-${item.id}`}
                               />
                             </div>
@@ -1981,8 +2007,10 @@ export default function PurchaseIndents() {
                   <Label className="text-xs uppercase">VENDOR</Label>
                   <Input
                     value={reportFilterVendor}
-                    onChange={(e) => setReportFilterVendor(e.target.value.toUpperCase())}
+                    onChange={(e) => setReportFilterVendor(e.target.value)}
+                    onBlur={(e) => setReportFilterVendor(e.target.value.toUpperCase())}
                     placeholder="SEARCH VENDOR..."
+                    className="uppercase"
                     data-testid="report-filter-vendor"
                   />
                 </div>

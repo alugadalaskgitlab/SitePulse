@@ -33,6 +33,57 @@ interface ApprovalItem {
   approvedQty: number;
 }
 
+function StatusSteps({ status }: { status: string }) {
+  const steps = [
+    { key: "raised", label: "RAISED" },
+    { key: "approved", label: "APPROVED" },
+    { key: "purchased", label: "PURCHASED" },
+  ];
+  const statusOrder: Record<string, number> = { pending: 0, approved: 1, purchased: 2, rejected: -1 };
+  const currentStep = statusOrder[status] ?? -1;
+
+  if (status === "rejected") {
+    return (
+      <div className="flex items-center gap-2 flex-wrap" data-testid="status-steps">
+        <Badge variant="outline" className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">
+          <Check className="w-3 h-3 mr-1" /> RAISED
+        </Badge>
+        <ArrowRight className="w-4 h-4 text-muted-foreground" />
+        <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
+          <X className="w-3 h-3 mr-1" /> REJECTED
+        </Badge>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap" data-testid="status-steps">
+      {steps.map((step, i) => {
+        const isDone = i < currentStep + 1;
+        const isActive = i === currentStep + 1 || (i === 0 && currentStep === 0);
+        return (
+          <span key={step.key} className="contents">
+            {i > 0 && <ArrowRight className="w-4 h-4 text-muted-foreground" />}
+            <Badge
+              variant="outline"
+              className={
+                isDone
+                  ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700"
+                  : isActive
+                    ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700"
+                    : "text-muted-foreground"
+              }
+            >
+              {isDone ? <Check className="w-3 h-3 mr-1" /> : null}
+              {step.label}
+            </Badge>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DieselRequirements() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
@@ -387,57 +438,6 @@ export default function DieselRequirements() {
     }
   };
 
-  const StatusSteps = ({ status }: { status: string }) => {
-    const steps = [
-      { key: "raised", label: "RAISED" },
-      { key: "approved", label: "APPROVED" },
-      { key: "purchased", label: "PURCHASED" },
-    ];
-    const statusOrder: Record<string, number> = { pending: 0, approved: 1, purchased: 2, rejected: -1 };
-    const currentStep = statusOrder[status] ?? -1;
-
-    if (status === "rejected") {
-      return (
-        <div className="flex items-center gap-2 flex-wrap" data-testid="status-steps">
-          <Badge variant="outline" className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">
-            <Check className="w-3 h-3 mr-1" /> RAISED
-          </Badge>
-          <ArrowRight className="w-4 h-4 text-muted-foreground" />
-          <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
-            <X className="w-3 h-3 mr-1" /> REJECTED
-          </Badge>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex items-center gap-2 flex-wrap" data-testid="status-steps">
-        {steps.map((step, i) => {
-          const isDone = i < currentStep + 1;
-          const isActive = i === currentStep + 1 || (i === 0 && currentStep === 0);
-          return (
-            <span key={step.key} className="contents">
-              {i > 0 && <ArrowRight className="w-4 h-4 text-muted-foreground" />}
-              <Badge
-                variant="outline"
-                className={
-                  isDone
-                    ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700"
-                    : isActive
-                      ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700"
-                      : "text-muted-foreground"
-                }
-              >
-                {isDone ? <Check className="w-3 h-3 mr-1" /> : null}
-                {step.label}
-              </Badge>
-            </span>
-          );
-        })}
-      </div>
-    );
-  };
-
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       {showPinAuth && (
@@ -657,11 +657,11 @@ export default function DieselRequirements() {
                 </div>
                 <div>
                   <Label className="text-xs">RAISED BY</Label>
-                  <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" data-testid="input-form-raised-by" />
+                  <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" className="uppercase" data-testid="input-form-raised-by" />
                 </div>
                 <div>
                   <Label className="text-xs">REMARKS</Label>
-                  <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value.toUpperCase())} placeholder="E.G., HEAVY WORK DAY" data-testid="input-form-remarks" />
+                  <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value)} onBlur={(e) => setFormRemarks(e.target.value.toUpperCase())} placeholder="E.G., HEAVY WORK DAY" className="uppercase" data-testid="input-form-remarks" />
                 </div>
               </div>
             </CardContent>
@@ -720,8 +720,10 @@ export default function DieselRequirements() {
                       <td className="p-2">
                         <Input
                           value={item.purpose}
-                          onChange={(e) => updateFormItem(i, "purpose", e.target.value.toUpperCase())}
+                          onChange={(e) => updateFormItem(i, "purpose", e.target.value)}
+                          onBlur={(e) => updateFormItem(i, "purpose", e.target.value.toUpperCase())}
                           placeholder="PURPOSE"
+                          className="uppercase"
                           data-testid={`input-purpose-${i}`}
                         />
                       </td>
@@ -970,8 +972,9 @@ export default function DieselRequirements() {
                       <Input
                         placeholder="REJECTION REASON"
                         value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value.toUpperCase())}
-                        className="w-48"
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        onBlur={(e) => setRejectionReason(e.target.value.toUpperCase())}
+                        className="w-48 uppercase"
                         data-testid="input-rejection-reason"
                       />
                       <Button
@@ -1099,11 +1102,11 @@ export default function DieselRequirements() {
                     </div>
                     <div>
                       <Label className="text-xs">FUEL STATION / SUPPLIER</Label>
-                      <Input value={purchaseSupplier} onChange={(e) => setPurchaseSupplier(e.target.value.toUpperCase())} placeholder="HP PETROL PUMP, KURNOOL" data-testid="input-purchase-supplier" />
+                      <Input value={purchaseSupplier} onChange={(e) => setPurchaseSupplier(e.target.value)} onBlur={(e) => setPurchaseSupplier(e.target.value.toUpperCase())} placeholder="HP PETROL PUMP, KURNOOL" className="uppercase" data-testid="input-purchase-supplier" />
                     </div>
                     <div>
                       <Label className="text-xs">BILL NO.</Label>
-                      <Input value={purchaseBillNo} onChange={(e) => setPurchaseBillNo(e.target.value.toUpperCase())} placeholder="HP/KNL/28456" data-testid="input-purchase-bill" />
+                      <Input value={purchaseBillNo} onChange={(e) => setPurchaseBillNo(e.target.value)} onBlur={(e) => setPurchaseBillNo(e.target.value.toUpperCase())} placeholder="HP/KNL/28456" className="uppercase" data-testid="input-purchase-bill" />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1144,9 +1147,10 @@ export default function DieselRequirements() {
                     <Label className="text-xs">REMARKS</Label>
                     <Textarea
                       value={purchaseRemarks}
-                      onChange={(e) => setPurchaseRemarks(e.target.value.toUpperCase())}
+                      onChange={(e) => setPurchaseRemarks(e.target.value)}
+                      onBlur={(e) => setPurchaseRemarks(e.target.value.toUpperCase())}
                       placeholder="REASON IF LESS OR MORE THAN PLANNED..."
-                      className="resize-none"
+                      className="resize-none uppercase"
                       data-testid="input-purchase-remarks"
                     />
                   </div>

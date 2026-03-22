@@ -1227,7 +1227,7 @@ export default function VendorBills() {
               </div>
               <div>
                 <Label className="text-xs uppercase">Bill Number</Label>
-                <Input value={billNo} onChange={e => setBillNo(e.target.value.toUpperCase())} placeholder="AUTO-GENERATED" data-testid="input-bill-no" />
+                <Input value={billNo} onChange={e => setBillNo(e.target.value)} onBlur={e => setBillNo(e.target.value.toUpperCase())} placeholder="AUTO-GENERATED" className="uppercase" data-testid="input-bill-no" />
               </div>
               <div>
                 <Label className="text-xs uppercase">Bill Type</Label>
@@ -1549,7 +1549,8 @@ export default function VendorBills() {
                     ) : (
                       <Input
                         value={item.description}
-                        onChange={e => updateLineItem(idx, "description", e.target.value.toUpperCase())}
+                        onChange={e => updateLineItem(idx, "description", e.target.value)}
+                        onBlur={e => updateLineItem(idx, "description", e.target.value.toUpperCase())}
                         placeholder="ENTER DESCRIPTION"
                         className="uppercase text-xs h-8"
                         data-testid={`input-item-desc-${idx}`}
@@ -1843,7 +1844,8 @@ export default function VendorBills() {
               <Label className="text-xs uppercase">Notes / Remarks</Label>
               <Textarea
                 value={notes}
-                onChange={e => setNotes(e.target.value.toUpperCase())}
+                onChange={e => setNotes(e.target.value)}
+                onBlur={e => setNotes(e.target.value.toUpperCase())}
                 placeholder="ENTER NOTES OR REMARKS"
                 className="uppercase"
                 data-testid="input-notes"
@@ -2561,7 +2563,8 @@ export default function VendorBills() {
                 <Label className="text-xs uppercase">Alias (Alternate Spelling)</Label>
                 <Input
                   value={aliasValue}
-                  onChange={e => setAliasValue(e.target.value.toUpperCase())}
+                  onChange={e => setAliasValue(e.target.value)}
+                  onBlur={e => setAliasValue(e.target.value.toUpperCase())}
                   placeholder="ALTERNATE NAME"
                   className="text-xs h-8 uppercase"
                   data-testid="input-alias-value"

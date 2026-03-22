@@ -1605,7 +1605,9 @@ export default function SiteDashboard() {
                     <Input
                       placeholder="KA-XX-XXXX"
                       value={newMaterialEntry.vehicleNumber}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, vehicleNumber: e.target.value.toUpperCase() }))}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, vehicleNumber: e.target.value }))}
+                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, vehicleNumber: e.target.value.toUpperCase() }))}
+                      className="uppercase"
                       data-testid="input-material-vehicle"
                     />
                   </div>
@@ -1616,7 +1618,9 @@ export default function SiteDashboard() {
                     <Input
                       placeholder="Supplier name"
                       value={newMaterialEntry.supplier}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, supplier: e.target.value.toUpperCase() }))}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, supplier: e.target.value }))}
+                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, supplier: e.target.value.toUpperCase() }))}
+                      className="uppercase"
                       data-testid="input-material-supplier"
                     />
                   </div>
@@ -1625,7 +1629,9 @@ export default function SiteDashboard() {
                     <Input
                       placeholder="Unloading location"
                       value={newMaterialEntry.location}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, location: e.target.value.toUpperCase() }))}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, location: e.target.value }))}
+                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, location: e.target.value.toUpperCase() }))}
+                      className="uppercase"
                       data-testid="input-material-location"
                     />
                   </div>
@@ -1634,7 +1640,9 @@ export default function SiteDashboard() {
                     <Input
                       placeholder="Challan/Receipt"
                       value={newMaterialEntry.receiptNumber}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, receiptNumber: e.target.value.toUpperCase() }))}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, receiptNumber: e.target.value }))}
+                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, receiptNumber: e.target.value.toUpperCase() }))}
+                      className="uppercase"
                       data-testid="input-material-receipt"
                     />
                   </div>
@@ -1643,7 +1651,9 @@ export default function SiteDashboard() {
                     <Input
                       placeholder="Supervisor name"
                       value={newMaterialEntry.enteredBy}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, enteredBy: e.target.value.toUpperCase() }))}
+                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, enteredBy: e.target.value }))}
+                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, enteredBy: e.target.value.toUpperCase() }))}
+                      className="uppercase"
                       data-testid="input-material-enteredby"
                     />
                   </div>

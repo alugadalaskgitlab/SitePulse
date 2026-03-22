@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, Printer, Trash2, GitCompare, FlaskConical, PencilLine, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Printer, Trash2, GitCompare, FlaskConical, PencilLine, Plus } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
@@ -67,13 +67,16 @@ function ScenarioComparison({
   const th1Cls = "px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
   const tdBase = "px-3 py-2.5 text-right align-top";
 
+  const [openSections, setOpenSections] = useState({ inputs: false, rates: false, jobs: true });
+  const toggleSection = (key: keyof typeof openSections) => setOpenSections(p => ({ ...p, [key]: !p[key] }));
+
   function DeltaLine({ base, revised }: { base: number; revised: number }) {
     const delta = revised - base;
     if (Math.abs(delta) < 0.001) return <span className="block text-xs text-muted-foreground/60 mt-0.5">—</span>;
     const sign = delta > 0 ? "+" : "";
-    const cls = delta > 0 ? "text-red-500" : "text-green-600";
+    const cls = delta > 0 ? "text-red-600" : "text-green-600";
     return (
-      <span className={`block text-xs font-medium mt-0.5 ${cls}`}>
+      <span className={`block text-xs font-semibold mt-0.5 ${cls}`}>
         {sign}₹{delta.toFixed(2)}
       </span>
     );
@@ -165,10 +168,15 @@ function ScenarioComparison({
         {/* Table 1 — Changed Inputs (only rows changed in ≥1 scenario) */}
         {allChangedInputs.length > 0 && (
           <div>
-            <p className="px-4 pt-2 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <button
+              onClick={() => toggleSection("inputs")}
+              className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
+            >
+              {openSections.inputs ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
               Changed Input Rates
-            </p>
-            <div className="overflow-x-auto">
+              <span className="ml-auto font-normal normal-case text-[10px]">{openSections.inputs ? "Collapse" : "Expand"}</span>
+            </button>
+            {openSections.inputs && <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse min-w-[500px]">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border">
@@ -214,7 +222,7 @@ function ScenarioComparison({
                   })}
                 </tbody>
               </table>
-            </div>
+            </div>}
           </div>
         )}
 
@@ -232,10 +240,15 @@ function ScenarioComparison({
           const baseAmts = mixAmts(baseCalc);
           return (
             <div>
-              <p className="px-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              <button
+                onClick={() => toggleSection("rates")}
+                className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
+              >
+                {openSections.rates ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                 Final Laid Rate by Mix Type
-              </p>
-              <div className="overflow-x-auto">
+                <span className="ml-auto font-normal normal-case text-[10px]">{openSections.rates ? "Collapse" : "Expand"}</span>
+              </button>
+              {openSections.rates && <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse min-w-[500px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
@@ -298,7 +311,7 @@ function ScenarioComparison({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>}
             </div>
           );
         })()}
@@ -306,10 +319,15 @@ function ScenarioComparison({
         {/* Table 3 — Job-wise Cost */}
         {baseCalc.jobResults.length > 0 && (
           <div>
-            <p className="px-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <button
+              onClick={() => toggleSection("jobs")}
+              className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
+            >
+              {openSections.jobs ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
               Job-wise Cost Impact
-            </p>
-            <div className="overflow-x-auto">
+              <span className="ml-auto font-normal normal-case text-[10px]">{openSections.jobs ? "Collapse" : "Expand"}</span>
+            </button>
+            {openSections.jobs && <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse min-w-[500px]">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border">
@@ -326,7 +344,10 @@ function ScenarioComparison({
                 <tbody>
                   {baseCalc.jobResults.map((baseJob, i) => (
                     <tr key={baseJob.id} className="border-t border-border/40 hover:bg-muted/20" data-testid={`cmp-job-${baseJob.id}`}>
-                      <td className="px-3 py-2.5 font-mono font-medium text-xs">{baseJob.id}</td>
+                      <td className="px-3 py-2.5 font-semibold">
+                        {baseJob.siteName && <span className="block text-[10px] font-normal text-muted-foreground">{baseJob.siteName}</span>}
+                        {baseJob.id}
+                      </td>
                       <td className={`${tdBase} text-muted-foreground`}>{baseJob.totalMt > 0 ? baseJob.totalMt.toFixed(1) : "—"}</td>
                       <td className={`${tdBase} font-medium`}>₹{Math.round(baseJob.totalAmt).toLocaleString("en-IN")}</td>
                       {scenarioCalcs.map(({ scenario, calc }) => {
@@ -348,9 +369,9 @@ function ScenarioComparison({
                       })}
                     </tr>
                   ))}
-                  <tr className="border-t-2 border-primary/40 bg-amber-50/60 dark:bg-amber-950/20 font-bold">
-                    <td className="px-3 py-3" colSpan={2}>Grand Total</td>
-                    <td className={`${tdBase}`}>₹{Math.round(baseCalc.grandTotalAmt).toLocaleString("en-IN")}</td>
+                  <tr className="border-t-2 border-primary/40 bg-amber-50/60 dark:bg-amber-950/20 font-bold text-base">
+                    <td className="px-3 py-4" colSpan={2}>Grand Total</td>
+                    <td className={`${tdBase} text-base`}>₹{Math.round(baseCalc.grandTotalAmt).toLocaleString("en-IN")}</td>
                     {scenarioCalcs.map(({ scenario, calc }) => {
                       const rev = calc.grandTotalAmt;
                       const changed = Math.abs(rev - baseCalc.grandTotalAmt) >= 1;
@@ -370,7 +391,7 @@ function ScenarioComparison({
                   </tr>
                 </tbody>
               </table>
-            </div>
+            </div>}
           </div>
         )}
       </CardContent>

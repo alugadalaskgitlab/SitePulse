@@ -843,6 +843,7 @@ function saveToDb(){
 }
 
 function confirmSaveToDb(){
+  if(scenarioMode){ showToast('You are in Scenario Edit Mode — use "Save Scenario & Return" to save.', true); return; }
   var inp = document.getElementById('saveNameInput');
   var name = inp ? inp.value.trim() : '';
   if(!name){ showToast('Please enter an estimate name', true); return; }
