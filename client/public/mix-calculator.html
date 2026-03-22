@@ -1001,25 +1001,66 @@ function fetchProcScenarios(){
         if(s.state) return true;
         try{ var rp=JSON.parse(s.revisedPrices||'{}'); return Object.keys(rp).length>0; }catch(e){return false;}
       });
-      if(!_procScenariosList.length){ bar.style.display='none'; procScenarioPrices=null; return; }
+      // In scenario edit mode: always show bar with "Base Estimate" option
+      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; return; }
       bar.style.display='flex';
-      var opts='<option value="">— Base prices only —</option>';
+      var opts;
+      if(scenarioMode){
+        // In scenario edit mode: "Base Estimate" is the primary comparison target
+        opts='<option value="-1">📊 Base Estimate (compare)</option><option value="">— None —</option>';
+      } else {
+        opts='<option value="">— Base prices only —</option>';
+      }
       _procScenariosList.forEach(function(s){
+        // In scenario edit mode: skip the currently-editing scenario (comparing scenario to itself is meaningless)
+        if(scenarioMode && s.id===scenarioModeId) return;
         opts+='<option value="'+s.id+'">'+esc(s.name)+'</option>';
       });
       sel.innerHTML=opts;
-      // Keep previously selected if still valid
-      if(procScenarioPrices&&procScenarioPrices._id){
+      if(scenarioMode){
+        // Auto-select "Base Estimate" so comparison is visible immediately
+        sel.value='-1';
+        onProcScenarioChange();
+      } else if(procScenarioPrices&&procScenarioPrices._id){
         sel.value=String(procScenarioPrices._id);
         updateProcBadge();
       }
     })
-    .catch(function(){ bar.style.display='none'; });
+    .catch(function(){ if(!scenarioMode) bar.style.display='none'; });
 }
 
 function onProcScenarioChange(){
   var sel = document.getElementById('procScenarioSelect');
-  var scId = sel ? parseInt(sel.value) : 0;
+  var rawVal = sel ? sel.value : '';
+  var scId = rawVal ? parseInt(rawVal) : 0;
+  // Special case: -1 = "Base Estimate" in scenario edit mode
+  if(scId===-1 && scenarioMode && scenarioModeEstimateId){
+    fetch('/api/mix-estimates/'+scenarioModeEstimateId)
+      .then(function(r){return r.json();})
+      .then(function(est){
+        if(est.state){
+          try{
+            var st = JSON.parse(est.state);
+            var inp = st.inputs||{};
+            var pf = function(v){ var x=parseFloat(v); return isNaN(x)?null:x; };
+            procScenarioPrices = {
+              _id: -1, _name: 'Base Estimate',
+              aggRate:        pf(inp.aggRate),
+              aggBasis:       inp.aggBasis || st.aggBasis || aggBasis,
+              aggDensity:     pf(inp.aggDensity),
+              aggDist:        pf(inp.aggDist),
+              aggFreightRate: pf(inp.aggFreightRate),
+              aggPayload:     pf(inp.aggPayload),
+              bitPrice:       pf(inp.bitPrice),
+              hsdPrice:       pf(inp.hsdPrice),
+              ldoRate:        pf(inp.ldoRate)
+            };
+          }catch(e){ procScenarioPrices=null; }
+        } else { procScenarioPrices=null; }
+        updateProcBadge(); recalc();
+      }).catch(function(){ procScenarioPrices=null; updateProcBadge(); recalc(); });
+    return;
+  }
   if(!scId){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
   var sc = _procScenariosList.find(function(s){return s.id===scId;});
   if(!sc){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
@@ -1901,17 +1942,19 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         jobPlant+=plantAmt; jobTrans+=transAmt; jobLay+=layAmt; jobMT+=mt; jobCum+=mxCum;
       });
 
+      // Effective CUM for cost-per-CUM: use geometry/volume CUM if available, else sum of MT/density
+      var effectiveCum = cum > 0 ? cum : jobCum;
       if(j.mixes.length>1){
         var el;
         el=document.getElementById('jSubMT_'+si+'_'+ji); if(el) el.textContent=jobMT.toFixed(1);
         el=document.getElementById('jSubPlant_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant));
-        el=document.getElementById('jSubPlantCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round(jobPlant/jobCum)):'—';
+        el=document.getElementById('jSubPlantCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobPlant/effectiveCum)):'—';
         el=document.getElementById('jSubTrans_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTrans));
-        el=document.getElementById('jSubTransCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round(jobTrans/jobCum)):'—';
+        el=document.getElementById('jSubTransCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobTrans/effectiveCum)):'—';
         el=document.getElementById('jSubLay_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobLay));
-        el=document.getElementById('jSubLayCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round(jobLay/jobCum)):'—';
+        el=document.getElementById('jSubLayCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobLay/effectiveCum)):'—';
         el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant+jobTrans+jobLay));
-        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round((jobPlant+jobTrans+jobLay)/jobCum)):'—';
+        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round((jobPlant+jobTrans+jobLay)/effectiveCum)):'—';
       }
 
       var primeKgSqm = primeSpray;   // full surface application rate (dilution only affects procurement qty)
@@ -1935,14 +1978,14 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       el=document.getElementById('jobTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTotal));
       el=document.getElementById('jTotMT_'+si+'_'+ji); if(el) el.textContent=jobMT.toFixed(1);
       el=document.getElementById('jTotPlant_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant));
-      el=document.getElementById('jTotPlantCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round(jobPlant/jobCum)):'—';
+      el=document.getElementById('jTotPlantCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobPlant/effectiveCum)):'—';
       el=document.getElementById('jTotTrans_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTrans));
-      el=document.getElementById('jTotTransCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round(jobTrans/jobCum)):'—';
+      el=document.getElementById('jTotTransCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobTrans/effectiveCum)):'—';
       el=document.getElementById('jTotLay_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobLay));
-      el=document.getElementById('jTotLayCum_'+si+'_'+ji); if(el) el.textContent=jobCum>0?fmtI(Math.round(jobLay/jobCum)):'—';
+      el=document.getElementById('jTotLayCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobLay/effectiveCum)):'—';
       el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent='₹'+fmtI(Math.round(jobTotal));
-      var jobAllInPerCum = jobCum>0?jobTotal/jobCum:0;
-      el=document.getElementById('jTotTotalCum_'+si+'_'+ji); if(el) el.textContent=(jobCum>0&&jobAllInPerCum>0)?fmtR(jobAllInPerCum):'—';
+      var jobAllInPerCum = effectiveCum>0?jobTotal/effectiveCum:0;
+      el=document.getElementById('jTotTotalCum_'+si+'_'+ji); if(el) el.textContent=(effectiveCum>0&&jobAllInPerCum>0)?fmtR(jobAllInPerCum):'—';
 
       siteMT+=jobMT; sitePlant+=jobPlant; siteTrans+=jobTrans; siteLay+=jobLay;
       sitePrime+=primeAmt; siteTack+=tackAmt; siteTotal+=jobTotal;
@@ -2626,6 +2669,8 @@ function loadScenarioState(state){
 function initScenarioMode(estimateId){
   if(!scenarioModeId) return;
   scenarioModeEstimateId = estimateId?parseInt(estimateId):null;
+  // Set currentEstimateId so fetchProcScenarios works for the right estimate
+  if(scenarioModeEstimateId) currentEstimateId = scenarioModeEstimateId;
   var backLink = document.getElementById('scenarioBackLink');
   if(backLink&&scenarioModeEstimateId) backLink.href='/admin/mix-impact?estimateId='+scenarioModeEstimateId;
   var banner = document.getElementById('scenarioBanner');
@@ -2660,6 +2705,7 @@ function initScenarioMode(estimateId){
         loadScenarioState(parsed);
         renderMixTabs(); renderMixPanels(); renderEquipCards(); renderSites(); recalc();
         fetchAndShowEstimateRates();
+        fetchProcScenarios();
         setTimeout(collapseSectionsForJobView, 200);
       } else if(scenarioModeEstimateId){
         return fetch('/api/mix-estimates/'+scenarioModeEstimateId)
@@ -2670,6 +2716,7 @@ function initScenarioMode(estimateId){
               loadScenarioState(parsed);
               renderMixTabs(); renderMixPanels(); renderEquipCards(); renderSites(); recalc();
               showBaseRatesFromObj(parsed);
+              fetchProcScenarios();
               setTimeout(collapseSectionsForJobView, 200);
             }
           });
