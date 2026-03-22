@@ -1978,14 +1978,13 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       el=document.getElementById('jobTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTotal));
       el=document.getElementById('jTotMT_'+si+'_'+ji); if(el) el.textContent=jobMT.toFixed(1);
       el=document.getElementById('jTotPlant_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant));
-      el=document.getElementById('jTotPlantCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobPlant/effectiveCum)):'—';
+      el=document.getElementById('jTotPlantCum_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant));
       el=document.getElementById('jTotTrans_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTrans));
-      el=document.getElementById('jTotTransCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobTrans/effectiveCum)):'—';
+      el=document.getElementById('jTotTransCum_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTrans));
       el=document.getElementById('jTotLay_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobLay));
-      el=document.getElementById('jTotLayCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobLay/effectiveCum)):'—';
+      el=document.getElementById('jTotLayCum_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobLay));
       el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent='₹'+fmtI(Math.round(jobTotal));
-      var jobAllInPerCum = effectiveCum>0?jobTotal/effectiveCum:0;
-      el=document.getElementById('jTotTotalCum_'+si+'_'+ji); if(el) el.textContent=(effectiveCum>0&&jobAllInPerCum>0)?fmtR(jobAllInPerCum):'—';
+      el=document.getElementById('jTotTotalCum_'+si+'_'+ji); if(el) el.textContent=jobTotal>0?'₹'+fmtI(Math.round(jobTotal)):'—';
 
       siteMT+=jobMT; sitePlant+=jobPlant; siteTrans+=jobTrans; siteLay+=jobLay;
       sitePrime+=primeAmt; siteTack+=tackAmt; siteTotal+=jobTotal;
