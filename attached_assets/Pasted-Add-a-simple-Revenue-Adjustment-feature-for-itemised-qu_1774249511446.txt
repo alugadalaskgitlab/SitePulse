@@ -1,0 +1,127 @@
+Add a simple “Revenue Adjustment” feature for itemised quote mode in the calculator. Keep it clean, readable, and minimal. Do not clutter the UI or redesign existing sections.
+
+PURPOSE
+Sometimes the contractor agrees to pay an additional lumpsum (or deduction) instead of revising per-unit rates. This must be reflected in profitability without changing itemised rates.
+
+This feature should allow:
+- positive amount → increases revenue
+- negative amount → reduces revenue
+
+This applies mainly to ITEMISED MODE only.
+
+SCOPE
+- Apply ONLY in itemised quote mode
+- Do not change behavior for per km or lumpsum modes
+- Do not affect estimator, procurement, or scenario input-rate logic
+- Affect only revenue used in profitability calculations
+
+UI REQUIREMENT
+
+1) ADD FIELD PER JOB
+In itemised mode, for each job/site where contract rates are entered, add:
+
+Field 1:
+Label: Adjustment Revenue ₹
+Type: numeric input
+Default: 0
+
+Field 2:
+Label: Note (optional)
+Type: small text input (single line)
+
+PLACEMENT
+- Place this just below the contract rate / itemised quote inputs for that job
+- Keep spacing clean
+- Do not compress or overlap existing fields
+- Maintain readability (no tiny text, no faint colors)
+
+2) OPTIONAL DISPLAY (ONLY IF EASY)
+Below the field, optionally show:
+Adjusted Job Revenue: ₹[value]
+
+If space is tight, skip this and let profitability reflect it.
+
+LOGIC
+
+For each job:
+
+Base Job Revenue = existing itemised revenue calculation
+
+Adjustment Revenue = value entered in this field (can be + or -)
+
+Adjusted Job Revenue = Base Job Revenue + Adjustment Revenue
+
+Then:
+
+Total Revenue (site / overall) =
+sum of all Adjusted Job Revenues
+
+IMPORTANT:
+- Adjustment must NOT modify per-unit rates
+- Adjustment must NOT feed into estimator cost logic
+- Adjustment must NOT affect technical costing or procurement
+- Adjustment must only impact revenue used in profitability
+
+PROFITABILITY INTEGRATION
+
+Update profitability section:
+
+Revenue = Adjusted Job Revenue (sum)
+
+Then:
+
+Profit = Revenue - In-Scope Cost
+Margin % = Profit / Revenue
+
+When scenario is active:
+- Revenue should still include Adjustment Revenue
+- Only cost side changes between base and revised
+- Adjustment Revenue should remain same unless user edits it
+
+DISPLAY IN PROFITABILITY
+
+Keep main table clean:
+- Show final adjusted Revenue only (no extra column needed)
+
+OPTIONAL (ONLY IF EASY, NO CLUTTER):
+Inside expanded view or second line, you may show:
+- Base Revenue: ₹X
+- Adjustment: ₹Y
+- Final Revenue: ₹Z
+
+But default table should remain simple.
+
+BEHAVIOR RULES
+
+1) Default value should be 0
+2) Accept both positive and negative values
+3) If empty, treat as 0
+4) Do not allow non-numeric input
+5) Should update profitability in real time (or on save, consistent with existing behavior)
+
+READABILITY
+
+- Use normal readable font size
+- Do not use faint or light text
+- Keep labels clear
+- Keep spacing comfortable
+- No colored backgrounds or extra UI noise
+- Match existing design style
+
+ACCEPTANCE CHECKLIST
+
+1. In itemised mode, each job has an “Adjustment Revenue ₹” field
+2. Optional note field is available
+3. Entering + value increases revenue
+4. Entering - value decreases revenue
+5. Profitability uses adjusted revenue correctly
+6. Per-unit rates remain unchanged
+7. Estimator and procurement logic unaffected
+8. Scenario comparison still works correctly
+9. No UI clutter introduced
+10. Field is readable and easy to use
+
+After implementation, confirm:
+- where Adjustment Revenue is stored (job-level)
+- how it is included in total revenue
+- whether profitability is recalculating correctly with this included

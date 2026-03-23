@@ -625,6 +625,10 @@ function contractValueChanged(key, val){
   contractRates[key] = isNaN(v) ? null : v;
   saveState();
 }
+function contractNoteChanged(key, val){
+  contractRates[key] = val||null;
+  saveState();
+}
 function revisedPriceChanged(key, val){
   var v = parseFloat(val);
   contractRates[key] = isNaN(v) ? null : v;
@@ -2517,6 +2521,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
 
     var revenue = null, hasRev = false;
+    var adjAmt = 0;
     if(mode==='itemised'){
       var rev = 0;
       Object.keys(mixQty).forEach(function(mn){
@@ -2527,7 +2532,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       });
       if(primeArea>0){ var pcr=contractRates[s.id+'_PRIME']; if(pcr!=null){rev+=primeArea*pcr;hasRev=true;} }
       if(tackArea>0){ var tcr=contractRates[s.id+'_TACK']; if(tcr!=null){rev+=tackArea*tcr;hasRev=true;} }
-      if(hasRev) revenue=rev;
+      adjAmt = contractRates[s.id+'__ADJ_AMT']||0;
+      if(hasRev) revenue=rev+adjAmt;
     } else if(mode==='perkm'){
       var kmRate=contractRates[s.id+'__KM_RATE'];
       if(kmRate!=null&&totalRoadKm>0){ revenue=totalRoadKm*kmRate; hasRev=true; }
@@ -2549,7 +2555,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       fullJobCost: fullJobCost, inScopeCost: inScopeCost,
       revInScopeCost: revInScopeCost, revenue: revenue, hasRev: hasRev,
       excluded: excluded, profit: profit, margin: margin,
-      baseProfit: baseProfit, baseMargin: baseMargin
+      baseProfit: baseProfit, baseMargin: baseMargin, adjAmt: adjAmt
     });
     grandFullCost += fullJobCost;
     grandInScope += inScopeCost;
@@ -2589,6 +2595,22 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var tk=s.id+'_TACK'; var tcr=contractRates[tk]||null;
         html+='<div style="display:flex;align-items:center;gap:4px"><label style="font-size:12px;font-weight:600;color:#374151">Tack ₹/sqm</label>';
         html+='<input id="profitInput_'+tk+'" type="number" value="'+(tcr!=null?tcr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+tk+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:90px;text-align:right;padding:5px 8px;border:1px solid '+(tcr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px"></div>';
+      }
+      html+='</div>';
+      var adjKey=s.id+'__ADJ_AMT', noteKey=s.id+'__ADJ_NOTE';
+      var adjAmt=contractRates[adjKey]!=null?contractRates[adjKey]:null;
+      var adjNote=contractRates[noteKey]||'';
+      html+='<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:10px;padding-top:8px;border-top:1px dashed #e5e7eb">';
+      html+='<div style="display:flex;align-items:center;gap:4px">';
+      html+='<label style="font-size:12px;font-weight:600;color:#374151">Adjustment ₹</label>';
+      html+='<input id="profitInput_'+adjKey+'" type="number" value="'+(adjAmt!=null?adjAmt:'')+'" placeholder="±0" oninput="contractValueChanged(\''+adjKey+'\',this.value)" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(adjAmt?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px">';
+      html+='</div>';
+      html+='<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:150px">';
+      html+='<label style="font-size:12px;font-weight:600;color:#6b7280">Note</label>';
+      html+='<input type="text" value="'+esc(adjNote)+'" placeholder="Optional" oninput="contractNoteChanged(\''+noteKey+'\',this.value)" style="flex:1;max-width:250px;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;color:#374151">';
+      html+='</div>';
+      if(adjAmt && adjAmt!==0){
+        html+='<div style="font-size:12px;color:'+(adjAmt>0?'#16a34a':'#ef4444')+';font-weight:600">'+(adjAmt>0?'+':'')+fmtI(Math.round(adjAmt))+' adjustment</div>';
       }
       html+='</div>';
     } else if(mode==='perkm'){
@@ -2637,7 +2659,11 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var mCol = row.margin!=null?(row.margin>=0?'#16a34a':'#ef4444'):'#374151';
     html+='<tr style="background:'+bg+';border-bottom:1px solid #e2e8f0">';
     html+='<td style="padding:10px 12px;font-weight:600;color:#1e293b">'+esc(row.site.name||row.site.id)+'</td>';
-    html+='<td style="text-align:right;padding:10px 10px;color:#1e293b">'+(row.revenue!=null?'₹'+fmtI(Math.round(row.revenue)):'—')+'</td>';
+    html+='<td style="text-align:right;padding:10px 10px;color:#1e293b">'+(row.revenue!=null?'₹'+fmtI(Math.round(row.revenue)):'—');
+    if(row.adjAmt && row.adjAmt!==0 && row.revenue!=null){
+      html+='<div style="font-size:11px;color:#6366f1;font-weight:500;margin-top:1px">incl. '+(row.adjAmt>0?'+':'')+fmtI(Math.round(row.adjAmt))+' adj.</div>';
+    }
+    html+='</td>';
     html+='<td style="text-align:right;padding:10px 10px;color:#64748b">₹'+fmtI(Math.round(row.fullJobCost))+'</td>';
     html+='<td style="text-align:right;padding:10px 10px;color:#1e293b;font-weight:600">₹'+fmtI(Math.round(row.inScopeCost))+'</td>';
     if(hasRevised){
