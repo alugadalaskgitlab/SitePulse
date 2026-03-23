@@ -1,0 +1,238 @@
+Implement the profitability section in the existing mix calculator with minimal redesign and strong readability. The section should act as a commercial summary layer over the current costing engine. Keep the page clean, clear, and readable. Some current fonts are too small and some color choices strain readability, so please improve readability in this section and any directly related profitability display without making the UI flashy.
+
+IMPORTANT CONSTRAINTS
+- Do not redesign the whole page.
+- Do not add new pages or tabs.
+- Do not disturb existing estimator, procurement, scenario, or scope-selection logic.
+- Use the existing scope checkbox system already in place.
+- Keep fonts readable; do not use very small text.
+- Avoid faint/light text that reduces readability.
+- Avoid too many colors, bands, or visual noise.
+- Use normal readable text, clear labels, and bold key values only.
+- Keep the layout simple and table-based.
+
+PURPOSE OF THIS SECTION
+This section should clearly show:
+- full contract revenue
+- full technical/job cost
+- HLC in-scope cost
+- excluded/client-scope cost
+- profit or shortfall on HLC in-scope burden
+- margin %
+- and, when a scenario is active, the revised in-scope cost and its delta
+
+CORE BUSINESS LOGIC
+Revenue should remain contract-based.
+Cost for profitability should include only the selected HLC scope items.
+Technical quantities and technical full-cost calculations must continue to work exactly as they do now.
+
+This means:
+- full/technical job cost still calculates from the estimator as before
+- profitability cost is filtered by the existing scope selections
+- excluded/client-supplied items must not be counted in profitability cost
+- but those excluded items must still continue to appear in estimator/procurement/scenario sections where technical totals are shown
+
+EXAMPLE RULE
+If bitumen quantity is needed for technical mix design, keep calculating it.
+If bitumen is not in HLC scope, do not include bitumen cost in profitability cost.
+
+APPLY THIS SAME PRINCIPLE TO ALL COST ITEMS
+Examples include:
+- aggregates
+- filler
+- bitumen
+- HSD / diesel
+- LDO / fuel
+- plant operations
+- loading / handling
+- transport to plant if applicable
+- mix transport to site
+- laying / paving
+- rolling / finishing
+- prime coat
+- tack coat
+- QC / testing
+- supervision
+- overheads
+
+SECTION TITLE
+Use:
+Contract Profitability
+
+If this section is already renamed elsewhere, keep the name readable and professional, but do not use faint helper text.
+
+OUTPUT STRUCTURE
+Keep the default output simple and compact.
+
+Show a clean readable table with one row per site/job and a grand total row.
+
+DEFAULT TABLE COLUMNS
+- Site / Job
+- Revenue ₹
+- Full Job Cost ₹
+- In-Scope Cost ₹
+- Excluded Cost ₹
+- Profit ₹
+- Margin %
+
+WHEN A SCENARIO IS ACTIVE
+Add these columns as well:
+- Revised In-Scope Cost ₹
+- Delta ₹
+
+So with scenario active, the table becomes:
+- Site / Job
+- Revenue ₹
+- Full Job Cost ₹
+- In-Scope Cost ₹
+- Revised In-Scope Cost ₹
+- Delta ₹
+- Excluded Cost ₹
+- Profit ₹
+- Margin %
+
+FORMULA BASIS
+
+1) Revenue
+Revenue must remain contract-based.
+Use the currently selected commercial mode and existing revenue logic already present in the app.
+
+Possible sources may include:
+- itemised contract rates
+- per km rate
+- lumpsum
+- stored contract value
+
+Use the existing source of truth already used for contract revenue.
+Final display should be total revenue for that site/job.
+
+2) Full Job Cost
+This is the full technical total cost from the estimator/costing engine.
+Do not change how the technical full job cost is calculated.
+
+3) In-Scope Cost
+This is the sum of only those cost components that are selected in the existing scope checkbox system.
+
+Formula concept:
+In-Scope Cost =
+sum of all included cost components where the corresponding scope selection is true
+
+Examples:
+- if bitumen is selected in scope, include bitumen cost
+- if bitumen is not selected, exclude bitumen cost from profitability
+- if transport to site is selected, include that cost
+- if transport to site is not selected, exclude it from profitability
+
+4) Excluded Cost
+Excluded Cost = Full Job Cost - In-Scope Cost
+
+5) Profit
+Profit = Revenue - In-Scope Cost
+
+6) Margin %
+Margin % = (Profit / Revenue) × 100
+
+If Revenue is zero, handle safely and avoid divide-by-zero issues.
+
+SCENARIO LOGIC
+If no scenario is active:
+- show base In-Scope Cost
+- show Profit and Margin based on base In-Scope Cost
+
+If a scenario is active:
+- Revised In-Scope Cost = in-scope cost recalculated using scenario/revised rates
+- Delta ₹ = Revised In-Scope Cost - Base In-Scope Cost
+- Profit should reflect the revised in-scope cost
+- Margin % should reflect the revised in-scope cost
+
+For scenario-active view:
+- Revenue stays contract-based unless the app already explicitly supports revised revenue; otherwise keep revenue unchanged
+- Full Job Cost may remain the technical full cost view already present
+- In-Scope Cost should remain the base in-scope cost
+- Revised In-Scope Cost should show the scenario impact on in-scope burden
+- Profit and Margin should use Revised In-Scope Cost for the active scenario display
+
+SCOPE MAPPING
+Use the existing scope checkbox/group system already in place.
+Do not create a new scope UI.
+
+Map profitability inclusion from the current existing scope selections.
+
+General guidance:
+- Material scope items should only be included if selected
+- Fuel scope items should only be included if selected
+- Operations scope items should only be included if selected
+- Other scope items should only be included if selected
+
+If the current UI has sub-item level selections, use them.
+If only group-level scope exists for some parts, use group-level inclusion.
+Do not add a new checkbox redesign in this round.
+
+READABILITY REQUIREMENTS
+This part is important.
+Please make the profitability section clear and comfortable to read.
+
+Requirements:
+- Use normal readable font sizes, not tiny text
+- Avoid pale/faint text
+- Avoid low-contrast colors
+- Do not use too many colored backgrounds
+- Use standard text color for labels and values
+- Bold headings and key values
+- Use red only where loss/negative values need emphasis
+- Use green only where positive values need emphasis
+- Keep row spacing comfortable
+- Ensure column headings are fully readable
+- Ensure numeric values are easy to scan
+- If needed, slightly improve readability in related profitability/scenario table areas that currently have small fonts or straining colors
+
+ITEMISED DETAIL (OPTIONAL BUT ONLY IF EASY / LOW RISK)
+If it can be done easily without clutter, allow each site row to expand and show an itemised cost breakdown for verification.
+
+Expanded rows may show:
+- Component
+- Base Cost ₹
+- Revised Cost ₹ (if scenario active)
+- Included in Scope? (Yes/No)
+
+Only do this if it can be added cleanly and low-risk.
+If not, skip it for now.
+Default view must remain compact.
+
+DO NOT ADD NOW
+For this round, do not add:
+- charts
+- cards all over the page
+- extra tabs
+- flashy KPI panels
+- very small helper notes
+- complex scenario dashboards
+- negotiation text
+- recommendation engines
+
+UNIT CONSISTENCY
+Please ensure:
+- Revenue, Full Job Cost, In-Scope Cost, Excluded Cost, Profit are all total amounts in the main profitability table
+- Do not mix total amounts with per-MT values in the same displayed formula
+- If per-MT or per-CUM values are shown anywhere else, derive them separately and label them clearly
+- Avoid unit confusion
+
+ACCEPTANCE CHECKLIST
+1. Profitability section is implemented with clean readable layout.
+2. Table shows Site/Job, Revenue, Full Job Cost, In-Scope Cost, Excluded Cost, Profit, Margin %.
+3. When scenario is active, table also shows Revised In-Scope Cost and Delta ₹.
+4. Revenue remains contract-based.
+5. Full Job Cost remains the full technical cost.
+6. In-Scope Cost includes only selected HLC scope items.
+7. Excluded Cost = Full Job Cost - In-Scope Cost.
+8. Profit = Revenue - In-Scope Cost, or Revenue - Revised In-Scope Cost when scenario is active.
+9. Margin % is calculated from profit and revenue correctly.
+10. Excluded/client-supplied items remain visible in technical/procurement/scenario sections but are not counted in profitability cost.
+11. Readability is improved: no tiny text, no faint text, no straining color combinations.
+12. Existing estimator and scope selection behavior continues to work.
+
+After implementation, tell me:
+- what files changed
+- how In-Scope Cost is being derived from the existing scope selections
+- whether Profit and Margin use revised in-scope cost during active scenario mode
+- whether any optional itemised drill-down was added or skipped
