@@ -1,0 +1,192 @@
+Add a clean “Scope Rate” revenue option inside the profitability section for Itemised mode only. Keep the UI simple, readable, and low-risk. Do not redesign the whole page. Also check cursor focus behavior in the new inputs and improve text readability where needed without clutter.
+
+PURPOSE
+Sometimes the contractor does not want to revise item-wise rates (BC/DBM/Prime/Tack), but instead offers one consolidated service/scope rate, usually per MT, for the selected HLC scope. Example: HLC does only mixing / plant-side deployment / selected scope items, and the contractor supplies materials. In this case profitability must be able to calculate revenue from a scope-based rate rather than from item-wise rates.
+
+IMPORTANT CONSTRAINTS
+- Apply this only inside the profitability section, under Itemised mode.
+- Do not move this into the estimator/job estimator.
+- Do not redesign the whole profitability page.
+- Keep the existing scope checkbox logic as the driver for cost inclusion.
+- Keep estimator, procurement, and technical calculations unchanged.
+- Keep the UI clear and readable.
+- Avoid tiny text, faint text, and too many colors or bands.
+- Avoid clutter.
+- Check cursor focus and typing behavior carefully in the new fields.
+
+REQUIRED FEATURE
+
+1) ADD A REVENUE MODE SELECTOR INSIDE ITEMISED PROFITABILITY
+Inside the profitability section, when Itemised mode is selected, add a small readable selector for revenue style:
+
+Revenue Mode:
+- Item Rates
+- Scope Rate
+
+Default:
+- Item Rates (keep current behavior as default)
+
+Behavior:
+- If Item Rates is selected, keep the current item-wise revenue inputs/behavior.
+- If Scope Rate is selected, hide or disable the item-wise BC/DBM/Prime/Tack rate inputs for revenue calculation and instead show the new Scope Rate inputs described below.
+
+Do not clutter the page. Keep this selector compact and readable.
+
+2) ADD SCOPE RATE INPUTS (SITE LEVEL, NOT JOB ESTIMATOR)
+When Revenue Mode = Scope Rate, show these inputs at site level inside the profitability section:
+
+A. Scope Rate ₹/MT
+numeric input
+
+B. Scope Rate ₹/CUM
+numeric input
+
+C. Adjustment Revenue ₹
+numeric input
+default 0
+
+D. Note
+single-line text input
+optional
+
+This should be entered only in profitability, not in the job estimator.
+
+PLACEMENT
+Place these fields in a clean row/block in the profitability site card, where they are easy to see but do not crowd the table. Keep labels readable. Maintain good spacing.
+
+3) AUTO-CONVERT ₹/MT AND ₹/CUM
+Both Scope Rate ₹/MT and Scope Rate ₹/CUM should be shown.
+
+Behavior:
+- If user enters/edit Scope Rate ₹/MT, auto-calculate Scope Rate ₹/CUM
+- If user enters/edit Scope Rate ₹/CUM, auto-calculate Scope Rate ₹/MT
+- The last edited field becomes the driver
+
+Conversion basis:
+Use the current site-level ratio:
+MT per CUM = Total Site MT / Total Site CUM
+
+Then:
+₹/CUM = ₹/MT × (MT per CUM)
+₹/MT = ₹/CUM ÷ (MT per CUM)
+
+If Total Site CUM is zero or invalid, handle safely and do not break typing.
+
+4) REVENUE CALCULATION IN SCOPE RATE MODE
+When Revenue Mode = Scope Rate:
+
+If the active basis is MT:
+Revenue = (Scope Rate ₹/MT × Total Site MT) + Adjustment Revenue
+
+If the active basis is CUM:
+Revenue = (Scope Rate ₹/CUM × Total Site CUM) + Adjustment Revenue
+
+This Revenue should then be used in profitability calculations:
+Profit = Revenue - In-Scope Cost
+Margin % = Profit / Revenue
+
+When scenario is active:
+- Revenue should remain based on entered scope rate + adjustment
+- Cost side may change according to scenario
+- Profit and margin should update from revised in-scope cost as already designed
+
+IMPORTANT:
+- Scope Rate revenue must affect only profitability revenue calculations
+- It must NOT affect technical costing
+- It must NOT affect procurement
+- It must NOT alter estimator/job estimator values
+- It must NOT rewrite item rates
+
+5) KEEP ITEM RATES MODE WORKING AS BEFORE
+When Revenue Mode = Item Rates:
+- keep current item-wise quote inputs and behavior unchanged
+- current profitability logic for item-wise revenue should continue to work
+
+6) READABILITY REQUIREMENTS
+Please improve readability in this area while keeping it simple:
+- use normal readable font sizes
+- avoid tiny text
+- avoid pale/faint helper text
+- avoid visually straining color combinations
+- labels and entered values should be easy to read
+- keep spacing comfortable
+- no extra decorative color bands
+- use bold only where useful
+- if there is explanatory text, keep it short and readable
+
+Also check any directly related reporting text in profitability that is currently too small or hard to read and improve it modestly without clutter.
+
+7) CURSOR / FOCUS / TYPING BEHAVIOR
+Please check and ensure the new fields do not lose focus while typing.
+
+This is very important for:
+- Scope Rate ₹/MT
+- Scope Rate ₹/CUM
+- Adjustment Revenue ₹
+- Note
+
+Expected behavior:
+- user can type continuously without cursor jumping
+- field should not lose focus after one digit
+- cursor position should remain stable
+- do not remount inputs on each keystroke
+- do not auto-format aggressively during typing if that causes focus loss
+- if formatting is needed, prefer to normalize on blur rather than interrupt typing
+
+Please also re-check related existing focus issues in profitability/per-km style inputs if any similar remounting pattern exists.
+
+8) DISPLAY IN THE TABLE
+Keep the profitability table itself clean.
+Do not add too many new columns.
+
+Use the existing Revenue column to show final revenue from:
+- item rates, OR
+- scope rate mode
+
+No need to show extra technical details in the main table.
+
+If easy and clean, you may optionally show a small second line near the scope rate block such as:
+- Final Revenue: ₹...
+But do not clutter the table itself.
+
+9) SCENARIO MODE COMPATIBILITY
+When a scenario is selected:
+- Scope Rate revenue input should stay as entered by user
+- revised in-scope cost should still come from scenario logic
+- profit and margin should reflect revised in-scope cost against the same scope-rate-based revenue
+- no reversal or overwriting of scope-rate values
+
+10) DATA STORAGE
+Store the new scope-rate revenue fields at site level in profitability state:
+- revenueMode: itemRates | scopeRate
+- scopeRatePerMt
+- scopeRatePerCum
+- scopeRateBasis or lastEditedBasis
+- adjustmentRevenue
+- adjustmentNote
+
+Do not store them in job estimator technical state unless absolutely necessary; keep them in the commercial/profitability layer.
+
+11) ACCEPTANCE CHECKLIST
+1. In profitability Itemised mode, there is a Revenue Mode selector with:
+   - Item Rates
+   - Scope Rate
+2. Default remains Item Rates.
+3. When Scope Rate is selected, user can enter Scope Rate ₹/MT and Scope Rate ₹/CUM.
+4. Editing one field auto-calculates the other using site MT/CUM ratio.
+5. User can type normally without focus loss or cursor jumping.
+6. Adjustment Revenue ₹ supports positive and negative values.
+7. Note field is available and editable.
+8. Revenue in profitability updates from scope rate + adjustment.
+9. Profit and margin are calculated correctly from that revenue.
+10. Estimator, procurement, and technical costing remain unchanged.
+11. UI remains readable and uncluttered.
+12. Scenario mode still works properly with revised in-scope cost.
+13. Related reporting text/font readability is improved where needed in this section.
+
+After implementation, tell me:
+- what files changed
+- how site MT/CUM ratio is being used for auto-conversion
+- how you prevented focus loss in the new inputs
+- whether Revenue Mode and scope-rate fields are stored at site level
+- whether any readability-related text sizes/colors were adjusted in the profitability area

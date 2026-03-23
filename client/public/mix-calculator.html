@@ -629,6 +629,29 @@ function contractNoteChanged(key, val){
   contractRates[key] = val||null;
   saveState();
 }
+function setRevMode(siteId, mode){
+  contractRates[siteId+'__REV_MODE'] = mode;
+  saveState(); recalc();
+}
+function scopeRateChanged(siteId, field, val, totalMT, totalCUM){
+  var v = parseFloat(val);
+  if(isNaN(v)) v = 0;
+  var ratio = totalCUM>0 ? totalMT/totalCUM : 0;
+  if(field==='mt'){
+    contractRates[siteId+'__SCOPE_MT'] = v||null;
+    contractRates[siteId+'__SCOPE_BASIS'] = 'mt';
+    if(ratio>0) contractRates[siteId+'__SCOPE_CUM'] = Math.round(v*ratio*100)/100||null;
+    var cumEl = document.getElementById('profitInput_'+siteId+'__SCOPE_CUM');
+    if(cumEl) cumEl.value = contractRates[siteId+'__SCOPE_CUM']||'';
+  } else {
+    contractRates[siteId+'__SCOPE_CUM'] = v||null;
+    contractRates[siteId+'__SCOPE_BASIS'] = 'cum';
+    if(ratio>0) contractRates[siteId+'__SCOPE_MT'] = Math.round(v/ratio*100)/100||null;
+    var mtEl = document.getElementById('profitInput_'+siteId+'__SCOPE_MT');
+    if(mtEl) mtEl.value = contractRates[siteId+'__SCOPE_MT']||'';
+  }
+  saveState();
+}
 function revisedPriceChanged(key, val){
   var v = parseFloat(val);
   contractRates[key] = isNaN(v) ? null : v;
@@ -2476,13 +2499,14 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var siteLead = (s.transLead!=null&&s.transLead>0)?s.transLead:gTransDist;
     var siteTransPerMT = gTransPayload>0?(siteLead*2*gTransRate/gTransPayload):0;
 
-    var mixQty={}, primeArea=0, tackArea=0;
+    var mixQty={}, primeArea=0, tackArea=0, totalSiteMT=0, totalSiteCUM=0;
     s.jobs.forEach(function(j){
       j.mixes.forEach(function(mx){
         var mix=mixTypes[mx.mixIdx]||mixTypes[0];
         var mt=mx._mt||0, mxCum=mix.density>0&&mt>0?mt/mix.density:0;
         if(!mixQty[mix.name]) mixQty[mix.name]={cum:0,mixIdx:mx.mixIdx};
         mixQty[mix.name].cum+=mxCum;
+        totalSiteMT+=mt; totalSiteCUM+=mxCum;
       });
       if(j.prime!==false) primeArea+=j._area||0;
       if(j.tack!==false) tackArea+=(j._area||0)*(j.mixes.length||1);
@@ -2522,18 +2546,33 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
     var revenue = null, hasRev = false;
     var adjAmt = 0;
+    var revMode = 'itemRates';
     if(mode==='itemised'){
-      var rev = 0;
-      Object.keys(mixQty).forEach(function(mn){
-        var mq=mixQty[mn];
-        var key=s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
-        var cr=contractRates[key];
-        if(cr!=null){ rev+=mq.cum*cr; hasRev=true; }
-      });
-      if(primeArea>0){ var pcr=contractRates[s.id+'_PRIME']; if(pcr!=null){rev+=primeArea*pcr;hasRev=true;} }
-      if(tackArea>0){ var tcr=contractRates[s.id+'_TACK']; if(tcr!=null){rev+=tackArea*tcr;hasRev=true;} }
+      revMode = contractRates[s.id+'__REV_MODE']||'itemRates';
       adjAmt = contractRates[s.id+'__ADJ_AMT']||0;
-      if(hasRev) revenue=rev+adjAmt;
+      if(revMode==='scopeRate'){
+        var scopeBasis = contractRates[s.id+'__SCOPE_BASIS']||'mt';
+        var scopeMt = contractRates[s.id+'__SCOPE_MT']||0;
+        var scopeCum = contractRates[s.id+'__SCOPE_CUM']||0;
+        var scopeRev = 0;
+        if(scopeBasis==='cum' && scopeCum>0 && totalSiteCUM>0){
+          scopeRev = scopeCum * totalSiteCUM; hasRev=true;
+        } else if(scopeMt>0 && totalSiteMT>0){
+          scopeRev = scopeMt * totalSiteMT; hasRev=true;
+        }
+        if(hasRev || adjAmt!==0){ hasRev=true; revenue = scopeRev + adjAmt; }
+      } else {
+        var rev = 0;
+        Object.keys(mixQty).forEach(function(mn){
+          var mq=mixQty[mn];
+          var key=s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
+          var cr=contractRates[key];
+          if(cr!=null){ rev+=mq.cum*cr; hasRev=true; }
+        });
+        if(primeArea>0){ var pcr=contractRates[s.id+'_PRIME']; if(pcr!=null){rev+=primeArea*pcr;hasRev=true;} }
+        if(tackArea>0){ var tcr=contractRates[s.id+'_TACK']; if(tcr!=null){rev+=tackArea*tcr;hasRev=true;} }
+        if(hasRev) revenue=rev+adjAmt;
+      }
     } else if(mode==='perkm'){
       var kmRate=contractRates[s.id+'__KM_RATE'];
       if(kmRate!=null&&totalRoadKm>0){ revenue=totalRoadKm*kmRate; hasRev=true; }
@@ -2555,7 +2594,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       fullJobCost: fullJobCost, inScopeCost: inScopeCost,
       revInScopeCost: revInScopeCost, revenue: revenue, hasRev: hasRev,
       excluded: excluded, profit: profit, margin: margin,
-      baseProfit: baseProfit, baseMargin: baseMargin, adjAmt: adjAmt
+      baseProfit: baseProfit, baseMargin: baseMargin, adjAmt: adjAmt,
+      revMode: revMode, totalSiteMT: totalSiteMT, totalSiteCUM: totalSiteCUM
     });
     grandFullCost += fullJobCost;
     grandInScope += inScopeCost;
@@ -2577,40 +2617,72 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='</div></div>';
 
     if(mode==='itemised'){
-      html+='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
-      Object.keys(row.mixQty).forEach(function(mn){
-        var key=s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
-        var cr=contractRates[key]||null;
-        html+='<div style="display:flex;align-items:center;gap:4px">';
-        html+='<label style="font-size:12px;font-weight:600;color:#374151">'+esc(mn)+' ₹/CUM</label>';
-        html+='<input id="profitInput_'+key+'" type="number" value="'+(cr!=null?cr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+key+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:100px;text-align:right;padding:5px 8px;border:1px solid '+(cr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px">';
-        html+='</div>';
-      });
-      if(row.primeArea>0){
-        var pk=s.id+'_PRIME'; var pcr=contractRates[pk]||null;
-        html+='<div style="display:flex;align-items:center;gap:4px"><label style="font-size:12px;font-weight:600;color:#374151">Prime ₹/sqm</label>';
-        html+='<input id="profitInput_'+pk+'" type="number" value="'+(pcr!=null?pcr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+pk+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:90px;text-align:right;padding:5px 8px;border:1px solid '+(pcr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px"></div>';
-      }
-      if(row.tackArea>0){
-        var tk=s.id+'_TACK'; var tcr=contractRates[tk]||null;
-        html+='<div style="display:flex;align-items:center;gap:4px"><label style="font-size:12px;font-weight:600;color:#374151">Tack ₹/sqm</label>';
-        html+='<input id="profitInput_'+tk+'" type="number" value="'+(tcr!=null?tcr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+tk+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:90px;text-align:right;padding:5px 8px;border:1px solid '+(tcr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px"></div>';
-      }
+      var _rm = row.revMode;
+      var _irA = _rm==='itemRates';
+      var _srA = _rm==='scopeRate';
+      html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">';
+      html+='<span style="font-size:12px;font-weight:600;color:#374151">Revenue:</span>';
+      html+='<button onclick="setRevMode(\''+s.id+'\',\'itemRates\')" style="padding:4px 12px;font-size:12px;border-radius:16px;border:1px solid '+(_irA?'#16a34a':'#d1d5db')+';background:'+(_irA?'#16a34a':'transparent')+';color:'+(_irA?'#fff':'#4b5563')+';cursor:pointer;font-weight:'+(_irA?'700':'400')+'">Item Rates</button>';
+      html+='<button onclick="setRevMode(\''+s.id+'\',\'scopeRate\')" style="padding:4px 12px;font-size:12px;border-radius:16px;border:1px solid '+(_srA?'#6366f1':'#d1d5db')+';background:'+(_srA?'#6366f1':'transparent')+';color:'+(_srA?'#fff':'#4b5563')+';cursor:pointer;font-weight:'+(_srA?'700':'400')+'">Scope Rate</button>';
       html+='</div>';
+
+      if(_irA){
+        html+='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
+        Object.keys(row.mixQty).forEach(function(mn){
+          var key=s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
+          var cr=contractRates[key]||null;
+          html+='<div style="display:flex;align-items:center;gap:4px">';
+          html+='<label style="font-size:12px;font-weight:600;color:#374151">'+esc(mn)+' ₹/CUM</label>';
+          html+='<input id="profitInput_'+key+'" type="number" value="'+(cr!=null?cr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+key+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:100px;text-align:right;padding:5px 8px;border:1px solid '+(cr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px">';
+          html+='</div>';
+        });
+        if(row.primeArea>0){
+          var pk=s.id+'_PRIME'; var pcr=contractRates[pk]||null;
+          html+='<div style="display:flex;align-items:center;gap:4px"><label style="font-size:12px;font-weight:600;color:#374151">Prime ₹/sqm</label>';
+          html+='<input id="profitInput_'+pk+'" type="number" value="'+(pcr!=null?pcr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+pk+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:90px;text-align:right;padding:5px 8px;border:1px solid '+(pcr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px"></div>';
+        }
+        if(row.tackArea>0){
+          var tk=s.id+'_TACK'; var tcr=contractRates[tk]||null;
+          html+='<div style="display:flex;align-items:center;gap:4px"><label style="font-size:12px;font-weight:600;color:#374151">Tack ₹/sqm</label>';
+          html+='<input id="profitInput_'+tk+'" type="number" value="'+(tcr!=null?tcr:'')+'" placeholder="Rate" oninput="profitInputChanged(\''+tk+'\',this.value)" onblur="recalc()" onkeydown="profitTabNav(event,this)" style="width:90px;text-align:right;padding:5px 8px;border:1px solid '+(tcr!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px"></div>';
+        }
+        html+='</div>';
+      } else {
+        var _sMt=contractRates[s.id+'__SCOPE_MT']||null;
+        var _sCum=contractRates[s.id+'__SCOPE_CUM']||null;
+        var _sBasis=contractRates[s.id+'__SCOPE_BASIS']||'mt';
+        html+='<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">';
+        html+='<div>';
+        html+='<label style="font-size:12px;font-weight:600;color:#4338ca;display:block;margin-bottom:3px">Scope Rate ₹/MT'+(_sBasis==='mt'?' <span style="font-size:11px;color:#6366f1">(driver)</span>':'')+'</label>';
+        html+='<input id="profitInput_'+s.id+'__SCOPE_MT" type="number" value="'+(_sMt!=null?_sMt:'')+'" placeholder="e.g. 800" oninput="scopeRateChanged(\''+s.id+'\',\'mt\',this.value,'+row.totalSiteMT+','+row.totalSiteCUM+')" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(_sMt?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
+        html+='<div style="font-size:12px;color:#6b7280;margin-top:2px">Site: '+fmtR(row.totalSiteMT)+' MT</div>';
+        html+='</div>';
+        html+='<div>';
+        html+='<label style="font-size:12px;font-weight:600;color:#4338ca;display:block;margin-bottom:3px">Scope Rate ₹/CUM'+(_sBasis==='cum'?' <span style="font-size:11px;color:#6366f1">(driver)</span>':'')+'</label>';
+        html+='<input id="profitInput_'+s.id+'__SCOPE_CUM" type="number" value="'+(_sCum!=null?_sCum:'')+'" placeholder="e.g. 1800" oninput="scopeRateChanged(\''+s.id+'\',\'cum\',this.value,'+row.totalSiteMT+','+row.totalSiteCUM+')" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(_sCum?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
+        html+='<div style="font-size:12px;color:#6b7280;margin-top:2px">Site: '+fmtR(row.totalSiteCUM)+' CUM</div>';
+        html+='</div>';
+        if(row.revenue!=null){
+          html+='<div style="padding:4px 0"><div style="font-size:12px;color:#6b7280">Scope Revenue</div>';
+          html+='<div style="font-size:14px;font-weight:700;color:#1e293b">₹'+fmtI(Math.round(row.revenue-(row.adjAmt||0)))+'</div></div>';
+        }
+        html+='</div>';
+      }
+
       var adjKey=s.id+'__ADJ_AMT', noteKey=s.id+'__ADJ_NOTE';
-      var adjAmt=contractRates[adjKey]!=null?contractRates[adjKey]:null;
+      var adjVal=contractRates[adjKey]!=null?contractRates[adjKey]:null;
       var adjNote=contractRates[noteKey]||'';
       html+='<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:10px;padding-top:8px;border-top:1px dashed #e5e7eb">';
       html+='<div style="display:flex;align-items:center;gap:4px">';
       html+='<label style="font-size:12px;font-weight:600;color:#374151">Adjustment ₹</label>';
-      html+='<input id="profitInput_'+adjKey+'" type="number" value="'+(adjAmt!=null?adjAmt:'')+'" placeholder="±0" oninput="contractValueChanged(\''+adjKey+'\',this.value)" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(adjAmt?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px">';
+      html+='<input id="profitInput_'+adjKey+'" type="number" value="'+(adjVal!=null?adjVal:'')+'" placeholder="±0" oninput="contractValueChanged(\''+adjKey+'\',this.value)" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(adjVal?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px">';
       html+='</div>';
       html+='<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:150px">';
       html+='<label style="font-size:12px;font-weight:600;color:#6b7280">Note</label>';
       html+='<input type="text" value="'+esc(adjNote)+'" placeholder="Optional" oninput="contractNoteChanged(\''+noteKey+'\',this.value)" style="flex:1;max-width:250px;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;color:#374151">';
       html+='</div>';
-      if(adjAmt && adjAmt!==0){
-        html+='<div style="font-size:12px;color:'+(adjAmt>0?'#16a34a':'#ef4444')+';font-weight:600">'+(adjAmt>0?'+':'')+fmtI(Math.round(adjAmt))+' adjustment</div>';
+      if(adjVal && adjVal!==0){
+        html+='<div style="font-size:12px;color:'+(adjVal>0?'#16a34a':'#ef4444')+';font-weight:600">'+(adjVal>0?'+':'')+fmtI(Math.round(adjVal))+' adjustment</div>';
       }
       html+='</div>';
     } else if(mode==='perkm'){
