@@ -1,0 +1,121 @@
+Make two small, clean improvements to the profitability section and fix the road-length input focus issue in Per km mode. Keep the UI clear and readable, avoid clutter, avoid tiny text, and do not redesign the page.
+
+PART 1 — PROFITABILITY SECTION: SHOW BASE PROFIT AND BASE MARGIN ALSO WHEN A SCENARIO IS ACTIVE
+
+CURRENT ISSUE
+When a scenario is selected, the profitability table shows:
+- Revenue
+- Full Cost
+- In-Scope
+- Revised In-Scope
+- Delta Cost
+- Excluded
+- Profit
+- Margin
+
+But the Profit and Margin being shown are only the revised values. This makes comparison incomplete because the user cannot directly see what the base Profit and base Margin were without switching back to base mode.
+
+REQUIRED CHANGE
+When a scenario is active, keep the current table structure and current columns exactly as they are. Do NOT add new columns.
+
+Only enhance the Profit and Margin cells so they show both:
+- main line = revised value
+- second line = Base: value
+
+This should apply to:
+- each site/job row
+- grand total row
+
+DISPLAY FORMAT
+When scenario is active:
+
+Profit cell:
+- first line: revised profit (current main value)
+- second line: Base: ₹[base profit]
+
+Margin cell:
+- first line: revised margin % (current main value)
+- second line: Base: [base margin]%
+
+Example:
+Profit ₹
++₹60,537
+Base: +₹1,27,746
+
+Margin
+10.4%
+Base: 21.9%
+
+STYLE / READABILITY
+- Keep the revised value as the primary visible value
+- Show the Base line directly below in the same cell
+- Use normal readable font size; do not use tiny or faint text
+- Keep text clear and comfortable to read
+- Do not add extra colored bands or cards
+- Keep colors minimal:
+  - green only for positive values
+  - red only for negative values
+  - normal dark text for labels like “Base:”
+- Make sure the row height remains neat and not too cramped
+
+LOGIC
+Base Profit = Revenue - Base In-Scope Cost
+Base Margin % = (Base Profit / Revenue) × 100
+
+Revised Profit = Revenue - Revised In-Scope Cost
+Revised Margin % = (Revised Profit / Revenue) × 100
+
+Use existing revenue logic already present in the profitability section.
+Do not change the current table columns or the overall layout.
+
+WHEN NO SCENARIO IS ACTIVE
+Keep the current base-only display as it is now.
+Do not add a “Base:” second line in normal base mode.
+
+PART 2 — FIX PER KM MODE ROAD LENGTH FIELD LOSING FOCUS
+
+CURRENT ISSUE
+In the Per km tab/mode (or the mode where road length is entered), the Road Length field is losing focus after entering one digit. This makes typing impossible or very frustrating.
+
+REQUIRED FIX
+Fix the Road Length input so the user can type normally without the field losing focus after each digit.
+
+EXPECTED BEHAVIOR
+- User should be able to type multiple digits continuously
+- Focus should remain in the field while typing
+- Cursor position should remain stable
+- Input should not remount/re-render in a way that steals focus on each keystroke
+
+PLEASE CHECK FOR COMMON CAUSES
+Audit and fix if any of these are happening:
+- input component remounting because of unstable key
+- state update causing parent block to fully re-render/remount the field
+- formatting/parsing logic resetting the value on every keystroke
+- switching controlled/uncontrolled input behavior
+- mode toggle logic rebuilding the entire section while typing
+- derived values updating in a way that replaces the input component instance
+
+IMPLEMENTATION PREFERENCE
+Use a stable controlled input pattern that allows normal typing.
+Do not force auto-formatting in the middle of typing if that causes focus loss.
+If needed, allow the raw typed value during editing and normalize on blur or after valid entry.
+
+READABILITY / UX
+- Keep the field readable
+- Do not change the visual design unnecessarily
+- Just ensure the typing experience is smooth and reliable
+
+ACCEPTANCE CHECKLIST
+1. In scenario-active profitability view, Profit cell shows revised profit on first line and Base profit on second line.
+2. In scenario-active profitability view, Margin cell shows revised margin on first line and Base margin on second line.
+3. No new columns are added to the profitability table.
+4. Base mode still shows the simple base-only profitability view.
+5. The added Base lines are readable and not tiny/faint.
+6. In Per km mode, Road Length input no longer loses focus after one digit.
+7. User can type full road length continuously without interruption.
+8. No unnecessary redesign or clutter is introduced.
+
+After making the change, tell me:
+- what caused the road-length field to lose focus
+- how you fixed it
+- where base profit and base margin are now being computed from in scenario mode
