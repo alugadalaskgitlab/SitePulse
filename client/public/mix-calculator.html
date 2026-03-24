@@ -2491,7 +2491,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   }
 
   var siteRows = [];
-  var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandHasRevenue=false;
+  var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandBaseRevenue=0, grandHasRevenue=false;
 
   sites.forEach(function(s){
     if(!s.jobs.length) return;
@@ -2585,8 +2585,11 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var costForProfit = hasRevised ? revInScopeCost : inScopeCost;
     var profit = revenue!=null ? revenue - costForProfit : null;
     var margin = revenue!=null&&revenue>0 ? profit/revenue*100 : null;
-    var baseProfit = revenue!=null ? revenue - inScopeCost : null;
-    var baseMargin = revenue!=null&&revenue>0 ? baseProfit/revenue*100 : null;
+    var baseRevenue = revenue!=null ? revenue - (adjAmt||0) : null;
+    var baseProfit = baseRevenue!=null ? baseRevenue - inScopeCost : null;
+    var baseMargin = baseRevenue!=null&&baseRevenue>0 ? baseProfit/baseRevenue*100 : null;
+    var scenProfit = baseRevenue!=null ? baseRevenue - revInScopeCost : null;
+    var scenMargin = baseRevenue!=null&&baseRevenue>0 ? scenProfit/baseRevenue*100 : null;
 
     siteRows.push({
       site: s, mode: mode, mixQty: mixQty, primeArea: primeArea, tackArea: tackArea,
@@ -2594,13 +2597,15 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       fullJobCost: fullJobCost, inScopeCost: inScopeCost,
       revInScopeCost: revInScopeCost, revenue: revenue, hasRev: hasRev,
       excluded: excluded, profit: profit, margin: margin,
-      baseProfit: baseProfit, baseMargin: baseMargin, adjAmt: adjAmt,
-      revMode: revMode, totalSiteMT: totalSiteMT, totalSiteCUM: totalSiteCUM
+      baseProfit: baseProfit, baseMargin: baseMargin,
+      scenProfit: scenProfit, scenMargin: scenMargin,
+      adjAmt: adjAmt, revMode: revMode,
+      totalSiteMT: totalSiteMT, totalSiteCUM: totalSiteCUM
     });
     grandFullCost += fullJobCost;
     grandInScope += inScopeCost;
     grandRevInScope += hasRevised ? revInScopeCost : inScopeCost;
-    if(hasRev){ grandRevenue += revenue; grandHasRevenue = true; }
+    if(hasRev){ grandRevenue += revenue; grandBaseRevenue += (revenue-(adjAmt||0)); grandHasRevenue = true; }
   });
 
   siteRows.forEach(function(row){
@@ -2744,12 +2749,20 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
     html+='<td style="text-align:right;padding:10px 10px;color:#94a3b8">₹'+fmtI(Math.round(row.excluded))+'</td>';
     html+='<td style="text-align:right;padding:10px 10px;font-weight:700;color:'+pCol+'">'+(row.profit!=null?(row.profit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.profit))):'—');
+    if(hasRevised && row.scenProfit!=null){
+      var spCol=row.scenProfit>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#2563eb">Scenario: </span><span style="color:'+spCol+'">'+(row.scenProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.scenProfit)))+'</span></div>';
+    }
     if(hasRevised && row.baseProfit!=null){
       var bpCol=row.baseProfit>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+bpCol+'">'+(row.baseProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.baseProfit)))+'</span></div>';
     }
     html+='</td>';
     html+='<td style="text-align:right;padding:10px 10px;font-weight:600;color:'+mCol+'">'+(row.margin!=null?row.margin.toFixed(1)+'%':'—');
+    if(hasRevised && row.scenMargin!=null){
+      var smCol=row.scenMargin>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#2563eb">Scenario: </span><span style="color:'+smCol+'">'+row.scenMargin.toFixed(1)+'%</span></div>';
+    }
     if(hasRevised && row.baseMargin!=null){
       var bmCol=row.baseMargin>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+bmCol+'">'+row.baseMargin.toFixed(1)+'%</span></div>';
@@ -2777,15 +2790,25 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<td style="text-align:right;padding:12px 10px;color:'+gDeltaCol+'">'+(gDelta>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gDelta)))+'</td>';
     }
     html+='<td style="text-align:right;padding:12px 10px;color:#94a3b8">₹'+fmtI(Math.round(gExcluded))+'</td>';
-    var gBaseProfit = grandHasRevenue ? grandRevenue - grandInScope : null;
-    var gBaseMargin = grandHasRevenue&&grandRevenue>0 ? gBaseProfit/grandRevenue*100 : null;
+    var gBaseProfit = grandHasRevenue ? grandBaseRevenue - grandInScope : null;
+    var gBaseMargin = grandHasRevenue&&grandBaseRevenue>0 ? gBaseProfit/grandBaseRevenue*100 : null;
+    var gScenProfit = grandHasRevenue ? grandBaseRevenue - grandRevInScope : null;
+    var gScenMargin = grandHasRevenue&&grandBaseRevenue>0 ? gScenProfit/grandBaseRevenue*100 : null;
     html+='<td style="text-align:right;padding:12px 10px;font-size:15px;color:'+gpCol+'">'+(gProfit!=null?(gProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gProfit))):'—');
+    if(hasRevised && gScenProfit!=null){
+      var gspCol=gScenProfit>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#2563eb">Scenario: </span><span style="color:'+gspCol+'">'+(gScenProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gScenProfit)))+'</span></div>';
+    }
     if(hasRevised && gBaseProfit!=null){
       var gbpCol=gBaseProfit>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+gbpCol+'">'+(gBaseProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gBaseProfit)))+'</span></div>';
     }
     html+='</td>';
     html+='<td style="text-align:right;padding:12px 10px;font-size:14px;color:'+gmCol+'">'+(gMargin!=null?gMargin.toFixed(1)+'%':'—');
+    if(hasRevised && gScenMargin!=null){
+      var gsmCol=gScenMargin>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#2563eb">Scenario: </span><span style="color:'+gsmCol+'">'+gScenMargin.toFixed(1)+'%</span></div>';
+    }
     if(hasRevised && gBaseMargin!=null){
       var gbmCol=gBaseMargin>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:500;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+gbmCol+'">'+gBaseMargin.toFixed(1)+'%</span></div>';
