@@ -737,11 +737,13 @@ function saveState(){
         })
       };
     });
+    var scopeMargin = parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       inputs: inputs, mixTypes: mixTypes, equipDefs: equipDefs,
       sites: sitesClean, siteCounter: siteCounter, jobCounter: jobCounter,
       activeMixIdx: activeMixIdx, aggBasis: aggBasis,
-      contractRates: contractRates
+      contractRates: contractRates,
+      scopeState: scopeState, scopeMarginPct: scopeMargin
     }));
   } catch(e) {}
 }
@@ -781,6 +783,17 @@ function loadState(){
     if(mtBtn) mtBtn.className = 'toggle-btn'+(b==='MT'?' active-amber':'');
     if(cftBtn) cftBtn.className = 'toggle-btn'+(b==='CFT'?' active-amber':'');
     if(aggLbl) aggLbl.textContent = 'Purchase Rate (₹/'+b+')';
+    if(state.scopeState && typeof state.scopeState === 'object'){
+      if(state.scopeState.groups) scopeState.groups = Object.assign(scopeState.groups, state.scopeState.groups);
+      if(state.scopeState.mixing) scopeState.mixing = Object.assign(scopeState.mixing, state.scopeState.mixing);
+      if(state.scopeState.spraying) scopeState.spraying = Object.assign(scopeState.spraying, state.scopeState.spraying);
+      if(state.scopeState.paving) scopeState.paving = Object.assign(scopeState.paving, state.scopeState.paving);
+    }
+    if(state.scopeMarginPct != null){
+      var smEl = document.getElementById('scopeMarginPct');
+      if(smEl) smEl.value = state.scopeMarginPct;
+    }
+    restoreScopeUI();
     return true;
   } catch(e){
     console.warn('Failed to restore state:', e);
@@ -820,11 +833,13 @@ function getDbState(){
       })
     };
   });
+  var scopeMargin = parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
   return JSON.stringify({
     inputs: inputs, mixTypes: mixTypes, equipDefs: equipDefs,
     sites: sitesClean, siteCounter: siteCounter, jobCounter: jobCounter,
     activeMixIdx: activeMixIdx, aggBasis: aggBasis,
-    contractRates: contractRates
+    contractRates: contractRates,
+    scopeState: scopeState, scopeMarginPct: scopeMargin
   });
 }
 
@@ -2872,6 +2887,17 @@ function loadScenarioState(state){
   if(mtBtn) mtBtn.className='toggle-btn'+(b==='MT'?' active-amber':'');
   if(cftBtn) cftBtn.className='toggle-btn'+(b==='CFT'?' active-amber':'');
   if(aggLbl) aggLbl.textContent='Purchase Rate (₹/'+b+')';
+  if(state.scopeState && typeof state.scopeState === 'object'){
+    if(state.scopeState.groups) scopeState.groups = Object.assign(scopeState.groups, state.scopeState.groups);
+    if(state.scopeState.mixing) scopeState.mixing = Object.assign(scopeState.mixing, state.scopeState.mixing);
+    if(state.scopeState.spraying) scopeState.spraying = Object.assign(scopeState.spraying, state.scopeState.spraying);
+    if(state.scopeState.paving) scopeState.paving = Object.assign(scopeState.paving, state.scopeState.paving);
+  }
+  if(state.scopeMarginPct != null){
+    var smEl = document.getElementById('scopeMarginPct');
+    if(smEl) smEl.value = state.scopeMarginPct;
+  }
+  restoreScopeUI();
 }
 
 var scenarioBaseSnapshot = null;
@@ -2998,6 +3024,23 @@ var scopeState = {
   spraying:{operation:true, primeEmulsion:true, tackEmulsion:true},
   paving:  {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true}
 };
+
+function restoreScopeUI(){
+  var g = scopeState.groups;
+  var groupMap = {mixing:'scopeBodyMixing', transport:'scopeBodyTransport', spraying:'scopeBodySpraying', paving:'scopeBodyPaving'};
+  var chkMap = {mixing:'scopeChkMixing', transport:'scopeChkTransport', spraying:'scopeChkSpraying', paving:'scopeChkPaving'};
+  ['mixing','transport','spraying','paving'].forEach(function(grp){
+    var chk = document.getElementById(chkMap[grp]);
+    if(chk) chk.checked = !!g[grp];
+    var body = document.getElementById(groupMap[grp]);
+    if(body) body.classList.toggle('hidden', !g[grp]);
+  });
+  var anyActive = g.mixing||g.transport||g.spraying||g.paving;
+  var mr = document.getElementById('scopeMarginRow');
+  var so = document.getElementById('scopeOutput');
+  if(mr) mr.classList.toggle('hidden', !anyActive);
+  if(so) so.classList.toggle('hidden', !anyActive);
+}
 
 function scopeToggleGroup(group, checked){
   scopeState.groups[group] = checked;
