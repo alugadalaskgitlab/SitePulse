@@ -1,0 +1,73 @@
+Please correct the profitability logic consistently across all commercial modes so that Base Profit and Base Margin always remain the original/base values and are never altered by later adjustment entries or revised commercial inputs.
+
+IMPORTANT RULE
+Base profit must remain the original/base profit.
+Do NOT add adjustment amount or revised commercial inputs into the base side.
+
+This rule must apply consistently in:
+- Itemised mode
+- Per km mode
+- Lumpsum mode
+- and Scope Rate mode if applicable
+
+CORRECT LOGIC
+
+1) BASE SIDE (must remain frozen/original)
+Base Revenue = original/base revenue only
+Base Cost = original/base in-scope cost
+Base Profit = Base Revenue - Base Cost
+Base Margin % = Base Profit / Base Revenue × 100
+
+Base Revenue must NOT include:
+- adjustment revenue
+- revised commercial entries
+- negotiated extra amount
+- revised per km amount
+- revised lumpsum amount
+- revised scope-rate amount
+
+2) REVISED / CURRENT SIDE
+Revised Revenue = current commercial revenue including any current adjustments or revised entered values relevant to the active mode
+Revised Cost = revised in-scope cost
+Revised Profit = Revised Revenue - Revised Cost
+Revised Margin % = Revised Profit / Revised Revenue × 100
+
+3) ITEMISED MODE
+If Adjustment Revenue is entered, it must affect only Revised/Current Revenue.
+It must NOT change Base Revenue, Base Profit, or Base Margin.
+
+4) PER KM MODE
+If the user changes per km commercial value/revenue, it must affect only Revised/Current Revenue.
+Base Revenue, Base Profit, and Base Margin must remain the original base values.
+
+5) LUMPSUM MODE
+If the user changes lumpsum commercial value/revenue, it must affect only Revised/Current Revenue.
+Base Revenue, Base Profit, and Base Margin must remain the original base values.
+
+6) DISPLAY
+Where scenario mode shows:
+- main line = revised profit / revised margin
+- second line = Base: ...
+make sure the Base line is always calculated from original/base revenue and original/base cost only.
+
+7) ACCEPTANCE CHECKS
+Please verify:
+A. Itemised mode:
+- enter adjustment amount
+- revised profit changes
+- base profit stays unchanged
+
+B. Per km mode:
+- change per km commercial value
+- revised profit changes
+- base profit stays unchanged
+
+C. Lumpsum mode:
+- change lumpsum commercial value
+- revised profit changes
+- base profit stays unchanged
+
+After fixing, confirm:
+- where base revenue is sourced from in each mode
+- where revised/current revenue is sourced from in each mode
+- that adjustment/commercial override values no longer affect base profit/base margin
