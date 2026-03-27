@@ -489,38 +489,15 @@ export default function AdminReports() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold font-display">Admin Reports</h1>
-            <p className="text-muted-foreground text-sm">Generate filtered date-wise reports</p>
+            <p className="text-muted-foreground text-sm">Mix Rate Calculator & Saved Estimates</p>
           </div>
         </div>
         
-        {activeTab === "reports" && (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="button-export-excel">
-              <FileSpreadsheet className="w-4 h-4" />
-              Export Excel
-            </Button>
-            <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
-              <Printer className="w-4 h-4" />
-              Print
-            </Button>
-          </div>
-        )}
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="print:hidden">
-          <TabsTrigger value="reports" data-testid="tab-site-reports">Site Reports</TabsTrigger>
-          <TabsTrigger value="mix-calculator" data-testid="tab-mix-calculator">
-            <Calculator className="w-4 h-4 mr-1" />
-            Mix Rate Calculator
-          </TabsTrigger>
-        </TabsList>
+      <MixEstimates embedded />
 
-        <TabsContent value="mix-calculator" className="mt-4">
-          <MixEstimates embedded />
-        </TabsContent>
-
-        <TabsContent value="reports" className="mt-4 space-y-6">
+      {false && (<div className="space-y-6">
 
       <div className="hidden print:block mb-6 border-b pb-4">
         <h1 className="text-2xl font-bold mb-2">High Lane Constructions Pvt Ltd - Admin Report</h1>
@@ -886,8 +863,7 @@ export default function AdminReports() {
         }
       `}</style>
 
-        </TabsContent>
-      </Tabs>
+        </div>)}
     </div>
   );
 }
