@@ -2527,14 +2527,25 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       }
     } else if(sMode==='perkm'){
       var km=contractRates[sId+'__KM_RATE'];
+      var adjPKm=contractRates[sId+'__ADJ_PER_KM']||0;
       if(km!=null&&sTotalRoadKm>0){base=sTotalRoadKm*km;ok=true;}
+      if(ok){
+        var revRate=(km||0)+adjPKm;
+        var totalAdj=adjPKm*sTotalRoadKm;
+        return {baseRevenue:base, revenue:revRate*sTotalRoadKm, hasRev:true, adjAmt:totalAdj, adjPerKm:adjPKm, revMode:sRevMode};
+      }
+      if(adjPKm!==0&&sTotalRoadKm>0){
+        base=0; ok=true;
+        return {baseRevenue:0, revenue:adjPKm*sTotalRoadKm, hasRev:true, adjAmt:adjPKm*sTotalRoadKm, adjPerKm:adjPKm, revMode:sRevMode};
+      }
+      return {baseRevenue:null, revenue:null, hasRev:false, adjAmt:0, adjPerKm:0, revMode:sRevMode};
     } else {
       var ls=contractRates[sId+'__LUMPSUM'];
       if(ls!=null){base=ls;ok=true;}
     }
     var rev = ok ? (base||0)+sAdj : null;
     if(!ok && sAdj!==0){ ok=true; base=0; rev=sAdj; }
-    return {baseRevenue:base, revenue:rev, hasRev:ok, adjAmt:sAdj, revMode:sRevMode};
+    return {baseRevenue:base, revenue:rev, hasRev:ok, adjAmt:sAdj, adjPerKm:0, revMode:sRevMode};
   }
 
   var siteRows = [];
@@ -2610,7 +2621,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       excluded: excluded, profit: profit, margin: margin,
       baseProfit: baseProfit, baseMargin: baseMargin,
       baseRevenue: baseRevenue,
-      adjAmt: adjAmt, revMode: revMode,
+      adjAmt: adjAmt, adjPerKm: curRev.adjPerKm||0, revMode: revMode,
       totalSiteMT: totalSiteMT, totalSiteCUM: totalSiteCUM
     });
     grandFullCost += fullJobCost;
@@ -2715,10 +2726,17 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<div style="font-size:12px;color:#6b7280;margin-top:2px">'+(row.totalRoadKm>0?'= '+row.totalRoadKm.toFixed(3)+' km':(maxGeoHint>0?'Suggest: '+maxGeoHint+' m':''))+'</div></div>';
       html+='<div><label style="font-size:12px;font-weight:600;color:#16a34a;display:block;margin-bottom:3px">Contract Rate (₹/km)</label>';
       html+='<input id="profitInput_'+kmKey+'" type="number" value="'+(kmRate!=null?kmRate:'')+'" placeholder="e.g. 1800000" oninput="contractValueChanged(\''+kmKey+'\',this.value)" onblur="recalc()" style="width:180px;padding:5px 10px;border:1px solid '+(kmRate!=null?'#16a34a':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600"></div>';
-      var kmAdjKey=s.id+'__ADJ_AMT', kmAdjVal=contractRates[kmAdjKey]||0;
-      html+='<div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Adjustment (±)</label>';
-      html+='<input id="profitInput_'+kmAdjKey+'" type="number" value="'+(kmAdjVal?kmAdjVal:'')+'" placeholder="±0" oninput="contractValueChanged(\''+kmAdjKey+'\',this.value)" onblur="recalc()" style="width:140px;padding:5px 10px;border:1px solid '+(kmAdjVal?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
-      if(kmAdjVal && kmAdjVal!==0){ html+='<div style="font-size:12px;color:'+(kmAdjVal>0?'#16a34a':'#ef4444')+';font-weight:600;margin-top:2px">'+(kmAdjVal>0?'+':'')+fmtI(Math.round(kmAdjVal))+' adjustment</div>'; }
+      var kmAdjKey=s.id+'__ADJ_PER_KM', kmAdjVal=contractRates[kmAdjKey]||0;
+      html+='<div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Commercial Adjustment / KM</label>';
+      html+='<input id="profitInput_'+kmAdjKey+'" type="number" value="'+(kmAdjVal?kmAdjVal:'')+'" placeholder="±0" oninput="contractValueChanged(\''+kmAdjKey+'\',this.value)" onblur="recalc()" style="width:160px;padding:5px 10px;border:1px solid '+(kmAdjVal?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
+      if(kmAdjVal && kmAdjVal!==0 && row.totalRoadKm>0){
+        var revisedRateKm=(kmRate||0)+kmAdjVal;
+        var totalAdjAmt=kmAdjVal*row.totalRoadKm;
+        html+='<div style="font-size:12px;margin-top:3px;line-height:1.5">';
+        html+='<span style="color:#374151;font-weight:600">Revised Rate: </span><span style="color:#1e293b;font-weight:600">₹'+fmtR(revisedRateKm)+'/km</span>';
+        html+='<br><span style="color:#374151;font-weight:600">Total Adj: </span><span style="color:'+(totalAdjAmt>0?'#16a34a':'#ef4444')+';font-weight:600">'+(totalAdjAmt>0?'+':'')+fmtI(Math.round(totalAdjAmt))+'</span>';
+        html+='</div>';
+      }
       html+='</div>';
       html+='</div>';
     } else {

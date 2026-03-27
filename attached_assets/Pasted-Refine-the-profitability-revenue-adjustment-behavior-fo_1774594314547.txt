@@ -1,0 +1,131 @@
+Refine the profitability revenue-adjustment behavior for Per KM mode so that the adjustment is entered per KM, not only as an overall total amount. Keep the UI clean, readable, and consistent with the existing profitability section. Do not redesign the whole page.
+
+PURPOSE
+In Per KM mode, the contract revenue is entered as Contract Rate / KM. Therefore, the commercial adjustment should also be entered per KM so the system can automatically calculate the total revenue impact without the user manually converting it into a total lump sum.
+
+IMPORTANT CONSTRAINTS
+- Apply this change only to Per KM mode in the profitability/commercial section.
+- Do not disturb Itemised mode, Lumpsum mode, estimator logic, procurement, or scenario cost logic.
+- Keep readability strong.
+- Avoid tiny text, faint text, or too many colors/bands.
+- Keep the layout simple and uncluttered.
+- Check cursor focus/typing behavior in the new field.
+
+REQUIRED CHANGE
+
+1) ADD / REPLACE THE ADJUSTMENT FIELD IN PER KM MODE
+In Per KM mode, use a field:
+
+Label:
+Commercial Adjustment / KM
+
+Type:
+numeric input
+
+Default:
+0
+
+This field should represent the additional or reduced commercial amount per KM.
+
+Behavior:
+- positive value → increases revenue per KM
+- negative value → reduces revenue per KM
+
+Do not force the user to manually convert adjustment into total amount.
+
+2) REVENUE CALCULATION IN PER KM MODE
+
+Base values:
+Base Contract Rate / KM = original/base saved contract rate per KM
+Total Length = current job/site total length in KM (use existing length source already used for per KM revenue)
+
+Base Revenue:
+Base Revenue = Base Contract Rate / KM × Total Length
+
+Revised/current values:
+Revised Contract Rate / KM = Base Contract Rate / KM + Commercial Adjustment / KM
+
+Revised Revenue:
+Revised Revenue = Revised Contract Rate / KM × Total Length
+
+Total Adjustment Amount:
+Total Adjustment Amount = Commercial Adjustment / KM × Total Length
+
+3) PROFITABILITY CALCULATION
+Base Profit = Base Revenue - Base In-Scope Cost
+Base Margin % = Base Profit / Base Revenue × 100
+
+Revised Profit = Revised Revenue - Revised In-Scope Cost
+Revised Margin % = Revised Profit / Revised Revenue × 100
+
+IMPORTANT:
+Base Revenue, Base Profit, and Base Margin must remain original/base values only.
+Commercial Adjustment / KM must affect only the revised/current side.
+Do not let this field alter the Base line.
+
+4) DISPLAY / UI
+Keep the profitability table clean and do not add extra columns unless absolutely necessary.
+
+In the Per KM input area, show:
+- Contract Rate / KM
+- Commercial Adjustment / KM
+
+Optional auto-display below (only if clean and low-clutter):
+- Revised Rate / KM: ₹...
+- Total Adjustment: ₹...
+
+If space is limited, these optional values can be shown in a simple readable line below the inputs.
+
+Do not add cards, extra panels, or heavy visual styling.
+
+5) SCENARIO / BASE DISPLAY
+Where the profitability table already shows:
+- main line = revised/current profit and margin
+- second line = Base: ...
+
+Make sure in Per KM mode:
+- Base line uses original base contract rate / KM only
+- revised/current line uses contract rate / KM + commercial adjustment / KM
+
+6) READABILITY REQUIREMENTS
+Please make sure this area remains easy to read:
+- use normal readable font size
+- avoid tiny or faint text
+- avoid visually straining colors
+- keep labels clear
+- keep spacing comfortable
+- use bold only where useful
+- no clutter
+
+7) CURSOR / FOCUS CHECK
+Please check the new “Commercial Adjustment / KM” input carefully:
+- user should be able to type continuously
+- field must not lose focus after one digit
+- cursor should not jump
+- input should not remount on each keystroke
+- avoid aggressive auto-formatting while typing
+- if formatting is needed, do it on blur or safely after typing
+
+Please also confirm the existing Contract Rate / KM field behaves properly and does not suffer from the same focus-loss issue.
+
+8) DATA / STATE
+Store this as the Per KM commercial adjustment input for profitability logic.
+Do not mix it into technical estimator state unnecessarily.
+It should be part of the commercial/profitability layer.
+
+9) ACCEPTANCE CHECKLIST
+1. In Per KM mode, user can enter Commercial Adjustment / KM.
+2. Positive value increases revised/current revenue.
+3. Negative value decreases revised/current revenue.
+4. System automatically calculates revised revenue from per KM adjustment.
+5. Base Revenue and Base Profit remain unchanged.
+6. Revised Profit and Revised Margin update correctly.
+7. User does not need to manually convert adjustment into total amount.
+8. Input is readable and does not lose cursor focus.
+9. Existing Itemised and Lumpsum modes remain unchanged.
+
+After implementation, confirm:
+- where Commercial Adjustment / KM is stored
+- how Base Revenue and Revised Revenue are now calculated in Per KM mode
+- how you ensured the Base line remains original
+- whether any focus-loss issue was found/fixed in the Per KM inputs
