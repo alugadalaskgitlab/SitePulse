@@ -1,0 +1,107 @@
+Make two clean improvements to the costing/profitability workflow without cluttering the UI. Keep the view simple, readable, and commercially useful. Do not redesign the whole page.
+
+GOAL
+1) In the scenario/comparison side, when we later show component-wise impact, Mixing / Plant-side cost must correctly include DG-related cost also.
+2) In Scope Quotation, add Bitumen / Binder as a separate selectable sub-item under Mixing, because sometimes the contractor supplies bitumen and sometimes HLC supplies bitumen.
+
+IMPORTANT CONSTRAINTS
+- Keep the UI clean and readable.
+- Avoid tiny text, faint text, or too many colors/bands.
+- Do not overcrowd Scope Quotation.
+- Do not redesign existing major sections.
+- Reuse current costing logic wherever possible.
+- Keep technical estimator/procurement logic unchanged.
+- Update profitability/scope inclusion logic only where needed.
+
+PART 1 — SCOPE QUOTATION: ADD BITUMEN AS A SEPARATE MIXING SUB-ITEM
+
+CURRENT ISSUE
+Inside Scope Quotation, Mixing does not currently expose Bitumen / Binder as a separate selectable sub-item. This is a problem because sometimes the contractor supplies bitumen and sometimes HLC supplies bitumen. The scope selection must be able to represent that clearly.
+
+REQUIRED CHANGE
+Inside the existing Scope Quotation → Mixing block, add a separate line item:
+
+- Bitumen / Binder
+
+This should behave like the other selectable sub-items in Mixing.
+
+EXPECTED BEHAVIOR
+- If Bitumen / Binder is selected in scope, profitability should include bitumen cost in In-Scope Cost.
+- If Bitumen / Binder is not selected, profitability should exclude bitumen cost from In-Scope Cost and that cost should fall under Excluded Cost.
+- Procurement must continue to show bitumen quantity/rate/cost regardless of scope selection.
+- Technical estimator must continue to calculate bitumen quantity and technical total cost regardless of scope selection.
+
+UI REQUIREMENTS
+- Add Bitumen / Binder in the existing Mixing sub-item list.
+- Keep font readable and similar to surrounding lines.
+- Maintain existing row spacing and alignment.
+- Do not make the block visually crowded.
+- Do not add explanatory paragraphs or tiny helper text.
+
+PART 2 — MIXING / PLANT-SIDE COST BUCKET MUST INCLUDE DG ALSO
+
+CURRENT ISSUE
+When we think about component-wise operational cost or plant-side cost, DG must be included. Mixing / Plant-side cost should not omit DG-related cost.
+
+REQUIRED LOGIC
+Please ensure the Mixing / Plant-side bucket (used for grouped cost summaries / operational cost grouping / future component-wise impact display / profitability grouping where applicable) includes all relevant plant-side elements, including DG.
+
+Mixing / Plant-side should include, wherever already applicable in the existing cost model:
+- Hot Mix Plant — hire / plant cost
+- LDO / boiler / dryer fuel
+- DG / Generator — hire
+- DG HSD / DG fuel
+- JCB / Wheel Loader — hire
+- JCB HSD / fuel
+- Tipper / inter-cart — hire
+- Tipper HSD / fuel
+- Plant crew / overhead
+- Bitumen / Binder (only when bitumen is included in HLC scope for profitability inclusion)
+
+IMPORTANT DISTINCTION
+- Technical costing can still always include total technical mixing burden.
+- Profitability inclusion must still depend on Scope Quotation selections.
+- So Bitumen may belong to the technical Mixing bucket, but whether it is counted in profitability depends on the new Bitumen / Binder scope selection.
+
+PART 3 — PROFITABILITY / SCOPE MAPPING UPDATE
+Update the current scope-based profitability mapping so that:
+
+If Mixing is selected and Bitumen / Binder is selected:
+- include bitumen cost in In-Scope Cost
+
+If Mixing is selected but Bitumen / Binder is NOT selected:
+- keep technical mix cost calculations intact
+- but do NOT include bitumen cost in profitability In-Scope Cost
+- include bitumen under Excluded Cost
+
+Also ensure DG cost is not omitted from the relevant plant-side/mixing grouping.
+
+PART 4 — KEEP THE VIEW DECENT / NOT CLUTTERED
+Please keep the presentation simple:
+- no new major cards
+- no extra charts
+- no excessive colors
+- no tiny helper notes
+- no visual clutter
+
+Use:
+- normal readable font size
+- comfortable spacing
+- clean alignment
+- bold only where useful
+- standard text color with existing red/green logic only where already used
+
+PART 5 — ACCEPTANCE CHECKLIST
+1. Scope Quotation → Mixing now has a separate selectable Bitumen / Binder sub-item.
+2. If Bitumen / Binder is unchecked, bitumen is excluded from profitability In-Scope Cost.
+3. If Bitumen / Binder is checked, bitumen is included in profitability In-Scope Cost.
+4. Procurement still always shows bitumen quantities/rates/costs.
+5. Technical estimator still always calculates bitumen technically.
+6. DG cost is included in the Mixing / Plant-side cost grouping.
+7. UI remains clean and readable, without clutter.
+
+After implementing, tell me:
+- where Bitumen / Binder was added in Scope Quotation
+- how bitumen is now included/excluded in profitability
+- where DG is now included in the plant-side/mixing grouping
+- whether any existing grouping logic had to be adjusted
