@@ -2691,7 +2691,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   }
 
   var siteRows = [];
-  var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandHasRevenue=false, grandHasAdj=false;
+  var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandHasRevenue=false;
   var grandScRevenue=0, grandHasScRev=false;
 
   sites.forEach(function(s){
@@ -2796,16 +2796,20 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     }
     var _baseRevenue = revenue;
-    var _revisedRevenue = (scHasRev && scRevenue!=null) ? scRevenue : null;
     var _adjustment = adjAmt || 0;
-    var _finalRevenue = null;
-    if(_revisedRevenue!=null) _finalRevenue = _revisedRevenue + _adjustment;
-    else if(_baseRevenue!=null) _finalRevenue = _baseRevenue + _adjustment;
+
+    var _revRevenueBase = (scHasRev && scRevenue!=null) ? scRevenue : (hasRev ? _baseRevenue : null);
+    var _revisedRevenue = null;
+    if(_revRevenueBase!=null && (_adjustment!==0 || scHasRev)){
+      _revisedRevenue = _revRevenueBase + _adjustment;
+    }
+    if(_revisedRevenue!=null && _baseRevenue!=null && Math.abs(_revisedRevenue - _baseRevenue) < 1){
+      _revisedRevenue = null;
+    }
 
     var _baseProfit = hasRev ? _baseRevenue - _baseCost : null;
     var _scenarioProfit = (hasRev && hasRevised) ? _baseRevenue - _scenarioCost : null;
     var _revisedProfit = (_revisedRevenue!=null && hasRevised) ? _revisedRevenue - _scenarioCost : null;
-    var _finalProfit = (_finalRevenue!=null && hasRevised) ? _finalRevenue - _scenarioCost : (_finalRevenue!=null && hasRev ? _finalRevenue - _baseCost : null);
 
     var excluded = fullJobCost - inScopeCost;
     var profit = hasRev ? (_baseRevenue - _baseCost) : null;
@@ -2828,17 +2832,15 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       scRevenue: scRevenue, scHasRev: scHasRev,
       _baseCost: _baseCost, _scenarioCost: _scenarioCost,
       _baseRevenue: _baseRevenue, _revisedRevenue: _revisedRevenue,
-      _adjustment: _adjustment, _finalRevenue: _finalRevenue,
       _baseProfit: _baseProfit, _scenarioProfit: _scenarioProfit,
-      _revisedProfit: _revisedProfit, _finalProfit: _finalProfit,
+      _revisedProfit: _revisedProfit,
       _deltaCost: _deltaCost
     });
     grandFullCost += fullJobCost;
     grandInScope += _baseCost;
     grandRevInScope += _scenarioCost;
     if(hasRev){ grandRevenue += _baseRevenue; grandHasRevenue = true; }
-    if(adjAmt!==0) grandHasAdj = true;
-    if(scHasRev){ grandScRevenue += scRevenue; grandHasScRev = true; }
+    if(_revisedRevenue!=null) grandHasScRev = true;
   });
 
   siteRows.forEach(function(row){
@@ -2964,8 +2966,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='</div>';
   });
 
-  var _showScRev = grandHasScRev && procScenarioContractRates;
-  var _hasAdj = grandHasAdj;
+  var _showScRev = grandHasScRev;
 
   html+='<div style="overflow-x:auto;margin-top:8px">';
   html+='<table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.4">';
@@ -2985,14 +2986,10 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     if(_showScRev){
       html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#7c3aed">Rev. Profit</th>';
     }
-    if(_hasAdj){
-      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#6366f1">Adj. ₹</th>';
-      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#059669">Final Profit</th>';
-    }
     html+='</tr></thead><tbody>';
 
-    var gBaseRev=0, gScCost=0, gBaseCost=0, gBaseProfit=0, gScProfit=0, gRevRev=0, gRevProfit=0, gAdj=0, gFinalProfit=0;
-    var gHasBaseRev=false, gHasRevRev=false, gHasAdj=false;
+    var gBaseRev=0, gScCost=0, gBaseCost=0, gBaseProfit=0, gScProfit=0, gRevRev=0, gRevProfit=0;
+    var gHasBaseRev=false, gHasRevRev=false;
 
     siteRows.forEach(function(row, ri){
       var bg = ri%2===0 ? '#ffffff' : '#f8fafc';
@@ -3015,12 +3012,6 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       if(_showScRev){
         html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._revisedProfit)+';font-weight:600">'+_fmtP(row._revisedProfit)+'</td>';
       }
-      if(_hasAdj){
-        var adjDisp = row._adjustment!==0 ? ((row._adjustment>0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row._adjustment)))) : '—';
-        var adjCol = row._adjustment>0?'#16a34a':(row._adjustment<0?'#ef4444':'#64748b');
-        html+='<td style="text-align:right;padding:8px 8px;color:'+adjCol+'">'+adjDisp+'</td>';
-        html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._finalProfit)+';font-weight:700">'+_fmtP(row._finalProfit)+'</td>';
-      }
       html+='</tr>';
 
       if(row._baseRevenue!=null){ gBaseRev+=row._baseRevenue; gHasBaseRev=true; }
@@ -3029,9 +3020,6 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       if(row._scenarioProfit!=null) gScProfit+=row._scenarioProfit;
       if(row._revisedRevenue!=null){ gRevRev+=row._revisedRevenue; gHasRevRev=true; }
       if(row._revisedProfit!=null) gRevProfit+=row._revisedProfit;
-      if(row._adjustment!==0) gHasAdj=true;
-      gAdj+=row._adjustment;
-      if(row._finalProfit!=null) gFinalProfit+=row._finalProfit;
     });
 
     if(siteRows.length>0){
@@ -3052,12 +3040,6 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasBaseRev?gScProfit:null)+';font-weight:700">'+_fmtP(gHasBaseRev?gScProfit:null)+'</td>';
       if(_showScRev){
         html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasRevRev?gRevProfit:null)+';font-weight:700">'+_fmtP(gHasRevRev?gRevProfit:null)+'</td>';
-      }
-      if(_hasAdj){
-        var adjCol = gAdj>0?'#16a34a':(gAdj<0?'#ef4444':'#64748b');
-        html+='<td style="text-align:right;padding:10px 8px;color:'+adjCol+'">'+(gAdj!==0?((gAdj>0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gAdj)))):'—')+'</td>';
-        var gfp = gHasBaseRev ? gFinalProfit : null;
-        html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gfp)+';font-weight:700;font-size:14px">'+_fmtP(gfp)+'</td>';
       }
       html+='</tr>';
     }
