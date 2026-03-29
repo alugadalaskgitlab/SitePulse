@@ -601,6 +601,7 @@ var siteCounter = 0;
 var jobCounter = 0;
 var contractRates = {};
 var procScenarioContractRates = null;
+var procBaseContractRates = null;
 function profitInputChanged(key, val){
   contractRates[key] = parseFloat(val) || null;
   saveState();
@@ -1049,7 +1050,7 @@ function fetchProcScenarios(){
   var bar = document.getElementById('procScenarioBar');
   var sel = document.getElementById('procScenarioSelect');
   if(!bar||!sel) return;
-  if(!currentEstimateId){ bar.style.display='none'; procScenarioContractRates=null; return; }
+  if(!currentEstimateId){ bar.style.display='none'; procScenarioContractRates=null; procBaseContractRates=null; return; }
   fetch('/api/price-scenarios?estimateId='+currentEstimateId)
     .then(function(r){return r.json();})
     .then(function(list){
@@ -1058,7 +1059,7 @@ function fetchProcScenarios(){
         try{ var rp=JSON.parse(s.revisedPrices||'{}'); return Object.keys(rp).length>0; }catch(e){return false;}
       });
       // In scenario edit mode: always show bar with "Base Estimate" option
-      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; procScenarioContractRates=null; return; }
+      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; return; }
       bar.style.display='flex';
       var opts;
       if(scenarioMode){
@@ -1092,7 +1093,7 @@ function onProcScenarioChange(){
   if(scId===-1 && scenarioMode){
     var baseSrc = scenarioBaseSnapshot;
     function applyBaseCompare(st){
-      if(!st){ procScenarioPrices=null; procScenarioContractRates=null; updateProcBadge(); recalc(); return; }
+      if(!st){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; updateProcBadge(); recalc(); return; }
       var inp = st.inputs||{};
       var pf = function(v){ var x=parseFloat(v); return isNaN(x)?null:x; };
       procScenarioPrices = {
@@ -1121,9 +1122,9 @@ function onProcScenarioChange(){
     } else { applyBaseCompare(null); }
     return;
   }
-  if(!scId){ procScenarioPrices=null; procScenarioContractRates=null; updateProcBadge(); recalc(); return; }
+  if(!scId){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; updateProcBadge(); recalc(); return; }
   var sc = _procScenariosList.find(function(s){return s.id===scId;});
-  if(!sc){ procScenarioPrices=null; procScenarioContractRates=null; updateProcBadge(); recalc(); return; }
+  if(!sc){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; updateProcBadge(); recalc(); return; }
   try{
     var prices;
     if(sc.state){
@@ -1165,7 +1166,14 @@ function onProcScenarioChange(){
     } else {
       procScenarioContractRates = null;
     }
-  } catch(e){ procScenarioPrices=null; procScenarioContractRates=null; }
+    procBaseContractRates = null;
+    if(sc.baseState){
+      try{
+        var _bsSt = typeof sc.baseState==='string'?JSON.parse(sc.baseState):sc.baseState;
+        procBaseContractRates = (_bsSt.contractRates && typeof _bsSt.contractRates==='object') ? _bsSt.contractRates : null;
+      } catch(e2){ procBaseContractRates = null; }
+    }
+  } catch(e){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; }
   updateProcBadge();
   recalc();
 }
@@ -2758,7 +2766,13 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       scRevenue = revRev.revenue;
       scHasRev = revRev.hasRev;
     } else {
-      curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+      var _baseRatesSource = procBaseContractRates || null;
+      if(_baseRatesSource){
+        var _baseMode = _baseRatesSource[s.id+'__MODE']||'itemised';
+        curRev = _calcSiteRevenue(s.id, _baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, _baseRatesSource);
+      } else {
+        curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+      }
       if(procScenarioContractRates){
         var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
         var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
