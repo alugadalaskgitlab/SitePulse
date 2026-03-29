@@ -827,6 +827,7 @@ var currentEstimateId = null;
 var currentEstimateName = '';
 var _estimatesList = {};
 var procScenarioPrices = null; // prices extracted from selected scenario for procurement comparison
+var procBasePrices = null; // prices extracted from frozen baseState for base cost computation
 var _procScenariosList = [];   // cached scenarios for current estimate
 
 function getDbState(){
@@ -1050,7 +1051,7 @@ function fetchProcScenarios(){
   var bar = document.getElementById('procScenarioBar');
   var sel = document.getElementById('procScenarioSelect');
   if(!bar||!sel) return;
-  if(!currentEstimateId){ bar.style.display='none'; procScenarioContractRates=null; procBaseContractRates=null; return; }
+  if(!currentEstimateId){ bar.style.display='none'; procScenarioContractRates=null; procBaseContractRates=null; procBasePrices=null; return; }
   fetch('/api/price-scenarios?estimateId='+currentEstimateId)
     .then(function(r){return r.json();})
     .then(function(list){
@@ -1059,7 +1060,7 @@ function fetchProcScenarios(){
         try{ var rp=JSON.parse(s.revisedPrices||'{}'); return Object.keys(rp).length>0; }catch(e){return false;}
       });
       // In scenario edit mode: always show bar with "Base Estimate" option
-      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; return; }
+      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; procBasePrices=null; return; }
       bar.style.display='flex';
       var opts;
       if(scenarioMode){
@@ -1093,7 +1094,7 @@ function onProcScenarioChange(){
   if(scId===-1 && scenarioMode){
     var baseSrc = scenarioBaseSnapshot;
     function applyBaseCompare(st){
-      if(!st){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; updateProcBadge(); recalc(); return; }
+      if(!st){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; procBasePrices=null; updateProcBadge(); recalc(); return; }
       var inp = st.inputs||{};
       var pf = function(v){ var x=parseFloat(v); return isNaN(x)?null:x; };
       procScenarioPrices = {
@@ -1122,9 +1123,9 @@ function onProcScenarioChange(){
     } else { applyBaseCompare(null); }
     return;
   }
-  if(!scId){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; updateProcBadge(); recalc(); return; }
+  if(!scId){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; procBasePrices=null; updateProcBadge(); recalc(); return; }
   var sc = _procScenariosList.find(function(s){return s.id===scId;});
-  if(!sc){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; updateProcBadge(); recalc(); return; }
+  if(!sc){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; procBasePrices=null; updateProcBadge(); recalc(); return; }
   try{
     var prices;
     if(sc.state){
@@ -1167,13 +1168,27 @@ function onProcScenarioChange(){
       procScenarioContractRates = null;
     }
     procBaseContractRates = null;
+    procBasePrices = null;
     if(sc.baseState){
       try{
         var _bsSt = typeof sc.baseState==='string'?JSON.parse(sc.baseState):sc.baseState;
         procBaseContractRates = (_bsSt.contractRates && typeof _bsSt.contractRates==='object') ? _bsSt.contractRates : null;
-      } catch(e2){ procBaseContractRates = null; }
+        var _bsInp = _bsSt.inputs || _bsSt;
+        var _bpf = function(v, fb){ var x=parseFloat(v); return isNaN(x)?fb:x; };
+        procBasePrices = {
+          aggRate:        _bpf(_bsInp.aggRate, n('aggRate')),
+          aggBasis:       _bsInp.aggBasis || _bsSt.aggBasis || 'MT',
+          aggDensity:     _bpf(_bsInp.aggDensity, n('aggDensity')),
+          aggDist:        _bpf(_bsInp.aggDist, n('aggDist')),
+          aggFreightRate: _bpf(_bsInp.aggFreightRate, n('aggFreightRate')),
+          aggPayload:     _bpf(_bsInp.aggPayload, n('aggPayload')),
+          bitPrice:       _bpf(_bsInp.bitPrice, n('bitPrice')),
+          hsdPrice:       _bpf(_bsInp.hsdPrice, n('hsdPrice')),
+          ldoRate:        _bpf(_bsInp.ldoRate, n('ldoRate'))
+        };
+      } catch(e2){ procBaseContractRates = null; procBasePrices = null; }
     }
-  } catch(e){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; }
+  } catch(e){ procScenarioPrices=null; procScenarioContractRates=null; procBaseContractRates=null; procBasePrices=null; }
   updateProcBadge();
   recalc();
 }
@@ -1624,13 +1639,45 @@ function recalc(){
     revisedProcPrices = {aggLanded:revAggLanded, bitPrice:revBitPrice, hsdPrice:revHsdPrice, ldoRate:revLdoRate};
   }
 
+  var frozenBaseMixRates = null;
+  if(procBasePrices && !scenarioMode){
+    var bp = procBasePrices;
+    var fbAggInput = bp.aggRate;
+    var fbAggBasis = bp.aggBasis || aggBasis;
+    var fbAggDensity = bp.aggDensity || aggDensity;
+    var fbAggRateMT = (fbAggBasis==='CFT'&&fbAggDensity>0)?(fbAggInput/fbAggDensity*35.3147):fbAggInput;
+    var fbAggFreight = bp.aggPayload>0?(bp.aggDist*2*bp.aggFreightRate/bp.aggPayload):aggFreight;
+    var fbAggLanded = fbAggRateMT + fbAggFreight;
+    var fbBitPrice = bp.bitPrice;
+    var fbHsdPrice = bp.hsdPrice;
+    var fbLdoRate = bp.ldoRate;
+    var fbHsdLPerMT_plant = hsdPrice>0 ? plantHsdPerMT/hsdPrice : 0;
+    var fbPlantHsdPerMT = fbHsdLPerMT_plant * fbHsdPrice;
+    var fbLayHsdLPerDay = 0;
+    [paverEq,rollerEq,ptrEq].forEach(function(eq){
+      if(eq&&eq.enabled&&eq.isLaying) fbLayHsdLPerDay += (eq.fuelConsump||0)*(eq.hireHrsDay||8);
+    });
+    var fbLayTotalDaily = layTotalDaily - fbLayHsdLPerDay*hsdPrice + fbLayHsdLPerDay*fbHsdPrice;
+    var fbLayPerMT = layProd>0 ? fbLayTotalDaily/layProd : 0;
+    var fbLdoPerMT = ldoConsump * fbLdoRate;
+    var fbFuelTotal = fbPlantHsdPerMT + fbLdoPerMT + boilerProdPerMT + boilerPreheatPerMT;
+    frozenBaseMixRates = mixTypes.map(function(m){
+      var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
+      var bitFrac = m.binderPct/100;
+      var fbBitCostPerMT = bitFrac*1000*fbBitPrice;
+      var ps = aggFrac*fbAggLanded + fbBitCostPerMT + plantEquipPerMT + fbFuelTotal + crewPerMT;
+      var exP = ps*(1+marginPct/100);
+      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:fbLayPerMT, finalLaid:exP+transPerMT+fbLayPerMT, bitumen:fbBitCostPerMT};
+    });
+  }
+
   renderRateSummary(mixRates);
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(mixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution);
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
-  renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices);
+  renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates);
   renderScopeQuotation();
   saveState();
 }
@@ -2551,7 +2598,7 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
   container.innerHTML=html;
 }
 
-function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revProcPrices){
+function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revProcPrices, frozenBaseMixRates){
   var container = document.getElementById('profitabilityContainer');
   if(!container) return;
 
@@ -2758,6 +2805,19 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       });
     }
 
+    var frozenBaseInScopeCost = null;
+    if(frozenBaseMixRates && !scenarioMode){
+      frozenBaseInScopeCost = inScopeCoatCost;
+      Object.keys(mixQty).forEach(function(mn){
+        var mq=mixQty[mn];
+        var mix=mixTypes[mq.mixIdx]||mixTypes[0];
+        var fbmr=frozenBaseMixRates[mq.mixIdx]||frozenBaseMixRates[0];
+        var _ecfb = _effCPM(siteTransPerMT, false, fbmr.bitumen);
+        if(_ecfb!=null) frozenBaseInScopeCost += mq.cum*_ecfb*mix.density;
+        else frozenBaseInScopeCost += mq.cum*(fbmr.exPlant+siteTransPerMT+fbmr.laying)*mix.density;
+      });
+    }
+
     var curRev, scRev = null, scRevenue = null, scHasRev = false;
     if(scenarioMode && procScenarioContractRates){
       var baseMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
@@ -2799,7 +2859,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       _baseCost = revInScopeCost;
       _scenarioCost = inScopeCost;
     } else {
-      _baseCost = inScopeCost;
+      _baseCost = (frozenBaseInScopeCost != null) ? frozenBaseInScopeCost : inScopeCost;
       _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     }
     var _adjustment = adjAmt || 0;
