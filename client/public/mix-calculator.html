@@ -2682,8 +2682,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   }
 
   var siteRows = [];
-  var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandBaseRevenue=0, grandHasRevenue=false, grandHasAdj=false;
-  var grandScRevenue=0, grandHasScRev=false, grandScCostForProfit=0;
+  var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandHasRevenue=false, grandHasAdj=false;
+  var grandScRevenue=0, grandHasScRev=false;
 
   sites.forEach(function(s){
     if(!s.jobs.length) return;
@@ -2768,19 +2768,31 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var revenue = curRev.revenue, hasRev = curRev.hasRev, adjAmt = curRev.adjAmt, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
 
-    var excluded = fullJobCost - inScopeCost;
-    var costForProfit = hasRevised ? revInScopeCost : inScopeCost;
-    var profit = revenue!=null ? revenue - costForProfit : null;
-    var margin = revenue!=null&&revenue>0 ? profit/revenue*100 : null;
-    var baseProfit = baseRevenue!=null ? baseRevenue - inScopeCost : null;
-    var baseMargin = baseRevenue!=null&&baseRevenue>0 ? baseProfit/baseRevenue*100 : null;
-
-    var scProfit = null, scMargin = null;
-    if(scHasRev && scRevenue!=null){
-      var scCostForProfit = hasRevised ? revInScopeCost : inScopeCost;
-      scProfit = scRevenue - scCostForProfit;
-      scMargin = scRevenue>0 ? scProfit/scRevenue*100 : null;
+    var _baseCost, _scenarioCost;
+    if(scenarioMode && hasRevised){
+      _baseCost = revInScopeCost;
+      _scenarioCost = inScopeCost;
+    } else {
+      _baseCost = inScopeCost;
+      _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     }
+    var _baseRevenue = revenue;
+    var _revisedRevenue = (scHasRev && scRevenue!=null) ? scRevenue : null;
+    var _adjustment = adjAmt || 0;
+    var _finalRevenue = null;
+    if(_revisedRevenue!=null) _finalRevenue = _revisedRevenue + _adjustment;
+    else if(_baseRevenue!=null) _finalRevenue = _baseRevenue + _adjustment;
+
+    var _baseProfit = hasRev ? _baseRevenue - _baseCost : null;
+    var _scenarioProfit = (hasRev && hasRevised) ? _baseRevenue - _scenarioCost : null;
+    var _revisedProfit = (_revisedRevenue!=null && hasRevised) ? _revisedRevenue - _scenarioCost : null;
+    var _finalProfit = (_finalRevenue!=null && hasRevised) ? _finalRevenue - _scenarioCost : (_finalRevenue!=null && hasRev ? _finalRevenue - _baseCost : null);
+
+    var excluded = fullJobCost - inScopeCost;
+    var profit = hasRev ? (_baseRevenue - _baseCost) : null;
+    var margin = hasRev&&_baseRevenue>0 ? profit/_baseRevenue*100 : null;
+
+    var _deltaCost = _scenarioCost - _baseCost;
 
     siteRows.push({
       site: s, mode: mode, mixQty: mixQty, primeArea: primeArea, tackArea: tackArea,
@@ -2788,23 +2800,26 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       fullJobCost: fullJobCost, inScopeCost: inScopeCost,
       revInScopeCost: revInScopeCost, revenue: revenue, hasRev: hasRev,
       excluded: excluded, profit: profit, margin: margin,
-      baseProfit: baseProfit, baseMargin: baseMargin,
-      baseRevenue: baseRevenue,
       adjAmt: adjAmt, adjPerKm: curRev.adjPerKm||0, revMode: revMode,
       totalSiteMT: totalSiteMT, totalSiteCUM: totalSiteCUM,
       basePlantCost: basePlantCost, baseTransCost: baseTransCost, baseLayCost: baseLayCost,
       basePrimeCost: basePrimeCost, baseTackCost: baseTackCost,
       revPlantCost: revPlantCost, revTransCost: revTransCost, revLayCost: revLayCost,
       revPrimeCost: revPrimeCost, revTackCost: revTackCost,
-      scRevenue: scRevenue, scHasRev: scHasRev, scProfit: scProfit, scMargin: scMargin
+      scRevenue: scRevenue, scHasRev: scHasRev,
+      _baseCost: _baseCost, _scenarioCost: _scenarioCost,
+      _baseRevenue: _baseRevenue, _revisedRevenue: _revisedRevenue,
+      _adjustment: _adjustment, _finalRevenue: _finalRevenue,
+      _baseProfit: _baseProfit, _scenarioProfit: _scenarioProfit,
+      _revisedProfit: _revisedProfit, _finalProfit: _finalProfit,
+      _deltaCost: _deltaCost
     });
     grandFullCost += fullJobCost;
-    grandInScope += inScopeCost;
-    grandRevInScope += hasRevised ? revInScopeCost : inScopeCost;
-    if(hasRev){ grandRevenue += revenue; grandHasRevenue = true; }
-    if(baseRevenue!=null){ grandBaseRevenue += baseRevenue; }
+    grandInScope += _baseCost;
+    grandRevInScope += _scenarioCost;
+    if(hasRev){ grandRevenue += _baseRevenue; grandHasRevenue = true; }
     if(adjAmt!==0) grandHasAdj = true;
-    if(scHasRev){ grandScRevenue += scRevenue; grandHasScRev = true; grandScCostForProfit += (hasRevised ? revInScopeCost : inScopeCost); }
+    if(scHasRev){ grandScRevenue += scRevenue; grandHasScRev = true; }
   });
 
   siteRows.forEach(function(row){
@@ -2930,133 +2945,129 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='</div>';
   });
 
+  var _showScRev = grandHasScRev && procScenarioContractRates;
+  var _hasAdj = grandHasAdj;
+
   html+='<div style="overflow-x:auto;margin-top:8px">';
   html+='<table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.4">';
-  var _showScRev = grandHasScRev && procScenarioContractRates;
-  html+='<thead><tr style="background:#f8fafc;border-bottom:2px solid #cbd5e1">';
-  html+='<th style="text-align:left;padding:10px 12px;font-weight:700;color:#1e293b;font-size:13px">Site</th>';
-  html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Revenue ₹</th>';
-  if(_showScRev){
-    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#7c3aed">Rev. Revenue ₹</th>';
-  }
-  html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#64748b">Full Cost ₹</th>';
-  html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">In-Scope ₹</th>';
+
   if(hasRevised){
-    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#2563eb">Rev. In-Scope ₹</th>';
-    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Δ Cost ₹</th>';
-  }
-  html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#94a3b8">Excluded ₹</th>';
-  html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Profit ₹</th>';
-  html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Margin</th>';
-  html+='</tr></thead><tbody>';
-
-  siteRows.forEach(function(row, ri){
-    var bg = ri%2===0 ? '#ffffff' : '#f8fafc';
-    var delta = row.revInScopeCost - row.inScopeCost;
-    var deltaCol = delta>0?'#ef4444':(delta<0?'#16a34a':'#374151');
-    var pCol = row.profit!=null?(row.profit>=0?'#16a34a':'#ef4444'):'#374151';
-    var mCol = row.margin!=null?(row.margin>=0?'#16a34a':'#ef4444'):'#374151';
-    html+='<tr style="background:'+bg+';border-bottom:1px solid #e2e8f0">';
-    html+='<td style="padding:10px 12px;font-weight:600;color:#1e293b">'+esc(row.site.name||row.site.id)+'</td>';
-    html+='<td style="text-align:right;padding:10px 10px;color:#1e293b">'+(row.revenue!=null?'₹'+fmtI(Math.round(row.revenue)):'—');
-    if(row.adjAmt && row.adjAmt!==0 && row.revenue!=null){
-      html+='<div style="font-size:11px;color:#6366f1;font-weight:500;margin-top:1px">incl. '+(row.adjAmt>0?'+':'')+fmtI(Math.round(row.adjAmt))+' adj.</div>';
-    }
-    html+='</td>';
+    html+='<thead><tr style="background:#f8fafc;border-bottom:2px solid #cbd5e1">';
+    html+='<th style="text-align:left;padding:8px 10px;font-weight:700;color:#1e293b">Site</th>';
+    html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#1e293b">Base Revenue</th>';
+    html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#1e293b">Sc. Cost</th>';
+    html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#64748b">Δ Cost</th>';
+    html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#1e293b">Base Profit</th>';
+    html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#2563eb">Sc. Profit</th>';
     if(_showScRev){
-      html+='<td style="text-align:right;padding:10px 10px;color:#7c3aed;font-weight:600">'+(row.scHasRev&&row.scRevenue!=null?'₹'+fmtI(Math.round(row.scRevenue)):'—');
-      if(row.scHasRev&&row.scRevenue!=null&&row.revenue!=null){
-        var _rvDiff=row.scRevenue-row.revenue;
-        if(Math.abs(_rvDiff)>0.5){
-          html+='<div style="font-size:11px;color:'+(_rvDiff>0?'#16a34a':'#ef4444')+';font-weight:500;margin-top:1px">'+(_rvDiff>0?'+':'−')+'₹'+fmtI(Math.abs(Math.round(_rvDiff)))+'</div>';
-        }
-      }
-      html+='</td>';
+      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#7c3aed">Rev. Revenue</th>';
+      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#7c3aed">Rev. Profit</th>';
     }
-    html+='<td style="text-align:right;padding:10px 10px;color:#64748b">₹'+fmtI(Math.round(row.fullJobCost))+'</td>';
-    html+='<td style="text-align:right;padding:10px 10px;color:#1e293b;font-weight:600">₹'+fmtI(Math.round(row.inScopeCost))+'</td>';
-    if(hasRevised){
-      html+='<td style="text-align:right;padding:10px 10px;color:#2563eb;font-weight:600">₹'+fmtI(Math.round(row.revInScopeCost))+'</td>';
-      html+='<td style="text-align:right;padding:10px 10px;color:'+deltaCol+';font-weight:600">'+(delta>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(delta)))+'</td>';
+    if(_hasAdj){
+      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#6366f1">Adj. ₹</th>';
+      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#059669">Final Profit</th>';
     }
-    html+='<td style="text-align:right;padding:10px 10px;color:#94a3b8">₹'+fmtI(Math.round(row.excluded))+'</td>';
-    html+='<td style="text-align:right;padding:10px 10px;font-weight:700;color:'+pCol+'">'+(row.profit!=null?(row.profit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.profit))):'—');
-    if(row.adjAmt!==0 && row.baseProfit!=null){
-      var bpCol=row.baseProfit>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+bpCol+'">'+(row.baseProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.baseProfit)))+'</span></div>';
-    }
-    if(_showScRev && row.scProfit!=null){
-      var _spCol=row.scProfit>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_spCol+'">'+(row.scProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.scProfit)))+'</span></div>';
-    }
-    html+='</td>';
-    html+='<td style="text-align:right;padding:10px 10px;font-weight:600;color:'+mCol+'">'+(row.margin!=null?row.margin.toFixed(1)+'%':'—');
-    if(row.adjAmt!==0 && row.baseMargin!=null){
-      var bmCol=row.baseMargin>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+bmCol+'">'+row.baseMargin.toFixed(1)+'%</span></div>';
-    }
-    if(_showScRev && row.scMargin!=null){
-      var _smCol=row.scMargin>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_smCol+'">'+row.scMargin.toFixed(1)+'%</span></div>';
-    }
-    html+='</td>';
-    html+='</tr>';
-  });
+    html+='</tr></thead><tbody>';
 
-  if(siteRows.length>0){
-    var gExcluded = grandFullCost - grandInScope;
-    var gCostForProfit = hasRevised ? grandRevInScope : grandInScope;
-    var gProfit = grandHasRevenue ? grandRevenue - gCostForProfit : null;
-    var gMargin = grandHasRevenue&&grandRevenue>0 ? gProfit/grandRevenue*100 : null;
-    var gDelta = grandRevInScope - grandInScope;
-    var gDeltaCol = gDelta>0?'#ef4444':(gDelta<0?'#16a34a':'#374151');
-    var gpCol = gProfit!=null?(gProfit>=0?'#16a34a':'#ef4444'):'#374151';
-    var gmCol = gMargin!=null?(gMargin>=0?'#16a34a':'#ef4444'):'#374151';
-    html+='<tr style="background:#fffbeb;border-top:3px solid #d97706;font-weight:700">';
-    html+='<td style="padding:12px;color:#92400e;font-size:14px">GRAND TOTAL</td>';
-    html+='<td style="text-align:right;padding:12px 10px;color:#1e293b;font-size:14px">'+(grandHasRevenue?'₹'+fmtI(Math.round(grandRevenue)):'—')+'</td>';
-    if(_showScRev){
-      html+='<td style="text-align:right;padding:12px 10px;color:#7c3aed;font-size:14px;font-weight:700">'+(grandHasScRev?'₹'+fmtI(Math.round(grandScRevenue)):'—');
-      if(grandHasScRev&&grandHasRevenue){
-        var _grvD=grandScRevenue-grandRevenue;
-        if(Math.abs(_grvD)>0.5){
-          html+='<div style="font-size:11px;color:'+(_grvD>0?'#16a34a':'#ef4444')+';font-weight:600;margin-top:1px">'+(_grvD>0?'+':'−')+'₹'+fmtI(Math.abs(Math.round(_grvD)))+'</div>';
-        }
+    var gBaseRev=0, gScCost=0, gBaseCost=0, gBaseProfit=0, gScProfit=0, gRevRev=0, gRevProfit=0, gAdj=0, gFinalProfit=0;
+    var gHasBaseRev=false, gHasRevRev=false, gHasAdj=false;
+
+    siteRows.forEach(function(row, ri){
+      var bg = ri%2===0 ? '#ffffff' : '#f8fafc';
+      var _pCol = function(v){ return v!=null?(v>=0?'#16a34a':'#ef4444'):'#374151'; };
+      var _fmtP = function(v){ return v!=null?((v>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(v)))):'—'; };
+      var _fmtV = function(v){ return v!=null?'₹'+fmtI(Math.round(v)):'—'; };
+
+      html+='<tr style="background:'+bg+';border-bottom:1px solid #e2e8f0">';
+      html+='<td style="padding:8px 10px;font-weight:600;color:#1e293b">'+esc(row.site.name||row.site.id)+'</td>';
+      html+='<td style="text-align:right;padding:8px 8px;color:#1e293b">'+_fmtV(row._baseRevenue)+'</td>';
+      html+='<td style="text-align:right;padding:8px 8px;color:#1e293b">'+_fmtV(row._scenarioCost)+'</td>';
+      var dcCol = row._deltaCost>0?'#ef4444':(row._deltaCost<0?'#16a34a':'#64748b');
+      html+='<td style="text-align:right;padding:8px 8px;color:'+dcCol+'">'+(row._deltaCost>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row._deltaCost)))+'</td>';
+      html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._baseProfit)+'">'+_fmtP(row._baseProfit)+'</td>';
+      html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._scenarioProfit)+';font-weight:600">'+_fmtP(row._scenarioProfit)+'</td>';
+      if(_showScRev){
+        html+='<td style="text-align:right;padding:8px 8px;color:#7c3aed">'+_fmtV(row._revisedRevenue)+'</td>';
+        html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._revisedProfit)+';font-weight:600">'+_fmtP(row._revisedProfit)+'</td>';
       }
-      html+='</td>';
+      if(_hasAdj){
+        var adjDisp = row._adjustment!==0 ? ((row._adjustment>0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row._adjustment)))) : '—';
+        var adjCol = row._adjustment>0?'#16a34a':(row._adjustment<0?'#ef4444':'#64748b');
+        html+='<td style="text-align:right;padding:8px 8px;color:'+adjCol+'">'+adjDisp+'</td>';
+        html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._finalProfit)+';font-weight:700">'+_fmtP(row._finalProfit)+'</td>';
+      }
+      html+='</tr>';
+
+      if(row._baseRevenue!=null){ gBaseRev+=row._baseRevenue; gHasBaseRev=true; }
+      gScCost+=row._scenarioCost; gBaseCost+=row._baseCost;
+      if(row._baseProfit!=null) gBaseProfit+=row._baseProfit;
+      if(row._scenarioProfit!=null) gScProfit+=row._scenarioProfit;
+      if(row._revisedRevenue!=null){ gRevRev+=row._revisedRevenue; gHasRevRev=true; }
+      if(row._revisedProfit!=null) gRevProfit+=row._revisedProfit;
+      if(row._adjustment!==0) gHasAdj=true;
+      gAdj+=row._adjustment;
+      if(row._finalProfit!=null) gFinalProfit+=row._finalProfit;
+    });
+
+    if(siteRows.length>0){
+      var _pCol = function(v){ return v!=null?(v>=0?'#16a34a':'#ef4444'):'#374151'; };
+      var _fmtP = function(v){ return v!=null?((v>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(v)))):'—'; };
+      var gDelta = gScCost - gBaseCost;
+      var gDeltaCol = gDelta>0?'#ef4444':(gDelta<0?'#16a34a':'#64748b');
+      html+='<tr style="background:#fffbeb;border-top:3px solid #d97706;font-weight:700">';
+      html+='<td style="padding:10px;color:#92400e;font-size:14px">TOTAL</td>';
+      html+='<td style="text-align:right;padding:10px 8px;color:#1e293b">'+(gHasBaseRev?'₹'+fmtI(Math.round(gBaseRev)):'—')+'</td>';
+      html+='<td style="text-align:right;padding:10px 8px;color:#1e293b">₹'+fmtI(Math.round(gScCost))+'</td>';
+      html+='<td style="text-align:right;padding:10px 8px;color:'+gDeltaCol+'">'+(gDelta>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gDelta)))+'</td>';
+      html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasBaseRev?gBaseProfit:null)+'">'+_fmtP(gHasBaseRev?gBaseProfit:null)+'</td>';
+      html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasBaseRev?gScProfit:null)+';font-weight:700">'+_fmtP(gHasBaseRev?gScProfit:null)+'</td>';
+      if(_showScRev){
+        html+='<td style="text-align:right;padding:10px 8px;color:#7c3aed">'+(gHasRevRev?'₹'+fmtI(Math.round(gRevRev)):'—')+'</td>';
+        html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasRevRev?gRevProfit:null)+';font-weight:700">'+_fmtP(gHasRevRev?gRevProfit:null)+'</td>';
+      }
+      if(_hasAdj){
+        var adjCol = gAdj>0?'#16a34a':(gAdj<0?'#ef4444':'#64748b');
+        html+='<td style="text-align:right;padding:10px 8px;color:'+adjCol+'">'+(gAdj!==0?((gAdj>0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gAdj)))):'—')+'</td>';
+        var gfp = gHasBaseRev ? gFinalProfit : null;
+        html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gfp)+';font-weight:700;font-size:14px">'+_fmtP(gfp)+'</td>';
+      }
+      html+='</tr>';
     }
-    html+='<td style="text-align:right;padding:12px 10px;color:#64748b">₹'+fmtI(Math.round(grandFullCost))+'</td>';
-    html+='<td style="text-align:right;padding:12px 10px;color:#1e293b">₹'+fmtI(Math.round(grandInScope))+'</td>';
-    if(hasRevised){
-      html+='<td style="text-align:right;padding:12px 10px;color:#2563eb">₹'+fmtI(Math.round(grandRevInScope))+'</td>';
-      html+='<td style="text-align:right;padding:12px 10px;color:'+gDeltaCol+'">'+(gDelta>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gDelta)))+'</td>';
+  } else {
+    html+='<thead><tr style="background:#f8fafc;border-bottom:2px solid #cbd5e1">';
+    html+='<th style="text-align:left;padding:10px 12px;font-weight:700;color:#1e293b">Site</th>';
+    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Revenue ₹</th>';
+    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Cost ₹</th>';
+    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Profit ₹</th>';
+    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Margin</th>';
+    html+='</tr></thead><tbody>';
+
+    siteRows.forEach(function(row, ri){
+      var bg = ri%2===0 ? '#ffffff' : '#f8fafc';
+      var pCol = row.profit!=null?(row.profit>=0?'#16a34a':'#ef4444'):'#374151';
+      var mCol = row.margin!=null?(row.margin>=0?'#16a34a':'#ef4444'):'#374151';
+      html+='<tr style="background:'+bg+';border-bottom:1px solid #e2e8f0">';
+      html+='<td style="padding:10px 12px;font-weight:600;color:#1e293b">'+esc(row.site.name||row.site.id)+'</td>';
+      html+='<td style="text-align:right;padding:10px 10px;color:#1e293b">'+(row.hasRev?'₹'+fmtI(Math.round(row._baseRevenue)):'—')+'</td>';
+      html+='<td style="text-align:right;padding:10px 10px;color:#1e293b">₹'+fmtI(Math.round(row._baseCost))+'</td>';
+      html+='<td style="text-align:right;padding:10px 10px;font-weight:700;color:'+pCol+'">'+(row.profit!=null?((row.profit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.profit)))):'—')+'</td>';
+      html+='<td style="text-align:right;padding:10px 10px;font-weight:600;color:'+mCol+'">'+(row.margin!=null?row.margin.toFixed(1)+'%':'—')+'</td>';
+      html+='</tr>';
+    });
+
+    if(siteRows.length>0){
+      var gProfit = grandHasRevenue ? grandRevenue - grandInScope : null;
+      var gMargin = grandHasRevenue&&grandRevenue>0 ? gProfit/grandRevenue*100 : null;
+      var gpCol = gProfit!=null?(gProfit>=0?'#16a34a':'#ef4444'):'#374151';
+      var gmCol = gMargin!=null?(gMargin>=0?'#16a34a':'#ef4444'):'#374151';
+      html+='<tr style="background:#fffbeb;border-top:3px solid #d97706;font-weight:700">';
+      html+='<td style="padding:12px;color:#92400e;font-size:14px">TOTAL</td>';
+      html+='<td style="text-align:right;padding:12px 10px;color:#1e293b;font-size:14px">'+(grandHasRevenue?'₹'+fmtI(Math.round(grandRevenue)):'—')+'</td>';
+      html+='<td style="text-align:right;padding:12px 10px;color:#1e293b">₹'+fmtI(Math.round(grandInScope))+'</td>';
+      html+='<td style="text-align:right;padding:12px 10px;font-size:14px;color:'+gpCol+'">'+(gProfit!=null?((gProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gProfit)))):'—')+'</td>';
+      html+='<td style="text-align:right;padding:12px 10px;font-size:14px;color:'+gmCol+'">'+(gMargin!=null?gMargin.toFixed(1)+'%':'—')+'</td>';
+      html+='</tr>';
     }
-    html+='<td style="text-align:right;padding:12px 10px;color:#94a3b8">₹'+fmtI(Math.round(gExcluded))+'</td>';
-    var gBaseProfit = grandHasRevenue ? grandBaseRevenue - grandInScope : null;
-    var gBaseMargin = grandHasRevenue&&grandBaseRevenue>0 ? gBaseProfit/grandBaseRevenue*100 : null;
-    var gScProfit = grandHasScRev ? grandScRevenue - grandScCostForProfit : null;
-    var gScMargin = grandHasScRev&&grandScRevenue>0 ? gScProfit/grandScRevenue*100 : null;
-    html+='<td style="text-align:right;padding:12px 10px;font-size:15px;color:'+gpCol+'">'+(gProfit!=null?(gProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gProfit))):'—');
-    if(grandHasAdj && gBaseProfit!=null){
-      var gbpCol=gBaseProfit>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+gbpCol+'">'+(gBaseProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gBaseProfit)))+'</span></div>';
-    }
-    if(_showScRev && gScProfit!=null){
-      var _gspCol=gScProfit>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_gspCol+'">'+(gScProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gScProfit)))+'</span></div>';
-    }
-    html+='</td>';
-    html+='<td style="text-align:right;padding:12px 10px;font-size:14px;color:'+gmCol+'">'+(gMargin!=null?gMargin.toFixed(1)+'%':'—');
-    if(grandHasAdj && gBaseMargin!=null){
-      var gbmCol=gBaseMargin>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+gbmCol+'">'+gBaseMargin.toFixed(1)+'%</span></div>';
-    }
-    if(_showScRev && gScMargin!=null){
-      var _gsmCol=gScMargin>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_gsmCol+'">'+gScMargin.toFixed(1)+'%</span></div>';
-    }
-    html+='</td>';
-    html+='</tr>';
   }
 
   html+='</tbody></table></div>';

@@ -1,0 +1,137 @@
+Reset and simplify the Profitability section. The current display is confusing and mixes base and revised values inside the same cells. I need a clean commercial comparison.
+
+FIRST — REMOVE / UNDO CURRENT DISPLAY
+- Remove mixed values inside single cells (no purple/green stacked text)
+- Remove merged profit/revenue displays
+- Restore a clean table with one value per cell
+
+---
+
+SECOND — DEFINE CLEAR COMMERCIAL LOGIC
+
+We must show 4 distinct profit situations:
+
+1) BASE (original deal)
+Base Revenue = original item/contract rates × quantities
+Base Cost = original/base in-scope cost
+Base Profit = Base Revenue - Base Cost
+
+---
+
+2) SCENARIO (cost escalation only)
+Scenario Cost = revised cost from selected scenario
+Scenario Profit = Base Revenue - Scenario Cost
+
+(This shows impact of material/fuel increase while contract rates remain same)
+
+---
+
+3) REVISED CONTRACT (rate negotiation)
+Revised Revenue = revised item/contract rates entered in scenario
+Revised Profit = Revised Revenue - Scenario Cost
+
+(This shows impact if contractor revises rates instead of giving adjustment)
+
+---
+
+4) FINAL (after adjustment, if any)
+Adjustment = extra (+) or deduction (-) amount
+
+Final Revenue =
+IF revised rates exist:
+  Revised Revenue + Adjustment
+ELSE:
+  Base Revenue + Adjustment
+
+Final Profit = Final Revenue - Scenario Cost
+
+---
+
+THIRD — TABLE STRUCTURE (VERY IMPORTANT)
+
+When scenario is selected, show a clean table with columns:
+
+- Site
+- Base Revenue ₹
+- Scenario Cost ₹
+- Δ Cost ₹ (Scenario Cost - Base Cost)
+- Base Profit ₹
+- Scenario Profit ₹
+- Revised Revenue ₹
+- Revised Profit ₹
+- Adjustment ₹
+- Final Profit ₹
+
+Grand Total row also required.
+
+IMPORTANT:
+- Do NOT merge values into one cell
+- Each column = one clear value
+- No stacked colored text
+
+---
+
+FOURTH — WHEN NO SCENARIO IS SELECTED
+
+Keep simple:
+
+- Site
+- Revenue ₹
+- Cost ₹
+- Profit ₹
+- Margin %
+
+(This part was already correct — do not disturb)
+
+---
+
+FIFTH — DATA SOURCE RULES
+
+- Base Revenue → from original saved rates
+- Revised Revenue → from revised rates entered in scenario (rate impact edit)
+- Scenario Cost → from selected scenario
+- Base Cost → original/base cost
+
+IMPORTANT:
+- Base values must NEVER be overwritten
+- Revised values must NOT replace base values
+- Adjustment must NOT modify base or revised values directly
+
+---
+
+SIXTH — ADJUSTMENT RULE
+
+- Adjustment affects ONLY Final Revenue and Final Profit
+- Positive → add
+- Negative → deduct
+
+---
+
+SEVENTH — READABILITY
+
+- Keep UI clean and readable
+- No small or faint text
+- No extra colors or bands
+- Standard table layout
+- Bold only headers and totals
+- Avoid clutter
+
+---
+
+EIGHTH — ACCEPTANCE CHECK
+
+1. Base Profit shows original deal
+2. Scenario Profit shows cost escalation impact
+3. Revised Profit shows revised rate impact
+4. Final Profit shows adjustment impact
+5. All values shown in separate columns (no mixing)
+6. Base values remain unchanged always
+7. Table is clean and readable
+
+---
+
+After implementing, confirm:
+- how Base Revenue is stored and used
+- how Revised Revenue is picked from scenario
+- how Scenario Cost is calculated
+- how Final Profit is computed
