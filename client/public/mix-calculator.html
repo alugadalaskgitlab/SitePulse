@@ -2783,6 +2783,10 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var revenue = curRev.revenue, hasRev = curRev.hasRev, adjAmt = curRev.adjAmt, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
 
+    if(scHasRev && scRevenue!=null && revenue!=null && Math.abs(scRevenue - revenue) < 1){
+      scHasRev = false; scRevenue = null;
+    }
+
     var _baseCost, _scenarioCost;
     if(scenarioMode && hasRevised){
       _baseCost = revInScopeCost;
