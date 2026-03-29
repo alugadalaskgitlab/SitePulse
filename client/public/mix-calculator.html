@@ -2802,10 +2802,11 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       _baseCost = inScopeCost;
       _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     }
-    var _baseRevenue = revenue;
     var _adjustment = adjAmt || 0;
+    var _baseRevenueRaw = curRev.baseRevenue!=null ? curRev.baseRevenue : revenue;
+    var _baseRevenue = _baseRevenueRaw;
 
-    var _revRevenueBase = (scHasRev && scRevenue!=null) ? scRevenue : (hasRev ? _baseRevenue : null);
+    var _revRevenueBase = (scHasRev && scRevenue!=null) ? scRevenue : (hasRev ? _baseRevenueRaw : null);
     var _revisedRevenue = null;
     if(_revRevenueBase!=null && (_adjustment!==0 || scHasRev)){
       _revisedRevenue = _revRevenueBase + _adjustment;
@@ -2813,7 +2814,6 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     if(_revisedRevenue!=null && _baseRevenue!=null && Math.abs(_revisedRevenue - _baseRevenue) < 1){
       _revisedRevenue = null;
     }
-
     var _baseProfit = hasRev ? _baseRevenue - _baseCost : null;
     var _scenarioProfit = (hasRev && hasRevised) ? _baseRevenue - _scenarioCost : null;
     var _revisedProfit = (_revisedRevenue!=null && hasRevised) ? _revisedRevenue - _scenarioCost : null;
