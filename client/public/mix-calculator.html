@@ -2513,14 +2513,13 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
   html+='<span>📊</span><span>Showing <strong>Base vs '+(scenarioMode?'Scenario':'Revised')+'</strong> cost split across Plant, Transport, Laying, and Coats. Changed components are highlighted.</span></div>';
 
   siteRows.forEach(function(row){
-    var _sm = scenarioMode;
     var components=[
-      {name:'Plant (Ex-Plant)', base:_sm?row.revPlantCost:row.basePlantCost, rev:_sm?row.basePlantCost:row.revPlantCost},
-      {name:'Transport', base:_sm?row.revTransCost:row.baseTransCost, rev:_sm?row.baseTransCost:row.revTransCost},
-      {name:'Laying & Compaction', base:_sm?row.revLayCost:row.baseLayCost, rev:_sm?row.baseLayCost:row.revLayCost}
+      {name:'Plant (Ex-Plant)', base:row.basePlantCost, rev:row.revPlantCost},
+      {name:'Transport', base:row.baseTransCost, rev:row.revTransCost},
+      {name:'Laying & Compaction', base:row.baseLayCost, rev:row.revLayCost}
     ];
-    if(row.basePrimeCost>0||row.revPrimeCost>0) components.push({name:'Prime Coat', base:_sm?row.revPrimeCost:row.basePrimeCost, rev:_sm?row.basePrimeCost:row.revPrimeCost});
-    if(row.baseTackCost>0||row.revTackCost>0) components.push({name:'Tack Coat', base:_sm?row.revTackCost:row.baseTackCost, rev:_sm?row.baseTackCost:row.revTackCost});
+    if(row.basePrimeCost>0||row.revPrimeCost>0) components.push({name:'Prime Coat', base:row.basePrimeCost, rev:row.revPrimeCost});
+    if(row.baseTackCost>0||row.revTackCost>0) components.push({name:'Tack Coat', base:row.baseTackCost, rev:row.revTackCost});
 
     html+='<div style="margin-bottom:14px">';
     html+='<div style="font-size:13px;font-weight:700;color:#b45309;margin-bottom:6px">📍 '+esc(row.site.name||row.site.id)+'</div>';
@@ -2563,13 +2562,12 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
       gBP+=r.basePlantCost;gBT+=r.baseTransCost;gBL+=r.baseLayCost;gBPr+=r.basePrimeCost;gBTk+=r.baseTackCost;
       gRP+=r.revPlantCost;gRT+=r.revTransCost;gRL+=r.revLayCost;gRPr+=r.revPrimeCost;gRTk+=r.revTackCost;
     });
-    var _sm2 = scenarioMode;
     var gComps=[
-      {name:'Plant (Ex-Plant)',base:_sm2?gRP:gBP,rev:_sm2?gBP:gRP},{name:'Transport',base:_sm2?gRT:gBT,rev:_sm2?gBT:gRT},
-      {name:'Laying & Compaction',base:_sm2?gRL:gBL,rev:_sm2?gBL:gRL}
+      {name:'Plant (Ex-Plant)',base:gBP,rev:gRP},{name:'Transport',base:gBT,rev:gRT},
+      {name:'Laying & Compaction',base:gBL,rev:gRL}
     ];
-    if(gBPr>0||gRPr>0) gComps.push({name:'Prime Coat',base:_sm2?gRPr:gBPr,rev:_sm2?gBPr:gRPr});
-    if(gBTk>0||gRTk>0) gComps.push({name:'Tack Coat',base:_sm2?gRTk:gBTk,rev:_sm2?gBTk:gRTk});
+    if(gBPr>0||gRPr>0) gComps.push({name:'Prime Coat',base:gBPr,rev:gRPr});
+    if(gBTk>0||gRTk>0) gComps.push({name:'Tack Coat',base:gBTk,rev:gRTk});
     html+='<div style="margin-top:4px;padding-top:10px;border-top:2px solid #d97706">';
     html+='<div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px">GRAND TOTAL — All Sites</div>';
     html+='<table style="width:100%;border-collapse:collapse;font-size:13px">';
@@ -2857,28 +2855,32 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       scHasRev = false; scRevenue = null;
     }
 
-    var _baseCost, _scenarioCost;
-    if(scenarioMode && hasRevised){
-      _baseCost = revInScopeCost;
-      _scenarioCost = inScopeCost;
-    } else {
-      _baseCost = (frozenBaseInScopeCost != null) ? frozenBaseInScopeCost : inScopeCost;
-      _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
-    }
+    var _baseCost = (frozenBaseInScopeCost != null) ? frozenBaseInScopeCost : inScopeCost;
+    var _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     var _adjustment = adjAmt || 0;
     var _baseRevenueRaw = curRev.baseRevenue!=null ? curRev.baseRevenue : revenue;
-    var _baseRevenue = _baseRevenueRaw;
+    var _baseRevenue = scenarioMode ? revenue : _baseRevenueRaw;
+
+    var _scenarioRevenue = null;
+    if(scenarioMode){
+      _scenarioRevenue = (scHasRev && scRevenue!=null) ? scRevenue : revenue;
+      if(_scenarioRevenue!=null && _baseRevenue!=null && Math.abs(_scenarioRevenue - _baseRevenue) < 1) _scenarioRevenue = _baseRevenue;
+    }
 
     var _revRevenueBase = (scHasRev && scRevenue!=null) ? scRevenue : (hasRev ? _baseRevenueRaw : null);
     var _revisedRevenue = null;
-    if(_revRevenueBase!=null && (_adjustment!==0 || scHasRev)){
+    if(!scenarioMode && _revRevenueBase!=null && (_adjustment!==0 || scHasRev)){
       _revisedRevenue = _revRevenueBase + _adjustment;
     }
     if(_revisedRevenue!=null && _baseRevenue!=null && Math.abs(_revisedRevenue - _baseRevenue) < 1){
       _revisedRevenue = null;
     }
     var _baseProfit = hasRev ? _baseRevenue - _baseCost : null;
-    var _scenarioProfit = (hasRev && hasRevised) ? _baseRevenue - _scenarioCost : null;
+    var _scenarioProfit = null;
+    if(hasRev && hasRevised){
+      var _scProfitRev = scenarioMode ? (_scenarioRevenue!=null ? _scenarioRevenue : _baseRevenue) : _baseRevenue;
+      _scenarioProfit = _scProfitRev - _scenarioCost;
+    }
     var _revisedProfit = (_revisedRevenue!=null && hasRevised) ? _revisedRevenue - _scenarioCost : null;
 
     var excluded = fullJobCost - inScopeCost;
@@ -2901,7 +2903,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       revPrimeCost: revPrimeCost, revTackCost: revTackCost,
       scRevenue: scRevenue, scHasRev: scHasRev,
       _baseCost: _baseCost, _scenarioCost: _scenarioCost,
-      _baseRevenue: _baseRevenue, _revisedRevenue: _revisedRevenue,
+      _baseRevenue: _baseRevenue, _scenarioRevenue: _scenarioRevenue, _revisedRevenue: _revisedRevenue,
       _baseProfit: _baseProfit, _scenarioProfit: _scenarioProfit,
       _revisedProfit: _revisedProfit,
       _deltaCost: _deltaCost
@@ -2910,7 +2912,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     grandInScope += _baseCost;
     grandRevInScope += _scenarioCost;
     if(hasRev){ grandRevenue += _baseRevenue; grandHasRevenue = true; }
-    if(_revisedRevenue!=null) grandHasScRev = true;
+    if(scenarioMode && _scenarioRevenue!=null && _scenarioRevenue!==_baseRevenue) grandHasScRev = true;
+    else if(!scenarioMode && _revisedRevenue!=null) grandHasScRev = true;
   });
 
   siteRows.forEach(function(row){
@@ -3046,14 +3049,14 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='<th style="text-align:left;padding:8px 10px;font-weight:700;color:#1e293b">Site</th>';
     html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#1e293b">Base Revenue</th>';
     if(_showScRev){
-      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#7c3aed">Rev. Revenue</th>';
+      html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#7c3aed">'+(scenarioMode?'Sc.':'Rev.')+' Revenue</th>';
     }
     html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#1e293b">Base Cost</th>';
     html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#2563eb">Sc. Cost</th>';
     html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#64748b">Δ Cost</th>';
     html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#1e293b">Base Profit</th>';
     html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#2563eb">Sc. Profit</th>';
-    if(_showScRev){
+    if(_showScRev && !scenarioMode){
       html+='<th style="text-align:right;padding:8px 8px;font-weight:700;color:#7c3aed">Rev. Profit</th>';
     }
     html+='</tr></thead><tbody>';
@@ -3071,7 +3074,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<td style="padding:8px 10px;font-weight:600;color:#1e293b">'+esc(row.site.name||row.site.id)+'</td>';
       html+='<td style="text-align:right;padding:8px 8px;color:#1e293b">'+_fmtV(row._baseRevenue)+'</td>';
       if(_showScRev){
-        html+='<td style="text-align:right;padding:8px 8px;color:#7c3aed">'+_fmtV(row._revisedRevenue)+'</td>';
+        var _dispScRev = scenarioMode ? row._scenarioRevenue : row._revisedRevenue;
+        html+='<td style="text-align:right;padding:8px 8px;color:#7c3aed">'+_fmtV(_dispScRev)+'</td>';
       }
       html+='<td style="text-align:right;padding:8px 8px;color:#1e293b">'+_fmtV(row._baseCost)+'</td>';
       html+='<td style="text-align:right;padding:8px 8px;color:#2563eb">'+_fmtV(row._scenarioCost)+'</td>';
@@ -3079,7 +3083,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<td style="text-align:right;padding:8px 8px;color:'+dcCol+'">'+(row._deltaCost>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row._deltaCost)))+'</td>';
       html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._baseProfit)+'">'+_fmtP(row._baseProfit)+'</td>';
       html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._scenarioProfit)+';font-weight:600">'+_fmtP(row._scenarioProfit)+'</td>';
-      if(_showScRev){
+      if(_showScRev && !scenarioMode){
         html+='<td style="text-align:right;padding:8px 8px;color:'+_pCol(row._revisedProfit)+';font-weight:600">'+_fmtP(row._revisedProfit)+'</td>';
       }
       html+='</tr>';
@@ -3088,8 +3092,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       gScCost+=row._scenarioCost; gBaseCost+=row._baseCost;
       if(row._baseProfit!=null) gBaseProfit+=row._baseProfit;
       if(row._scenarioProfit!=null) gScProfit+=row._scenarioProfit;
-      if(row._revisedRevenue!=null){ gRevRev+=row._revisedRevenue; gHasRevRev=true; }
-      if(row._revisedProfit!=null) gRevProfit+=row._revisedProfit;
+      var _gScRevVal = scenarioMode ? row._scenarioRevenue : row._revisedRevenue;
+      if(_gScRevVal!=null){ gRevRev+=_gScRevVal; gHasRevRev=true; }
+      if(!scenarioMode && row._revisedProfit!=null) gRevProfit+=row._revisedProfit;
     });
 
     if(siteRows.length>0){
@@ -3108,7 +3113,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<td style="text-align:right;padding:10px 8px;color:'+gDeltaCol+'">'+(gDelta>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gDelta)))+'</td>';
       html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasBaseRev?gBaseProfit:null)+'">'+_fmtP(gHasBaseRev?gBaseProfit:null)+'</td>';
       html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasBaseRev?gScProfit:null)+';font-weight:700">'+_fmtP(gHasBaseRev?gScProfit:null)+'</td>';
-      if(_showScRev){
+      if(_showScRev && !scenarioMode){
         html+='<td style="text-align:right;padding:10px 8px;color:'+_pCol(gHasRevRev?gRevProfit:null)+';font-weight:700">'+_fmtP(gHasRevRev?gRevProfit:null)+'</td>';
       }
       html+='</tr>';
