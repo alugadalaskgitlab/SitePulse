@@ -2930,7 +2930,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   html+='<th style="text-align:left;padding:10px 12px;font-weight:700;color:#1e293b;font-size:13px">Site</th>';
   html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Revenue ₹</th>';
   if(_showScRev){
-    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#7c3aed">Sc. Revenue ₹</th>';
+    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#7c3aed">Rev. Revenue ₹</th>';
   }
   html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#64748b">Full Cost ₹</th>';
   html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">In-Scope ₹</th>';
@@ -2980,7 +2980,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
     if(_showScRev && row.scProfit!=null){
       var _spCol=row.scProfit>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_spCol+'">'+(row.scProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.scProfit)))+'</span></div>';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_spCol+'">'+(row.scProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.scProfit)))+'</span></div>';
     }
     html+='</td>';
     html+='<td style="text-align:right;padding:10px 10px;font-weight:600;color:'+mCol+'">'+(row.margin!=null?row.margin.toFixed(1)+'%':'—');
@@ -2990,7 +2990,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
     if(_showScRev && row.scMargin!=null){
       var _smCol=row.scMargin>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_smCol+'">'+row.scMargin.toFixed(1)+'%</span></div>';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_smCol+'">'+row.scMargin.toFixed(1)+'%</span></div>';
     }
     html+='</td>';
     html+='</tr>';
@@ -3036,7 +3036,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
     if(_showScRev && gScProfit!=null){
       var _gspCol=gScProfit>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_gspCol+'">'+(gScProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gScProfit)))+'</span></div>';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_gspCol+'">'+(gScProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gScProfit)))+'</span></div>';
     }
     html+='</td>';
     html+='<td style="text-align:right;padding:12px 10px;font-size:14px;color:'+gmCol+'">'+(gMargin!=null?gMargin.toFixed(1)+'%':'—');
@@ -3046,7 +3046,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
     if(_showScRev && gScMargin!=null){
       var _gsmCol=gScMargin>=0?'#16a34a':'#ef4444';
-      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_gsmCol+'">'+gScMargin.toFixed(1)+'%</span></div>';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Rev.: </span><span style="color:'+_gsmCol+'">'+gScMargin.toFixed(1)+'%</span></div>';
     }
     html+='</td>';
     html+='</tr>';
