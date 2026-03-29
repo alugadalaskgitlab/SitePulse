@@ -600,6 +600,7 @@ var sites = [];
 var siteCounter = 0;
 var jobCounter = 0;
 var contractRates = {};
+var procScenarioContractRates = null;
 function profitInputChanged(key, val){
   contractRates[key] = parseFloat(val) || null;
   saveState();
@@ -1048,7 +1049,7 @@ function fetchProcScenarios(){
   var bar = document.getElementById('procScenarioBar');
   var sel = document.getElementById('procScenarioSelect');
   if(!bar||!sel) return;
-  if(!currentEstimateId){ bar.style.display='none'; return; }
+  if(!currentEstimateId){ bar.style.display='none'; procScenarioContractRates=null; return; }
   fetch('/api/price-scenarios?estimateId='+currentEstimateId)
     .then(function(r){return r.json();})
     .then(function(list){
@@ -1057,7 +1058,7 @@ function fetchProcScenarios(){
         try{ var rp=JSON.parse(s.revisedPrices||'{}'); return Object.keys(rp).length>0; }catch(e){return false;}
       });
       // In scenario edit mode: always show bar with "Base Estimate" option
-      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; return; }
+      if(!_procScenariosList.length && !scenarioMode){ bar.style.display='none'; procScenarioPrices=null; procScenarioContractRates=null; return; }
       bar.style.display='flex';
       var opts;
       if(scenarioMode){
@@ -1091,7 +1092,7 @@ function onProcScenarioChange(){
   if(scId===-1 && scenarioMode){
     var baseSrc = scenarioBaseSnapshot;
     function applyBaseCompare(st){
-      if(!st){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
+      if(!st){ procScenarioPrices=null; procScenarioContractRates=null; updateProcBadge(); recalc(); return; }
       var inp = st.inputs||{};
       var pf = function(v){ var x=parseFloat(v); return isNaN(x)?null:x; };
       procScenarioPrices = {
@@ -1106,6 +1107,7 @@ function onProcScenarioChange(){
         hsdPrice:       pf(inp.hsdPrice),
         ldoRate:        pf(inp.ldoRate)
       };
+      procScenarioContractRates = (st.contractRates && typeof st.contractRates==='object') ? st.contractRates : null;
       updateProcBadge(); recalc();
     }
     if(baseSrc){ applyBaseCompare(baseSrc); }
@@ -1119,9 +1121,9 @@ function onProcScenarioChange(){
     } else { applyBaseCompare(null); }
     return;
   }
-  if(!scId){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
+  if(!scId){ procScenarioPrices=null; procScenarioContractRates=null; updateProcBadge(); recalc(); return; }
   var sc = _procScenariosList.find(function(s){return s.id===scId;});
-  if(!sc){ procScenarioPrices=null; updateProcBadge(); recalc(); return; }
+  if(!sc){ procScenarioPrices=null; procScenarioContractRates=null; updateProcBadge(); recalc(); return; }
   try{
     var prices;
     if(sc.state){
@@ -1157,7 +1159,13 @@ function onProcScenarioChange(){
       };
     }
     procScenarioPrices = Object.assign({_id:sc.id, _name:sc.name}, prices);
-  } catch(e){ procScenarioPrices=null; }
+    if(sc.state){
+      var _scSt = typeof sc.state==='string'?JSON.parse(sc.state):sc.state;
+      procScenarioContractRates = (_scSt.contractRates && typeof _scSt.contractRates==='object') ? _scSt.contractRates : null;
+    } else {
+      procScenarioContractRates = null;
+    }
+  } catch(e){ procScenarioPrices=null; procScenarioContractRates=null; }
   updateProcBadge();
   recalc();
 }
@@ -2629,29 +2637,30 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='</div>';
   }
 
-  function _calcSiteRevenue(sId, sMode, sMixQty, sPrimeArea, sTackArea, sTotalRoadKm, sTotalSiteMT, sTotalSiteCUM){
+  function _calcSiteRevenue(sId, sMode, sMixQty, sPrimeArea, sTackArea, sTotalRoadKm, sTotalSiteMT, sTotalSiteCUM, ratesObj){
+    var cr = ratesObj || contractRates;
     var base=null, ok=false;
-    var sRevMode = contractRates[sId+'__REV_MODE']||'itemRates';
-    var sAdj = contractRates[sId+'__ADJ_AMT']||0;
+    var sRevMode = cr[sId+'__REV_MODE']||'itemRates';
+    var sAdj = cr[sId+'__ADJ_AMT']||0;
     if(sMode==='itemised'){
       if(sRevMode==='scopeRate'){
-        var sb=contractRates[sId+'__SCOPE_BASIS']||'mt', smt=contractRates[sId+'__SCOPE_MT']||0, scm=contractRates[sId+'__SCOPE_CUM']||0, sr=0;
+        var sb=cr[sId+'__SCOPE_BASIS']||'mt', smt=cr[sId+'__SCOPE_MT']||0, scm=cr[sId+'__SCOPE_CUM']||0, sr=0;
         if(sb==='cum'&&scm>0&&sTotalSiteCUM>0){sr=scm*sTotalSiteCUM;ok=true;}
         else if(smt>0&&sTotalSiteMT>0){sr=smt*sTotalSiteMT;ok=true;}
         if(ok||sAdj!==0){ok=true;base=sr;}
       } else {
         var r=0;
         Object.keys(sMixQty).forEach(function(mn){
-          var mq=sMixQty[mn], key=sId+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_'), c=contractRates[key];
+          var mq=sMixQty[mn], key=sId+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_'), c=cr[key];
           if(c!=null){r+=mq.cum*c;ok=true;}
         });
-        if(sPrimeArea>0){var pc=contractRates[sId+'_PRIME'];if(pc!=null){r+=sPrimeArea*pc;ok=true;}}
-        if(sTackArea>0){var tc=contractRates[sId+'_TACK'];if(tc!=null){r+=sTackArea*tc;ok=true;}}
+        if(sPrimeArea>0){var pc=cr[sId+'_PRIME'];if(pc!=null){r+=sPrimeArea*pc;ok=true;}}
+        if(sTackArea>0){var tc=cr[sId+'_TACK'];if(tc!=null){r+=sTackArea*tc;ok=true;}}
         if(ok) base=r;
       }
     } else if(sMode==='perkm'){
-      var km=contractRates[sId+'__KM_RATE'];
-      var adjPKm=contractRates[sId+'__ADJ_PER_KM']||0;
+      var km=cr[sId+'__KM_RATE'];
+      var adjPKm=cr[sId+'__ADJ_PER_KM']||0;
       if(km!=null&&sTotalRoadKm>0){base=sTotalRoadKm*km;ok=true;}
       if(ok){
         var revRate=(km||0)+adjPKm;
@@ -2664,7 +2673,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       }
       return {baseRevenue:null, revenue:null, hasRev:false, adjAmt:0, adjPerKm:0, revMode:sRevMode};
     } else {
-      var ls=contractRates[sId+'__LUMPSUM'];
+      var ls=cr[sId+'__LUMPSUM'];
       if(ls!=null){base=ls;ok=true;}
     }
     var rev = ok ? (base||0)+sAdj : null;
@@ -2674,6 +2683,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
   var siteRows = [];
   var grandFullCost=0, grandInScope=0, grandRevInScope=0, grandRevenue=0, grandBaseRevenue=0, grandHasRevenue=false, grandHasAdj=false;
+  var grandScRevenue=0, grandHasScRev=false, grandScCostForProfit=0;
 
   sites.forEach(function(s){
     if(!s.jobs.length) return;
@@ -2743,12 +2753,27 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var revenue = curRev.revenue, hasRev = curRev.hasRev, adjAmt = curRev.adjAmt, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
 
+    var scRev = null, scRevenue = null, scHasRev = false;
+    if(procScenarioContractRates){
+      var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
+      scRev = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
+      scRevenue = scRev.revenue;
+      scHasRev = scRev.hasRev;
+    }
+
     var excluded = fullJobCost - inScopeCost;
     var costForProfit = hasRevised ? revInScopeCost : inScopeCost;
     var profit = revenue!=null ? revenue - costForProfit : null;
     var margin = revenue!=null&&revenue>0 ? profit/revenue*100 : null;
     var baseProfit = baseRevenue!=null ? baseRevenue - inScopeCost : null;
     var baseMargin = baseRevenue!=null&&baseRevenue>0 ? baseProfit/baseRevenue*100 : null;
+
+    var scProfit = null, scMargin = null;
+    if(scHasRev && scRevenue!=null){
+      var scCostForProfit = hasRevised ? revInScopeCost : inScopeCost;
+      scProfit = scRevenue - scCostForProfit;
+      scMargin = scRevenue>0 ? scProfit/scRevenue*100 : null;
+    }
 
     siteRows.push({
       site: s, mode: mode, mixQty: mixQty, primeArea: primeArea, tackArea: tackArea,
@@ -2763,7 +2788,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       basePlantCost: basePlantCost, baseTransCost: baseTransCost, baseLayCost: baseLayCost,
       basePrimeCost: basePrimeCost, baseTackCost: baseTackCost,
       revPlantCost: revPlantCost, revTransCost: revTransCost, revLayCost: revLayCost,
-      revPrimeCost: revPrimeCost, revTackCost: revTackCost
+      revPrimeCost: revPrimeCost, revTackCost: revTackCost,
+      scRevenue: scRevenue, scHasRev: scHasRev, scProfit: scProfit, scMargin: scMargin
     });
     grandFullCost += fullJobCost;
     grandInScope += inScopeCost;
@@ -2771,6 +2797,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     if(hasRev){ grandRevenue += revenue; grandHasRevenue = true; }
     if(baseRevenue!=null){ grandBaseRevenue += baseRevenue; }
     if(adjAmt!==0) grandHasAdj = true;
+    if(scHasRev){ grandScRevenue += scRevenue; grandHasScRev = true; grandScCostForProfit += (hasRevised ? revInScopeCost : inScopeCost); }
   });
 
   siteRows.forEach(function(row){
@@ -2898,9 +2925,13 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
   html+='<div style="overflow-x:auto;margin-top:8px">';
   html+='<table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.4">';
+  var _showScRev = grandHasScRev && procScenarioContractRates;
   html+='<thead><tr style="background:#f8fafc;border-bottom:2px solid #cbd5e1">';
   html+='<th style="text-align:left;padding:10px 12px;font-weight:700;color:#1e293b;font-size:13px">Site</th>';
   html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">Revenue ₹</th>';
+  if(_showScRev){
+    html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#7c3aed">Sc. Revenue ₹</th>';
+  }
   html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#64748b">Full Cost ₹</th>';
   html+='<th style="text-align:right;padding:10px 10px;font-weight:700;color:#1e293b">In-Scope ₹</th>';
   if(hasRevised){
@@ -2925,6 +2956,16 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       html+='<div style="font-size:11px;color:#6366f1;font-weight:500;margin-top:1px">incl. '+(row.adjAmt>0?'+':'')+fmtI(Math.round(row.adjAmt))+' adj.</div>';
     }
     html+='</td>';
+    if(_showScRev){
+      html+='<td style="text-align:right;padding:10px 10px;color:#7c3aed;font-weight:600">'+(row.scHasRev&&row.scRevenue!=null?'₹'+fmtI(Math.round(row.scRevenue)):'—');
+      if(row.scHasRev&&row.scRevenue!=null&&row.revenue!=null){
+        var _rvDiff=row.scRevenue-row.revenue;
+        if(Math.abs(_rvDiff)>0.5){
+          html+='<div style="font-size:11px;color:'+(_rvDiff>0?'#16a34a':'#ef4444')+';font-weight:500;margin-top:1px">'+(_rvDiff>0?'+':'−')+'₹'+fmtI(Math.abs(Math.round(_rvDiff)))+'</div>';
+        }
+      }
+      html+='</td>';
+    }
     html+='<td style="text-align:right;padding:10px 10px;color:#64748b">₹'+fmtI(Math.round(row.fullJobCost))+'</td>';
     html+='<td style="text-align:right;padding:10px 10px;color:#1e293b;font-weight:600">₹'+fmtI(Math.round(row.inScopeCost))+'</td>';
     if(hasRevised){
@@ -2937,11 +2978,19 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var bpCol=row.baseProfit>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+bpCol+'">'+(row.baseProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.baseProfit)))+'</span></div>';
     }
+    if(_showScRev && row.scProfit!=null){
+      var _spCol=row.scProfit>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_spCol+'">'+(row.scProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(row.scProfit)))+'</span></div>';
+    }
     html+='</td>';
     html+='<td style="text-align:right;padding:10px 10px;font-weight:600;color:'+mCol+'">'+(row.margin!=null?row.margin.toFixed(1)+'%':'—');
     if(row.adjAmt!==0 && row.baseMargin!=null){
       var bmCol=row.baseMargin>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+bmCol+'">'+row.baseMargin.toFixed(1)+'%</span></div>';
+    }
+    if(_showScRev && row.scMargin!=null){
+      var _smCol=row.scMargin>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_smCol+'">'+row.scMargin.toFixed(1)+'%</span></div>';
     }
     html+='</td>';
     html+='</tr>';
@@ -2959,6 +3008,16 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='<tr style="background:#fffbeb;border-top:3px solid #d97706;font-weight:700">';
     html+='<td style="padding:12px;color:#92400e;font-size:14px">GRAND TOTAL</td>';
     html+='<td style="text-align:right;padding:12px 10px;color:#1e293b;font-size:14px">'+(grandHasRevenue?'₹'+fmtI(Math.round(grandRevenue)):'—')+'</td>';
+    if(_showScRev){
+      html+='<td style="text-align:right;padding:12px 10px;color:#7c3aed;font-size:14px;font-weight:700">'+(grandHasScRev?'₹'+fmtI(Math.round(grandScRevenue)):'—');
+      if(grandHasScRev&&grandHasRevenue){
+        var _grvD=grandScRevenue-grandRevenue;
+        if(Math.abs(_grvD)>0.5){
+          html+='<div style="font-size:11px;color:'+(_grvD>0?'#16a34a':'#ef4444')+';font-weight:600;margin-top:1px">'+(_grvD>0?'+':'−')+'₹'+fmtI(Math.abs(Math.round(_grvD)))+'</div>';
+        }
+      }
+      html+='</td>';
+    }
     html+='<td style="text-align:right;padding:12px 10px;color:#64748b">₹'+fmtI(Math.round(grandFullCost))+'</td>';
     html+='<td style="text-align:right;padding:12px 10px;color:#1e293b">₹'+fmtI(Math.round(grandInScope))+'</td>';
     if(hasRevised){
@@ -2968,16 +3027,26 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     html+='<td style="text-align:right;padding:12px 10px;color:#94a3b8">₹'+fmtI(Math.round(gExcluded))+'</td>';
     var gBaseProfit = grandHasRevenue ? grandBaseRevenue - grandInScope : null;
     var gBaseMargin = grandHasRevenue&&grandBaseRevenue>0 ? gBaseProfit/grandBaseRevenue*100 : null;
+    var gScProfit = grandHasScRev ? grandScRevenue - grandScCostForProfit : null;
+    var gScMargin = grandHasScRev&&grandScRevenue>0 ? gScProfit/grandScRevenue*100 : null;
     html+='<td style="text-align:right;padding:12px 10px;font-size:15px;color:'+gpCol+'">'+(gProfit!=null?(gProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gProfit))):'—');
     if(grandHasAdj && gBaseProfit!=null){
       var gbpCol=gBaseProfit>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+gbpCol+'">'+(gBaseProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gBaseProfit)))+'</span></div>';
+    }
+    if(_showScRev && gScProfit!=null){
+      var _gspCol=gScProfit>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_gspCol+'">'+(gScProfit>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(gScProfit)))+'</span></div>';
     }
     html+='</td>';
     html+='<td style="text-align:right;padding:12px 10px;font-size:14px;color:'+gmCol+'">'+(gMargin!=null?gMargin.toFixed(1)+'%':'—');
     if(grandHasAdj && gBaseMargin!=null){
       var gbmCol=gBaseMargin>=0?'#16a34a':'#ef4444';
       html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#374151">Base: </span><span style="color:'+gbmCol+'">'+gBaseMargin.toFixed(1)+'%</span></div>';
+    }
+    if(_showScRev && gScMargin!=null){
+      var _gsmCol=gScMargin>=0?'#16a34a':'#ef4444';
+      html+='<div style="font-size:12px;font-weight:600;margin-top:2px"><span style="color:#7c3aed">Sc: </span><span style="color:'+_gsmCol+'">'+gScMargin.toFixed(1)+'%</span></div>';
     }
     html+='</td>';
     html+='</tr>';
