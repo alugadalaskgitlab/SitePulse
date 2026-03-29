@@ -2780,8 +2780,15 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         scHasRev = _scR.hasRev;
       }
     }
-    var revenue = curRev.revenue, hasRev = curRev.hasRev, adjAmt = curRev.adjAmt, revMode = curRev.revMode;
+    var revenue = curRev.revenue, hasRev = curRev.hasRev, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
+    var adjAmt = 0;
+    if(mode==='itemised'){
+      adjAmt = contractRates[s.id+'__ADJ_AMT']||0;
+    } else if(mode==='perkm'){
+      var _adjPKm = contractRates[s.id+'__ADJ_PER_KM']||0;
+      adjAmt = _adjPKm * totalRoadKm;
+    }
 
     if(scHasRev && scRevenue!=null && revenue!=null && Math.abs(scRevenue - revenue) < 1){
       scHasRev = false; scRevenue = null;
