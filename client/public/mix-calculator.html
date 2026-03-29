@@ -2749,17 +2749,24 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       });
     }
 
-    var curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+    var curRev, scRev = null, scRevenue = null, scHasRev = false;
+    if(scenarioMode && procScenarioContractRates){
+      var baseMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
+      curRev = _calcSiteRevenue(s.id, baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
+      var revRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+      scRevenue = revRev.revenue;
+      scHasRev = revRev.hasRev;
+    } else {
+      curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+      if(procScenarioContractRates){
+        var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
+        var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
+        scRevenue = _scR.revenue;
+        scHasRev = _scR.hasRev;
+      }
+    }
     var revenue = curRev.revenue, hasRev = curRev.hasRev, adjAmt = curRev.adjAmt, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
-
-    var scRev = null, scRevenue = null, scHasRev = false;
-    if(procScenarioContractRates){
-      var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
-      scRev = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
-      scRevenue = scRev.revenue;
-      scHasRev = scRev.hasRev;
-    }
 
     var excluded = fullJobCost - inScopeCost;
     var costForProfit = hasRevised ? revInScopeCost : inScopeCost;
