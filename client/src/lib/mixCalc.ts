@@ -42,18 +42,34 @@ export interface SiteDef {
   id: string;
   name: string;
   jobs: JobDef[];
+  transLead?: number | null;
+  roadLengthM?: number | null;
+}
+
+export interface ScopeGroups {
+  mixing: boolean;
+  transport: boolean;
+  spraying: boolean;
+  paving: boolean;
+}
+
+export interface ScopeState {
+  groups: ScopeGroups;
+  mixing: Record<string, boolean>;
+  spraying: Record<string, boolean>;
+  paving: Record<string, boolean>;
 }
 
 export interface CalcState {
   inputs: Record<string, string>;
   mixTypes: MixTypeDef[];
   equipDefs: EquipDef[];
-  /** New format: sites array with nested jobs */
   sites?: SiteDef[];
-  /** Legacy format: flat jobs array */
   jobs?: JobDef[];
   aggBasis?: string;
   contractRates?: Record<string, any>;
+  scopeState?: ScopeState;
+  scopeMarginPct?: number;
 }
 
 export interface RevisedPrices {
@@ -542,6 +558,264 @@ export function calcRevenue(state: CalcState, calcResult: CalcResult): RevenueRe
   }
 
   return { siteRevenues, grandRevenue, hasAnyRevenue };
+}
+
+export interface SiteProfitCost {
+  siteId: string;
+  siteName: string;
+  fullCost: number;
+  inScopeCost: number;
+  siteMt: number;
+}
+
+export interface SiteProfitResult {
+  siteCosts: SiteProfitCost[];
+  grandFullCost: number;
+  grandInScopeCost: number;
+  grandMt: number;
+}
+
+function calcScopeComponentsTS(state: CalcState, hsdPrice: number): Record<string, number> & { ptrEnabled: boolean } {
+  const { inputs, equipDefs, mixTypes } = state;
+  const tph = n(inputs, 'tph');
+  const phm = n(inputs, 'plantHrsMonth');
+  const layProd = n(inputs, 'layProductivity');
+  const ldoC = n(inputs, 'ldoConsump'), ldoR = n(inputs, 'ldoRate');
+  const bProdL = n(inputs, 'boilerProdLhr'), bPreL = n(inputs, 'boilerPreheatLhr');
+  const bFuelR = n(inputs, 'boilerFuelRate');
+  const bProdH = n(inputs, 'boilerProdHrs'), bPreH = n(inputs, 'boilerPreheatHrs');
+  const bCamp = n(inputs, 'boilerCampaignMt');
+  const crewMon = n(inputs, 'crewMonthly'), crewD = n(inputs, 'crewDays'), crewH = n(inputs, 'crewHrs');
+  const sprayBow = n(inputs, 'sprayBowser'), sprayCrw = n(inputs, 'sprayCrew'), sprayPr = n(inputs, 'sprayProd');
+  const primeSp = n(inputs, 'primeSpray'), primeP = n(inputs, 'primePrice'), primeDil = n(inputs, 'primeDilution') || 1;
+  const tackSp = n(inputs, 'tackSpray'), tackP = n(inputs, 'tackPrice'), tackDil = n(inputs, 'tackDilution') || 1;
+  const layCrewD = n(inputs, 'layCrew');
+  const bitPrice = n(inputs, 'bitPrice');
+
+  const ldoPerMT = ldoC * ldoR;
+  const boilerProdPMT = bCamp > 0 ? (bProdL * bFuelR * bProdH / bCamp) : 0;
+  const boilerPrePMT = bCamp > 0 ? (bPreL * bFuelR * bPreH / bCamp) : 0;
+  const crewPerMT = (crewD > 0 && crewH > 0 && tph > 0) ? (crewMon / crewD / crewH / tph) : 0;
+  const sprayOpSqm = sprayPr > 0 ? ((sprayBow + sprayCrw) / sprayPr) : 0;
+  const layCrewPerMT = layProd > 0 ? layCrewD / layProd : 0;
+
+  const hotmixEq = (equipDefs || []).find(e => e.id === 'hotmix');
+  const dgEq = (equipDefs || []).find(e => e.id === 'dg');
+  const jcbEq = (equipDefs || []).find(e => e.id === 'jcb');
+  const tipperEq = (equipDefs || []).find(e => e.id === 'tipper');
+  const paverEq = (equipDefs || []).find(e => e.id === 'paver');
+  const rollerEq = (equipDefs || []).find(e => e.id === 'roller');
+  const ptrEq = (equipDefs || []).find(e => e.id === 'ptr');
+
+  function layHirePMT(eq: EquipDef | undefined): number {
+    return (eq && eq.enabled && layProd > 0) ? equipHireDailyCost(eq) / layProd : 0;
+  }
+  function layFuelPMT(eq: EquipDef | undefined): number {
+    return (eq && eq.enabled && layProd > 0) ? equipFuelPerDay(eq, hsdPrice) / layProd : 0;
+  }
+
+  const bitCostPerMT = (mixTypes || []).length > 0
+    ? (mixTypes || []).reduce((s, m) => s + m.binderPct, 0) / (mixTypes || []).length / 100 * 1000 * bitPrice
+    : 0;
+
+  return {
+    hotmixHire: hotmixEq ? equipHireCostPerMT(hotmixEq, tph, phm) : 0,
+    ldo: ldoPerMT + boilerProdPMT + boilerPrePMT,
+    dgHire: dgEq ? equipHireCostPerMT(dgEq, tph, phm) : 0,
+    dgHsd: dgEq ? equipFuelPerMT(dgEq, hsdPrice, tph) : 0,
+    jcbHire: jcbEq ? equipHireCostPerMT(jcbEq, tph, phm) : 0,
+    jcbHsd: jcbEq ? equipFuelPerMT(jcbEq, hsdPrice, tph) : 0,
+    tipperHire: tipperEq ? equipHireCostPerMT(tipperEq, tph, phm) : 0,
+    tipperHsd: tipperEq ? equipFuelPerMT(tipperEq, hsdPrice, tph) : 0,
+    bitumen: bitCostPerMT,
+    crewPerMT,
+    transPerMT: 0,
+    sprayOp: sprayOpSqm,
+    primeEm: primeSp * primeP / primeDil,
+    tackEm: tackSp * tackP / tackDil,
+    paverHire: layHirePMT(paverEq),
+    paverHsd: layFuelPMT(paverEq),
+    rollerHire: layHirePMT(rollerEq),
+    rollerHsd: layFuelPMT(rollerEq),
+    ptrHire: ptrEq ? layHirePMT(ptrEq) : 0,
+    ptrHsd: ptrEq ? layFuelPMT(ptrEq) : 0,
+    layCrewPerMT,
+    ptrEnabled: !!(ptrEq && ptrEq.enabled),
+  };
+}
+
+export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): SiteProfitResult {
+  const { inputs, mixTypes } = state;
+  let sites = state.sites || [];
+  if (sites.length === 0 && state.jobs && state.jobs.length > 0) {
+    sites = [{ id: 'S01', name: 'Default', jobs: state.jobs }];
+  }
+
+  const gTransRate = n(inputs, 'transRate');
+  const gTransPayload = n(inputs, 'transPayload');
+  const gTransDist = n(inputs, 'transDist');
+  const hsdPrice = n(inputs, 'hsdPrice');
+
+  const primeSpray = n(inputs, 'primeSpray');
+  const primePrice_ = n(inputs, 'primePrice');
+  const primeDilution = n(inputs, 'primeDilution') || 1;
+  const tackSpray = n(inputs, 'tackSpray');
+  const tackPrice_ = n(inputs, 'tackPrice');
+  const tackDilution = n(inputs, 'tackDilution') || 1;
+  const sprayBowser = n(inputs, 'sprayBowser');
+  const sprayCrew = n(inputs, 'sprayCrew');
+  const sprayProd = n(inputs, 'sprayProd');
+  const sprayOpPerSqm = sprayProd > 0 ? ((sprayBowser + sprayCrew) / sprayProd) : 0;
+  const primePerSqm = (primeSpray * primePrice_ / primeDilution) + sprayOpPerSqm;
+  const tackPerSqm = (tackSpray * tackPrice_ / tackDilution) + sprayOpPerSqm;
+
+  const layProd = n(inputs, 'layProductivity');
+  const layCrewD = n(inputs, 'layCrew');
+  const paverEq = (state.equipDefs || []).find(e => e.id === 'paver');
+  const rollerEq = (state.equipDefs || []).find(e => e.id === 'roller');
+  const ptrEq = (state.equipDefs || []).find(e => e.id === 'ptr');
+  const layPaverD = paverEq ? equipDailyCost(paverEq, hsdPrice) : 0;
+  const layRollerD = rollerEq ? equipDailyCost(rollerEq, hsdPrice) : 0;
+  const layPtrD = ptrEq ? equipDailyCost(ptrEq, hsdPrice) : 0;
+  const layTotalDaily = layPaverD + layRollerD + layPtrD + layCrewD;
+  const layPerMT = layProd > 0 ? (layTotalDaily / layProd) : 0;
+
+  const ss = state.scopeState;
+  const sg = ss?.groups;
+  const scopeActive = !!(sg && (sg.mixing || sg.transport || sg.spraying || sg.paving));
+  const smf = 1 + ((state.scopeMarginPct ?? 0) / 100);
+
+  let scopeMix = 0, scopePav = 0;
+  let sPrime = primePerSqm, sTack = tackPerSqm;
+  let scopeBit = false;
+
+  if (scopeActive && ss) {
+    const sc = calcScopeComponentsTS(state, hsdPrice);
+
+    function sumMixPav(): { mix: number; pav: number } {
+      let mx = 0, pv = 0;
+      if (sg!.mixing) {
+        if (ss!.mixing.hotmixHire) mx += sc.hotmixHire;
+        if (ss!.mixing.ldo) mx += sc.ldo;
+        if (ss!.mixing.dgHire) mx += sc.dgHire;
+        if (ss!.mixing.dgHsd) mx += sc.dgHsd;
+        if (ss!.mixing.jcbHire) mx += sc.jcbHire;
+        if (ss!.mixing.jcbHsd) mx += sc.jcbHsd;
+        if (ss!.mixing.tipperHire) mx += sc.tipperHire;
+        if (ss!.mixing.tipperHsd) mx += sc.tipperHsd;
+        mx += sc.crewPerMT;
+      }
+      if (sg!.paving) {
+        if (ss!.paving.paverHire) pv += sc.paverHire;
+        if (ss!.paving.paverHsd) pv += sc.paverHsd;
+        if (ss!.paving.rollerHire) pv += sc.rollerHire;
+        if (ss!.paving.rollerHsd) pv += sc.rollerHsd;
+        if (sc.ptrEnabled) {
+          if (ss!.paving.ptrHire) pv += sc.ptrHire;
+          if (ss!.paving.ptrHsd) pv += sc.ptrHsd;
+        }
+        pv += sc.layCrewPerMT;
+      }
+      return { mix: mx, pav: pv };
+    }
+
+    const base = sumMixPav();
+    scopeMix = base.mix;
+    scopePav = base.pav;
+
+    if (sg!.spraying) {
+      const sOp = ss.spraying.operation ? sc.sprayOp : 0;
+      sPrime = (sOp + (ss.spraying.primeEmulsion ? sc.primeEm : 0)) * smf;
+      sTack = (sOp + (ss.spraying.tackEmulsion ? sc.tackEm : 0)) * smf;
+    } else {
+      sPrime = 0;
+      sTack = 0;
+    }
+
+    scopeBit = !!(sg!.mixing && ss.mixing.bitumen);
+  }
+
+  function effCPM(siteTransPerMT: number, bitCostPMT: number): number | null {
+    if (!scopeActive) return null;
+    return (scopeMix + (scopeBit ? (bitCostPMT || 0) : 0) + (sg!.transport ? siteTransPerMT : 0) + scopePav) * smf;
+  }
+
+  const siteCosts: SiteProfitCost[] = [];
+  let grandFullCost = 0, grandInScopeCost = 0, grandMt = 0;
+
+  for (const s of sites) {
+    if (!s.jobs.length) continue;
+    const siteLead = (s.transLead != null && s.transLead > 0) ? s.transLead : gTransDist;
+    const siteTransPerMT = gTransPayload > 0 ? (siteLead * 2 * gTransRate / gTransPayload) : 0;
+
+    const mixQty: Record<string, { cum: number; mixIdx: number }> = {};
+    let primeArea = 0, tackArea = 0, totalSiteMT = 0;
+
+    for (const j of s.jobs) {
+      const isGeo = j.basis === 'GEOMETRY';
+      let cum: number, area: number;
+      if (isGeo) {
+        const thickM = (j.thickness ?? 0) / 1000;
+        cum = (j.length ?? 0) * (j.width ?? 0) * thickM;
+        area = (j.length ?? 0) * (j.width ?? 0);
+      } else {
+        cum = j.volume ?? 0;
+        const thickM = (j.thickness ?? 0) / 1000;
+        const len = (j.width ?? 0) > 0 && thickM > 0 ? (cum / ((j.width ?? 0) * thickM)) : 0;
+        area = len * (j.width ?? 0);
+      }
+
+      for (const mx of (j.mixes || [])) {
+        const mix = (mixTypes || [])[mx.mixIdx] || (mixTypes || [])[0];
+        if (!mix) continue;
+        const mt = (mx.qty_mt != null && mx.qty_mt > 0)
+          ? mx.qty_mt
+          : (cum > 0 && mix.density > 0 ? cum * mix.density : 0);
+        const mxCum = mix.density > 0 && mt > 0 ? mt / mix.density : 0;
+        if (!mixQty[mix.name]) mixQty[mix.name] = { cum: 0, mixIdx: mx.mixIdx };
+        mixQty[mix.name].cum += mxCum;
+        totalSiteMT += mt;
+      }
+
+      if (j.prime !== false) primeArea += area;
+      if (j.tack !== false) tackArea += area * (j.mixes?.length || 1);
+    }
+
+    const fullCoatCost = primeArea * primePerSqm + tackArea * tackPerSqm;
+    let fullCost = fullCoatCost;
+    Object.keys(mixQty).forEach(mn => {
+      const mq = mixQty[mn];
+      const mr = mixRates[mq.mixIdx] || mixRates[0];
+      if (!mr) return;
+      const mix = (mixTypes || [])[mq.mixIdx] || (mixTypes || [])[0];
+      const vol = mq.cum * mix.density;
+      fullCost += vol * (mr.exPlant + siteTransPerMT + layPerMT);
+    });
+
+    const inScopeCoatCost = primeArea * (scopeActive ? sPrime : primePerSqm) + tackArea * (scopeActive ? sTack : tackPerSqm);
+    let inScopeCost = inScopeCoatCost;
+    Object.keys(mixQty).forEach(mn => {
+      const mq = mixQty[mn];
+      const mr = mixRates[mq.mixIdx] || mixRates[0];
+      if (!mr) return;
+      const mix = (mixTypes || [])[mq.mixIdx] || (mixTypes || [])[0];
+      const ec = effCPM(siteTransPerMT, mr.bitumen);
+      inScopeCost += mq.cum * (ec != null ? ec : (mr.exPlant + siteTransPerMT + layPerMT)) * mix.density;
+    });
+
+    siteCosts.push({
+      siteId: s.id,
+      siteName: s.name || s.id,
+      fullCost,
+      inScopeCost,
+      siteMt: totalSiteMT,
+    });
+    grandFullCost += fullCost;
+    grandInScopeCost += inScopeCost;
+    grandMt += totalSiteMT;
+  }
+
+  return { siteCosts, grandFullCost, grandInScopeCost, grandMt };
 }
 
 export function diffCalcInputs(base: CalcState, revised: CalcState): InputDiff[] {

@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, GitCompare, Printer } from "lucide-react";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
-import { calcMixRatesAndJobs, calcRevenue, type CalcState, type CalcResult, type RevenueResult } from "@/lib/mixCalc";
+import { calcMixRatesAndJobs, calcSiteProfitCosts, calcRevenue, type CalcState, type CalcResult, type RevenueResult, type SiteProfitResult } from "@/lib/mixCalc";
 
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
 function fmtR(v: number) { return v.toFixed(2).replace(/\B(?=(\d{2})+(\d)(?!\d))/g, ","); }
@@ -28,6 +28,7 @@ interface ScenarioEntry {
   state: CalcState;
   calc: CalcResult;
   revenue: RevenueResult;
+  profitCosts: SiteProfitResult;
 }
 
 export default function ScenarioComparison() {
@@ -51,6 +52,7 @@ export default function ScenarioComparison() {
   const baseState = useMemo(() => parseState(estimate?.state), [estimate]);
   const baseCalc = useMemo(() => baseState ? calcMixRatesAndJobs(baseState) : null, [baseState]);
   const baseRevenue = useMemo(() => baseState && baseCalc ? calcRevenue(baseState, baseCalc) : null, [baseState, baseCalc]);
+  const baseProfitCosts = useMemo(() => baseState && baseCalc ? calcSiteProfitCosts(baseState, baseCalc.mixRates) : null, [baseState, baseCalc]);
 
   const scenarioEntries: ScenarioEntry[] = useMemo(() => {
     if (!baseState || !baseCalc) return [];
@@ -61,7 +63,8 @@ export default function ScenarioComparison() {
         if (!scState) return null;
         const calc = calcMixRatesAndJobs(scState);
         const rev = calcRevenue(scState, calc);
-        return { scenario: sc, state: scState, calc, revenue: rev } as ScenarioEntry;
+        const profitCosts = calcSiteProfitCosts(scState, calc.mixRates);
+        return { scenario: sc, state: scState, calc, revenue: rev, profitCosts } as ScenarioEntry;
       })
       .filter(Boolean) as ScenarioEntry[];
   }, [scenarios, selectedIds, baseState, baseCalc]);
@@ -323,25 +326,25 @@ export default function ScenarioComparison() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(baseCalc.siteResults || []).map((baseSite, sIdx) => {
+                  {(baseProfitCosts ? baseProfitCosts.siteCosts : (baseCalc.siteResults || []).map(sr => ({ siteId: sr.siteId, siteName: sr.siteName, fullCost: sr.siteTotal, inScopeCost: sr.siteTotal, siteMt: sr.siteMt }))).map((baseSite, sIdx) => {
                     const scCosts = scenarioEntries.map(e => {
-                      const ss = e.calc.siteResults?.find(s => s.siteId === baseSite.siteId);
-                      return ss?.siteTotal ?? null;
+                      const ss = e.profitCosts.siteCosts.find(s => s.siteId === baseSite.siteId);
+                      return ss?.inScopeCost ?? null;
                     });
-                    const allCosts = [baseSite.siteTotal, ...scCosts];
+                    const allCosts = [baseSite.inScopeCost, ...scCosts];
                     const { best, worst } = bestWorst(allCosts);
 
                     return (
                       <tr key={sIdx} className="border-b border-border/30">
                         <td className={tdL}>{baseSite.siteName}</td>
                         <td className={`${tdR} text-muted-foreground`}>{fmtI(baseSite.siteMt)}</td>
-                        <td className={`${tdR} font-semibold ${cellColor(baseSite.siteTotal, best, worst)}`}>
-                          ₹{fmtI(baseSite.siteTotal)}
+                        <td className={`${tdR} font-semibold ${cellColor(baseSite.inScopeCost, best, worst)}`}>
+                          ₹{fmtI(baseSite.inScopeCost)}
                         </td>
                         {scenarioEntries.map(e => {
-                          const ss = e.calc.siteResults?.find(s => s.siteId === baseSite.siteId);
-                          const cost = ss?.siteTotal ?? null;
-                          const delta = cost != null ? cost - baseSite.siteTotal : null;
+                          const ss = e.profitCosts.siteCosts.find(s => s.siteId === baseSite.siteId);
+                          const cost = ss?.inScopeCost ?? null;
+                          const delta = cost != null ? cost - baseSite.inScopeCost : null;
                           return (
                             <Fragment key={e.scenario.id}>
                               <td className={`${tdR} font-semibold ${cellColor(cost, best, worst)}`}>
@@ -364,13 +367,15 @@ export default function ScenarioComparison() {
                   {/* Grand total row */}
                   <tr className="border-t-2 border-foreground/30 font-bold bg-muted/30">
                     <td className={tdL}>GRAND TOTAL</td>
-                    <td className={`${tdR} text-muted-foreground`}>{fmtI(baseCalc.grandTotalMt)}</td>
-                    <td className={tdR}>₹{fmtI(baseCalc.grandTotalAmt)}</td>
+                    <td className={`${tdR} text-muted-foreground`}>{fmtI(baseProfitCosts ? baseProfitCosts.grandMt : baseCalc.grandTotalMt)}</td>
+                    <td className={tdR}>₹{fmtI(baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt)}</td>
                     {scenarioEntries.map(e => {
-                      const delta = e.calc.grandTotalAmt - baseCalc.grandTotalAmt;
+                      const bCost = baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt;
+                      const sCost = e.profitCosts.grandInScopeCost;
+                      const delta = sCost - bCost;
                       return (
                         <Fragment key={e.scenario.id}>
-                          <td className={tdR}>₹{fmtI(e.calc.grandTotalAmt)}</td>
+                          <td className={tdR}>₹{fmtI(sCost)}</td>
                           <td className={tdR}>
                             {Math.abs(delta) < 1
                               ? <span className="text-muted-foreground">—</span>
@@ -412,13 +417,15 @@ export default function ScenarioComparison() {
                   </tr>
                   <tr className="border-b border-border/30">
                     <td className={tdL}>Total Cost ₹</td>
-                    <td className={`${tdR} font-semibold`}>₹{fmtI(baseCalc.grandTotalAmt)}</td>
+                    <td className={`${tdR} font-semibold`}>₹{fmtI(baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt)}</td>
                     {scenarioEntries.map(e => {
-                      const delta = e.calc.grandTotalAmt - baseCalc.grandTotalAmt;
+                      const bCost = baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt;
+                      const sCost = e.profitCosts.grandInScopeCost;
+                      const delta = sCost - bCost;
                       const cls = Math.abs(delta) < 1 ? "" : delta < 0 ? "text-green-600" : "text-red-600";
                       return (
                         <td key={e.scenario.id} className={`${tdR} font-semibold ${cls}`}>
-                          ₹{fmtI(e.calc.grandTotalAmt)}
+                          ₹{fmtI(sCost)}
                           {Math.abs(delta) >= 1 && (
                             <span className="block text-xs mt-0.5">
                               ({delta > 0 ? "+" : ""}₹{fmtI(delta)})
@@ -431,10 +438,12 @@ export default function ScenarioComparison() {
                   {baseCalc.grandTotalMt > 0 && (
                     <tr className="border-b border-border/30">
                       <td className={tdL}>Avg Cost ₹/MT</td>
-                      <td className={`${tdR}`}>₹{fmtR(baseCalc.grandTotalAmt / baseCalc.grandTotalMt)}</td>
+                      <td className={`${tdR}`}>₹{fmtR((baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt) / baseCalc.grandTotalMt)}</td>
                       {scenarioEntries.map(e => {
-                        const scAvg = e.calc.grandTotalMt > 0 ? e.calc.grandTotalAmt / e.calc.grandTotalMt : 0;
-                        const baseAvg = baseCalc.grandTotalAmt / baseCalc.grandTotalMt;
+                        const sCost = e.profitCosts.grandInScopeCost;
+                        const bCost = baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt;
+                        const scAvg = e.calc.grandTotalMt > 0 ? sCost / e.calc.grandTotalMt : 0;
+                        const baseAvg = bCost / baseCalc.grandTotalMt;
                         const delta = scAvg - baseAvg;
                         const cls = Math.abs(delta) < 0.01 ? "" : delta < 0 ? "text-green-600" : "text-red-600";
                         return (
@@ -454,7 +463,9 @@ export default function ScenarioComparison() {
                     <td className={tdL}>Savings vs Base ₹</td>
                     <td className={`${tdR} text-muted-foreground`}>—</td>
                     {scenarioEntries.map(e => {
-                      const saving = baseCalc.grandTotalAmt - e.calc.grandTotalAmt;
+                      const bCost = baseProfitCosts ? baseProfitCosts.grandInScopeCost : baseCalc.grandTotalAmt;
+                      const sCost = e.profitCosts.grandInScopeCost;
+                      const saving = bCost - sCost;
                       const cls = saving > 0 ? "text-green-600" : saving < 0 ? "text-red-600" : "";
                       return (
                         <td key={e.scenario.id} className={`${tdR} ${cls}`}>
@@ -464,9 +475,9 @@ export default function ScenarioComparison() {
                               ? `₹${fmtI(saving)}`
                               : `-₹${fmtI(Math.abs(saving))}`
                           }
-                          {baseCalc.grandTotalAmt > 0 && Math.abs(saving) >= 1 && (
+                          {bCost > 0 && Math.abs(saving) >= 1 && (
                             <span className="block text-xs mt-0.5">
-                              ({(saving / baseCalc.grandTotalAmt * 100).toFixed(1)}%)
+                              ({(saving / bCost * 100).toFixed(1)}%)
                             </span>
                           )}
                         </td>
@@ -479,10 +490,13 @@ export default function ScenarioComparison() {
           </Card>
 
           {/* Section 4: Profitability Comparison */}
-          {baseRevenue && (baseRevenue.hasAnyRevenue || scenarioEntries.some(e => e.revenue.hasAnyRevenue)) && (
+          {baseRevenue && baseProfitCosts && (baseRevenue.hasAnyRevenue || scenarioEntries.some(e => e.revenue.hasAnyRevenue)) && (
             <Card>
               <CardContent className="py-4 overflow-x-auto">
                 <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Profitability Comparison</h3>
+                {baseProfitCosts.grandInScopeCost !== baseProfitCosts.grandFullCost && (
+                  <p className="text-xs text-muted-foreground mb-2">Costs reflect Scope Quotation selections from the calculator.</p>
+                )}
                 <table className="w-full border-collapse text-sm" data-testid="table-profitability">
                   <thead>
                     <tr className="border-b border-border">
@@ -501,16 +515,16 @@ export default function ScenarioComparison() {
                   </thead>
                   <tbody>
                     {(baseRevenue.siteRevenues || []).map((baseSiteRev, sIdx) => {
-                      const baseSiteCost = baseCalc.siteResults?.find(s => s.siteId === baseSiteRev.siteId);
-                      const bCost = baseSiteCost?.siteTotal ?? 0;
+                      const baseSitePc = baseProfitCosts.siteCosts.find(s => s.siteId === baseSiteRev.siteId);
+                      const bCost = baseSitePc?.inScopeCost ?? 0;
                       const bRev = baseSiteRev.revenue ?? 0;
                       const bProfit = baseSiteRev.hasRev ? bRev - bCost : null;
 
                       const profitVals: (number | null)[] = [bProfit, ...scenarioEntries.map(e => {
                         const sr = e.revenue.siteRevenues.find(s => s.siteId === baseSiteRev.siteId);
-                        const sc = e.calc.siteResults?.find(s => s.siteId === baseSiteRev.siteId);
+                        const sc = e.profitCosts.siteCosts.find(s => s.siteId === baseSiteRev.siteId);
                         if (!sr?.hasRev) return null;
-                        return (sr.revenue ?? 0) - (sc?.siteTotal ?? 0);
+                        return (sr.revenue ?? 0) - (sc?.inScopeCost ?? 0);
                       })];
 
                       return (
@@ -528,10 +542,10 @@ export default function ScenarioComparison() {
                           </td>
                           {scenarioEntries.map(e => {
                             const sr = e.revenue.siteRevenues.find(s => s.siteId === baseSiteRev.siteId);
-                            const sc = e.calc.siteResults?.find(s => s.siteId === baseSiteRev.siteId);
+                            const sc = e.profitCosts.siteCosts.find(s => s.siteId === baseSiteRev.siteId);
                             const hasSite = !!sc;
                             const sRev = sr?.revenue ?? 0;
-                            const sCost = sc?.siteTotal ?? 0;
+                            const sCost = sc?.inScopeCost ?? 0;
                             const sProfit = (hasSite && sr?.hasRev) ? sRev - sCost : null;
 
                             return (
@@ -557,12 +571,12 @@ export default function ScenarioComparison() {
                     {/* Grand total row */}
                     {(() => {
                       const bGrandRev = baseRevenue.grandRevenue;
-                      const bGrandCost = baseCalc.grandTotalAmt;
+                      const bGrandCost = baseProfitCosts.grandInScopeCost;
                       const bGrandProfit = baseRevenue.hasAnyRevenue ? bGrandRev - bGrandCost : null;
                       const bMargin = bGrandProfit != null && bGrandRev > 0 ? (bGrandProfit / bGrandRev * 100) : null;
 
                       const grandProfitVals: (number | null)[] = [bGrandProfit, ...scenarioEntries.map(e => {
-                        return e.revenue.hasAnyRevenue ? e.revenue.grandRevenue - e.calc.grandTotalAmt : null;
+                        return e.revenue.hasAnyRevenue ? e.revenue.grandRevenue - e.profitCosts.grandInScopeCost : null;
                       })];
 
                       return (
@@ -586,7 +600,7 @@ export default function ScenarioComparison() {
                           </td>
                           {scenarioEntries.map(e => {
                             const sRev = e.revenue.grandRevenue;
-                            const sCost = e.calc.grandTotalAmt;
+                            const sCost = e.profitCosts.grandInScopeCost;
                             const sProfit = e.revenue.hasAnyRevenue ? sRev - sCost : null;
                             const sMargin = sProfit != null && sRev > 0 ? (sProfit / sRev * 100) : null;
 
