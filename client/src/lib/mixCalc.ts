@@ -53,6 +53,7 @@ export interface CalcState {
   /** Legacy format: flat jobs array */
   jobs?: JobDef[];
   aggBasis?: string;
+  contractRates?: Record<string, any>;
 }
 
 export interface RevisedPrices {
@@ -425,6 +426,123 @@ export const INPUT_LABELS: Record<string, { label: string; unit: string }> = {
   sprayCrew:        { label: "Spray Crew + Diesel",      unit: "₹/day"    },
   sprayProd:        { label: "Spray Productivity",       unit: "sqm/day"  },
 };
+
+export interface SiteRevenue {
+  siteId: string;
+  siteName: string;
+  revenue: number | null;
+  hasRev: boolean;
+}
+
+export interface RevenueResult {
+  siteRevenues: SiteRevenue[];
+  grandRevenue: number;
+  hasAnyRevenue: boolean;
+}
+
+export function calcRevenue(state: CalcState, calcResult: CalcResult): RevenueResult {
+  const cr = state.contractRates || {};
+  let sites = state.sites || [];
+  if (sites.length === 0 && state.jobs && state.jobs.length > 0) {
+    sites = [{ id: 'S01', name: 'Default', jobs: state.jobs }];
+  }
+  const mixTypes = state.mixTypes || [];
+  const siteRevenues: SiteRevenue[] = [];
+  let grandRevenue = 0;
+  let hasAnyRevenue = false;
+
+  for (const s of sites) {
+    if (!s.jobs.length) continue;
+    const mode: string = cr[s.id + '__MODE'] || 'itemised';
+
+    const mixQty: Record<string, { cum: number; mixIdx: number }> = {};
+    let primeArea = 0, tackArea = 0, totalSiteMT = 0, totalSiteCUM = 0;
+
+    for (const j of s.jobs) {
+      const isGeo = (j.basis === 'GEOMETRY');
+      let cum: number, area: number;
+      if (isGeo) {
+        const thickM = (j.thickness ?? 0) / 1000;
+        cum = (j.length ?? 0) * (j.width ?? 0) * thickM;
+        area = (j.length ?? 0) * (j.width ?? 0);
+      } else {
+        cum = j.volume ?? 0;
+        const thickM = (j.thickness ?? 0) / 1000;
+        const len = (j.width ?? 0) > 0 && thickM > 0 ? (cum / ((j.width ?? 0) * thickM)) : 0;
+        area = len * (j.width ?? 0);
+      }
+
+      for (const mx of (j.mixes || [])) {
+        const mix = mixTypes[mx.mixIdx] || mixTypes[0];
+        if (!mix) continue;
+        const mt = (mx.qty_mt != null && mx.qty_mt > 0)
+          ? mx.qty_mt
+          : (cum > 0 && mix.density > 0 ? cum * mix.density : 0);
+        const mxCum = mix.density > 0 && mt > 0 ? mt / mix.density : 0;
+        if (!mixQty[mix.name]) mixQty[mix.name] = { cum: 0, mixIdx: mx.mixIdx };
+        mixQty[mix.name].cum += mxCum;
+        totalSiteMT += mt;
+        totalSiteCUM += mxCum;
+      }
+
+      if (j.prime !== false) primeArea += area;
+      if (j.tack !== false) tackArea += area * (j.mixes?.length || 1);
+    }
+
+    const totalRoadKm = ((s as any).roadLengthM || 0) / 1000;
+    let revenue: number | null = null;
+    let hasRev = false;
+
+    if (mode === 'itemised') {
+      const adj = Number(cr[s.id + '__ADJ_AMT']) || 0;
+      const revMode = cr[s.id + '__REV_MODE'] || 'itemRates';
+
+      if (revMode === 'scopeRate') {
+        const sb = cr[s.id + '__SCOPE_BASIS'] || 'mt';
+        const smt = Number(cr[s.id + '__SCOPE_MT']) || 0;
+        const scm = Number(cr[s.id + '__SCOPE_CUM']) || 0;
+        let sr = 0;
+        if (sb === 'cum' && scm > 0 && totalSiteCUM > 0) { sr = scm * totalSiteCUM; hasRev = true; }
+        else if (smt > 0 && totalSiteMT > 0) { sr = smt * totalSiteMT; hasRev = true; }
+        if (hasRev || adj !== 0) { hasRev = true; revenue = sr + adj; }
+      } else {
+        let r = 0;
+        for (const mn of Object.keys(mixQty)) {
+          const mq = mixQty[mn];
+          const key = s.id + '_' + mn.toUpperCase().replace(/[\s-]+/g, '_');
+          const c = cr[key];
+          if (c != null) { r += mq.cum * Number(c); hasRev = true; }
+        }
+        if (primeArea > 0) { const pc = cr[s.id + '_PRIME']; if (pc != null) { r += primeArea * Number(pc); hasRev = true; } }
+        if (tackArea > 0) { const tc = cr[s.id + '_TACK']; if (tc != null) { r += tackArea * Number(tc); hasRev = true; } }
+        if (hasRev) revenue = r + adj;
+        if (!hasRev && adj !== 0) { hasRev = true; revenue = adj; }
+      }
+    } else if (mode === 'perkm') {
+      const km = cr[s.id + '__KM_RATE'];
+      const adjPKm = Number(cr[s.id + '__ADJ_PER_KM']) || 0;
+      if (km != null && totalRoadKm > 0) {
+        revenue = (Number(km) + adjPKm) * totalRoadKm;
+        hasRev = true;
+      } else if (adjPKm !== 0 && totalRoadKm > 0) {
+        revenue = adjPKm * totalRoadKm;
+        hasRev = true;
+      }
+    } else {
+      const ls = cr[s.id + '__LUMPSUM'];
+      if (ls != null) { revenue = Number(ls); hasRev = true; }
+    }
+
+    if (hasRev && revenue != null) {
+      hasAnyRevenue = true;
+      grandRevenue += revenue;
+    }
+
+    siteRevenues.push({ siteId: s.id, siteName: s.name || s.id, revenue, hasRev });
+  }
+
+  return { siteRevenues, grandRevenue, hasAnyRevenue };
+}
 
 export function diffCalcInputs(base: CalcState, revised: CalcState): InputDiff[] {
   const diffs: InputDiff[] = [];

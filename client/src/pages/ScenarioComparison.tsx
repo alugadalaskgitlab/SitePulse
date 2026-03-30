@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, GitCompare, Printer } from "lucide-react";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
-import { calcMixRatesAndJobs, type CalcState, type CalcResult } from "@/lib/mixCalc";
+import { calcMixRatesAndJobs, calcRevenue, type CalcState, type CalcResult, type RevenueResult } from "@/lib/mixCalc";
 
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
 function fmtR(v: number) { return v.toFixed(2).replace(/\B(?=(\d{2})+(\d)(?!\d))/g, ","); }
@@ -27,6 +27,7 @@ interface ScenarioEntry {
   scenario: PriceScenario;
   state: CalcState;
   calc: CalcResult;
+  revenue: RevenueResult;
 }
 
 export default function ScenarioComparison() {
@@ -49,6 +50,7 @@ export default function ScenarioComparison() {
 
   const baseState = useMemo(() => parseState(estimate?.state), [estimate]);
   const baseCalc = useMemo(() => baseState ? calcMixRatesAndJobs(baseState) : null, [baseState]);
+  const baseRevenue = useMemo(() => baseState && baseCalc ? calcRevenue(baseState, baseCalc) : null, [baseState, baseCalc]);
 
   const scenarioEntries: ScenarioEntry[] = useMemo(() => {
     if (!baseState || !baseCalc) return [];
@@ -58,7 +60,8 @@ export default function ScenarioComparison() {
         const scState = parseState(sc.state);
         if (!scState) return null;
         const calc = calcMixRatesAndJobs(scState);
-        return { scenario: sc, state: scState, calc } as ScenarioEntry;
+        const rev = calcRevenue(scState, calc);
+        return { scenario: sc, state: scState, calc, revenue: rev } as ScenarioEntry;
       })
       .filter(Boolean) as ScenarioEntry[];
   }, [scenarios, selectedIds, baseState, baseCalc]);
@@ -96,16 +99,31 @@ export default function ScenarioComparison() {
     return { best: Math.min(...valid), worst: Math.max(...valid) };
   }
 
+  const greenBg = "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400";
+  const redBg = "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400";
+
   function cellColor(val: number | null, best: number | null, worst: number | null, lowerIsBetter = true) {
     if (val == null || best == null || worst == null) return "";
     if (best === worst) return "";
     if (lowerIsBetter) {
-      if (val === best) return "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400";
-      if (val === worst) return "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400";
+      if (val === best) return greenBg;
+      if (val === worst) return redBg;
     } else {
-      if (val === best) return "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400";
-      if (val === worst) return "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400";
+      if (val === best) return redBg;
+      if (val === worst) return greenBg;
     }
+    return "";
+  }
+
+  function profitHighlight(val: number | null, allVals: (number | null)[]) {
+    if (val == null) return "";
+    const valid = allVals.filter(v => v != null) as number[];
+    if (valid.length < 2) return "";
+    const hi = Math.max(...valid);
+    const lo = Math.min(...valid);
+    if (hi === lo) return "";
+    if (val === hi) return greenBg;
+    if (val === lo) return redBg;
     return "";
   }
 
@@ -459,6 +477,148 @@ export default function ScenarioComparison() {
               </table>
             </CardContent>
           </Card>
+
+          {/* Section 4: Profitability Comparison */}
+          {baseRevenue && (baseRevenue.hasAnyRevenue || scenarioEntries.some(e => e.revenue.hasAnyRevenue)) && (
+            <Card>
+              <CardContent className="py-4 overflow-x-auto">
+                <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Profitability Comparison</h3>
+                <table className="w-full border-collapse text-sm" data-testid="table-profitability">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className={th1Cls}>Site</th>
+                      <th className={thCls}>Base Revenue ₹</th>
+                      <th className={thCls}>Base Cost ₹</th>
+                      <th className={thCls}>Base Profit ₹</th>
+                      {scenarioEntries.map(e => (
+                        <Fragment key={e.scenario.id}>
+                          <th className={thCls}>{e.scenario.name} Rev ₹</th>
+                          <th className={thCls}>{e.scenario.name} Cost ₹</th>
+                          <th className={thCls}>{e.scenario.name} Profit ₹</th>
+                        </Fragment>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(baseRevenue.siteRevenues || []).map((baseSiteRev, sIdx) => {
+                      const baseSiteCost = baseCalc.siteResults?.find(s => s.siteId === baseSiteRev.siteId);
+                      const bCost = baseSiteCost?.siteTotal ?? 0;
+                      const bRev = baseSiteRev.revenue ?? 0;
+                      const bProfit = baseSiteRev.hasRev ? bRev - bCost : null;
+
+                      const profitVals: (number | null)[] = [bProfit, ...scenarioEntries.map(e => {
+                        const sr = e.revenue.siteRevenues.find(s => s.siteId === baseSiteRev.siteId);
+                        const sc = e.calc.siteResults?.find(s => s.siteId === baseSiteRev.siteId);
+                        if (!sr?.hasRev) return null;
+                        return (sr.revenue ?? 0) - (sc?.siteTotal ?? 0);
+                      })];
+
+                      return (
+                        <tr key={sIdx} className="border-b border-border/30">
+                          <td className={tdL}>{baseSiteRev.siteName}</td>
+                          <td className={tdR}>
+                            {baseSiteRev.hasRev ? `₹${fmtI(bRev)}` : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className={tdR}>₹{fmtI(bCost)}</td>
+                          <td className={`${tdR} font-semibold ${profitHighlight(bProfit, profitVals)}`}>
+                            {bProfit != null
+                              ? <span className={bProfit >= 0 ? "text-green-600" : "text-red-600"}>₹{fmtI(bProfit)}</span>
+                              : <span className="text-muted-foreground">—</span>
+                            }
+                          </td>
+                          {scenarioEntries.map(e => {
+                            const sr = e.revenue.siteRevenues.find(s => s.siteId === baseSiteRev.siteId);
+                            const sc = e.calc.siteResults?.find(s => s.siteId === baseSiteRev.siteId);
+                            const hasSite = !!sc;
+                            const sRev = sr?.revenue ?? 0;
+                            const sCost = sc?.siteTotal ?? 0;
+                            const sProfit = (hasSite && sr?.hasRev) ? sRev - sCost : null;
+
+                            return (
+                              <Fragment key={e.scenario.id}>
+                                <td className={tdR}>
+                                  {sr?.hasRev ? `₹${fmtI(sRev)}` : <span className="text-muted-foreground">—</span>}
+                                </td>
+                                <td className={tdR}>
+                                  {hasSite ? `₹${fmtI(sCost)}` : <span className="text-muted-foreground">—</span>}
+                                </td>
+                                <td className={`${tdR} font-semibold ${profitHighlight(sProfit, profitVals)}`}>
+                                  {sProfit != null
+                                    ? <span className={sProfit >= 0 ? "text-green-600" : "text-red-600"}>₹{fmtI(sProfit)}</span>
+                                    : <span className="text-muted-foreground">—</span>
+                                  }
+                                </td>
+                              </Fragment>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                    {/* Grand total row */}
+                    {(() => {
+                      const bGrandRev = baseRevenue.grandRevenue;
+                      const bGrandCost = baseCalc.grandTotalAmt;
+                      const bGrandProfit = baseRevenue.hasAnyRevenue ? bGrandRev - bGrandCost : null;
+                      const bMargin = bGrandProfit != null && bGrandRev > 0 ? (bGrandProfit / bGrandRev * 100) : null;
+
+                      const grandProfitVals: (number | null)[] = [bGrandProfit, ...scenarioEntries.map(e => {
+                        return e.revenue.hasAnyRevenue ? e.revenue.grandRevenue - e.calc.grandTotalAmt : null;
+                      })];
+
+                      return (
+                        <tr className="border-t-2 border-foreground/30 font-bold bg-muted/30">
+                          <td className={tdL}>GRAND TOTAL</td>
+                          <td className={tdR}>
+                            {baseRevenue.hasAnyRevenue ? `₹${fmtI(bGrandRev)}` : "—"}
+                          </td>
+                          <td className={tdR}>₹{fmtI(bGrandCost)}</td>
+                          <td className={`${tdR} ${profitHighlight(bGrandProfit, grandProfitVals)}`}>
+                            {bGrandProfit != null ? (
+                              <>
+                                <span className={bGrandProfit >= 0 ? "text-green-600" : "text-red-600"}>₹{fmtI(bGrandProfit)}</span>
+                                {bMargin != null && (
+                                  <span className="block text-xs font-normal mt-0.5">
+                                    ({bMargin.toFixed(1)}% margin)
+                                  </span>
+                                )}
+                              </>
+                            ) : "—"}
+                          </td>
+                          {scenarioEntries.map(e => {
+                            const sRev = e.revenue.grandRevenue;
+                            const sCost = e.calc.grandTotalAmt;
+                            const sProfit = e.revenue.hasAnyRevenue ? sRev - sCost : null;
+                            const sMargin = sProfit != null && sRev > 0 ? (sProfit / sRev * 100) : null;
+
+                            return (
+                              <Fragment key={e.scenario.id}>
+                                <td className={tdR}>
+                                  {e.revenue.hasAnyRevenue ? `₹${fmtI(sRev)}` : "—"}
+                                </td>
+                                <td className={tdR}>₹{fmtI(sCost)}</td>
+                                <td className={`${tdR} ${profitHighlight(sProfit, grandProfitVals)}`}>
+                                  {sProfit != null ? (
+                                    <>
+                                      <span className={sProfit >= 0 ? "text-green-600" : "text-red-600"}>₹{fmtI(sProfit)}</span>
+                                      {sMargin != null && (
+                                        <span className="block text-xs font-normal mt-0.5">
+                                          ({sMargin.toFixed(1)}% margin)
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : "—"}
+                                </td>
+                              </Fragment>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>
