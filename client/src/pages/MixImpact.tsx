@@ -678,9 +678,18 @@ export default function MixImpact() {
             <p className="text-xs text-muted-foreground">Create scenarios to compare full calculator states</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-impact">
-          <Printer className="w-4 h-4 mr-1" /> Print
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedId && scenarios.length >= 2 && (
+            <Link href={`/admin/scenario-comparison?estimateId=${selectedId}`}>
+              <Button variant="outline" size="sm" data-testid="btn-compare-scenarios">
+                <GitCompare className="w-4 h-4 mr-1" /> Compare Scenarios
+              </Button>
+            </Link>
+          )}
+          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-impact">
+            <Printer className="w-4 h-4 mr-1" /> Print
+          </Button>
+        </div>
       </div>
 
       {/* Estimate selector */}
