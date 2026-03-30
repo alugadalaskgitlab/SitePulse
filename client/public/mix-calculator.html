@@ -1671,13 +1671,48 @@ function recalc(){
     });
   }
 
+  var scenarioBaseVals = null;
+  if(scenarioMode && scenarioBaseSnapshot && scenarioBaseSnapshot.inputs){
+    var _bi = scenarioBaseSnapshot.inputs;
+    var _bEq = scenarioBaseSnapshot.equipDefs || equipDefs;
+    function _bn(k,d){ var v=parseFloat(_bi[k]); return isNaN(v)?(d||0):v; }
+    var _bHsd = _bn('hsdPrice');
+    var _bLayProd = _bn('layProductivity');
+    var _bLayCrewD = _bn('layCrew');
+    var _bPaverEq = _bEq.find(function(e){return e.id==='paver';});
+    var _bRollerEq = _bEq.find(function(e){return e.id==='roller';});
+    var _bPtrEq = _bEq.find(function(e){return e.id==='ptr';});
+    function _bEqDailyCost(eq){
+      if(!eq||!eq.enabled) return 0;
+      var hire=0;
+      if(eq.mode==='owned'){ if(eq.life>0) hire=(eq.capex/eq.life/12)*(1+eq.maint/100)/25; }
+      else { if(eq.hireBasis==='daily') hire=eq.hireRate; else if(eq.hireBasis==='hourly') hire=eq.hireRate*(eq.hireHrsDay||8); else hire=eq.hireRate/25; }
+      var fuel=0;
+      if(eq.isLaying) fuel=(eq.fuelConsump||0)*(eq.hireHrsDay||8)*_bHsd;
+      return hire+fuel;
+    }
+    var _bLayTotal = _bEqDailyCost(_bPaverEq)+_bEqDailyCost(_bRollerEq)+_bEqDailyCost(_bPtrEq)+_bLayCrewD;
+    var _bLayPerMT = _bLayProd>0 ? _bLayTotal/_bLayProd : 0;
+    var _bPrimeSp = _bn('primeSpray'), _bPrimeP = _bn('primePrice'), _bPrimeDil = _bn('primeDilution')||1;
+    var _bTackSp = _bn('tackSpray'), _bTackP = _bn('tackPrice'), _bTackDil = _bn('tackDilution')||1;
+    var _bSprayBow = _bn('sprayBowser'), _bSprayCrew = _bn('sprayCrew'), _bSprayProd = _bn('sprayProd');
+    var _bSprayOp = _bSprayProd>0?((_bSprayBow+_bSprayCrew)/_bSprayProd):0;
+    var _bPrimePerSqm = (_bPrimeSp*_bPrimeP/_bPrimeDil)+_bSprayOp;
+    var _bTackPerSqm = (_bTackSp*_bTackP/_bTackDil)+_bSprayOp;
+    var _bTransRate = _bn('transRate'), _bTransPayload = _bn('transPayload'), _bTransDist = _bn('transDist');
+    scenarioBaseVals = {
+      layPerMT: _bLayPerMT, primePerSqm: _bPrimePerSqm, tackPerSqm: _bTackPerSqm,
+      transRate: _bTransRate, transPayload: _bTransPayload, transDist: _bTransDist
+    };
+  }
+
   renderRateSummary(mixRates);
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(mixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution);
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
-  renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates);
+  renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates, scenarioBaseVals);
   renderScopeQuotation();
   saveState();
 }
@@ -2599,7 +2634,7 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
   container.innerHTML=html;
 }
 
-function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revProcPrices, frozenBaseMixRates){
+function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revProcPrices, frozenBaseMixRates, scenarioBaseVals){
   var container = document.getElementById('profitabilityContainer');
   if(!container) return;
 
@@ -2611,6 +2646,13 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
   var hasRevised = !!revisedMixRates;
   var gTransRate=n('transRate'), gTransPayload=n('transPayload'), gTransDist=n('transDist');
+  var _sbv = scenarioBaseVals;
+  var baseLayPerMT = (_sbv ? _sbv.layPerMT : layPerMT);
+  var basePrimePerSqm = (_sbv ? _sbv.primePerSqm : primePerSqm);
+  var baseTackPerSqm = (_sbv ? _sbv.tackPerSqm : tackPerSqm);
+  var baseTransRate = (_sbv ? _sbv.transRate : gTransRate);
+  var baseTransPayload = (_sbv ? _sbv.transPayload : gTransPayload);
+  var baseTransDist = (_sbv ? _sbv.transDist : gTransDist);
   var html='';
 
   var _sg=scopeState.groups;
@@ -2747,6 +2789,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var mode = contractRates[s.id+'__MODE']||'itemised';
     var siteLead = (s.transLead!=null&&s.transLead>0)?s.transLead:gTransDist;
     var siteTransPerMT = gTransPayload>0?(siteLead*2*gTransRate/gTransPayload):0;
+    var baseSiteLead = (s.transLead!=null&&s.transLead>0)?s.transLead:baseTransDist;
+    var baseSiteTransPerMT = baseTransPayload>0?(baseSiteLead*2*baseTransRate/baseTransPayload):0;
 
     var mixQty={}, primeArea=0, tackArea=0, totalSiteMT=0, totalSiteCUM=0;
     s.jobs.forEach(function(j){
@@ -2762,7 +2806,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     });
     var totalRoadKm=(s.roadLengthM||0)/1000;
 
-    var fullCoatCost = primeArea*primePerSqm + tackArea*tackPerSqm;
+    var fullCoatCost = primeArea*basePrimePerSqm + tackArea*baseTackPerSqm;
     var fullJobCost = fullCoatCost;
     var basePlantCost=0, baseTransCost=0, baseLayCost=0;
     Object.keys(mixQty).forEach(function(mn){
@@ -2771,38 +2815,43 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
       var vol=mq.cum*mix.density;
       basePlantCost += mq.cum*mr.exPlant*mix.density;
-      baseTransCost += mq.cum*siteTransPerMT*mix.density;
-      baseLayCost += mq.cum*layPerMT*mix.density;
-      fullJobCost += vol*(mr.exPlant+siteTransPerMT+layPerMT);
+      baseTransCost += mq.cum*baseSiteTransPerMT*mix.density;
+      baseLayCost += mq.cum*baseLayPerMT*mix.density;
+      fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT);
     });
-    var basePrimeCost = primeArea*primePerSqm;
-    var baseTackCost = tackArea*tackPerSqm;
+    var basePrimeCost = primeArea*basePrimePerSqm;
+    var baseTackCost = tackArea*baseTackPerSqm;
 
-    var inScopeCoatCost = primeArea*(_scopeActive?_sPrime:primePerSqm) + tackArea*(_scopeActive?_sTack:tackPerSqm);
+    var inScopeCoatCost = primeArea*(_scopeActive?_sPrime:basePrimePerSqm) + tackArea*(_scopeActive?_sTack:baseTackPerSqm);
     var inScopeCost = inScopeCoatCost;
     Object.keys(mixQty).forEach(function(mn){
       var mq=mixQty[mn];
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-      var _ec = _effCPM(siteTransPerMT, false, mr.bitumen);
-      inScopeCost += mq.cum*(_ec!=null?_ec:(mr.exPlant+siteTransPerMT+layPerMT))*mix.density;
+      var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
+      inScopeCost += mq.cum*(_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))*mix.density;
     });
 
+    var scCoatCost = primeArea*primePerSqm + tackArea*tackPerSqm;
     var revInScopeCost = inScopeCost;
     var revPlantCost=basePlantCost, revTransCost=baseTransCost, revLayCost=baseLayCost, revPrimeCost=basePrimeCost, revTackCost=baseTackCost;
     if(hasRevised){
       revPlantCost=0; revTransCost=0; revLayCost=0;
-      revInScopeCost = inScopeCoatCost;
+      revPrimeCost = primeArea*primePerSqm;
+      revTackCost = tackArea*tackPerSqm;
+      var revInScopeCoatCost = primeArea*(_scopeActive?_sPrime:primePerSqm) + tackArea*(_scopeActive?_sTack:tackPerSqm);
+      revInScopeCost = revInScopeCoatCost;
       Object.keys(mixQty).forEach(function(mn){
         var mq=mixQty[mn];
         var mix=mixTypes[mq.mixIdx]||mixTypes[0];
         var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0];
         revPlantCost += mq.cum*rmr.exPlant*mix.density;
         revTransCost += mq.cum*siteTransPerMT*mix.density;
-        revLayCost += mq.cum*rmr.laying*mix.density;
+        var _rl = rmr.laying!=null?rmr.laying:layPerMT;
+        revLayCost += mq.cum*_rl*mix.density;
         var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
         if(_ecr!=null) revInScopeCost += mq.cum*_ecr*mix.density;
-        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+rmr.laying)*mix.density;
+        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl)*mix.density;
       });
     }
 
