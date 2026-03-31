@@ -618,6 +618,20 @@ function calcScopeComponentsTS(state: CalcState, hsdPrice: number): Record<strin
     ? (mixTypes || []).reduce((s, m) => s + m.binderPct, 0) / (mixTypes || []).length / 100 * 1000 * bitPrice
     : 0;
 
+  const aggRateInput = n(inputs, 'aggRate');
+  const aggDensity = n(inputs, 'aggDensity');
+  const aggBasisTS = state.aggBasis || 'MT';
+  const aggRateMT = (aggBasisTS === 'CFT' && aggDensity > 0) ? (aggRateInput / aggDensity * 35.3147) : aggRateInput;
+  const aggDist = n(inputs, 'aggDist');
+  const aggFreightRate = n(inputs, 'aggFreightRate');
+  const aggPayload = n(inputs, 'aggPayload');
+  const aggFreight = aggPayload > 0 ? (aggDist * 2 * aggFreightRate / aggPayload) : 0;
+  const aggLandedTS = aggRateMT + aggFreight;
+  const avgAggFracTS = (mixTypes || []).length > 0
+    ? (mixTypes || []).reduce((s: number, m: any) => s + FRAC_KEYS.reduce((a: number, k) => a + ((m.fractions && m.fractions[k]) || 0), 0), 0) / (mixTypes || []).length / 100
+    : 0;
+  const aggCostPerMT = avgAggFracTS * aggLandedTS;
+
   return {
     hotmixHire: hotmixEq ? equipHireCostPerMT(hotmixEq, tph, phm) : 0,
     ldo: ldoPerMT + boilerProdPMT + boilerPrePMT,
@@ -628,6 +642,7 @@ function calcScopeComponentsTS(state: CalcState, hsdPrice: number): Record<strin
     tipperHire: tipperEq ? equipHireCostPerMT(tipperEq, tph, phm) : 0,
     tipperHsd: tipperEq ? equipFuelPerMT(tipperEq, hsdPrice, tph) : 0,
     bitumen: bitCostPerMT,
+    aggregate: aggCostPerMT,
     crewPerMT,
     transPerMT: 0,
     sprayOp: sprayOpSqm,
@@ -703,6 +718,7 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
         if (ss!.mixing.jcbHsd) mx += sc.jcbHsd;
         if (ss!.mixing.tipperHire) mx += sc.tipperHire;
         if (ss!.mixing.tipperHsd) mx += sc.tipperHsd;
+        if (ss!.mixing.aggregate) mx += sc.aggregate;
         mx += sc.crewPerMT;
       }
       if (sg!.paving) {
