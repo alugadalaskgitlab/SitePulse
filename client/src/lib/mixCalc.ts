@@ -279,8 +279,10 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   const sprayCrew = n(inputs, 'sprayCrew');
   const sprayProd = n(inputs, 'sprayProd');
   const sprayOpPerSqm = sprayProd > 0 ? ((sprayBowser + sprayCrew) / sprayProd) : 0;
-  const primePerSqm = (primeSpray * primePrice_ / primeDilution) + sprayOpPerSqm;
-  const tackPerSqm = (tackSpray * tackPrice_ / tackDilution) + sprayOpPerSqm;
+  const basePrimePerSqmRaw = (primeSpray * primePrice_ / primeDilution) + sprayOpPerSqm;
+  const baseTackPerSqmRaw = (tackSpray * tackPrice_ / tackDilution) + sprayOpPerSqm;
+  const primePerSqm = basePrimePerSqmRaw * (1 + marginPct / 100);
+  const tackPerSqm = baseTackPerSqmRaw * (1 + marginPct / 100);
 
   const hsdFuelTotal = plantEquipFuelPerMT;
   const fuelTotal = hsdFuelTotal + ldoPerMT + boilerProdPerMT + boilerPreheatPerMT;
@@ -291,9 +293,10 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
     const aggCostPerMT = aggFrac * aggLanded;
     const bitCostPerMT = bitFrac * 1000 * bitPrice;
     const plantSubtotal = aggCostPerMT + bitCostPerMT + plantEquipPerMT + fuelTotal + crewPerMT;
-    const marginAmt = plantSubtotal * marginPct / 100;
-    const exPlant = plantSubtotal + marginAmt;
-    const finalLaid = exPlant + transPerMT + layPerMT;
+    const allCostBeforeMargin = plantSubtotal + transPerMT + layPerMT;
+    const marginAmt = allCostBeforeMargin * marginPct / 100;
+    const exPlant = plantSubtotal;
+    const finalLaid = allCostBeforeMargin + marginAmt;
     const d = m.density;
     return {
       name: m.name,
@@ -364,7 +367,8 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       return { mixIdx: mx.mixIdx, mixName: mixDef.name, mt, finalLaid: mr.finalLaid, amt: plantAmt + transAmt + layAmt };
     });
 
-    const jobTotal = jobPlant + jobTrans + jobLay + primeAmt + tackAmt;
+    const jobMixCostWithMargin = (jobPlant + jobTrans + jobLay) * (1 + marginPct / 100);
+    const jobTotal = jobMixCostWithMargin + primeAmt + tackAmt;
     grandTotalMt += jobMT;
     grandTotalAmt += jobTotal;
 
