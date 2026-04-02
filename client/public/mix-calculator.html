@@ -1714,7 +1714,7 @@ function recalc(){
   renderRateSummary(mixRates);
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(mixRates);
-  recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution);
+  recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct);
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
   renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates, scenarioBaseVals);
@@ -2028,7 +2028,7 @@ function renderJobCard(si,ji,j){
   return html;
 }
 
-function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution){
+function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct){
   var grandMT=0, grandPlant=0, grandTrans=0, grandLay=0, grandPrime=0, grandTack=0, grandTotal=0;
   // Read global transport params for per-site fallback calculation
   var gTransRate = n('transRate');
