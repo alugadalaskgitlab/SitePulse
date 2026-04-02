@@ -1711,9 +1711,14 @@ function recalc(){
     };
   }
 
-  renderRateSummary(mixRates);
+  var usedMixIdxs = {};
+  var hasAnyJob = false;
+  sites.forEach(function(s){ s.jobs.forEach(function(j){ hasAnyJob=true; (j.mixes||[]).forEach(function(mx){ usedMixIdxs[mx.mixIdx]=true; }); }); });
+  var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
+
+  renderRateSummary(displayMixRates);
   renderCostBar(mixRates);
-  if(breakdownOpen) renderFullBreakdown(mixRates);
+  if(breakdownOpen) renderFullBreakdown(displayMixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct);
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
