@@ -1,19 +1,16 @@
 import { useState } from "react";
-import { Lock, Calculator, BarChart3, TrendingUp, Eye, EyeOff, HardHat } from "lucide-react";
+import { Lock, Calculator, BarChart3, TrendingUp, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 
 export function LoginPage() {
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
-  const [role, setRole] = useState<string | null>(null);
+  const [granted, setGranted] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === "0808") {
-      setRole("admin");
-      setError("");
-    } else if (pin === "1234") {
-      setRole("manager");
+    if (pin === "0808" || pin === "1234") {
+      setGranted(true);
       setError("");
     } else {
       setError("Invalid PIN. Please try again.");
@@ -21,31 +18,20 @@ export function LoginPage() {
     }
   };
 
-  if (role) {
+  if (granted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl border border-amber-100 p-8 max-w-sm w-full text-center">
-          <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4"
-            style={{ background: role === "admin" ? "#dcfce7" : "#dbeafe" }}>
-            <Lock className="w-8 h-8" style={{ color: role === "admin" ? "#16a34a" : "#2563eb" }} />
+          <div className="w-16 h-16 mx-auto rounded-full bg-green-50 border-2 border-green-200 flex items-center justify-center mb-4">
+            <CheckCircle2 className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">
-            {role === "admin" ? "Admin Access Granted" : "Manager Access Granted"}
-          </h2>
-          <p className="text-sm text-gray-500 mb-4">
-            {role === "admin"
-              ? "Full access — edit, create, and delete estimates & scenarios"
-              : "View-only access — browse estimates, scenarios & comparisons"}
-          </p>
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold"
-            style={{
-              background: role === "admin" ? "#dcfce7" : "#dbeafe",
-              color: role === "admin" ? "#15803d" : "#1d4ed8"
-            }}>
-            {role === "admin" ? "🔓 Full Control" : "👁️ View Only"}
+          <h2 className="text-xl font-bold text-gray-800 mb-2">Access Granted</h2>
+          <p className="text-sm text-gray-500 mb-6">Redirecting to Mix Rate Portal...</p>
+          <div className="w-48 h-1.5 mx-auto bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full animate-pulse" style={{ width: '75%' }} />
           </div>
           <button
-            onClick={() => { setRole(null); setPin(""); }}
+            onClick={() => { setGranted(false); setPin(""); }}
             className="block mx-auto mt-6 text-sm text-amber-600 hover:text-amber-800 font-medium">
             ← Back to Login
           </button>
@@ -59,8 +45,8 @@ export function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-200 mb-5">
-              <HardHat className="w-10 h-10 text-white" />
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-lg shadow-amber-100 border border-amber-100 mb-5 overflow-hidden">
+              <img src="/__mockup/images/hlc-logo.jpg" alt="HLC" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
               HLC Mix Rate Portal
@@ -78,7 +64,7 @@ export function LoginPage() {
                 </div>
                 <h2 className="text-lg font-semibold text-gray-800">Enter Your PIN</h2>
                 <p className="text-sm text-gray-400 mt-1">
-                  Admin PIN for full access · Manager PIN for view-only
+                  Enter your PIN to access the portal
                 </p>
               </div>
 
