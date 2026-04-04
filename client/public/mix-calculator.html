@@ -3005,13 +3005,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       scRevenue = revRev.revenue;
       scHasRev = revRev.hasRev;
     } else {
-      var _baseRatesSource = procBaseContractRates || null;
-      if(_baseRatesSource){
-        var _baseMode = _baseRatesSource[s.id+'__MODE']||'itemised';
-        curRev = _calcSiteRevenue(s.id, _baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, _baseRatesSource);
-      } else {
-        curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
-      }
+      curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
       if(procScenarioContractRates){
         var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
         var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
