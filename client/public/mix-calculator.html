@@ -1601,10 +1601,10 @@ function recalc(){
   var overheadLumpSum = mobCost + demobCost;
   var overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
   var ohEl = document.getElementById('overheadDerived');
-  if(preGrandMT > 0){
-    ohEl.value = fmt(overheadPerMT);
+  if(preGrandMT > 0 && overheadLumpSum > 0){
+    ohEl.value = 'Total ₹'+fmtI(Math.round(overheadLumpSum))+'   '+fmt(overheadPerMT)+' ₹/MT';
   } else if(overheadLumpSum > 0){
-    ohEl.value = '₹'+fmtI(Math.round(overheadLumpSum))+' (add jobs for ₹/MT)';
+    ohEl.value = 'Total ₹'+fmtI(Math.round(overheadLumpSum))+' (add jobs for ₹/MT)';
   } else {
     ohEl.value = '—';
   }
