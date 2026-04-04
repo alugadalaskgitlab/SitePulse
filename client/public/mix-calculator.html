@@ -1199,7 +1199,10 @@ function onProcScenarioChange(){
           aggPayload:     _bpf(_bsInp.aggPayload, n('aggPayload')),
           bitPrice:       _bpf(_bsInp.bitPrice, n('bitPrice')),
           hsdPrice:       _bpf(_bsInp.hsdPrice, n('hsdPrice')),
-          ldoRate:        _bpf(_bsInp.ldoRate, n('ldoRate'))
+          ldoRate:        _bpf(_bsInp.ldoRate, n('ldoRate')),
+          mobCost:        _bpf(_bsInp.mobCost, 0),
+          demobCost:      _bpf(_bsInp.demobCost, 0),
+          _baseStateFull: _bsSt
         };
       } catch(e2){ procBaseContractRates = null; procBasePrices = null; }
     }
@@ -1706,14 +1709,38 @@ function recalc(){
     var fbBoilerProdPerMT = boilerCampaignMt>0?(boilerProdLhr*fbLdoRate*boilerProdHrs/boilerCampaignMt):0;
     var fbBoilerPreheatPerMT = boilerCampaignMt>0?(boilerPreheatLhr*fbLdoRate*boilerPreheatHrs/boilerCampaignMt):0;
     var fbFuelTotal = fbPlantHsdPerMT + fbLdoPerMT + fbBoilerProdPerMT + fbBoilerPreheatPerMT;
+    var fbOverheadPerMT = 0;
+    var fbMobCost = bp.mobCost || 0;
+    var fbDemobCost = bp.demobCost || 0;
+    if((fbMobCost + fbDemobCost) > 0 && bp._baseStateFull){
+      var fbSt = bp._baseStateFull;
+      var fbSites = fbSt.sites || [];
+      if(fbSites.length===0 && fbSt.jobs && fbSt.jobs.length>0) fbSites = [{jobs:fbSt.jobs}];
+      var fbMixTypes = fbSt.mixTypes || mixTypes;
+      var fbPreGrandMT = 0;
+      fbSites.forEach(function(s){ (s.jobs||[]).forEach(function(j){
+        (j.mixes||[]).forEach(function(mx){
+          var mt = fbMixTypes[mx.mixIdx]||fbMixTypes[0];
+          if(!mt) return;
+          if(j.basis==='GEOMETRY'){
+            var area=(j.length||0)*(j.width||0);
+            var vol=area*(j.thickness||0)/1000;
+            fbPreGrandMT += vol*(mt.density||2.3);
+          } else {
+            fbPreGrandMT += parseFloat(mx.qty_mt)||0;
+          }
+        });
+      }); });
+      fbOverheadPerMT = fbPreGrandMT > 0 ? (fbMobCost + fbDemobCost) / fbPreGrandMT : 0;
+    }
     frozenBaseMixRates = mixTypes.map(function(m){
       var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
       var bitFrac = m.binderPct/100;
       var fbBitCostPerMT = bitFrac*1000*fbBitPrice;
       var ps = aggFrac*fbAggLanded + fbBitCostPerMT + plantEquipPerMT + fbFuelTotal + crewPerMT;
-      var allBM = ps+transPerMT+fbLayPerMT+overheadPerMT;
+      var allBM = ps+transPerMT+fbLayPerMT+fbOverheadPerMT;
       var exP = ps;
-      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:fbLayPerMT, overhead:overheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:fbBitCostPerMT};
+      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:fbLayPerMT, overhead:fbOverheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:fbBitCostPerMT};
     });
   }
 
@@ -1746,9 +1773,32 @@ function recalc(){
     var _bPrimePerSqm = ((_bPrimeSp*_bPrimeP/_bPrimeDil)+_bSprayOp)*(1+marginPct/100);
     var _bTackPerSqm = ((_bTackSp*_bTackP/_bTackDil)+_bSprayOp)*(1+marginPct/100);
     var _bTransRate = _bn('transRate'), _bTransPayload = _bn('transPayload'), _bTransDist = _bn('transDist');
+    var _bMobCost = _bn('mobCost'), _bDemobCost = _bn('demobCost');
+    var _bOverheadPerMT = 0;
+    if((_bMobCost + _bDemobCost) > 0){
+      var _bSites = scenarioBaseSnapshot.sites || [];
+      if(_bSites.length===0 && scenarioBaseSnapshot.jobs && scenarioBaseSnapshot.jobs.length>0) _bSites = [{jobs:scenarioBaseSnapshot.jobs}];
+      var _bMixTypes = scenarioBaseSnapshot.mixTypes || mixTypes;
+      var _bPreGrandMT = 0;
+      _bSites.forEach(function(s){ (s.jobs||[]).forEach(function(j){
+        (j.mixes||[]).forEach(function(mx){
+          var mt = _bMixTypes[mx.mixIdx]||_bMixTypes[0];
+          if(!mt) return;
+          if(j.basis==='GEOMETRY'){
+            var area=(j.length||0)*(j.width||0);
+            var vol=area*(j.thickness||0)/1000;
+            _bPreGrandMT += vol*(mt.density||2.3);
+          } else {
+            _bPreGrandMT += parseFloat(mx.qty_mt)||0;
+          }
+        });
+      }); });
+      _bOverheadPerMT = _bPreGrandMT > 0 ? (_bMobCost + _bDemobCost) / _bPreGrandMT : 0;
+    }
     scenarioBaseVals = {
       layPerMT: _bLayPerMT, primePerSqm: _bPrimePerSqm, tackPerSqm: _bTackPerSqm,
-      transRate: _bTransRate, transPayload: _bTransPayload, transDist: _bTransDist
+      transRate: _bTransRate, transPayload: _bTransPayload, transDist: _bTransDist,
+      overheadPerMT: _bOverheadPerMT
     };
   }
 
@@ -2907,6 +2957,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     });
     var totalRoadKm=(s.roadLengthM||0)/1000;
 
+    var baseOverheadPerMT = (_sbv ? _sbv.overheadPerMT : (mixRates[0]?(mixRates[0].overhead||0):0));
     var fullCoatCost = primeArea*rawBasePrimePerSqm + tackArea*rawBaseTackPerSqm;
     var fullJobCost = fullCoatCost;
     var basePlantCost=0, baseTransCost=0, baseLayCost=0;
@@ -2918,7 +2969,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       basePlantCost += mq.cum*mr.exPlant*mix.density;
       baseTransCost += mq.cum*baseSiteTransPerMT*mix.density;
       baseLayCost += mq.cum*baseLayPerMT*mix.density;
-      fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT);
+      fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT);
     });
     var basePrimeCost = primeArea*rawBasePrimePerSqm;
     var baseTackCost = tackArea*rawBaseTackPerSqm;
@@ -2930,7 +2981,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
       var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
-      inScopeCost += mq.cum*(_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))*mix.density;
+      inScopeCost += mq.cum*(_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT))*mix.density;
     });
 
     var scCoatCost = primeArea*primePerSqm + tackArea*tackPerSqm;
@@ -2952,7 +3003,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         revLayCost += mq.cum*_rl*mix.density;
         var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
         if(_ecr!=null) revInScopeCost += mq.cum*_ecr*mix.density;
-        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl)*mix.density;
+        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl+(rmr.overhead||0))*mix.density;
       });
     }
 
@@ -2965,7 +3016,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var fbmr=frozenBaseMixRates[mq.mixIdx]||frozenBaseMixRates[0];
         var _ecfb = _effCPM(siteTransPerMT, false, fbmr.bitumen);
         if(_ecfb!=null) frozenBaseInScopeCost += mq.cum*_ecfb*mix.density;
-        else frozenBaseInScopeCost += mq.cum*(fbmr.exPlant+siteTransPerMT+fbmr.laying)*mix.density;
+        else frozenBaseInScopeCost += mq.cum*(fbmr.exPlant+siteTransPerMT+fbmr.laying+(fbmr.overhead||0))*mix.density;
       });
     }
 
