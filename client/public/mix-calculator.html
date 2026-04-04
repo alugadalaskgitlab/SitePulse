@@ -2228,14 +2228,14 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         var layAmt = mt*layPerMT;
         var overheadAmt = mt*(mr.overhead||0);
         var mxCum = mix.density>0?mt/mix.density:0;
-        var allInPerCum = mix.density>0?(mr.exPlant+siteTransPerMT+layPerMT)*mix.density:0;
 
         var el;
         var plantPerCum = mr.exPlant*mix.density;
         var transPerCum = siteTransPerMT*mix.density;
         var layPerCum = layPerMT*mix.density;
-        var totalRatePerMT = mr.finalLaid;
-        var totalRatePerCum = mix.density>0?mr.finalLaid*mix.density:0;
+        var siteTotalPerMT = (mr.exPlant+siteTransPerMT+layPerMT+(mr.overhead||0))*(1+marginPct/100);
+        var totalRatePerMT = siteTotalPerMT;
+        var totalRatePerCum = mix.density>0?siteTotalPerMT*mix.density:0;
         el=document.getElementById('jmPlantRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(mr.exPlant);
         el=document.getElementById('jmPlantCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(plantPerCum);
         el=document.getElementById('jmTransRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(siteTransPerMT);
