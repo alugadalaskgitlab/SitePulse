@@ -2571,8 +2571,8 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     }
     var scopeHsdL = scopeHsdLPerMT*totalMT;
     var scopeHsdAmt = scopeHsdL*hsdPrice;
-    var scopeGrandTotal = 0;
-    if(g.mixing && scopeState.mixing.aggregate) scopeGrandTotal += totalAggAmt;
+    var scopeGrandTotal = 0, scopeGrandScTotal = 0;
+    if(g.mixing && scopeState.mixing.aggregate){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
 
     // Bitumen — show as HLC-supplied if bitumen checked in scope
     if(totalBitMT>0 && g.mixing && scopeState.mixing.bitumen){
@@ -2582,6 +2582,8 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
           +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(bitAmt))+'</td>'
           +(rv?revCells(bitPrice,bitAmt,rv.bitPrice||bitPrice,totalBitMT*1000*(rv.bitPrice||bitPrice)):'')+'</tr>';
       scopeGrandTotal += bitAmt;
+      var _scBitAmt = rv ? totalBitMT*1000*(rv.bitPrice||bitPrice) : bitAmt;
+      scopeGrandScTotal += _scBitAmt;
     }
 
     // LDO — qty row always; rate+amount only if Mixing+ldo checked
@@ -2593,6 +2595,8 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
             +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(ldoAmt))+'</td>'
             +(rv?revCells(ldoRate,ldoAmt,rv.ldoRate||ldoRate,totalLdoL*(rv.ldoRate||ldoRate)):'')+'</tr>';
         scopeGrandTotal += ldoAmt;
+        var _scLdoAmt = rv ? totalLdoL*(rv.ldoRate||ldoRate) : ldoAmt;
+        scopeGrandScTotal += _scLdoAmt;
       } else {
         html+=qtyOnlyRow('LDO — Dryer + Boiler', totalLdoL.toFixed(0), 'L',
           g.mixing ? '(ldo unchecked in scope)' : '(mixing group off)');
@@ -2609,6 +2613,8 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
             +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(scopeHsdAmt))+'</td>'
             +(rv?revCells(hsdPrice,scopeHsdAmt,rv.hsdPrice||hsdPrice,scopeHsdL*(rv.hsdPrice||hsdPrice)):'')+'</tr>';
         scopeGrandTotal += scopeHsdAmt;
+        var _scHsdAmt = rv ? scopeHsdL*(rv.hsdPrice||hsdPrice) : scopeHsdAmt;
+        scopeGrandScTotal += _scHsdAmt;
       } else {
         html+=qtyOnlyRow('HSD — Equipment', totalHsdL.toFixed(0), 'L', '(mixing/paving group off)');
       }
@@ -2624,6 +2630,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
             +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(spPrimeAmt))+'</td>'
             +(rv?revCells(primePrice,spPrimeAmt,primePrice,spPrimeAmt):'')+'</tr>';
         scopeGrandTotal+=spPrimeAmt;
+        scopeGrandScTotal+=spPrimeAmt;
       } else {
         html+=qtyOnlyRow('Prime Coat Emulsion', totalPrimeKg.toFixed(0), 'kg',
           g.spraying ? '(primeEmulsion unchecked)' : '(spraying group off)');
@@ -2640,6 +2647,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
             +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(spTackAmt))+'</td>'
             +(rv?revCells(tackPrice,spTackAmt,tackPrice,spTackAmt):'')+'</tr>';
         scopeGrandTotal+=spTackAmt;
+        scopeGrandScTotal+=spTackAmt;
       } else {
         html+=qtyOnlyRow('Tack Coat Emulsion', totalTackKg.toFixed(0), 'kg',
           g.spraying ? '(tackEmulsion unchecked)' : '(spraying group off)');
@@ -2648,7 +2656,15 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // Grand total — HLC-supplied items only
     html+='<tr class="grand-total"><td>TOTAL HLC-SUPPLIED MATERIALS</td><td></td><td></td><td></td>'
-        +'<td style="text-align:right">₹ '+fmtI(Math.round(scopeGrandTotal))+'</td></tr>';
+        +'<td style="text-align:right">₹ '+fmtI(Math.round(scopeGrandTotal))+'</td>';
+    if(rv){
+      var _scDelta = scopeGrandScTotal - scopeGrandTotal;
+      html+='<td></td>';
+      html+='<td style="text-align:right;color:#2563eb;font-weight:700">₹ '+fmtI(Math.round(scopeGrandScTotal))+'</td>';
+      var _dCol = _scDelta>0?'#ef4444':(_scDelta<0?'#16a34a':'#64748b');
+      html+='<td style="text-align:right;color:'+_dCol+';font-weight:700">'+(_scDelta>=0?'+':'\u2212')+'₹'+fmtI(Math.abs(Math.round(_scDelta)))+'</td>';
+    }
+    html+='</tr>';
   }
 
   document.getElementById('procTableBody').innerHTML = html;
@@ -2998,21 +3014,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
 
     var curRev, scRev = null, scRevenue = null, scHasRev = false;
-    if(scenarioMode && procScenarioContractRates){
-      var baseMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
-      curRev = _calcSiteRevenue(s.id, baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
-      var revRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
-      scRevenue = revRev.revenue;
-      scHasRev = revRev.hasRev;
-    } else {
-      curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
-      if(procScenarioContractRates){
-        var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
-        var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
-        scRevenue = _scR.revenue;
-        scHasRev = _scR.hasRev;
-      }
-    }
+    curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
     var revenue = curRev.revenue, hasRev = curRev.hasRev, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
     var adjAmt = 0;
@@ -3033,29 +3035,15 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     var _adjustment = adjAmt || 0;
     var _baseRevenue = hasRev ? revenue : null;
-    if(scenarioMode) _baseRevenue = revenue;
 
     var _scenarioRevenue = null;
-    if(scenarioMode){
-      _scenarioRevenue = (scHasRev && scRevenue!=null) ? scRevenue : revenue;
-      if(_scenarioRevenue!=null && _baseRevenue!=null && Math.abs(_scenarioRevenue - _baseRevenue) < 1) _scenarioRevenue = _baseRevenue;
-    }
-
-    var _revRevenueBase = (scHasRev && scRevenue!=null) ? scRevenue : (hasRev ? revenue : null);
     var _revisedRevenue = null;
-    if(!scenarioMode && _revRevenueBase!=null && scHasRev){
-      _revisedRevenue = _revRevenueBase;
-    }
-    if(_revisedRevenue!=null && _baseRevenue!=null && Math.abs(_revisedRevenue - _baseRevenue) < 1){
-      _revisedRevenue = null;
-    }
     var _baseProfit = hasRev ? _baseRevenue - _baseCost : null;
     var _scenarioProfit = null;
     if(hasRev && hasRevised){
-      var _scProfitRev = scenarioMode ? (_scenarioRevenue!=null ? _scenarioRevenue : _baseRevenue) : _baseRevenue;
-      _scenarioProfit = _scProfitRev - _scenarioCost;
+      _scenarioProfit = _baseRevenue - _scenarioCost;
     }
-    var _revisedProfit = (_revisedRevenue!=null && hasRevised) ? _revisedRevenue - _scenarioCost : null;
+    var _revisedProfit = null;
 
     var excluded = fullJobCost - inScopeCost;
     var profit = hasRev ? (_baseRevenue - _baseCost) : null;
