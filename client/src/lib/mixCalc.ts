@@ -849,7 +849,8 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
       if (!mr) return;
       const mix = (mixTypes || [])[mq.mixIdx] || (mixTypes || [])[0];
       const ec = effCPM(siteTransPerMT, mr.bitumen);
-      inScopeCost += mq.cum * (ec != null ? ec : (mr.exPlant + siteTransPerMT + layPerMT + (mr.overhead || 0))) * mix.density;
+      const ohd = mr.overhead || 0;
+      inScopeCost += mq.cum * ((ec != null ? ec : (mr.exPlant + siteTransPerMT + layPerMT)) + ohd) * mix.density;
     });
 
     siteCosts.push({

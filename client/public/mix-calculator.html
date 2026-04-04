@@ -3011,7 +3011,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
       var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
-      inScopeCost += mq.cum*(_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT))*mix.density;
+      var _ohd = baseOverheadPerMT;
+      inScopeCost += mq.cum*((_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+_ohd)*mix.density;
     });
 
     var scCoatCost = primeArea*primePerSqm + tackArea*tackPerSqm;
@@ -3032,8 +3033,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var _rl = rmr.laying!=null?rmr.laying:layPerMT;
         revLayCost += mq.cum*_rl*mix.density;
         var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
-        if(_ecr!=null) revInScopeCost += mq.cum*_ecr*mix.density;
-        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl+(rmr.overhead||0))*mix.density;
+        var _rohd = rmr.overhead||0;
+        if(_ecr!=null) revInScopeCost += mq.cum*(_ecr+_rohd)*mix.density;
+        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl+_rohd)*mix.density;
       });
     }
 
@@ -3045,8 +3047,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var mix=mixTypes[mq.mixIdx]||mixTypes[0];
         var fbmr=frozenBaseMixRates[mq.mixIdx]||frozenBaseMixRates[0];
         var _ecfb = _effCPM(siteTransPerMT, false, fbmr.bitumen);
-        if(_ecfb!=null) frozenBaseInScopeCost += mq.cum*_ecfb*mix.density;
-        else frozenBaseInScopeCost += mq.cum*(fbmr.exPlant+siteTransPerMT+fbmr.laying+(fbmr.overhead||0))*mix.density;
+        var _fbohd = fbmr.overhead||0;
+        if(_ecfb!=null) frozenBaseInScopeCost += mq.cum*(_ecfb+_fbohd)*mix.density;
+        else frozenBaseInScopeCost += mq.cum*(fbmr.exPlant+siteTransPerMT+fbmr.laying+_fbohd)*mix.density;
       });
     }
 
