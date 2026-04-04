@@ -1594,7 +1594,14 @@ function recalc(){
   }); });
   var overheadLumpSum = mobCost + demobCost;
   var overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
-  document.getElementById('overheadDerived').value = preGrandMT > 0 ? fmt(overheadPerMT) : '—';
+  var ohEl = document.getElementById('overheadDerived');
+  if(preGrandMT > 0){
+    ohEl.value = fmt(overheadPerMT);
+  } else if(overheadLumpSum > 0){
+    ohEl.value = '₹'+fmtI(Math.round(overheadLumpSum))+' (add jobs for ₹/MT)';
+  } else {
+    ohEl.value = '—';
+  }
 
   // ====== PER-MIX-TYPE RATE CALCULATION ======
   var eqCosts = {};
