@@ -292,10 +292,10 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
-<!-- ④ Equipment -->
+<!-- ④ Equipment & Labour -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>④ Equipment</h2><span class="chevron">▼</span>
+    <h2>④ Equipment & Labour</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div class="form-grid" style="margin-bottom:12px">
@@ -338,26 +338,10 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
-<!-- ⑥ Labour & Overhead -->
+<!-- ⑥ Overhead & Margin -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑥ Labour & Overhead</h2><span class="chevron">▼</span>
-  </div>
-  <div class="card-body open">
-    <div class="form-grid">
-      <div class="form-group"><label>Plant Crew Monthly Cost (₹)</label><input id="crewMonthly" type="number" value="150000" oninput="recalc()"></div>
-      <div class="form-group"><label>Working Days / Month</label><input id="crewDays" type="number" value="25" oninput="recalc()"></div>
-      <div class="form-group"><label>Working Hours / Day</label><input id="crewHrs" type="number" value="8" oninput="recalc()"></div>
-      <div class="form-group"><label>Crew ₹/MT</label><input class="derived" id="crewDerived" readonly></div>
-      <div class="form-group"><label>Margin / Profit %</label><input id="marginPct" type="number" value="0" step="0.5" oninput="recalc()"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ⑥b Overheads (Mob/Demob) -->
-<div class="card">
-  <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑥b Overheads</h2><span class="chevron">▼</span>
+    <h2>⑥ Overhead & Margin</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Lump-sum costs amortized over total estimated MT across all jobs</p>
@@ -374,6 +358,10 @@ body{font-size:11px;background:#fff}
         <div style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Overhead ₹/MT</div>
         <div id="overheadPerMtDisplay" style="font-size:18px;font-weight:700;color:#2563eb">—</div>
       </div>
+    </div>
+    <hr style="margin:14px 0;border:none;border-top:1px solid var(--gray-200)">
+    <div class="form-grid">
+      <div class="form-group"><label>Margin / Profit %</label><input id="marginPct" type="number" value="0" step="0.5" oninput="recalc()"></div>
     </div>
   </div>
 </div>
@@ -546,7 +534,7 @@ body{font-size:11px;background:#fff}
 <!-- ⑪ Procurement & Cost Summary -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑪ Procurement Impact</h2><span class="chevron">▼</span>
+    <h2>⑪ Procurement Costs</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div id="procScenarioBar" style="display:none;margin-bottom:14px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;align-items:center;gap:12px;flex-wrap:wrap">
@@ -581,7 +569,7 @@ body{font-size:11px;background:#fff}
 <!-- ⑫ Contract Profitability -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑫ Internal Check (Post-Variation)</h2><span class="chevron">▼</span>
+    <h2>⑫ Profitability</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div id="profitabilityContainer">
@@ -608,6 +596,8 @@ var FRAC_KEYS = ['f20mm','f10mm','f6mm','fDust','fFiller'];
 var FRAC_LABELS = ['20mm','10mm','6mm / Chips','Dust / Screening','Filler'];
 
 var DEFAULT_FUEL = {hotmix:0, dg:12, jcb:8, tipper:4, paver:12, roller:6, ptr:5};
+
+var _crewDefaults = {monthly:150000, days:25, hrs:8};
 
 var equipDefs = [
   {id:'hotmix', name:'Hot Mix Plant',    mode:'owned', capex:25000000,life:10,maint:15,hireBasis:'daily',hireRate:50000,hireHrsDay:10,hireHrsMonth:200,enabled:true,isLaying:false,fuelConsump:0},
@@ -802,6 +792,9 @@ function loadState(){
     if(state.aggBasis) aggBasis = state.aggBasis;
     if(state.contractRates && typeof state.contractRates === 'object') contractRates = state.contractRates;
     if(state.inputs){
+      if(state.inputs.crewMonthly !== undefined) _crewDefaults.monthly = parseFloat(state.inputs.crewMonthly)||0;
+      if(state.inputs.crewDays !== undefined) _crewDefaults.days = parseFloat(state.inputs.crewDays)||0;
+      if(state.inputs.crewHrs !== undefined) _crewDefaults.hrs = parseFloat(state.inputs.crewHrs)||0;
       PERSIST_INPUTS.forEach(function(id){
         if(id === 'projDate') return;
         var el = document.getElementById(id);
@@ -1405,6 +1398,22 @@ function renderEquipCards(){
   var container = document.getElementById('equipCards');
   var html = '';
   equipDefs.forEach(function(eq,i){
+    if(i === 2){
+      var _crewM = _crewDefaults.monthly;
+      var _crewD = _crewDefaults.days;
+      var _crewH = _crewDefaults.hrs;
+      var _tph = parseFloat(document.getElementById('tph').value)||0;
+      var _crewPMT = (_crewD>0&&_crewH>0&&_tph>0)?(_crewM/(_crewD*_crewH*_tph)):0;
+      html += '<div style="margin:12px 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
+      html += '<h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Plant Crew / Labour</h3>';
+      html += '<div class="form-grid">';
+      html += '<div class="form-group"><label>Plant Crew Monthly Cost (₹)</label><input id="crewMonthly" type="number" value="'+_crewM+'" oninput="_crewDefaults.monthly=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Working Days / Month</label><input id="crewDays" type="number" value="'+_crewD+'" oninput="_crewDefaults.days=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Working Hours / Day</label><input id="crewHrs" type="number" value="'+_crewH+'" oninput="_crewDefaults.hrs=parseFloat(this.value)||0;recalc()"></div>';
+      html += '<div class="form-group"><label>Crew ₹/MT</label><input class="derived" id="crewDerived" readonly value="'+(_crewPMT>0?_crewPMT.toFixed(2):'')+'"></div>';
+      html += '</div></div>';
+    }
+
     var isOwned = eq.mode==='owned';
     var hirePerMT = getEquipHireCostPerMT(eq);
     var fuelPerMT = getEquipFuelPerMT(eq);
@@ -2718,7 +2727,6 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
       {name:'Transport', base:row.baseTransCost, rev:row.revTransCost},
       {name:'Laying & Compaction', base:row.baseLayCost, rev:row.revLayCost}
     ];
-    if(row.baseOverheadCost||row.revOverheadCost) components.push({name:'Overhead (Mob/Demob)', base:row.baseOverheadCost, rev:row.revOverheadCost});
     if(row.basePrimeCost>0||row.revPrimeCost>0) components.push({name:'Prime Coat', base:row.basePrimeCost, rev:row.revPrimeCost});
     if(row.baseTackCost>0||row.revTackCost>0) components.push({name:'Tack Coat', base:row.baseTackCost, rev:row.revTackCost});
 
@@ -2732,7 +2740,7 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
     html+='<th style="text-align:right;padding:8px 10px;font-weight:600;color:#475569">Δ ₹</th>';
     html+='</tr></thead><tbody>';
 
-    var totBase=0, totRev=0;
+    var totBase=row.baseOverheadCost||0, totRev=row.revOverheadCost||0;
     components.forEach(function(c,ci){
       var d=c.rev-c.base;
       var dCol=d>0?'#ef4444':(d<0?'#16a34a':'#64748b');
@@ -2767,7 +2775,6 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
       {name:'Plant (Ex-Plant)',base:gBP,rev:gRP},{name:'Transport',base:gBT,rev:gRT},
       {name:'Laying & Compaction',base:gBL,rev:gRL}
     ];
-    if(gBO||gRO) gComps.push({name:'Overhead (Mob/Demob)',base:gBO,rev:gRO});
     if(gBPr>0||gRPr>0) gComps.push({name:'Prime Coat',base:gBPr,rev:gRPr});
     if(gBTk>0||gRTk>0) gComps.push({name:'Tack Coat',base:gBTk,rev:gRTk});
     html+='<div style="margin-top:4px;padding-top:10px;border-top:2px solid #d97706">';
@@ -2779,7 +2786,7 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
     html+='<th style="text-align:right;padding:8px 10px;font-weight:600;color:#2563eb">'+(scenarioMode?'Sc.':'Revised')+' ₹</th>';
     html+='<th style="text-align:right;padding:8px 10px;font-weight:600;color:#92400e">Δ ₹</th>';
     html+='</tr></thead><tbody>';
-    var gtB=0,gtR=0;
+    var gtB=gBO,gtR=gRO;
     gComps.forEach(function(c,ci){
       var d=c.rev-c.base;var dCol=d>0?'#ef4444':(d<0?'#16a34a':'#64748b');var ch=Math.abs(d)>=1;
       gtB+=c.base;gtR+=c.rev;
@@ -2894,7 +2901,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     hasRevised=true;
   }
   var _scopeBit = (_scopeActive && _sg.mixing && scopeState.mixing.bitumen);
-  function _effCPM(stpm,rev,bitCostPMT){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_scopeBit?(bitCostPMT||0):0)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav))*_smf; }
+  function _effCPM(stpm,rev,bitCostPMT){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_scopeBit?(bitCostPMT||0):0)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav)); }
+  var _sPrimeRaw = _smf>0 ? _sPrime/_smf : _sPrime;
+  var _sTackRaw = _smf>0 ? _sTack/_smf : _sTack;
 
   if(hasRevised && procScenarioPrices){
     html+='<div style="margin-bottom:14px;padding:10px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:flex;align-items:center;gap:8px;font-size:13px">';
@@ -3007,7 +3016,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var basePrimeCost = primeArea*rawBasePrimePerSqm;
     var baseTackCost = tackArea*rawBaseTackPerSqm;
 
-    var inScopeCoatCost = primeArea*(_scopeActive?_sPrime:rawBasePrimePerSqm) + tackArea*(_scopeActive?_sTack:rawBaseTackPerSqm);
+    var inScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:rawBasePrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:rawBaseTackPerSqm);
     var inScopeCost = inScopeCoatCost;
     Object.keys(mixQty).forEach(function(mn){
       var mq=mixQty[mn];
@@ -3025,7 +3034,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       revPlantCost=0; revTransCost=0; revLayCost=0; revOverheadCost=0;
       revPrimeCost = primeArea*rawPrimePerSqm;
       revTackCost = tackArea*rawTackPerSqm;
-      var revInScopeCoatCost = primeArea*(_scopeActive?_sPrime:rawPrimePerSqm) + tackArea*(_scopeActive?_sTack:rawTackPerSqm);
+      var revInScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:rawPrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:rawTackPerSqm);
       revInScopeCost = revInScopeCoatCost;
       Object.keys(mixQty).forEach(function(mn){
         var mq=mixQty[mn];
@@ -3441,6 +3450,9 @@ function loadScenarioState(state){
   if(state.aggBasis) aggBasis=state.aggBasis;
   if(state.contractRates&&typeof state.contractRates==='object') contractRates=state.contractRates;
   if(state.inputs){
+    if(state.inputs.crewMonthly !== undefined) _crewDefaults.monthly = parseFloat(state.inputs.crewMonthly)||0;
+    if(state.inputs.crewDays !== undefined) _crewDefaults.days = parseFloat(state.inputs.crewDays)||0;
+    if(state.inputs.crewHrs !== undefined) _crewDefaults.hrs = parseFloat(state.inputs.crewHrs)||0;
     PERSIST_INPUTS.forEach(function(id){
       var el=document.getElementById(id);
       if(el&&state.inputs[id]!==undefined) el.value=state.inputs[id];

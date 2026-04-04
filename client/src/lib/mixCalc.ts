@@ -786,8 +786,10 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
 
   function effCPM(siteTransPerMT: number, bitCostPMT: number): number | null {
     if (!scopeActive) return null;
-    return (scopeMix + (scopeBit ? (bitCostPMT || 0) : 0) + (sg!.transport ? siteTransPerMT : 0) + scopePav) * smf;
+    return (scopeMix + (scopeBit ? (bitCostPMT || 0) : 0) + (sg!.transport ? siteTransPerMT : 0) + scopePav);
   }
+  const sPrimeRaw = smf > 0 ? sPrime / smf : sPrime;
+  const sTackRaw = smf > 0 ? sTack / smf : sTack;
 
   const siteCosts: SiteProfitCost[] = [];
   let grandFullCost = 0, grandInScopeCost = 0, grandMt = 0;
@@ -841,7 +843,7 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
       fullCost += vol * (mr.exPlant + siteTransPerMT + layPerMT + (mr.overhead || 0));
     });
 
-    const inScopeCoatCost = primeArea * (scopeActive ? sPrime : primePerSqm) + tackArea * (scopeActive ? sTack : tackPerSqm);
+    const inScopeCoatCost = primeArea * (scopeActive ? sPrimeRaw : primePerSqm) + tackArea * (scopeActive ? sTackRaw : tackPerSqm);
     let inScopeCost = inScopeCoatCost;
     Object.keys(mixQty).forEach(mn => {
       const mq = mixQty[mn];
