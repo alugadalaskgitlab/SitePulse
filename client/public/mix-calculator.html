@@ -2718,6 +2718,7 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
       {name:'Transport', base:row.baseTransCost, rev:row.revTransCost},
       {name:'Laying & Compaction', base:row.baseLayCost, rev:row.revLayCost}
     ];
+    if(row.baseOverheadCost||row.revOverheadCost) components.push({name:'Overhead (Mob/Demob)', base:row.baseOverheadCost, rev:row.revOverheadCost});
     if(row.basePrimeCost>0||row.revPrimeCost>0) components.push({name:'Prime Coat', base:row.basePrimeCost, rev:row.revPrimeCost});
     if(row.baseTackCost>0||row.revTackCost>0) components.push({name:'Tack Coat', base:row.baseTackCost, rev:row.revTackCost});
 
@@ -2757,15 +2758,16 @@ function _renderCostBreakdownSection(hasRevised, siteRows){
   });
 
   if(siteRows.length>1){
-    var gBP=0,gBT=0,gBL=0,gBPr=0,gBTk=0,gRP=0,gRT=0,gRL=0,gRPr=0,gRTk=0;
+    var gBP=0,gBT=0,gBL=0,gBO=0,gBPr=0,gBTk=0,gRP=0,gRT=0,gRL=0,gRO=0,gRPr=0,gRTk=0;
     siteRows.forEach(function(r){
-      gBP+=r.basePlantCost;gBT+=r.baseTransCost;gBL+=r.baseLayCost;gBPr+=r.basePrimeCost;gBTk+=r.baseTackCost;
-      gRP+=r.revPlantCost;gRT+=r.revTransCost;gRL+=r.revLayCost;gRPr+=r.revPrimeCost;gRTk+=r.revTackCost;
+      gBP+=r.basePlantCost;gBT+=r.baseTransCost;gBL+=r.baseLayCost;gBO+=r.baseOverheadCost;gBPr+=r.basePrimeCost;gBTk+=r.baseTackCost;
+      gRP+=r.revPlantCost;gRT+=r.revTransCost;gRL+=r.revLayCost;gRO+=r.revOverheadCost;gRPr+=r.revPrimeCost;gRTk+=r.revTackCost;
     });
     var gComps=[
       {name:'Plant (Ex-Plant)',base:gBP,rev:gRP},{name:'Transport',base:gBT,rev:gRT},
       {name:'Laying & Compaction',base:gBL,rev:gRL}
     ];
+    if(gBO||gRO) gComps.push({name:'Overhead (Mob/Demob)',base:gBO,rev:gRO});
     if(gBPr>0||gRPr>0) gComps.push({name:'Prime Coat',base:gBPr,rev:gRPr});
     if(gBTk>0||gRTk>0) gComps.push({name:'Tack Coat',base:gBTk,rev:gRTk});
     html+='<div style="margin-top:4px;padding-top:10px;border-top:2px solid #d97706">';
@@ -2990,7 +2992,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var baseOverheadPerMT = (_sbv ? _sbv.overheadPerMT : (mixRates[0]?(mixRates[0].overhead||0):0));
     var fullCoatCost = primeArea*rawBasePrimePerSqm + tackArea*rawBaseTackPerSqm;
     var fullJobCost = fullCoatCost;
-    var basePlantCost=0, baseTransCost=0, baseLayCost=0;
+    var basePlantCost=0, baseTransCost=0, baseLayCost=0, baseOverheadCost=0;
     Object.keys(mixQty).forEach(function(mn){
       var mq=mixQty[mn];
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
@@ -2999,6 +3001,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       basePlantCost += mq.cum*mr.exPlant*mix.density;
       baseTransCost += mq.cum*baseSiteTransPerMT*mix.density;
       baseLayCost += mq.cum*baseLayPerMT*mix.density;
+      baseOverheadCost += vol*baseOverheadPerMT;
       fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT);
     });
     var basePrimeCost = primeArea*rawBasePrimePerSqm;
@@ -3017,9 +3020,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
     var scCoatCost = primeArea*primePerSqm + tackArea*tackPerSqm;
     var revInScopeCost = inScopeCost;
-    var revPlantCost=basePlantCost, revTransCost=baseTransCost, revLayCost=baseLayCost, revPrimeCost=basePrimeCost, revTackCost=baseTackCost;
+    var revPlantCost=basePlantCost, revTransCost=baseTransCost, revLayCost=baseLayCost, revPrimeCost=basePrimeCost, revTackCost=baseTackCost, revOverheadCost=baseOverheadCost;
     if(hasRevised){
-      revPlantCost=0; revTransCost=0; revLayCost=0;
+      revPlantCost=0; revTransCost=0; revLayCost=0; revOverheadCost=0;
       revPrimeCost = primeArea*rawPrimePerSqm;
       revTackCost = tackArea*rawTackPerSqm;
       var revInScopeCoatCost = primeArea*(_scopeActive?_sPrime:rawPrimePerSqm) + tackArea*(_scopeActive?_sTack:rawTackPerSqm);
@@ -3032,6 +3035,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         revTransCost += mq.cum*siteTransPerMT*mix.density;
         var _rl = rmr.laying!=null?rmr.laying:layPerMT;
         revLayCost += mq.cum*_rl*mix.density;
+        revOverheadCost += mq.cum*(rmr.overhead||0)*mix.density;
         var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
         var _rohd = rmr.overhead||0;
         if(_ecr!=null) revInScopeCost += mq.cum*(_ecr+_rohd)*mix.density;
@@ -3133,9 +3137,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       excluded: excluded, profit: profit, margin: margin,
       adjAmt: adjAmt, adjPerKm: curRev.adjPerKm||0, revMode: revMode,
       totalSiteMT: totalSiteMT, totalSiteCUM: totalSiteCUM,
-      basePlantCost: basePlantCost, baseTransCost: baseTransCost, baseLayCost: baseLayCost,
+      basePlantCost: basePlantCost, baseTransCost: baseTransCost, baseLayCost: baseLayCost, baseOverheadCost: baseOverheadCost,
       basePrimeCost: basePrimeCost, baseTackCost: baseTackCost,
-      revPlantCost: revPlantCost, revTransCost: revTransCost, revLayCost: revLayCost,
+      revPlantCost: revPlantCost, revTransCost: revTransCost, revLayCost: revLayCost, revOverheadCost: revOverheadCost,
       revPrimeCost: revPrimeCost, revTackCost: revTackCost,
       scRevenue: scRevenue, scHasRev: scHasRev,
       _baseCost: _baseCost, _scenarioCost: _scenarioCost,
