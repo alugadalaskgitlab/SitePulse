@@ -293,15 +293,18 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   let preGrandMT = 0;
   const allJobsPre = getAllJobs(state);
   allJobsPre.forEach(({ job: j }) => {
+    const isGeo = j.basis === 'GEOMETRY';
+    const jCum = isGeo
+      ? (j.length || 0) * (j.width || 0) * (j.thickness || 0) / 1000
+      : (j.volume || 0);
     (j.mixes || []).forEach((mx: any) => {
-      const mt = (mixTypes || [])[mx.mixIdx] || (mixTypes || [])[0];
-      if (!mt) return;
-      if (j.basis === 'GEOMETRY') {
-        const area = (j.length || 0) * (j.width || 0);
-        const vol = area * (j.thickness || 0) / 1000;
-        preGrandMT += vol * (mt.density || 2.3);
-      } else {
-        preGrandMT += parseFloat(mx.qty_mt) || 0;
+      const mixDef = (mixTypes || [])[mx.mixIdx] || (mixTypes || [])[0];
+      if (!mixDef) return;
+      const qmt = parseFloat(mx.qty_mt);
+      if (qmt > 0) {
+        preGrandMT += qmt;
+      } else if (jCum > 0 && mixDef.density > 0) {
+        preGrandMT += jCum * mixDef.density;
       }
     });
   });

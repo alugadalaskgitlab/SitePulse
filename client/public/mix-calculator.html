@@ -1580,15 +1580,21 @@ function recalc(){
   var demobCost = n('demobCost');
   var preGrandMT = 0;
   sites.forEach(function(s){ s.jobs.forEach(function(j){
+    var isGeo = j.basis==='GEOMETRY';
+    var jCum;
+    if(isGeo){
+      jCum = (j.length||0)*(j.width||0)*(j.thickness||0)/1000;
+    } else {
+      jCum = j.volume||0;
+    }
     (j.mixes||[]).forEach(function(mx){
-      var mr = mixTypes[mx.mixIdx]||mixTypes[0];
-      var isGeo = j.basis==='GEOMETRY';
-      if(isGeo){
-        var area = (j.length||0)*(j.width||0);
-        var vol = area*(j.thickness||0)/1000;
-        preGrandMT += vol*(mr.density||2.3);
-      } else {
-        preGrandMT += parseFloat(mx.qty_mt)||0;
+      var mt = mixTypes[mx.mixIdx]||mixTypes[0];
+      if(!mt) return;
+      var qmt = parseFloat(mx.qty_mt);
+      if(qmt>0){
+        preGrandMT += qmt;
+      } else if(jCum>0 && mt.density>0){
+        preGrandMT += jCum * mt.density;
       }
     });
   }); });
@@ -1726,16 +1732,14 @@ function recalc(){
       var fbMixTypes = fbSt.mixTypes || mixTypes;
       var fbPreGrandMT = 0;
       fbSites.forEach(function(s){ (s.jobs||[]).forEach(function(j){
+        var fbIsGeo = j.basis==='GEOMETRY';
+        var fbJCum = fbIsGeo ? (j.length||0)*(j.width||0)*(j.thickness||0)/1000 : (j.volume||0);
         (j.mixes||[]).forEach(function(mx){
           var mt = fbMixTypes[mx.mixIdx]||fbMixTypes[0];
           if(!mt) return;
-          if(j.basis==='GEOMETRY'){
-            var area=(j.length||0)*(j.width||0);
-            var vol=area*(j.thickness||0)/1000;
-            fbPreGrandMT += vol*(mt.density||2.3);
-          } else {
-            fbPreGrandMT += parseFloat(mx.qty_mt)||0;
-          }
+          var qmt = parseFloat(mx.qty_mt);
+          if(qmt>0){ fbPreGrandMT += qmt; }
+          else if(fbJCum>0 && mt.density>0){ fbPreGrandMT += fbJCum * mt.density; }
         });
       }); });
       fbOverheadPerMT = fbPreGrandMT > 0 ? (fbMobCost + fbDemobCost) / fbPreGrandMT : 0;
@@ -1788,16 +1792,14 @@ function recalc(){
       var _bMixTypes = scenarioBaseSnapshot.mixTypes || mixTypes;
       var _bPreGrandMT = 0;
       _bSites.forEach(function(s){ (s.jobs||[]).forEach(function(j){
+        var _bIsGeo = j.basis==='GEOMETRY';
+        var _bJCum = _bIsGeo ? (j.length||0)*(j.width||0)*(j.thickness||0)/1000 : (j.volume||0);
         (j.mixes||[]).forEach(function(mx){
           var mt = _bMixTypes[mx.mixIdx]||_bMixTypes[0];
           if(!mt) return;
-          if(j.basis==='GEOMETRY'){
-            var area=(j.length||0)*(j.width||0);
-            var vol=area*(j.thickness||0)/1000;
-            _bPreGrandMT += vol*(mt.density||2.3);
-          } else {
-            _bPreGrandMT += parseFloat(mx.qty_mt)||0;
-          }
+          var qmt = parseFloat(mx.qty_mt);
+          if(qmt>0){ _bPreGrandMT += qmt; }
+          else if(_bJCum>0 && mt.density>0){ _bPreGrandMT += _bJCum * mt.density; }
         });
       }); });
       _bOverheadPerMT = _bPreGrandMT > 0 ? (_bMobCost + _bDemobCost) / _bPreGrandMT : 0;
