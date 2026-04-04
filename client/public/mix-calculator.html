@@ -364,7 +364,16 @@ body{font-size:11px;background:#fff}
     <div class="form-grid">
       <div class="form-group"><label>Mobilisation Cost (₹)</label><input id="mobCost" type="number" value="0" oninput="recalc()"></div>
       <div class="form-group"><label>Demobilisation Cost (₹)</label><input id="demobCost" type="number" value="0" oninput="recalc()"></div>
-      <div class="form-group"><label>Overhead ₹/MT</label><input class="derived" id="overheadDerived" readonly></div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:10px">
+      <div style="flex:1;background:#fff8ed;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Total Overhead</div>
+        <div id="overheadTotalDisplay" style="font-size:18px;font-weight:700;color:#b45309">—</div>
+      </div>
+      <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Overhead ₹/MT</div>
+        <div id="overheadPerMtDisplay" style="font-size:18px;font-weight:700;color:#2563eb">—</div>
+      </div>
     </div>
   </div>
 </div>
@@ -1600,13 +1609,25 @@ function recalc(){
   }); });
   var overheadLumpSum = mobCost + demobCost;
   var overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
-  var ohEl = document.getElementById('overheadDerived');
-  if(preGrandMT > 0 && overheadLumpSum > 0){
-    ohEl.value = 'Total ₹'+fmtI(Math.round(overheadLumpSum))+'   '+fmt(overheadPerMT)+' ₹/MT';
-  } else if(overheadLumpSum > 0){
-    ohEl.value = 'Total ₹'+fmtI(Math.round(overheadLumpSum))+' (add jobs for ₹/MT)';
+  var ohTotalEl = document.getElementById('overheadTotalDisplay');
+  var ohPerMtEl = document.getElementById('overheadPerMtDisplay');
+  if(overheadLumpSum > 0){
+    ohTotalEl.textContent = '₹'+fmtI(Math.round(overheadLumpSum));
   } else {
-    ohEl.value = '—';
+    ohTotalEl.textContent = '—';
+  }
+  if(preGrandMT > 0 && overheadPerMT > 0){
+    ohPerMtEl.textContent = fmt(overheadPerMT);
+  } else if(overheadLumpSum > 0){
+    ohPerMtEl.textContent = 'Add jobs';
+    ohPerMtEl.style.fontSize = '13px';
+    ohPerMtEl.style.color = '#9ca3af';
+  } else {
+    ohPerMtEl.textContent = '—';
+  }
+  if(preGrandMT > 0 && overheadPerMT > 0){
+    ohPerMtEl.style.fontSize = '18px';
+    ohPerMtEl.style.color = '#2563eb';
   }
 
   // ====== PER-MIX-TYPE RATE CALCULATION ======
