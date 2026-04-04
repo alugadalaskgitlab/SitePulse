@@ -328,7 +328,7 @@ body{font-size:11px;background:#fff}
     <div class="form-grid">
       <div class="form-group"><label>Production Consumption (L/hr)</label><input id="boilerProdLhr" type="number" value="20" oninput="recalc()"></div>
       <div class="form-group"><label>Preheat Consumption (L/hr)</label><input id="boilerPreheatLhr" type="number" value="15" oninput="recalc()"></div>
-      <div class="form-group"><label>Boiler Fuel Rate (₹/L)</label><input id="boilerFuelRate" type="number" value="72" oninput="recalc()"></div>
+      <div class="form-group"><label>Boiler Fuel Rate (₹/L)</label><input class="derived" id="boilerFuelRate" readonly title="Uses LDO Rate from Dryer section"></div>
       <div class="form-group"><label>Production Hours / Cycle</label><input id="boilerProdHrs" type="number" value="8" oninput="recalc()"></div>
       <div class="form-group"><label>Preheat Hours / Cycle</label><input id="boilerPreheatHrs" type="number" value="2" oninput="recalc()"></div>
       <div class="form-group"><label>Campaign Tonnage (MT)</label><input id="boilerCampaignMt" type="number" value="500" oninput="recalc()"></div>
@@ -350,6 +350,21 @@ body{font-size:11px;background:#fff}
       <div class="form-group"><label>Working Hours / Day</label><input id="crewHrs" type="number" value="8" oninput="recalc()"></div>
       <div class="form-group"><label>Crew ₹/MT</label><input class="derived" id="crewDerived" readonly></div>
       <div class="form-group"><label>Margin / Profit %</label><input id="marginPct" type="number" value="0" step="0.5" oninput="recalc()"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ⑥b Overheads (Mob/Demob) -->
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑥b Overheads</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Lump-sum costs amortized over total estimated MT across all jobs</p>
+    <div class="form-grid">
+      <div class="form-group"><label>Mobilisation Cost (₹)</label><input id="mobCost" type="number" value="0" oninput="recalc()"></div>
+      <div class="form-group"><label>Demobilisation Cost (₹)</label><input id="demobCost" type="number" value="0" oninput="recalc()"></div>
+      <div class="form-group"><label>Overhead ₹/MT</label><input class="derived" id="overheadDerived" readonly></div>
     </div>
   </div>
 </div>
@@ -681,8 +696,8 @@ var PERSIST_INPUTS = [
   'tph','plantHrsMonth',
   'hsdPrice',
   'ldoConsump','ldoRate',
-  'boilerProdLhr','boilerPreheatLhr','boilerFuelRate','boilerProdHrs','boilerPreheatHrs','boilerCampaignMt',
-  'crewMonthly','crewDays','crewHrs','marginPct',
+  'boilerProdLhr','boilerPreheatLhr','boilerProdHrs','boilerPreheatHrs','boilerCampaignMt',
+  'crewMonthly','crewDays','crewHrs','marginPct','mobCost','demobCost',
   'layCrew','layProductivity',
   'transDist','transRate','transPayload',
   'primeSpray','primePrice','primeDilution',
@@ -1296,7 +1311,7 @@ function renderMixPanels(){
   var fracTotal = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0) + m.binderPct;
   var valid = Math.abs(fracTotal-100)<0.05;
   var html = '<div class="form-grid" style="margin-bottom:12px">';
-  html += '<div class="form-group"><label>Mix Name</label><input value="'+m.name+'" oninput="mixTypes['+activeMixIdx+'].name=this.value.toUpperCase();renderMixTabs();recalc()"></div>';
+  html += '<div class="form-group"><label>Mix Name</label><input value="'+m.name+'" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(x){};mixTypes['+activeMixIdx+'].name=this.value;renderMixTabs();recalc()"></div>';
   html += '<div class="form-group"><label>Binder Content %</label><input type="number" value="'+m.binderPct+'" step="0.1" oninput="mixTypes['+activeMixIdx+'].binderPct=parseFloat(this.value)||0;updateMixCalc();recalc()"></div>';
   html += '<div class="form-group"><label>Compacted Density (MT/CUM)</label><input type="number" value="'+m.density+'" step="0.01" oninput="mixTypes['+activeMixIdx+'].density=parseFloat(this.value)||0;recalc()"></div>';
   html += '</div>';
@@ -1504,7 +1519,8 @@ function recalc(){
 
   var boilerProdLhr = n('boilerProdLhr');
   var boilerPreheatLhr = n('boilerPreheatLhr');
-  var boilerFuelRate = n('boilerFuelRate');
+  var boilerFuelRate = ldoRate;
+  document.getElementById('boilerFuelRate').value = fmt(boilerFuelRate);
   var boilerProdHrs = n('boilerProdHrs');
   var boilerPreheatHrs = n('boilerPreheatHrs');
   var boilerCampaignMt = n('boilerCampaignMt');
@@ -1556,6 +1572,27 @@ function recalc(){
   document.getElementById('primeDerived').value = fmt(primePerSqm);
   document.getElementById('tackDerived').value = fmt(tackPerSqm);
 
+  // Mob/Demob overhead
+  var mobCost = n('mobCost');
+  var demobCost = n('demobCost');
+  var preGrandMT = 0;
+  sites.forEach(function(s){ s.jobs.forEach(function(j){
+    (j.mixes||[]).forEach(function(mx){
+      var mr = mixTypes[mx.mixIdx]||mixTypes[0];
+      var isGeo = j.basis==='GEOMETRY';
+      if(isGeo){
+        var area = (j.length||0)*(j.width||0);
+        var vol = area*(j.thickness||0)/1000;
+        preGrandMT += vol*(mr.density||2.3);
+      } else {
+        preGrandMT += parseFloat(mx.qty_mt)||0;
+      }
+    });
+  }); });
+  var overheadLumpSum = mobCost + demobCost;
+  var overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
+  document.getElementById('overheadDerived').value = preGrandMT > 0 ? fmt(overheadPerMT) : '—';
+
   // ====== PER-MIX-TYPE RATE CALCULATION ======
   var eqCosts = {};
   var plantEquipPerMT = 0;
@@ -1577,7 +1614,7 @@ function recalc(){
     var aggCostPerMT = aggFrac*aggLanded;
     var bitCostPerMT = bitFrac*1000*bitPrice;
     var plantSubtotal = aggCostPerMT+bitCostPerMT+plantEquipPerMT+fuelTotal+crewPerMT;
-    var allCostBeforeMargin = plantSubtotal+transPerMT+layPerMT;
+    var allCostBeforeMargin = plantSubtotal+transPerMT+layPerMT+overheadPerMT;
     var marginAmt = allCostBeforeMargin*marginPct/100;
     var exPlant = plantSubtotal;
     var finalLaid = allCostBeforeMargin+marginAmt;
@@ -1586,7 +1623,7 @@ function recalc(){
       aggregate:aggCostPerMT, bitumen:bitCostPerMT,
       equipment:plantEquipPerMT, plantHsd:plantHsdPerMT,
       ldo:ldoPerMT, boilerProd:boilerProdPerMT, boilerPreheat:boilerPreheatPerMT,
-      fuel:fuelTotal, crew:crewPerMT, margin:marginAmt,
+      fuel:fuelTotal, crew:crewPerMT, overhead:overheadPerMT, margin:marginAmt,
       exPlant:exPlant, transport:transPerMT, laying:layPerMT, finalLaid:finalLaid,
       perCum:finalLaid*m.density,
       hotmix:(eqCosts.hotmix||{}).hire||0,
@@ -1630,15 +1667,17 @@ function recalc(){
     var revLayPerMT = layProd>0 ? revLayTotalDaily/layProd : 0;
     // LDO
     var revLdoPerMT2 = ldoConsump * revLdoRate;
-    var revFuelTotal = revPlantHsdPerMT + revLdoPerMT2 + boilerProdPerMT + boilerPreheatPerMT;
+    var revBoilerProdPerMT = boilerCampaignMt>0?(boilerProdLhr*revLdoRate*boilerProdHrs/boilerCampaignMt):0;
+    var revBoilerPreheatPerMT = boilerCampaignMt>0?(boilerPreheatLhr*revLdoRate*boilerPreheatHrs/boilerCampaignMt):0;
+    var revFuelTotal = revPlantHsdPerMT + revLdoPerMT2 + revBoilerProdPerMT + revBoilerPreheatPerMT;
     revisedMixRates = mixTypes.map(function(m){
       var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
       var bitFrac = m.binderPct/100;
       var revBitCostPerMT = bitFrac*1000*revBitPrice;
       var ps = aggFrac*revAggLanded + revBitCostPerMT + plantEquipPerMT + revFuelTotal + crewPerMT;
-      var allBM = ps+transPerMT+revLayPerMT;
+      var allBM = ps+transPerMT+revLayPerMT+overheadPerMT;
       var exP = ps;
-      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:revLayPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:revBitCostPerMT};
+      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:revLayPerMT, overhead:overheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:revBitCostPerMT};
     });
     revisedProcPrices = {aggLanded:revAggLanded, bitPrice:revBitPrice, hsdPrice:revHsdPrice, ldoRate:revLdoRate};
   }
@@ -1664,15 +1703,17 @@ function recalc(){
     var fbLayTotalDaily = layTotalDaily - fbLayHsdLPerDay*hsdPrice + fbLayHsdLPerDay*fbHsdPrice;
     var fbLayPerMT = layProd>0 ? fbLayTotalDaily/layProd : 0;
     var fbLdoPerMT = ldoConsump * fbLdoRate;
-    var fbFuelTotal = fbPlantHsdPerMT + fbLdoPerMT + boilerProdPerMT + boilerPreheatPerMT;
+    var fbBoilerProdPerMT = boilerCampaignMt>0?(boilerProdLhr*fbLdoRate*boilerProdHrs/boilerCampaignMt):0;
+    var fbBoilerPreheatPerMT = boilerCampaignMt>0?(boilerPreheatLhr*fbLdoRate*boilerPreheatHrs/boilerCampaignMt):0;
+    var fbFuelTotal = fbPlantHsdPerMT + fbLdoPerMT + fbBoilerProdPerMT + fbBoilerPreheatPerMT;
     frozenBaseMixRates = mixTypes.map(function(m){
       var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
       var bitFrac = m.binderPct/100;
       var fbBitCostPerMT = bitFrac*1000*fbBitPrice;
       var ps = aggFrac*fbAggLanded + fbBitCostPerMT + plantEquipPerMT + fbFuelTotal + crewPerMT;
-      var allBM = ps+transPerMT+fbLayPerMT;
+      var allBM = ps+transPerMT+fbLayPerMT+overheadPerMT;
       var exP = ps;
-      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:fbLayPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:fbBitCostPerMT};
+      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:fbLayPerMT, overhead:overheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:fbBitCostPerMT};
     });
   }
 
@@ -1755,6 +1796,11 @@ function renderRateSummary(mixRates){
   html+='<tr><td>Laying</td>';
   mixRates.forEach(function(r){ html+='<td>'+fmtR(r.laying)+'</td><td style="color:var(--blue)">'+fmtR(r.laying*r.density)+'</td>'; });
   html+='</tr>';
+  if(mixRates[0]&&(mixRates[0].overhead||0)>0){
+    html+='<tr><td>Mob/Demob</td>';
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.overhead||0)+'</td><td style="color:var(--blue)">'+fmtR((r.overhead||0)*r.density)+'</td>'; });
+    html+='</tr>';
+  }
   if(mixRates[0]&&mixRates[0].margin>0){
     html+='<tr><td>Margin / Profit</td>';
     mixRates.forEach(function(r){ html+='<td>'+fmtR(r.margin)+'</td><td style="color:var(--blue)">'+fmtR(r.margin*r.density)+'</td>'; });
@@ -1778,6 +1824,7 @@ function renderCostBar(mixRates){
     {label:'Crew',color:'#10b981',val:r.crew},
     {label:'Transport',color:'#6366f1',val:r.transport},
     {label:'Laying',color:'#ec4899',val:r.laying},
+    {label:'Overhead',color:'#a855f7',val:r.overhead||0},
     {label:'Margin',color:'#14b8a6',val:r.margin}
   ];
   var total = heads.reduce(function(s,h){return s+h.val;},0);
@@ -1821,6 +1868,7 @@ function renderFullBreakdown(mixRates){
     {label:'Plant Subtotal',key:'exPlant',bold:true},
     {label:'Transport to Site',key:'transport'},
     {label:'Laying & Compaction',key:'laying'},
+    {label:'Mob/Demob Overhead',key:'overhead'},
     {label:'Margin / Profit',key:'margin'},
     {label:'Final Laid Rate',key:'finalLaid',bold:true}
   ];
@@ -1888,7 +1936,7 @@ function renderSites(){
     html += '<div class="site-card">';
     html += '<div class="site-header">';
     html += '<span class="sh-label">📍 Site</span>';
-    html += '<input class="site-name" value="'+esc(s.name||'')+'" placeholder="e.g. NH-44 KM 105–115" oninput="sites['+si+'].name=this.value.toUpperCase();saveState()">';
+    html += '<input class="site-name" value="'+esc(s.name||'')+'" placeholder="e.g. NH-44 KM 105–115" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(x){};sites['+si+'].name=this.value;saveState()">';
     html += '<span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-600);white-space:nowrap"><span style="font-weight:600">Lead:</span><input type="number" value="'+(s.transLead!=null?s.transLead:'')+'" placeholder="'+n('transDist')+'" oninput="sites['+si+'].transLead=parseFloat(this.value)||null;recalc()" style="width:58px;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"><span style="font-weight:600">km</span></span>';
     html += '<button class="btn btn-primary btn-sm no-print" onclick="addSiteJob('+si+')">+ Add Job</button>';
     html += '<button class="btn btn-secondary btn-sm no-print" onclick="openScopeSection()" title="Set scope of work for this contractor" style="color:var(--blue);border-color:var(--blue-border)">⚙ Scope</button>';
@@ -1917,7 +1965,7 @@ function renderJobCard(si,ji,j){
   var html = '<div class="job-card">';
   html += '<div class="job-card-header">';
   html += '<div class="jc-group"><span class="jc-label">Job</span><input value="'+esc(j.id)+'" oninput="sites['+si+'].jobs['+ji+'].id=this.value" style="width:55px;font-weight:700"></div>';
-  html += '<div class="jc-group"><span class="jc-label">Contractor</span><input value="'+esc(j.contractor||'')+'" oninput="sites['+si+'].jobs['+ji+'].contractor=this.value.toUpperCase()" style="width:100px" placeholder="Name"></div>';
+  html += '<div class="jc-group"><span class="jc-label">Contractor</span><input value="'+esc(j.contractor||'')+'" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(x){};sites['+si+'].jobs['+ji+'].contractor=this.value" style="width:100px" placeholder="Name"></div>';
   html += '<div class="jc-group"><span class="jc-label">Basis</span><select onchange="sites['+si+'].jobs['+ji+'].basis=this.value;renderSites();recalc()"><option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option><option value="BOQ"'+(!isGeo?' selected':'')+'>BOQ</option></select></div>';
   if(isGeo){
     html += '<div class="jc-group"><span class="jc-label">L(m)</span><input type="number" value="'+j.length+'" oninput="sites['+si+'].jobs['+ji+'].length=parseFloat(this.value)||0;recalc()" style="width:65px"></div>';
@@ -2079,7 +2127,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       var primePerMT = (thickMm>0&&firstMix.density>0)?(primePerSqm*1000/(firstMix.density*thickMm)):0;
       var tackPerMT  = (thickMm>0&&firstMix.density>0)?(tackPerSqm*1000/(firstMix.density*thickMm)):0;
 
-      var jobPlant=0, jobTrans=0, jobLay=0, jobMT=0, jobCum=0;
+      var jobPlant=0, jobTrans=0, jobLay=0, jobOverhead=0, jobMT=0, jobCum=0;
 
       j.mixes.forEach(function(mx,mi){
         var mr = mixRates[mx.mixIdx]||mixRates[0];
@@ -2089,6 +2137,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         var plantAmt = mt*mr.exPlant;
         var transAmt = mt*siteTransPerMT;
         var layAmt = mt*layPerMT;
+        var overheadAmt = mt*(mr.overhead||0);
         var mxCum = mix.density>0?mt/mix.density:0;
         var allInPerCum = mix.density>0?(mr.exPlant+siteTransPerMT+layPerMT)*mix.density:0;
 
@@ -2107,8 +2156,8 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtR(totalRatePerMT):'—';
         el=document.getElementById('jmTotalCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=(mt>0&&totalRatePerCum>0)?fmtR(totalRatePerCum):'—';
 
-        mx._mt=mt; mx._plantAmt=plantAmt; mx._transAmt=transAmt; mx._layAmt=layAmt;
-        jobPlant+=plantAmt; jobTrans+=transAmt; jobLay+=layAmt; jobMT+=mt; jobCum+=mxCum;
+        mx._mt=mt; mx._plantAmt=plantAmt; mx._transAmt=transAmt; mx._layAmt=layAmt; mx._overheadAmt=overheadAmt;
+        jobPlant+=plantAmt; jobTrans+=transAmt; jobLay+=layAmt; jobOverhead+=overheadAmt; jobMT+=mt; jobCum+=mxCum;
       });
 
       // Effective CUM for cost-per-CUM: use geometry/volume CUM if available, else sum of MT/density
@@ -2122,8 +2171,8 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         el=document.getElementById('jSubTransCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobTrans/effectiveCum)):'—';
         el=document.getElementById('jSubLay_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobLay));
         el=document.getElementById('jSubLayCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round(jobLay/effectiveCum)):'—';
-        el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant+jobTrans+jobLay));
-        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round((jobPlant+jobTrans+jobLay)/effectiveCum)):'—';
+        el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant+jobTrans+jobLay+jobOverhead));
+        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=effectiveCum>0?fmtI(Math.round((jobPlant+jobTrans+jobLay+jobOverhead)/effectiveCum)):'—';
       }
 
       var primeKgSqm = primeSpray;   // full surface application rate (dilution only affects procurement qty)
@@ -2140,7 +2189,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         el=document.getElementById('jTackAmt_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(tackAmt));
       }
 
-      var jobMixCostWithMargin = (jobPlant+jobTrans+jobLay)*(1+marginPct/100);
+      var jobMixCostWithMargin = (jobPlant+jobTrans+jobLay+jobOverhead)*(1+marginPct/100);
       var jobTotal = jobMixCostWithMargin+primeAmt+tackAmt;
       j._mt=jobMT; j._plantAmt=jobPlant; j._transAmt=jobTrans; j._layAmt=jobLay; j._totalAmt=jobTotal;
 
@@ -3501,7 +3550,7 @@ function calcScopeComponents(){
   var layProd = n('layProductivity');
   var ldoC    = n('ldoConsump'), ldoR = n('ldoRate');
   var bProdL  = n('boilerProdLhr'), bPreL = n('boilerPreheatLhr');
-  var bFuelR  = n('boilerFuelRate');
+  var bFuelR  = ldoR;
   var bProdH  = n('boilerProdHrs'), bPreH = n('boilerPreheatHrs');
   var bCamp   = n('boilerCampaignMt');
   var crewMon = n('crewMonthly'), crewD = n('crewDays'), crewH = n('crewHrs');

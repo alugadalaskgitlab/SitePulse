@@ -89,6 +89,7 @@ export interface MixRate {
   hsd: number;
   ldo: number;
   crew: number;
+  overhead: number;
   margin: number;
   exPlant: number;
   exPlantPerCum: number;
@@ -226,7 +227,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
 
   const boilerProdLhr = n(inputs, 'boilerProdLhr');
   const boilerPreheatLhr = n(inputs, 'boilerPreheatLhr');
-  const boilerFuelRate = n(inputs, 'boilerFuelRate');
+  const boilerFuelRate = ldoRate;
   const boilerProdHrs = n(inputs, 'boilerProdHrs');
   const boilerPreheatHrs = n(inputs, 'boilerPreheatHrs');
   const boilerCampaignMt = n(inputs, 'boilerCampaignMt');
@@ -287,13 +288,33 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   const hsdFuelTotal = plantEquipFuelPerMT;
   const fuelTotal = hsdFuelTotal + ldoPerMT + boilerProdPerMT + boilerPreheatPerMT;
 
+  const mobCost = n(inputs, 'mobCost');
+  const demobCost = n(inputs, 'demobCost');
+  let preGrandMT = 0;
+  const allJobsPre = getAllJobs(state);
+  allJobsPre.forEach(({ job: j }) => {
+    (j.mixes || []).forEach((mx: any) => {
+      const mt = (mixTypes || [])[mx.mixIdx] || (mixTypes || [])[0];
+      if (!mt) return;
+      if (j.basis === 'GEOMETRY') {
+        const area = (j.length || 0) * (j.width || 0);
+        const vol = area * (j.thickness || 0) / 1000;
+        preGrandMT += vol * (mt.density || 2.3);
+      } else {
+        preGrandMT += parseFloat(mx.qty_mt) || 0;
+      }
+    });
+  });
+  const overheadLumpSum = mobCost + demobCost;
+  const overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
+
   const mixRates: MixRate[] = (mixTypes || []).map((m) => {
     const aggFrac = FRAC_KEYS.reduce((s, k) => s + (m.fractions?.[k] ?? 0), 0) / 100;
     const bitFrac = m.binderPct / 100;
     const aggCostPerMT = aggFrac * aggLanded;
     const bitCostPerMT = bitFrac * 1000 * bitPrice;
     const plantSubtotal = aggCostPerMT + bitCostPerMT + plantEquipPerMT + fuelTotal + crewPerMT;
-    const allCostBeforeMargin = plantSubtotal + transPerMT + layPerMT;
+    const allCostBeforeMargin = plantSubtotal + transPerMT + layPerMT + overheadPerMT;
     const marginAmt = allCostBeforeMargin * marginPct / 100;
     const exPlant = plantSubtotal;
     const finalLaid = allCostBeforeMargin + marginAmt;
@@ -308,6 +329,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       hsd: hsdFuelTotal,
       ldo: ldoPerMT,
       crew: crewPerMT,
+      overhead: overheadPerMT,
       margin: marginAmt,
       exPlant,
       exPlantPerCum: d > 0 ? exPlant * d : 0,
@@ -349,6 +371,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
     let jobPlant = 0;
     let jobTrans = 0;
     let jobLay = 0;
+    let jobOverhead = 0;
 
     const mixDetails = (j.mixes || []).map((mx) => {
       const mr = mixRates[mx.mixIdx] ?? mixRates[0];
@@ -360,14 +383,16 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
       const plantAmt = mt * mr.exPlant;
       const transAmt = mt * transPerMT;
       const layAmt = mt * layPerMT;
+      const overheadAmt = mt * (mr.overhead || 0);
       jobMT += mt;
       jobPlant += plantAmt;
       jobTrans += transAmt;
       jobLay += layAmt;
-      return { mixIdx: mx.mixIdx, mixName: mixDef.name, mt, finalLaid: mr.finalLaid, amt: plantAmt + transAmt + layAmt };
+      jobOverhead += overheadAmt;
+      return { mixIdx: mx.mixIdx, mixName: mixDef.name, mt, finalLaid: mr.finalLaid, amt: plantAmt + transAmt + layAmt + overheadAmt };
     });
 
-    const jobMixCostWithMargin = (jobPlant + jobTrans + jobLay) * (1 + marginPct / 100);
+    const jobMixCostWithMargin = (jobPlant + jobTrans + jobLay + jobOverhead) * (1 + marginPct / 100);
     const jobTotal = jobMixCostWithMargin + primeAmt + tackAmt;
     grandTotalMt += jobMT;
     grandTotalAmt += jobTotal;
@@ -423,10 +448,11 @@ export const INPUT_LABELS: Record<string, { label: string; unit: string }> = {
   ldoRate:          { label: "LDO Rate",                 unit: "₹/L"      },
   boilerProdLhr:    { label: "Boiler Prod Fuel",         unit: "L/hr"     },
   boilerPreheatLhr: { label: "Boiler Preheat Fuel",      unit: "L/hr"     },
-  boilerFuelRate:   { label: "Boiler Fuel Rate",         unit: "₹/L"      },
   boilerProdHrs:    { label: "Boiler Prod Hrs/Cycle",    unit: "hrs"      },
   boilerPreheatHrs: { label: "Boiler Preheat Hrs/Cycle", unit: "hrs"     },
   boilerCampaignMt: { label: "Boiler Campaign MT",       unit: "MT"       },
+  mobCost:          { label: "Mobilisation Cost",         unit: "₹"        },
+  demobCost:        { label: "Demobilisation Cost",       unit: "₹"        },
   crewMonthly:      { label: "Plant Crew Monthly",       unit: "₹"        },
   crewDays:         { label: "Working Days/Month",       unit: "days"     },
   crewHrs:          { label: "Working Hrs/Day",          unit: "hrs"      },
@@ -586,7 +612,7 @@ function calcScopeComponentsTS(state: CalcState, hsdPrice: number): Record<strin
   const layProd = n(inputs, 'layProductivity');
   const ldoC = n(inputs, 'ldoConsump'), ldoR = n(inputs, 'ldoRate');
   const bProdL = n(inputs, 'boilerProdLhr'), bPreL = n(inputs, 'boilerPreheatLhr');
-  const bFuelR = n(inputs, 'boilerFuelRate');
+  const bFuelR = ldoR;
   const bProdH = n(inputs, 'boilerProdHrs'), bPreH = n(inputs, 'boilerPreheatHrs');
   const bCamp = n(inputs, 'boilerCampaignMt');
   const crewMon = n(inputs, 'crewMonthly'), crewD = n(inputs, 'crewDays'), crewH = n(inputs, 'crewHrs');
@@ -809,7 +835,7 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
       if (!mr) return;
       const mix = (mixTypes || [])[mq.mixIdx] || (mixTypes || [])[0];
       const vol = mq.cum * mix.density;
-      fullCost += vol * (mr.exPlant + siteTransPerMT + layPerMT);
+      fullCost += vol * (mr.exPlant + siteTransPerMT + layPerMT + (mr.overhead || 0));
     });
 
     const inScopeCoatCost = primeArea * (scopeActive ? sPrime : primePerSqm) + tackArea * (scopeActive ? sTack : tackPerSqm);
@@ -820,7 +846,7 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
       if (!mr) return;
       const mix = (mixTypes || [])[mq.mixIdx] || (mixTypes || [])[0];
       const ec = effCPM(siteTransPerMT, mr.bitumen);
-      inScopeCost += mq.cum * (ec != null ? ec : (mr.exPlant + siteTransPerMT + layPerMT)) * mix.density;
+      inScopeCost += mq.cum * (ec != null ? ec : (mr.exPlant + siteTransPerMT + layPerMT + (mr.overhead || 0))) * mix.density;
     });
 
     siteCosts.push({
