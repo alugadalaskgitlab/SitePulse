@@ -3014,7 +3014,27 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
 
     var curRev, scRev = null, scRevenue = null, scHasRev = false;
-    curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+    if(scenarioMode && procScenarioContractRates){
+      var baseMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
+      curRev = _calcSiteRevenue(s.id, baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
+      var revRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+      scRevenue = revRev.revenue;
+      scHasRev = revRev.hasRev;
+    } else {
+      var _baseRatesSource = procBaseContractRates || null;
+      if(_baseRatesSource){
+        var _baseMode = _baseRatesSource[s.id+'__MODE']||'itemised';
+        curRev = _calcSiteRevenue(s.id, _baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, _baseRatesSource);
+      } else {
+        curRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM);
+      }
+      if(procScenarioContractRates){
+        var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
+        var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates);
+        scRevenue = _scR.revenue;
+        scHasRev = _scR.hasRev;
+      }
+    }
     var revenue = curRev.revenue, hasRev = curRev.hasRev, revMode = curRev.revMode;
     var baseRevenue = curRev.baseRevenue;
     var adjAmt = 0;
@@ -3035,15 +3055,29 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
     var _adjustment = adjAmt || 0;
     var _baseRevenue = hasRev ? revenue : null;
+    if(scenarioMode) _baseRevenue = revenue;
 
     var _scenarioRevenue = null;
+    if(scenarioMode){
+      _scenarioRevenue = (scHasRev && scRevenue!=null) ? scRevenue : revenue;
+      if(_scenarioRevenue!=null && _baseRevenue!=null && Math.abs(_scenarioRevenue - _baseRevenue) < 1) _scenarioRevenue = _baseRevenue;
+    }
+
+    var _revRevenueBase = (scHasRev && scRevenue!=null) ? scRevenue : (hasRev ? revenue : null);
     var _revisedRevenue = null;
+    if(!scenarioMode && _revRevenueBase!=null && scHasRev){
+      _revisedRevenue = _revRevenueBase;
+    }
+    if(_revisedRevenue!=null && _baseRevenue!=null && Math.abs(_revisedRevenue - _baseRevenue) < 1){
+      _revisedRevenue = null;
+    }
     var _baseProfit = hasRev ? _baseRevenue - _baseCost : null;
     var _scenarioProfit = null;
     if(hasRev && hasRevised){
-      _scenarioProfit = _baseRevenue - _scenarioCost;
+      var _scProfitRev = scenarioMode ? (_scenarioRevenue!=null ? _scenarioRevenue : _baseRevenue) : _baseRevenue;
+      _scenarioProfit = _scProfitRev - _scenarioCost;
     }
-    var _revisedProfit = null;
+    var _revisedProfit = (_revisedRevenue!=null && hasRevised) ? _revisedRevenue - _scenarioCost : null;
 
     var excluded = fullJobCost - inScopeCost;
     var profit = hasRev ? (_baseRevenue - _baseCost) : null;
