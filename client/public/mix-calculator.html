@@ -1177,7 +1177,7 @@ function onProcScenarioChange(){
         ldoRate: parseFloat(rp.ldoRate)||0
       };
     }
-    procScenarioPrices = Object.assign({_id:sc.id, _name:sc.name}, prices);
+    procScenarioPrices = Object.assign({_id:sc.id, _name:sc.name, _updatedAt:sc.updatedAt||sc.createdAt||null}, prices);
     if(sc.state){
       var _scSt = typeof sc.state==='string'?JSON.parse(sc.state):sc.state;
       procScenarioContractRates = (_scSt.contractRates && typeof _scSt.contractRates==='object') ? _scSt.contractRates : null;
@@ -2928,18 +2928,24 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var oTM=_crOld[sid+'__TARGET_MARGIN']!=null?_crOld[sid+'__TARGET_MARGIN']:null, nTM=_crNew[sid+'__TARGET_MARGIN']!=null?_crNew[sid+'__TARGET_MARGIN']:null;
       if(oTM!==nTM&&(oTM!=null||nTM!=null)) diffs.push({l:'Target Margin',o:(oTM!=null?oTM+'%':'—'),n:(nTM!=null?nTM+'%':'—')});
       if(!diffs.length) return;
-      _rdHtml+='<div style="margin-top:6px"><div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:4px">📍 '+esc(s.name||s.id)+'</div>';
-      _rdHtml+='<div style="display:flex;flex-wrap:wrap;gap:6px 16px">';
+      _rdHtml+='<div style="margin-top:8px"><div style="font-size:13px;font-weight:700;color:#b45309;margin-bottom:5px">📍 '+esc(s.name||s.id)+'</div>';
+      _rdHtml+='<div style="display:flex;flex-wrap:wrap;gap:6px 18px">';
       diffs.forEach(function(d){
-        var col = d.num ? ((d.nv||0)>(d.ov||0)?'#16a34a':(d.nv||0)<(d.ov||0)?'#ef4444':'#374151') : '#374151';
-        _rdHtml+='<span style="font-size:12px;white-space:nowrap"><span style="color:#6b7280">'+esc(d.l)+':</span> <span style="color:#64748b">'+d.o+'</span> <span style="color:#94a3b8">→</span> <span style="font-weight:600;color:'+col+'">'+d.n+'</span></span>';
+        var col = d.num ? ((d.nv||0)>(d.ov||0)?'#16a34a':(d.nv||0)<(d.ov||0)?'#dc2626':'#1e293b') : '#1e293b';
+        _rdHtml+='<span style="font-size:13px;white-space:nowrap"><span style="font-weight:600;color:#374151">'+esc(d.l)+':</span> <span style="color:#374151">'+d.o+'</span> <span style="color:#78716c;font-weight:700">→</span> <span style="font-weight:700;color:'+col+'">'+d.n+'</span></span>';
       });
       _rdHtml+='</div></div>';
     });
     if(_rdHtml){
-      html+='<div style="margin-bottom:14px;padding:10px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px">';
-      html+='<div style="display:flex;align-items:center;gap:6px;cursor:pointer" onclick="var p=this.nextElementSibling;var a=this.querySelector(\'span:last-child\');if(p.style.display===\'none\'){p.style.display=\'block\';a.textContent=\'▾\';}else{p.style.display=\'none\';a.textContent=\'▸\';}">';
-      html+='<span style="font-weight:700;color:#92400e">📋 Contract Rate Changes</span><span style="color:#92400e;font-size:11px">▾</span></div>';
+      var _rcTs='';
+      if(procScenarioPrices&&procScenarioPrices._updatedAt){
+        try{var _d=new Date(procScenarioPrices._updatedAt);_rcTs=_d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' '+_d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});}catch(e){}
+      }
+      html+='<div style="margin-bottom:14px;padding:12px 16px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px">';
+      html+='<div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="var p=this.nextElementSibling;var a=this.querySelector(\'[data-chevron]\');if(p.style.display===\'none\'){p.style.display=\'block\';a.textContent=\'▾\';}else{p.style.display=\'none\';a.textContent=\'▸\';}">';
+      html+='<span style="font-weight:700;font-size:14px;color:#92400e">📋 Revised Contract Rates</span>';
+      if(_rcTs) html+='<span style="font-size:12px;font-weight:600;color:#78716c;margin-left:4px">'+_rcTs+'</span>';
+      html+='<span data-chevron style="color:#92400e;font-size:11px;margin-left:auto">▾</span></div>';
       html+='<div>'+_rdHtml+'</div>';
       html+='</div>';
     }
