@@ -2879,6 +2879,72 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
     html+='</div>';
   }
+
+  var _crOld=null, _crNew=null;
+  if(scenarioMode && procScenarioContractRates){
+    _crOld=procScenarioContractRates; _crNew=contractRates;
+  } else if(!scenarioMode && procBaseContractRates && procScenarioContractRates){
+    _crOld=procBaseContractRates; _crNew=procScenarioContractRates;
+  } else if(!scenarioMode && procScenarioContractRates){
+    _crOld=contractRates; _crNew=procScenarioContractRates;
+  }
+  if(_crOld && _crNew && sites.length>0){
+    var _rdHtml='';
+    sites.forEach(function(s){
+      if(!s.jobs.length) return;
+      var sid=s.id, diffs=[];
+      var oMode=_crOld[sid+'__MODE']||'itemised', nMode=_crNew[sid+'__MODE']||'itemised';
+      if(oMode!==nMode) diffs.push({l:'Mode',o:oMode.charAt(0).toUpperCase()+oMode.slice(1),n:nMode.charAt(0).toUpperCase()+nMode.slice(1)});
+      var oRev=_crOld[sid+'__REV_MODE']||'itemRates', nRev=_crNew[sid+'__REV_MODE']||'itemRates';
+      if(oRev!==nRev) diffs.push({l:'Revenue',o:oRev==='scopeRate'?'Scope Rate':'Item Rates',n:nRev==='scopeRate'?'Scope Rate':'Item Rates'});
+      var _seenMk={};
+      s.jobs.forEach(function(j){
+        j.mixes.forEach(function(mx){
+          var mix=mixTypes[mx.mixIdx]||mixTypes[0];
+          var mk=sid+'_'+mix.name.toUpperCase().replace(/[\s-]+/g,'_');
+          if(_seenMk[mk]) return; _seenMk[mk]=true;
+          var ov=_crOld[mk]!=null?_crOld[mk]:null, nv=_crNew[mk]!=null?_crNew[mk]:null;
+          if(ov!==nv && (ov!=null||nv!=null)){
+            diffs.push({l:mix.name+' ₹/CUM',o:ov!=null?'₹'+fmtR(ov):'—',n:nv!=null?'₹'+fmtR(nv):'—',num:true,ov:ov||0,nv:nv||0});
+          }
+        });
+      });
+      var pk=sid+'_PRIME', oPr=_crOld[pk]!=null?_crOld[pk]:null, nPr=_crNew[pk]!=null?_crNew[pk]:null;
+      if(oPr!==nPr&&(oPr!=null||nPr!=null)) diffs.push({l:'Prime ₹/sqm',o:oPr!=null?'₹'+fmtR(oPr):'—',n:nPr!=null?'₹'+fmtR(nPr):'—',num:true,ov:oPr||0,nv:nPr||0});
+      var tk=sid+'_TACK', oTk=_crOld[tk]!=null?_crOld[tk]:null, nTk=_crNew[tk]!=null?_crNew[tk]:null;
+      if(oTk!==nTk&&(oTk!=null||nTk!=null)) diffs.push({l:'Tack ₹/sqm',o:oTk!=null?'₹'+fmtR(oTk):'—',n:nTk!=null?'₹'+fmtR(nTk):'—',num:true,ov:oTk||0,nv:nTk||0});
+      var oSM=_crOld[sid+'__SCOPE_MT']!=null?_crOld[sid+'__SCOPE_MT']:null, nSM=_crNew[sid+'__SCOPE_MT']!=null?_crNew[sid+'__SCOPE_MT']:null;
+      if(oSM!==nSM&&(oSM!=null||nSM!=null)) diffs.push({l:'Scope ₹/MT',o:oSM!=null?'₹'+fmtR(oSM):'—',n:nSM!=null?'₹'+fmtR(nSM):'—',num:true,ov:oSM||0,nv:nSM||0});
+      var oSC=_crOld[sid+'__SCOPE_CUM']!=null?_crOld[sid+'__SCOPE_CUM']:null, nSC=_crNew[sid+'__SCOPE_CUM']!=null?_crNew[sid+'__SCOPE_CUM']:null;
+      if(oSC!==nSC&&(oSC!=null||nSC!=null)) diffs.push({l:'Scope ₹/CUM',o:oSC!=null?'₹'+fmtR(oSC):'—',n:nSC!=null?'₹'+fmtR(nSC):'—',num:true,ov:oSC||0,nv:nSC||0});
+      var oKm=_crOld[sid+'__KM_RATE']!=null?_crOld[sid+'__KM_RATE']:null, nKm=_crNew[sid+'__KM_RATE']!=null?_crNew[sid+'__KM_RATE']:null;
+      if(oKm!==nKm&&(oKm!=null||nKm!=null)) diffs.push({l:'Per km Rate',o:oKm!=null?'₹'+fmtI(Math.round(oKm)):'—',n:nKm!=null?'₹'+fmtI(Math.round(nKm)):'—',num:true,ov:oKm||0,nv:nKm||0});
+      var oKmA=_crOld[sid+'__ADJ_PER_KM']||0, nKmA=_crNew[sid+'__ADJ_PER_KM']||0;
+      if(Math.abs(oKmA-nKmA)>0.5) diffs.push({l:'Adj/km',o:'₹'+fmtI(Math.round(oKmA)),n:'₹'+fmtI(Math.round(nKmA)),num:true,ov:oKmA,nv:nKmA});
+      var oLs=_crOld[sid+'__LUMPSUM']!=null?_crOld[sid+'__LUMPSUM']:null, nLs=_crNew[sid+'__LUMPSUM']!=null?_crNew[sid+'__LUMPSUM']:null;
+      if(oLs!==nLs&&(oLs!=null||nLs!=null)) diffs.push({l:'Lumpsum',o:oLs!=null?'₹'+fmtI(Math.round(oLs)):'—',n:nLs!=null?'₹'+fmtI(Math.round(nLs)):'—',num:true,ov:oLs||0,nv:nLs||0});
+      var oAdj=_crOld[sid+'__ADJ_AMT']||0, nAdj=_crNew[sid+'__ADJ_AMT']||0;
+      if(Math.abs(oAdj-nAdj)>0.5) diffs.push({l:'Adjustment',o:'₹'+fmtI(Math.round(oAdj)),n:'₹'+fmtI(Math.round(nAdj)),num:true,ov:oAdj,nv:nAdj});
+      var oTM=_crOld[sid+'__TARGET_MARGIN']!=null?_crOld[sid+'__TARGET_MARGIN']:null, nTM=_crNew[sid+'__TARGET_MARGIN']!=null?_crNew[sid+'__TARGET_MARGIN']:null;
+      if(oTM!==nTM&&(oTM!=null||nTM!=null)) diffs.push({l:'Target Margin',o:(oTM!=null?oTM+'%':'—'),n:(nTM!=null?nTM+'%':'—')});
+      if(!diffs.length) return;
+      _rdHtml+='<div style="margin-top:6px"><div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:4px">📍 '+esc(s.name||s.id)+'</div>';
+      _rdHtml+='<div style="display:flex;flex-wrap:wrap;gap:6px 16px">';
+      diffs.forEach(function(d){
+        var col = d.num ? ((d.nv||0)>(d.ov||0)?'#16a34a':(d.nv||0)<(d.ov||0)?'#ef4444':'#374151') : '#374151';
+        _rdHtml+='<span style="font-size:12px;white-space:nowrap"><span style="color:#6b7280">'+esc(d.l)+':</span> <span style="color:#64748b">'+d.o+'</span> <span style="color:#94a3b8">→</span> <span style="font-weight:600;color:'+col+'">'+d.n+'</span></span>';
+      });
+      _rdHtml+='</div></div>';
+    });
+    if(_rdHtml){
+      html+='<div style="margin-bottom:14px;padding:10px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px">';
+      html+='<div style="display:flex;align-items:center;gap:6px;cursor:pointer" onclick="var p=this.nextElementSibling;var a=this.querySelector(\'span:last-child\');if(p.style.display===\'none\'){p.style.display=\'block\';a.textContent=\'▾\';}else{p.style.display=\'none\';a.textContent=\'▸\';}">';
+      html+='<span style="font-weight:700;color:#92400e">📋 Contract Rate Changes</span><span style="color:#92400e;font-size:11px">▾</span></div>';
+      html+='<div>'+_rdHtml+'</div>';
+      html+='</div>';
+    }
+  }
+
   if(_scopeActive){
     html+='<div style="margin-bottom:14px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px;color:#15803d;display:flex;align-items:center;gap:8px">';
     html+='<span>📋</span><span>In-Scope Cost reflects <strong>Scope Quotation</strong> selections. Items outside HLC scope are shown under Excluded Cost.</span>';
