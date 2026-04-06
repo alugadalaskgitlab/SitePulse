@@ -3161,7 +3161,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         scHasRev = _scR.hasRev;
       }
     }
-    var revenue = curRev.revenue, hasRev = curRev.hasRev, revMode = curRev.revMode;
+    var revenue = curRev.revenue, hasRev = curRev.hasRev, revMode = contractRates[s.id+'__REV_MODE']||'itemRates';
     var baseRevenue = curRev.baseRevenue;
     var adjAmt = 0;
     if(mode==='itemised'){
