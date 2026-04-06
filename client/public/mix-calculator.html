@@ -303,6 +303,10 @@ body{font-size:11px;background:#fff}
       <div class="form-group"><label>Plant Hours / Month</label><input id="plantHrsMonth" type="number" value="200" oninput="recalc()"></div>
     </div>
     <div id="equipCards"></div>
+    <div style="margin-top:10px;text-align:center">
+      <button onclick="addCustomEquipment(false)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #d97706;background:#fffbeb;color:#92400e;border-radius:8px;cursor:pointer" data-testid="btn-add-plant-equip">+ Add Plant Equipment</button>
+      <button onclick="addCustomEquipment(true)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #2563eb;background:#eff6ff;color:#1e40af;border-radius:8px;cursor:pointer;margin-left:8px" data-testid="btn-add-laying-equip">+ Add Laying Equipment</button>
+    </div>
   </div>
 </div>
 
@@ -596,6 +600,38 @@ var FRAC_KEYS = ['f20mm','f10mm','f6mm','fDust','fFiller'];
 var FRAC_LABELS = ['20mm','10mm','6mm / Chips','Dust / Screening','Filler'];
 
 var DEFAULT_FUEL = {hotmix:0, dg:12, jcb:8, tipper:4, paver:12, roller:6, ptr:5};
+var _customEqCounter = 0;
+var CORE_EQUIP_IDS = ['hotmix','dg','jcb','tipper','paver','roller','ptr'];
+
+function addCustomEquipment(isLaying){
+  _customEqCounter++;
+  var newId = 'custom_'+(Date.now()+'').slice(-6)+'_'+_customEqCounter;
+  equipDefs.push({
+    id:newId, name:isLaying?'Custom Laying Equip':'Custom Equipment', mode:'hired',
+    capex:2000000, life:8, maint:10, hireBasis:'daily', hireRate:5000, hireHrsDay:8, hireHrsMonth:200,
+    enabled:true, isLaying:isLaying, fuelConsump:0, custom:true
+  });
+  saveState(); renderEquipCards(); recalc();
+}
+
+function removeCustomEquipment(idx){
+  if(idx<0||idx>=equipDefs.length||!equipDefs[idx].custom) return;
+  var eqId = equipDefs[idx].id;
+  equipDefs.splice(idx,1);
+  ['mixing','paving'].forEach(function(sec){
+    if(scopeState[sec]){
+      delete scopeState[sec][eqId+'Hire'];
+      delete scopeState[sec][eqId+'Hsd'];
+    }
+  });
+  saveState(); renderEquipCards(); recalc();
+}
+
+function renameCustomEquipment(idx, val){
+  if(idx<0||idx>=equipDefs.length||!equipDefs[idx].custom) return;
+  equipDefs[idx].name = val||'Custom Equipment';
+  saveState();
+}
 
 var _crewDefaults = {monthly:150000, days:25, hrs:8};
 
@@ -782,7 +818,7 @@ function loadState(){
     var state = JSON.parse(raw);
     state = migrateState(state);
     if(state.mixTypes && state.mixTypes.length >= 2) mixTypes = state.mixTypes;
-    if(state.equipDefs && state.equipDefs.length === equipDefs.length) equipDefs = state.equipDefs;
+    if(state.equipDefs && state.equipDefs.length >= 7) equipDefs = state.equipDefs;
     if(Array.isArray(state.sites)){
       sites = state.sites;
       siteCounter = state.siteCounter || sites.length;
@@ -1425,10 +1461,17 @@ function renderEquipCards(){
     html += '<div class="equip-card">';
     html += '<div class="equip-card-header">';
     html += '<div style="display:flex;align-items:center;gap:8px">';
-    if(eq.id==='ptr'){
+    if(eq.id==='ptr' || eq.custom){
       html += '<label class="checkbox-label" style="margin-right:8px"><input type="checkbox" '+(eq.enabled?'checked':'')+' oninput="equipDefs['+i+'].enabled=this.checked;recalc();renderEquipCards()"> Enable</label>';
     }
-    html += '<h3>'+eq.name+'</h3>';
+    if(eq.custom){
+      html += '<input type="text" value="'+esc(eq.name)+'" onblur="renameCustomEquipment('+i+',this.value)" style="font-size:14px;font-weight:700;border:1px solid #d1d5db;border-radius:4px;padding:3px 8px;width:180px" data-testid="input-equip-name-'+i+'">';
+      html += '<button onclick="if(confirm(\'Remove \'+equipDefs['+i+'].name+\'?\'))removeCustomEquipment('+i+')" style="color:#ef4444;border:none;background:none;cursor:pointer;font-size:16px;padding:2px 6px" title="Remove" data-testid="btn-remove-equip-'+i+'">✕</button>';
+      if(eq.isLaying) html += '<span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:10px;font-weight:600">LAYING</span>';
+      else html += '<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-weight:600">PLANT</span>';
+    } else {
+      html += '<h3>'+eq.name+'</h3>';
+    }
     html += '</div>';
     html += '<div style="display:flex;flex-direction:column;align-items:flex-end">';
     if(eq.isLaying){
@@ -1444,7 +1487,7 @@ function renderEquipCards(){
     html += '</div>';
     html += '</div>';
 
-    if(!eq.enabled && eq.id==='ptr'){
+    if(!eq.enabled && (eq.id==='ptr' || eq.custom)){
       html += '<div style="padding:8px;color:var(--gray-400);font-size:12px;font-style:italic">Disabled</div>';
     } else {
       html += '<div class="form-grid-3" style="margin-top:8px">';
@@ -1565,6 +1608,7 @@ function recalc(){
   var layRollerD = getEquipDailyCost(rollerEq);
   var layPtrD = getEquipDailyCost(ptrEq);
   var layTotalDaily = layPaverD + layRollerD + layPtrD + layCrewD;
+  equipDefs.forEach(function(eq){ if(eq.custom && eq.isLaying && eq.enabled) layTotalDaily += getEquipDailyCost(eq); });
   var layPerMT = layProd>0?(layTotalDaily/layProd):0;
   document.getElementById('layDerived').value = fmt(layPerMT);
 
@@ -2816,6 +2860,11 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         if(scopeState.mixing.tipperHsd) mx+=_sc.tipperHsd*hm;
         if(scopeState.mixing.aggregate) mx+=_sc.aggregate*am;
         mx+=_sc.crewPerMT;
+        (_sc.customEquip||[]).forEach(function(ce){
+          if(ce.isLaying||!ce.enabled) return;
+          if(scopeState.mixing[ce.id+'Hire']) mx+=ce.hire;
+          if(scopeState.mixing[ce.id+'Hsd']) mx+=ce.hsd*hm;
+        });
       }
       if(_sg.paving){
         if(scopeState.paving.paverHire) pv+=_sc.paverHire;
@@ -2826,6 +2875,11 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
           if(scopeState.paving.ptrHire) pv+=_sc.ptrHire;
           if(scopeState.paving.ptrHsd) pv+=_sc.ptrHsd*hm;
         }
+        (_sc.customEquip||[]).forEach(function(ce){
+          if(!ce.isLaying||!ce.enabled) return;
+          if(scopeState.paving[ce.id+'Hire']) pv+=ce.hire;
+          if(scopeState.paving[ce.id+'Hsd']) pv+=ce.hsd*hm;
+        });
         pv+=_sc.layCrewPerMT;
       }
       return {mix:mx,pav:pv};
@@ -3592,7 +3646,7 @@ var scenarioModeEstimateId = null;
 function loadScenarioState(state){
   state = migrateState(state);
   if(state.mixTypes&&state.mixTypes.length>=2) mixTypes=state.mixTypes;
-  if(state.equipDefs&&state.equipDefs.length===equipDefs.length) equipDefs=state.equipDefs;
+  if(state.equipDefs&&state.equipDefs.length>=7) equipDefs=state.equipDefs;
   if(Array.isArray(state.sites)){
     sites=state.sites; siteCounter=state.siteCounter||sites.length; jobCounter=state.jobCounter||0;
   }
@@ -3836,7 +3890,7 @@ function calcScopeComponents(){
   var avgAggFrac = mixTypes.length>0 ? mixTypes.reduce(function(s,m){return s+FRAC_KEYS.reduce(function(a,k){return a+(m.fractions[k]||0);},0);},0)/mixTypes.length/100 : 0;
   var aggCostPerMT = avgAggFrac * aggLandedVal;
 
-  return {
+  var result = {
     hotmixHire : getEquipHireCostPerMT(hotmixEq),
     ldo        : ldoPerMT + boilerProdPMT + boilerPrePMT,
     dgHire     : getEquipHireCostPerMT(dgEq),
@@ -3859,8 +3913,18 @@ function calcScopeComponents(){
     ptrHire    : layHirePerMT(ptrEq),
     ptrHsd     : layFuelPerMT(ptrEq),
     layCrewPerMT: layCrewPerMT,
-    ptrEnabled : ptrEq&&ptrEq.enabled
+    ptrEnabled : ptrEq&&ptrEq.enabled,
+    customEquip: []
   };
+  equipDefs.forEach(function(eq){
+    if(!eq.custom) return;
+    result.customEquip.push({
+      id: eq.id, name: eq.name, isLaying: eq.isLaying, enabled: eq.enabled,
+      hire: eq.isLaying ? layHirePerMT(eq) : getEquipHireCostPerMT(eq),
+      hsd:  eq.isLaying ? layFuelPerMT(eq) : getEquipFuelPerMT(eq)
+    });
+  });
+  return result;
 }
 
 function renderScopeRow(container, stateObj, key, label, val, unit){
@@ -3909,6 +3973,12 @@ function renderScopeQuotation(){
     ];
     mixItems.forEach(function(it){
       mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, it.key, it.label, it.val, 'MT'));
+    });
+    (sc.customEquip||[]).forEach(function(ce){
+      if(ce.isLaying) return;
+      if(!ce.enabled) return;
+      mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hire', esc(ce.name)+' — hire', ce.hire, 'MT'));
+      if(ce.hsd>0) mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hsd', esc(ce.name)+' HSD (fuel)', ce.hsd, 'MT'));
     });
     mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen', 'Bitumen / Binder', sc.bitumen, 'MT'));
     mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)', sc.aggregate, 'MT'));
@@ -3959,6 +4029,12 @@ function renderScopeQuotation(){
     pavItems.forEach(function(it){
       pavCont.appendChild(renderScopeRow('paving', scopeState.paving, it.key, it.label, it.val, 'MT'));
     });
+    (sc.customEquip||[]).forEach(function(ce){
+      if(!ce.isLaying) return;
+      if(!ce.enabled) return;
+      pavCont.appendChild(renderScopeRow('paving', scopeState.paving, ce.id+'Hire', esc(ce.name)+' — hire', ce.hire, 'MT'));
+      if(ce.hsd>0) pavCont.appendChild(renderScopeRow('paving', scopeState.paving, ce.id+'Hsd', esc(ce.name)+' HSD (fuel)', ce.hsd, 'MT'));
+    });
     pavCont.appendChild(renderScopeAlwaysRow('Laying Crew', sc.layCrewPerMT, 'MT'));
   }
 
@@ -3977,6 +4053,11 @@ function renderScopeQuotation(){
     if(scopeState.mixing.tipperHsd)  mixBase += sc.tipperHsd;
     if(scopeState.mixing.bitumen)    mixBase += sc.bitumen;
     if(scopeState.mixing.aggregate)  mixBase += sc.aggregate;
+    (sc.customEquip||[]).forEach(function(ce){
+      if(ce.isLaying||!ce.enabled) return;
+      if(scopeState.mixing[ce.id+'Hire']) mixBase += ce.hire;
+      if(scopeState.mixing[ce.id+'Hsd'])  mixBase += ce.hsd;
+    });
     mixBase += sc.crewPerMT;
     mixBase *= mf;
   }
@@ -3999,6 +4080,11 @@ function renderScopeQuotation(){
       if(scopeState.paving.ptrHire)  pavBase += sc.ptrHire;
       if(scopeState.paving.ptrHsd)   pavBase += sc.ptrHsd;
     }
+    (sc.customEquip||[]).forEach(function(ce){
+      if(!ce.isLaying||!ce.enabled) return;
+      if(scopeState.paving[ce.id+'Hire']) pavBase += ce.hire;
+      if(scopeState.paving[ce.id+'Hsd'])  pavBase += ce.hsd;
+    });
     pavBase += sc.layCrewPerMT;
     pavBase *= mf;
   }
