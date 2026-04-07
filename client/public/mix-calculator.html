@@ -4374,32 +4374,41 @@ function applyRoleRestrictions() {
   for (var i = 0; i < els.length; i++) {
     els[i].style.display = 'none';
   }
+  var inputs = document.querySelectorAll('.grid input, .grid select, .grid textarea, .card-body input, .card-body select, .card-body textarea, .job-card input, .job-card select');
+  for (var i = 0; i < inputs.length; i++) {
+    var el = inputs[i];
+    if (el.classList.contains('derived') || el.readOnly) continue;
+    if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'number') {
+      el.disabled = true;
+    } else {
+      el.readOnly = true;
+    }
+    el.style.opacity = '0.7';
+    el.style.cursor = 'default';
+  }
+  var toggleBtns = document.querySelectorAll('.toggle-btn');
+  for (var i = 0; i < toggleBtns.length; i++) {
+    toggleBtns[i].disabled = true;
+    toggleBtns[i].style.pointerEvents = 'none';
+  }
 }
 applyRoleRestrictions();
 
-var _origRenderSites = typeof renderSites === 'function' ? renderSites : null;
-if (_origRenderSites) {
-  var _baseRenderSites = renderSites;
-  renderSites = function() {
-    _baseRenderSites.apply(this, arguments);
-    applyRoleRestrictions();
-  };
-}
+var _renderFnsToWrap = ['renderSites','renderEquipCards','renderMixTabs','renderMixPanels','renderScopeQuotation','renderProcurement','renderProfitability'];
+_renderFnsToWrap.forEach(function(fnName) {
+  if (typeof window[fnName] === 'function') {
+    var _base = window[fnName];
+    window[fnName] = function() {
+      _base.apply(this, arguments);
+      applyRoleRestrictions();
+    };
+  }
+});
 
-var _origRenderEquipCards = typeof renderEquipCards === 'function' ? renderEquipCards : null;
-if (_origRenderEquipCards) {
-  var _baseRenderEquipCards = renderEquipCards;
-  renderEquipCards = function() {
-    _baseRenderEquipCards.apply(this, arguments);
-    applyRoleRestrictions();
-  };
-}
-
-var _origRenderMixTabs = typeof renderMixTabs === 'function' ? renderMixTabs : null;
-if (_origRenderMixTabs) {
-  var _baseRenderMixTabs = renderMixTabs;
-  renderMixTabs = function() {
-    _baseRenderMixTabs.apply(this, arguments);
+if (typeof recalc === 'function') {
+  var _baseRecalc = recalc;
+  recalc = function() {
+    _baseRecalc.apply(this, arguments);
     applyRoleRestrictions();
   };
 }
