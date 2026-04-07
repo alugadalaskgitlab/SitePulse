@@ -165,12 +165,13 @@ function redirect() {
   }
 }
 
-(function checkAlreadyLoggedIn() {
+var params = new URLSearchParams(window.location.search);
+if (params.get('returnTo')) {
   var role = localStorage.getItem(ROLE_KEY);
   if (role === 'admin' || role === 'manager') {
     redirect();
   }
-})();
+}
 </script>
 </body>
 </html>
