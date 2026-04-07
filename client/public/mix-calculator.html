@@ -3016,8 +3016,14 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   }
 
   if(_scopeActive){
+    var _anyUseScope = false;
+    sites.forEach(function(s){ if(!s.jobs.length) return; var m=contractRates[s.id+'__MODE']||'itemised'; var rm=contractRates[s.id+'__REV_MODE']||'itemRates'; if(m==='itemised'&&rm==='scopeRate') _anyUseScope=true; });
     html+='<div style="margin-bottom:14px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px;color:#15803d;display:flex;align-items:center;gap:8px">';
-    html+='<span>📋</span><span>In-Scope Cost reflects <strong>Scope Quotation</strong> selections. Items outside HLC scope are shown under Excluded Cost.</span>';
+    if(_anyUseScope){
+      html+='<span>📋</span><span>Cost shows <strong>full production cost</strong> for Item Rate / Per km / Lumpsum modes. <strong>Scope Rate</strong> mode shows in-scope cost only.</span>';
+    } else {
+      html+='<span>📋</span><span>Cost shows <strong>full production cost</strong> (all components: materials, equipment, labour, paving, transport).</span>';
+    }
     html+='</div>';
   }
 
@@ -3149,6 +3155,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       });
     }
 
+    var revFullJobCost = revPlantCost + revTransCost + revLayCost + revOverheadCost + revPrimeCost + revTackCost;
+
     var curRev, scRev = null, scRevenue = null, scHasRev = false;
     if(scenarioMode && procScenarioContractRates){
       var baseMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
@@ -3187,8 +3195,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       scHasRev = false; scRevenue = null;
     }
 
-    var _baseCost = inScopeCost;
-    var _scenarioCost = hasRevised ? revInScopeCost : inScopeCost;
+    var _useScope = (mode === 'itemised' && revMode === 'scopeRate');
+    var _baseCost = _useScope ? inScopeCost : fullJobCost;
+    var _scenarioCost = _useScope ? (hasRevised ? revInScopeCost : inScopeCost) : (hasRevised ? revFullJobCost : fullJobCost);
     var _adjustment = adjAmt || 0;
     var _baseRevenue = hasRev ? revenue : null;
     if(scenarioMode) _baseRevenue = revenue;
@@ -3226,31 +3235,41 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mq=mixQty[mn];
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-      var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
-      var baseCPM = (_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+baseOverheadPerMT;
+      var baseCPM;
+      if(_useScope){
+        var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
+        baseCPM = (_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+baseOverheadPerMT;
+      } else {
+        baseCPM = (mr.exPlant+baseSiteTransPerMT+baseLayPerMT)+baseOverheadPerMT;
+      }
       var baseCPC = baseCPM * mix.density;
       var revCPC = baseCPC;
       if(hasRevised && revisedMixRates){
         var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0];
         var _rl = rmr.laying!=null?rmr.laying:layPerMT;
-        var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
         var _rohd = rmr.overhead||0;
-        var revCPM = (_ecr!=null?_ecr:(rmr.exPlant+siteTransPerMT+_rl))+_rohd;
+        var revCPM;
+        if(_useScope){
+          var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
+          revCPM = (_ecr!=null?_ecr:(rmr.exPlant+siteTransPerMT+_rl))+_rohd;
+        } else {
+          revCPM = (rmr.exPlant+siteTransPerMT+_rl)+_rohd;
+        }
         revCPC = revCPM * mix.density;
       }
       mixItemCosts[mn] = {baseCostPerCUM: baseCPC, revCostPerCUM: revCPC};
     });
-    var basePrimeCPS = _scopeActive ? _sPrimeRaw : rawBasePrimePerSqm;
-    var baseTackCPS = _scopeActive ? _sTackRaw : rawBaseTackPerSqm;
+    var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawBasePrimePerSqm;
+    var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawBaseTackPerSqm;
     var revPrimeCPS = basePrimeCPS, revTackCPS = baseTackCPS;
     if(hasRevised){
-      revPrimeCPS = _scopeActive ? _sPrimeRaw : rawPrimePerSqm;
-      revTackCPS = _scopeActive ? _sTackRaw : rawTackPerSqm;
+      revPrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawPrimePerSqm;
+      revTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawTackPerSqm;
     }
 
     siteRows.push({
       site: s, mode: mode, mixQty: mixQty, primeArea: primeArea, tackArea: tackArea,
-      totalRoadKm: totalRoadKm, siteTransPerMT: siteTransPerMT,
+      totalRoadKm: totalRoadKm, siteTransPerMT: siteTransPerMT, _useScope: _useScope,
       fullJobCost: fullJobCost, inScopeCost: inScopeCost,
       revInScopeCost: revInScopeCost, revenue: revenue, hasRev: hasRev,
       excluded: excluded, profit: profit, margin: margin,
