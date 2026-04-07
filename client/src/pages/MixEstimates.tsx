@@ -334,7 +334,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                          <th className="text-left px-5 py-2.5 font-semibold">Site Name</th>
+                          <th className="text-left px-5 py-2.5 font-semibold">Site / Estimate Name</th>
                           <th className="text-right px-4 py-2.5 font-semibold">MT</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Amount</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Saved</th>
@@ -349,17 +349,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                             data-testid={`row-estimate-${est.id}`}
                           >
                             <td className="px-5 py-3">
-                              {(() => {
-                                const siteNames = parsedStates[est.id]?.siteNames || [];
-                                return siteNames.length > 0 ? (
-                                  <>
-                                    <span className="font-medium text-foreground">{siteNames.join(" / ")}</span>
-                                    <span className="block text-xs text-muted-foreground mt-0.5">{est.name}</span>
-                                  </>
-                                ) : (
-                                  <span className="font-medium text-foreground">{est.name}</span>
-                                );
-                              })()}
+                              <span className="font-medium text-foreground">{est.name}</span>
                               {est.contractorList && est.contractorList !== contractor && (
                                 <span className="block text-xs text-muted-foreground mt-0.5">{est.contractorList}</span>
                               )}
