@@ -94,8 +94,24 @@ export default function MixEstimates({ embedded = false }: Props) {
     window.location.href = "/mix-calculator";
   }
 
-  // Group by contractor
-  type Group = { contractor: string; estimates: MixEstimate[]; latestId: number };
+  const parsedStates = useMemo(() => {
+    const map: Record<number, { projName: string; siteNames: string[] }> = {};
+    estimates.forEach((est) => {
+      try {
+        const state = JSON.parse(est.state);
+        const projName = state?.inputs?.projName || "";
+        const siteNames = Array.isArray(state?.sites)
+          ? state.sites.map((s: { name?: string }) => s.name?.trim()).filter(Boolean) as string[]
+          : [];
+        map[est.id] = { projName, siteNames };
+      } catch {
+        map[est.id] = { projName: "", siteNames: [] };
+      }
+    });
+    return map;
+  }, [estimates]);
+
+  type Group = { contractor: string; estimates: MixEstimate[]; latestId: number; projName: string };
   const groups: Group[] = [];
   const contractorMap: Record<string, MixEstimate[]> = {};
 
@@ -115,7 +131,8 @@ export default function MixEstimates({ embedded = false }: Props) {
   }).forEach((key) => {
     const ests = contractorMap[key];
     const latestId = ests[0]?.id;
-    groups.push({ contractor: key, estimates: ests, latestId });
+    const projName = ests[0] ? (parsedStates[ests[0].id]?.projName || "") : "";
+    groups.push({ contractor: key, estimates: ests, latestId, projName });
   });
 
   const comparisonData = useMemo(() => buildMixComparisonData(estimates), [estimates]);
@@ -208,7 +225,7 @@ export default function MixEstimates({ embedded = false }: Props) {
         </Card>
       ) : (
         <div className="space-y-4">
-          {groups.map(({ contractor, estimates: ests, latestId }) => {
+          {groups.map(({ contractor, estimates: ests, latestId, projName }) => {
             const isCollapsed = collapsedContractors[contractor];
             const totalMt = ests.reduce((s, e) => s + (e.totalMt || 0), 0);
             const totalAmt = ests.reduce((s, e) => s + (e.totalAmt || 0), 0);
@@ -254,20 +271,25 @@ export default function MixEstimates({ embedded = false }: Props) {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-base text-foreground">{contractor}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {ests.length} site{ests.length !== 1 ? "s" : ""}
-                        </span>
-                        {contractor !== "UNASSIGNED" && (
-                          <button
-                            onClick={(e) => startEdit(contractor, e)}
-                            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
-                            title="Rename contractor"
-                            data-testid={`btn-rename-${contractor}`}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-base text-foreground">{contractor}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {ests.length} site{ests.length !== 1 ? "s" : ""}
+                          </span>
+                          {contractor !== "UNASSIGNED" && (
+                            <button
+                              onClick={(e) => startEdit(contractor, e)}
+                              className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
+                              title="Rename contractor"
+                              data-testid={`btn-rename-${contractor}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        {projName && projName !== contractor && (
+                          <span className="text-xs text-muted-foreground mt-0.5" data-testid={`text-projname-${contractor}`}>{projName}</span>
                         )}
                       </div>
                     )}
@@ -312,7 +334,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                          <th className="text-left px-5 py-2.5 font-semibold">Site / Estimate Name</th>
+                          <th className="text-left px-5 py-2.5 font-semibold">Site Name</th>
                           <th className="text-right px-4 py-2.5 font-semibold">MT</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Amount</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Saved</th>
@@ -327,7 +349,17 @@ export default function MixEstimates({ embedded = false }: Props) {
                             data-testid={`row-estimate-${est.id}`}
                           >
                             <td className="px-5 py-3">
-                              <span className="font-medium text-foreground">{est.name}</span>
+                              {(() => {
+                                const siteNames = parsedStates[est.id]?.siteNames || [];
+                                return siteNames.length > 0 ? (
+                                  <>
+                                    <span className="font-medium text-foreground">{siteNames.join(" / ")}</span>
+                                    <span className="block text-xs text-muted-foreground mt-0.5">{est.name}</span>
+                                  </>
+                                ) : (
+                                  <span className="font-medium text-foreground">{est.name}</span>
+                                );
+                              })()}
                               {est.contractorList && est.contractorList !== contractor && (
                                 <span className="block text-xs text-muted-foreground mt-0.5">{est.contractorList}</span>
                               )}
