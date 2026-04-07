@@ -12,6 +12,25 @@
 <link rel="apple-touch-icon" href="/icons/mix-calc-apple-touch-icon.png">
 <meta name="description" content="Bitumen Hot Mix Rate Calculator — compute mix rates, costs and procurement for road works.">
 <style>
+body.manager-mode .admin-only { display: none !important; }
+body.manager-mode .card-body input:not(.derived),
+body.manager-mode .card-body select,
+body.manager-mode .card-body textarea,
+body.manager-mode .grid input,
+body.manager-mode .grid select,
+body.manager-mode .job-card input,
+body.manager-mode .job-card select,
+body.manager-mode .full-width input:not(.derived),
+body.manager-mode .full-width select,
+body.manager-mode .full-width textarea,
+body.manager-mode #profitabilityContainer input,
+body.manager-mode #profitabilityContainer select,
+body.manager-mode #procScenarioBar select { pointer-events: none !important; opacity: 0.65 !important; background: #f3f4f6 !important; }
+body.manager-mode .toggle-btn,
+body.manager-mode .card-body button:not(.card-header):not([onclick*="toggleCard"]),
+body.manager-mode .full-width button:not([onclick*="toggleCard"]),
+body.manager-mode #profitabilityContainer button,
+body.manager-mode #procScenarioBar button { pointer-events: none !important; opacity: 0.5 !important; }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--amber:#d97706;--amber-light:#f59e0b;--amber-bg:#fffbeb;--amber-border:#fde68a;--blue:#2563eb;--blue-bg:#eff6ff;--blue-border:#bfdbfe;--green:#16a34a;--red:#dc2626;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--gray-100);color:var(--gray-800);font-size:16px;line-height:1.5}
@@ -619,6 +638,7 @@ if (_mixRole !== 'admin' && _mixRole !== 'manager') {
   window.location.href = '/mix-calculator/login?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search);
 }
 var _isAdmin = (_mixRole === 'admin');
+if (!_isAdmin) { document.body.classList.add('manager-mode'); }
 
 // ====== STATE ======
 var aggBasis = 'MT';
@@ -4370,6 +4390,7 @@ function mixExit() {
 
 function applyRoleRestrictions() {
   if (_isAdmin) return;
+  document.body.classList.add('manager-mode');
   var els = document.querySelectorAll('.admin-only');
   for (var i = 0; i < els.length; i++) {
     els[i].style.display = 'none';
@@ -4380,31 +4401,44 @@ function applyRoleRestrictions() {
     if (el.id === 'pinInput' || el.closest('#printSettingsOverlay') || el.closest('.top-bar')) continue;
     if (el.classList.contains('derived')) continue;
     el.disabled = true;
-    el.style.opacity = '0.7';
-    el.style.cursor = 'default';
+    el.readOnly = true;
+    el.tabIndex = -1;
   }
-  var btns = document.querySelectorAll('.toggle-btn, .card-body button, .job-card button, .full-width button, #procScenarioBar button');
+  var btns = document.querySelectorAll('.toggle-btn, .card-body button, .job-card button, .full-width button, #procScenarioBar button, #profitabilityContainer button');
   for (var i = 0; i < btns.length; i++) {
     var b = btns[i];
     if (b.closest('.top-bar') || b.closest('#printSettingsOverlay')) continue;
     if (b.classList.contains('admin-only')) continue;
+    if (b.getAttribute('onclick') && b.getAttribute('onclick').indexOf('toggleCard') !== -1) continue;
     b.disabled = true;
-    b.style.pointerEvents = 'none';
-    b.style.opacity = '0.6';
+    b.tabIndex = -1;
   }
 }
 
 if (!_isAdmin) {
-  document.addEventListener('input', function(e) {
+  document.addEventListener('change', function(e) {
     var el = e.target;
     if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
-      e.stopPropagation();
+      e.preventDefault();
+      e.stopImmediatePropagation();
     }
   }, true);
 
-  var _managerStyle = document.createElement('style');
-  _managerStyle.textContent = '.card-body input:not(.derived), .card-body select, .card-body textarea, .job-card input, .job-card select, .grid input, .grid select { pointer-events: none !important; opacity: 0.7 !important; } .admin-only { display: none !important; } .toggle-btn { pointer-events: none !important; }';
-  document.head.appendChild(_managerStyle);
+  document.addEventListener('input', function(e) {
+    var el = e.target;
+    if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
+      e.stopImmediatePropagation();
+    }
+  }, true);
+
+  document.addEventListener('keydown', function(e) {
+    var el = e.target;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) {
+      if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
+        e.preventDefault();
+      }
+    }
+  }, true);
 }
 
 applyRoleRestrictions();
