@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,13 @@ interface ScenarioEntry {
 }
 
 export default function ScenarioComparison() {
+  useEffect(() => {
+    const r = localStorage.getItem("hlc_mix_role");
+    if (r !== "admin" && r !== "manager") {
+      window.location.href = "/mix-calculator/login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+  }, []);
+
   const search = useSearch();
   const params = new URLSearchParams(search);
   const estimateId = parseInt(params.get("estimateId") || "0");

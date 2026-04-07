@@ -199,9 +199,11 @@ body{font-size:11px;background:#fff}
     <button id="btnInstall" class="btn btn-secondary btn-sm no-print" onclick="triggerInstall()" title="Install as app on your device" style="display:none;color:#92400e;background:#fef3c7;border:1px solid #fde68a">📲 Install App</button>
     <a href="/admin/mix-estimates" class="btn btn-secondary btn-sm no-print">← Overview</a>
     <button class="btn btn-secondary btn-sm no-print" id="btnSaved" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
-    <button class="btn btn-secondary btn-sm no-print" id="btnSave" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
-    <button class="btn btn-secondary btn-sm no-print" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
-    <button class="btn btn-primary no-print" onclick="window.print()">🖨 Print</button>
+    <button class="btn btn-secondary btn-sm no-print admin-only" id="btnSave" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
+    <button class="btn btn-secondary btn-sm no-print admin-only" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
+    <button class="btn btn-primary no-print" onclick="openPrintSettings()">🖨 Print</button>
+    <button class="btn btn-secondary btn-sm no-print" onclick="mixLogout()" title="Logout" style="color:var(--gray-500)">⏻ Logout</button>
+    <button class="btn btn-secondary btn-sm no-print" onclick="mixExit()" title="Exit" style="color:var(--red)">✕</button>
   </div>
 </div>
 <div id="scenarioBanner" class="scenario-banner no-print">
@@ -260,7 +262,7 @@ body{font-size:11px;background:#fff}
   <div class="card-body open">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       <div class="mix-tab-bar" id="mixTabBar"></div>
-      <button class="btn btn-secondary btn-sm" onclick="addMixType()">+ Add Mix</button>
+      <button class="btn btn-secondary btn-sm admin-only" onclick="addMixType()">+ Add Mix</button>
     </div>
     <div id="mixPanels"></div>
   </div>
@@ -304,8 +306,8 @@ body{font-size:11px;background:#fff}
     </div>
     <div id="equipCards"></div>
     <div style="margin-top:10px;text-align:center">
-      <button onclick="addCustomEquipment(false)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #d97706;background:#fffbeb;color:#92400e;border-radius:8px;cursor:pointer" data-testid="btn-add-plant-equip">+ Add Plant Equipment</button>
-      <button onclick="addCustomEquipment(true)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #2563eb;background:#eff6ff;color:#1e40af;border-radius:8px;cursor:pointer;margin-left:8px" data-testid="btn-add-laying-equip">+ Add Laying Equipment</button>
+      <button class="admin-only" onclick="addCustomEquipment(false)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #d97706;background:#fffbeb;color:#92400e;border-radius:8px;cursor:pointer" data-testid="btn-add-plant-equip">+ Add Plant Equipment</button>
+      <button class="admin-only" onclick="addCustomEquipment(true)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #2563eb;background:#eff6ff;color:#1e40af;border-radius:8px;cursor:pointer;margin-left:8px" data-testid="btn-add-laying-equip">+ Add Laying Equipment</button>
     </div>
   </div>
 </div>
@@ -458,19 +460,19 @@ body{font-size:11px;background:#fff}
 <hr class="section-sep">
 
 <!-- ⑩ Job Estimator -->
-<div class="card">
+<div class="card" id="cardJobEstimator">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑩ Job Estimator</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
-    <button class="btn btn-blue btn-sm no-print" onclick="addSite()" style="margin-bottom:12px">+ Add Site</button>
+    <button class="btn btn-blue btn-sm no-print admin-only" onclick="addSite()" style="margin-bottom:12px">+ Add Site</button>
     <div class="sites-container" id="sitesContainer"></div>
     <div id="jobTotalsContainer" style="margin-top:12px"></div>
   </div>
 </div>
 
 <!-- ⑬ Scope Quotation (positioned between Job Estimator and Contractor Summary) -->
-<div class="card">
+<div class="card" id="cardScopeQuotation">
   <div class="card-header" onclick="toggleCard(this)">
     <h2>⑬ Scope Quotation</h2><span class="chevron">▼</span>
   </div>
@@ -536,7 +538,7 @@ body{font-size:11px;background:#fff}
 <hr class="section-sep">
 
 <!-- ⑪ Procurement & Cost Summary -->
-<div class="card">
+<div class="card" id="cardProcurement">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑪ Procurement Costs</h2><span class="chevron">▼</span>
   </div>
@@ -571,7 +573,7 @@ body{font-size:11px;background:#fff}
 </div>
 
 <!-- ⑫ Contract Profitability -->
-<div class="card">
+<div class="card" id="cardProfitability">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑫ Profitability</h2><span class="chevron">▼</span>
   </div>
@@ -585,7 +587,39 @@ body{font-size:11px;background:#fff}
 
 </div>
 
+<!-- Print Settings Modal -->
+<div id="printSettingsOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)" onclick="closePrintSettings(event)">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.2);width:420px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:between">
+      <div style="flex:1">
+        <h3 style="font-size:16px;font-weight:700;color:#1f2937;margin:0">Print Settings</h3>
+        <p style="font-size:12px;color:#9ca3af;margin:4px 0 0">Select sections to include in the printout</p>
+      </div>
+      <button onclick="closePrintSettings()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9ca3af;padding:4px;line-height:1">&times;</button>
+    </div>
+    <div style="padding:16px 20px;overflow-y:auto;flex:1" id="printSectionsContainer">
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+        <button onclick="printSelectAll(true)" style="font-size:12px;color:#2563eb;background:none;border:none;cursor:pointer;font-weight:600">Select All</button>
+        <button onclick="printSelectAll(false)" style="font-size:12px;color:#6b7280;background:none;border:none;cursor:pointer;font-weight:600">Deselect All</button>
+      </div>
+      <div id="printCheckboxes" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;background:#f9fafb">
+      <button onclick="closePrintSettings()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:14px;font-weight:500;cursor:pointer;color:#374151">Cancel</button>
+      <button onclick="executePrint()" style="padding:8px 20px;border:none;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;font-size:14px;font-weight:600;cursor:pointer">🖨 Print</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// ====== AUTH GATE ======
+var ROLE_KEY = 'hlc_mix_role';
+var _mixRole = localStorage.getItem(ROLE_KEY);
+if (_mixRole !== 'admin' && _mixRole !== 'manager') {
+  window.location.href = '/mix-calculator/login?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search);
+}
+var _isAdmin = (_mixRole === 'admin');
+
 // ====== STATE ======
 var aggBasis = 'MT';
 var activeMixIdx = 0;
@@ -1321,7 +1355,7 @@ function renderMixTabs(){
   mixTypes.forEach(function(m,i){
     var tab = document.createElement('div');
     tab.className = 'mix-tab'+(i===activeMixIdx?' active':'');
-    tab.innerHTML = m.name+(mixTypes.length>2?'<span class="remove-mix" onclick="event.stopPropagation();removeMix('+i+')">×</span>':'');
+    tab.innerHTML = m.name+(mixTypes.length>2?'<span class="remove-mix admin-only" onclick="event.stopPropagation();removeMix('+i+')">×</span>':'');
     tab.onclick = function(){ activeMixIdx=i; renderMixTabs(); renderMixPanels(); recalc(); };
     bar.appendChild(tab);
   });
@@ -1466,7 +1500,7 @@ function renderEquipCards(){
     }
     if(eq.custom){
       html += '<input type="text" value="'+esc(eq.name)+'" onblur="renameCustomEquipment('+i+',this.value)" style="font-size:14px;font-weight:700;border:1px solid #d1d5db;border-radius:4px;padding:3px 8px;width:180px" data-testid="input-equip-name-'+i+'">';
-      html += '<button onclick="if(confirm(\'Remove \'+equipDefs['+i+'].name+\'?\'))removeCustomEquipment('+i+')" style="color:#ef4444;border:none;background:none;cursor:pointer;font-size:16px;padding:2px 6px" title="Remove" data-testid="btn-remove-equip-'+i+'">✕</button>';
+      html += '<button class="admin-only" onclick="if(confirm(\'Remove \'+equipDefs['+i+'].name+\'?\'))removeCustomEquipment('+i+')" style="color:#ef4444;border:none;background:none;cursor:pointer;font-size:16px;padding:2px 6px" title="Remove" data-testid="btn-remove-equip-'+i+'">✕</button>';
       if(eq.isLaying) html += '<span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:10px;font-weight:600">LAYING</span>';
       else html += '<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-weight:600">PLANT</span>';
     } else {
@@ -2016,11 +2050,11 @@ function renderSites(){
     html += '<span class="sh-label">📍 Site</span>';
     html += '<input class="site-name" value="'+esc(s.name||'')+'" placeholder="e.g. NH-44 KM 105–115" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(x){};sites['+si+'].name=this.value;saveState()">';
     html += '<span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-600);white-space:nowrap"><span style="font-weight:600">Lead:</span><input type="number" value="'+(s.transLead!=null?s.transLead:'')+'" placeholder="'+n('transDist')+'" oninput="sites['+si+'].transLead=parseFloat(this.value)||null;recalc()" style="width:58px;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"><span style="font-weight:600">km</span></span>';
-    html += '<button class="btn btn-primary btn-sm no-print" onclick="addSiteJob('+si+')">+ Add Job</button>';
+    html += '<button class="btn btn-primary btn-sm no-print admin-only" onclick="addSiteJob('+si+')">+ Add Job</button>';
     html += '<button class="btn btn-secondary btn-sm no-print" onclick="openScopeSection()" title="Set scope of work for this contractor" style="color:var(--blue);border-color:var(--blue-border)">⚙ Scope</button>';
     html += '<div style="margin-left:auto;display:flex;gap:6px">';
     html += '<span class="jc-derived" id="siteTotalBadge_'+si+'"></span>';
-    html += '<button class="btn btn-danger btn-sm no-print" onclick="removeSite('+si+')" style="padding:3px 8px">× Site</button>';
+    html += '<button class="btn btn-danger btn-sm no-print admin-only" onclick="removeSite('+si+')" style="padding:3px 8px">× Site</button>';
     html += '</div></div>';
 
     html += '<div class="site-jobs">';
@@ -2060,8 +2094,8 @@ function renderJobCard(si,ji,j){
   html += '<label class="checkbox-label" title="Include Tack Coat for this job" style="gap:3px;font-size:11px;white-space:nowrap"><input type="checkbox" '+(j.tack!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].tack=this.checked;renderSites();recalc()"> Tack</label>';
   html += '<div style="margin-left:auto;display:flex;gap:4px;align-items:center">';
   html += '<span class="jc-derived" id="jobTotal_'+si+'_'+ji+'" style="font-weight:700"></span>';
-  html += '<button class="btn btn-secondary btn-sm no-print" onclick="addSiteJobMix('+si+','+ji+')">+ Mix</button>';
-  html += '<button class="btn btn-danger btn-sm no-print" onclick="removeSiteJob('+si+','+ji+')" style="padding:4px 8px">×</button>';
+  html += '<button class="btn btn-secondary btn-sm no-print admin-only" onclick="addSiteJobMix('+si+','+ji+')">+ Mix</button>';
+  html += '<button class="btn btn-danger btn-sm no-print admin-only" onclick="removeSiteJob('+si+','+ji+')" style="padding:4px 8px">×</button>';
   html += '</div></div>';
 
   html += '<div class="job-card-body"><table><thead><tr>';
@@ -2095,7 +2129,7 @@ function renderJobCard(si,ji,j){
     html += '<td class="jc-calc" style="color:var(--blue)" id="jmLayCum_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="jc-calc" id="jmTotalRate_'+si+'_'+ji+'_'+mi+'" style="font-weight:700"></td>';
     html += '<td class="jc-calc" style="color:var(--green);font-size:11px" id="jmTotalCum_'+si+'_'+ji+'_'+mi+'"></td>';
-    html += '<td class="no-print">'+(mixCount>1?'<button class="btn btn-danger btn-sm" onclick="removeSiteJobMix('+si+','+ji+','+mi+')" style="padding:2px 6px;font-size:11px">×</button>':'')+'</td>';
+    html += '<td class="no-print">'+(mixCount>1?'<button class="btn btn-danger btn-sm admin-only" onclick="removeSiteJobMix('+si+','+ji+','+mi+')" style="padding:2px 6px;font-size:11px">×</button>':'')+'</td>';
     html += '</tr>';
   });
 
@@ -4321,6 +4355,188 @@ function triggerInstall() {
       if (btn) btn.style.display = 'none';
     }
   });
+}
+
+// ====== AUTH HELPERS ======
+function mixLogout() {
+  localStorage.removeItem(ROLE_KEY);
+  window.location.href = '/mix-calculator/login';
+}
+function mixExit() {
+  localStorage.removeItem(ROLE_KEY);
+  window.close();
+  setTimeout(function(){ window.location.href = '/mix-calculator/login'; }, 300);
+}
+
+function applyRoleRestrictions() {
+  if (_isAdmin) return;
+  var els = document.querySelectorAll('.admin-only');
+  for (var i = 0; i < els.length; i++) {
+    els[i].style.display = 'none';
+  }
+}
+applyRoleRestrictions();
+
+var _origRenderSites = typeof renderSites === 'function' ? renderSites : null;
+if (_origRenderSites) {
+  var _baseRenderSites = renderSites;
+  renderSites = function() {
+    _baseRenderSites.apply(this, arguments);
+    applyRoleRestrictions();
+  };
+}
+
+var _origRenderEquipCards = typeof renderEquipCards === 'function' ? renderEquipCards : null;
+if (_origRenderEquipCards) {
+  var _baseRenderEquipCards = renderEquipCards;
+  renderEquipCards = function() {
+    _baseRenderEquipCards.apply(this, arguments);
+    applyRoleRestrictions();
+  };
+}
+
+var _origRenderMixTabs = typeof renderMixTabs === 'function' ? renderMixTabs : null;
+if (_origRenderMixTabs) {
+  var _baseRenderMixTabs = renderMixTabs;
+  renderMixTabs = function() {
+    _baseRenderMixTabs.apply(this, arguments);
+    applyRoleRestrictions();
+  };
+}
+
+// ====== PRINT SETTINGS ======
+var PRINT_SETTINGS_KEY = 'hlc_mix_print_settings';
+var PRINT_SECTIONS = [
+  { id: 'rateSummary', label: 'Rate Summary & Cost Breakdown', elId: 'rightCol', default: true },
+  { id: 'jobEstimator', label: '⑩ Job Estimator', elId: 'cardJobEstimator', default: true },
+  { id: 'scopeQuotation', label: '⑬ Scope Quotation', elId: 'cardScopeQuotation', default: true, autoHide: true },
+  { id: 'contractorSummary', label: 'Contractor Summary', elId: 'contractorSummary', default: true },
+  { id: 'procurement', label: '⑪ Procurement Costs', elId: 'cardProcurement', default: true },
+  { id: 'costBreakdown', label: '📊 Cost Breakdown', elId: 'costBreakdownCard', default: true },
+  { id: 'profitability', label: '⑫ Profitability', elId: 'cardProfitability', default: true }
+];
+
+function loadPrintSettings() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(PRINT_SETTINGS_KEY));
+    if (saved && typeof saved === 'object') return saved;
+  } catch(e) {}
+  var defaults = {};
+  PRINT_SECTIONS.forEach(function(s) { defaults[s.id] = s.default; });
+  return defaults;
+}
+
+function savePrintSettings(settings) {
+  localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function isScopeActive() {
+  var chks = ['scopeChkMixing','scopeChkTransport','scopeChkSpraying','scopeChkPaving'];
+  for (var i = 0; i < chks.length; i++) {
+    var el = document.getElementById(chks[i]);
+    if (el && el.checked) return true;
+  }
+  return false;
+}
+
+function openPrintSettings() {
+  var settings = loadPrintSettings();
+  var scopeActive = isScopeActive();
+  if (!scopeActive) settings.scopeQuotation = false;
+  var container = document.getElementById('printCheckboxes');
+  container.innerHTML = '';
+  PRINT_SECTIONS.forEach(function(sec) {
+    if (sec.autoHide && !scopeActive) return;
+    var checked = settings[sec.id] !== false;
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#f9fafb;border:1px solid #e5e7eb;cursor:pointer;transition:all .15s';
+    div.onmouseenter = function(){ this.style.background='#fffbeb'; this.style.borderColor='#fde68a'; };
+    div.onmouseleave = function(){ var cb=this.querySelector('input'); this.style.background=cb.checked?'#fffbeb':'#f9fafb'; this.style.borderColor=cb.checked?'#fde68a':'#e5e7eb'; };
+    var lbl = document.createElement('label');
+    lbl.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;font-size:14px;font-weight:500;color:#374151;user-select:none';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    cb.dataset.sectionId = sec.id;
+    cb.style.cssText = 'width:18px;height:18px;accent-color:#d97706;cursor:pointer;flex-shrink:0';
+    cb.onchange = function() {
+      var s = loadPrintSettings();
+      s[this.dataset.sectionId] = this.checked;
+      savePrintSettings(s);
+      var p = this.closest('div');
+      p.style.background = this.checked ? '#fffbeb' : '#f9fafb';
+      p.style.borderColor = this.checked ? '#fde68a' : '#e5e7eb';
+    };
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(sec.label));
+    div.appendChild(lbl);
+    div.onclick = function(e){ if(e.target.tagName!=='INPUT'){ var c=this.querySelector('input'); c.checked=!c.checked; c.onchange(); }};
+    if (checked) { div.style.background='#fffbeb'; div.style.borderColor='#fde68a'; }
+    container.appendChild(div);
+  });
+  document.getElementById('printSettingsOverlay').style.display = 'block';
+}
+
+function closePrintSettings(e) {
+  if (e && e.target && e.target.id !== 'printSettingsOverlay' && !e.target.closest) return;
+  document.getElementById('printSettingsOverlay').style.display = 'none';
+}
+
+function printSelectAll(val) {
+  var cbs = document.querySelectorAll('#printCheckboxes input[type=checkbox]');
+  var settings = loadPrintSettings();
+  for (var i = 0; i < cbs.length; i++) {
+    cbs[i].checked = val;
+    settings[cbs[i].dataset.sectionId] = val;
+    var p = cbs[i].closest('div');
+    p.style.background = val ? '#fffbeb' : '#f9fafb';
+    p.style.borderColor = val ? '#fde68a' : '#e5e7eb';
+  }
+  savePrintSettings(settings);
+}
+
+function executePrint() {
+  var settings = loadPrintSettings();
+  var cbs = document.querySelectorAll('#printCheckboxes input[type=checkbox]');
+  for (var i = 0; i < cbs.length; i++) {
+    settings[cbs[i].dataset.sectionId] = cbs[i].checked;
+  }
+  PRINT_SECTIONS.forEach(function(sec) {
+    if (sec.autoHide) {
+      var scopeBody = document.getElementById('scopeCardBody');
+      var isScopeActive = scopeBody && scopeBody.querySelector('.scope-table');
+      if (!isScopeActive) settings[sec.id] = false;
+    }
+  });
+  savePrintSettings(settings);
+  closePrintSettings();
+
+  var styleEl = document.createElement('style');
+  styleEl.id = 'printHideStyle';
+  var css = '@media print {\n';
+
+  PRINT_SECTIONS.forEach(function(sec) {
+    if (settings[sec.id] !== false) return;
+    if (sec.elId) {
+      css += '#' + sec.elId + ' { display: none !important; }\n';
+    }
+  });
+
+  if (settings.rateSummary !== false) {
+    css += '#rightCol { display: block !important; }\n';
+  }
+
+  css += '}\n';
+  styleEl.textContent = css;
+  document.head.appendChild(styleEl);
+
+  setTimeout(function() {
+    window.print();
+    setTimeout(function() {
+      var el = document.getElementById('printHideStyle');
+      if (el) el.remove();
+    }, 500);
+  }, 100);
 }
 </script>
 </body>

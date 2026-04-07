@@ -16,6 +16,16 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get('/mix-calculator/login', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    const root = process.env.NODE_ENV === 'production'
+      ? path.join(process.cwd(), 'dist', 'public')
+      : path.join(process.cwd(), 'client', 'public');
+    res.sendFile('mix-calculator-login.html', { root });
+  });
+
   app.get('/mix-calculator', (_req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');

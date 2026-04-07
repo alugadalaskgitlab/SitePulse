@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Mix Rate Estimate & Scenario Manager</title>
+<meta name="theme-color" content="#d97706">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#fffbeb 0%,#fff7ed 50%,#fefce8 100%);min-height:100vh;display:flex;flex-direction:column}
+.center-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
+.login-box{width:100%;max-width:420px}
+.logo-area{text-align:center;margin-bottom:32px}
+.logo-img{width:80px;height:80px;border-radius:16px;background:#fff;box-shadow:0 4px 12px rgba(217,119,6,.15);border:1px solid #fde68a;object-fit:cover;margin-bottom:20px}
+.title{font-size:24px;font-weight:700;color:#111827;line-height:1.3}
+.subtitle{color:#6b7280;margin-top:4px;font-size:14px}
+.card{background:#fff;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,.08);border:1px solid #fde68a;overflow:hidden}
+.card-inner{padding:32px}
+.lock-area{text-align:center;margin-bottom:24px}
+.lock-circle{display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:#fffbeb;border:2px solid #fde68a;margin-bottom:12px}
+.lock-icon{width:24px;height:24px;color:#d97706}
+.lock-title{font-size:18px;font-weight:600;color:#1f2937}
+.lock-desc{font-size:14px;color:#9ca3af;margin-top:4px}
+.pin-wrap{position:relative;margin-bottom:20px}
+.pin-input{width:100%;text-align:center;font-size:28px;letter-spacing:.5em;font-family:monospace;padding:16px 48px 16px 24px;border:2px solid #e5e7eb;border-radius:12px;outline:none;background:#f9fafb;transition:all .15s}
+.pin-input:focus{border-color:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.15);background:#fff}
+.pin-input::placeholder{letter-spacing:.3em;font-size:20px;color:#d1d5db}
+.toggle-vis{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;padding:4px}
+.toggle-vis:hover{color:#6b7280}
+.toggle-vis svg{width:20px;height:20px}
+.error-msg{display:none;align-items:center;gap:8px;color:#dc2626;font-size:14px;font-weight:500;background:#fef2f2;border-radius:8px;padding:10px 14px;margin-bottom:16px}
+.error-msg.show{display:flex}
+.submit-btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:600;color:#fff;cursor:pointer;transition:all .15s;background:#d1d5db}
+.submit-btn.active{background:linear-gradient(135deg,#f59e0b,#ea580c);box-shadow:0 4px 12px rgba(234,88,12,.3)}
+.submit-btn.active:hover{box-shadow:0 6px 16px rgba(234,88,12,.4);transform:translateY(-1px)}
+.submit-btn:disabled{opacity:.4;cursor:not-allowed}
+.card-footer{border-top:1px solid #f3f4f6;background:#f9fafb;padding:20px 32px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center}
+.feat{display:flex;flex-direction:column;align-items:center;gap:6px}
+.feat-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.feat-icon.amber{background:#fef3c7}.feat-icon.blue{background:#dbeafe}.feat-icon.green{background:#dcfce7}
+.feat-icon svg{width:16px;height:16px}
+.feat span{font-size:11px;color:#6b7280;font-weight:500}
+.footer-note{text-align:center;font-size:12px;color:#9ca3af;margin-top:24px}
+</style>
+</head>
+<body>
+<div class="center-wrap">
+  <div class="login-box">
+    <div class="logo-area">
+      <img src="/hlc-logo.jpg" alt="HLC" class="logo-img" onerror="this.style.display='none'">
+      <div class="title">Mix Rate Estimate &<br>Scenario Manager</div>
+      <div class="subtitle">High Lane Constructions</div>
+    </div>
+
+    <div class="card">
+      <div class="card-inner">
+        <div class="lock-area">
+          <div class="lock-circle">
+            <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div class="lock-title">Enter Your PIN</div>
+          <div class="lock-desc">Enter your PIN to access the portal</div>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+          <div class="pin-wrap">
+            <input type="password" id="pinInput" class="pin-input" maxlength="4" placeholder="● ● ● ●" autocomplete="off" autofocus
+              oninput="onPinInput(this)">
+            <button type="button" class="toggle-vis" onclick="togglePinVis()" id="toggleVisBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+
+          <div class="error-msg" id="errorMsg">
+            <span>⚠</span> <span id="errorText">Invalid PIN. Please try again.</span>
+          </div>
+
+          <button type="submit" class="submit-btn" id="submitBtn" disabled>Unlock Portal</button>
+        </form>
+      </div>
+
+      <div class="card-footer">
+        <div class="feat">
+          <div class="feat-icon amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><path d="M4 10h16"/><path d="M10 4v16"/></svg>
+          </div>
+          <span>Rate Calculator</span>
+        </div>
+        <div class="feat">
+          <div class="feat-icon blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+          </div>
+          <span>Scenarios</span>
+        </div>
+        <div class="feat">
+          <div class="feat-icon green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          </div>
+          <span>Compare</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="footer-note">Contact administrator if you forgot your PIN</p>
+  </div>
+</div>
+
+<script>
+var ADMIN_PIN = '0808';
+var MANAGER_PIN = '1234';
+var ROLE_KEY = 'hlc_mix_role';
+
+var pinVisible = false;
+
+function onPinInput(el) {
+  el.value = el.value.replace(/\D/g, '');
+  var btn = document.getElementById('submitBtn');
+  if (el.value.length === 4) {
+    btn.disabled = false;
+    btn.classList.add('active');
+  } else {
+    btn.disabled = true;
+    btn.classList.remove('active');
+  }
+  document.getElementById('errorMsg').classList.remove('show');
+}
+
+function togglePinVis() {
+  pinVisible = !pinVisible;
+  var inp = document.getElementById('pinInput');
+  inp.type = pinVisible ? 'text' : 'password';
+  var btn = document.getElementById('toggleVisBtn');
+  if (pinVisible) {
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>';
+  } else {
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+  var pin = document.getElementById('pinInput').value;
+  if (pin === ADMIN_PIN) {
+    localStorage.setItem(ROLE_KEY, 'admin');
+    redirect();
+  } else if (pin === MANAGER_PIN) {
+    localStorage.setItem(ROLE_KEY, 'manager');
+    redirect();
+  } else {
+    document.getElementById('errorMsg').classList.add('show');
+    document.getElementById('pinInput').value = '';
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('submitBtn').classList.remove('active');
+    document.getElementById('pinInput').focus();
+  }
+}
+
+function redirect() {
+  var params = new URLSearchParams(window.location.search);
+  var returnTo = params.get('returnTo');
+  if (returnTo && returnTo.startsWith('/')) {
+    window.location.href = returnTo;
+  } else {
+    window.location.href = '/admin/mix-estimates';
+  }
+}
+
+(function checkAlreadyLoggedIn() {
+  var role = localStorage.getItem(ROLE_KEY);
+  if (role === 'admin' || role === 'manager') {
+    redirect();
+  }
+})();
+</script>
+</body>
+</html>

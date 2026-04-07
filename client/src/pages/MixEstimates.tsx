@@ -1,16 +1,24 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical, LogOut, Power } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate } from "@shared/schema";
 import { buildMixComparisonData } from "@/lib/mixComparisonData";
 import { MixComparisonContent } from "./MixComparativeReport";
+
+const ROLE_KEY = "hlc_mix_role";
+
+function getMixRole(): "admin" | "manager" | null {
+  const r = localStorage.getItem(ROLE_KEY);
+  if (r === "admin" || r === "manager") return r;
+  return null;
+}
 
 function fmtAmt(v: number | null | undefined) {
   if (!v) return "—";
@@ -37,6 +45,15 @@ export default function MixEstimates({ embedded = false }: Props) {
   const [editValue, setEditValue] = useState("");
   const [showComparison, setShowComparison] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const role = getMixRole();
+  const canEdit = role === "admin";
+
+  useEffect(() => {
+    if (!embedded && !role) {
+      window.location.href = "/mix-calculator/login?returnTo=/admin/mix-estimates";
+    }
+  }, [role, embedded]);
 
   const renameMutation = useMutation({
     mutationFn: ({ ids, to }: { ids: number[]; to: string }) =>
@@ -205,14 +222,14 @@ export default function MixEstimates({ embedded = false }: Props) {
               Comparative Report <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           )}
-          {globalLatestId && (
+          {canEdit && globalLatestId && (
             <a href={`/mix-calculator?clone=${globalLatestId}`}>
               <Button variant="default" size="sm" data-testid="btn-new-contractor">
                 <Plus className="w-4 h-4 mr-1" /> New Contractor
               </Button>
             </a>
           )}
-          {!globalLatestId && (
+          {canEdit && !globalLatestId && (
             <a href="/mix-calculator">
               <Button variant="default" size="sm" data-testid="btn-new-estimate">
                 <Plus className="w-4 h-4 mr-1" /> New Estimate
@@ -224,6 +241,29 @@ export default function MixEstimates({ embedded = false }: Props) {
               <ExternalLink className="w-4 h-4 mr-1" /> Open Calculator
             </Button>
           </a>
+          {!embedded && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { localStorage.removeItem(ROLE_KEY); window.location.href = "/mix-calculator/login"; }}
+                data-testid="btn-mix-logout"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { localStorage.removeItem(ROLE_KEY); window.close(); setTimeout(() => { window.location.href = "/mix-calculator/login"; }, 300); }}
+                data-testid="btn-mix-exit"
+                title="Exit"
+                className="text-destructive hover:text-destructive"
+              >
+                <Power className="w-4 h-4" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -298,7 +338,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                         <span className="text-sm text-muted-foreground">
                           {siteCount} site{siteCount !== 1 ? "s" : ""}
                         </span>
-                        {groupKey !== "UNASSIGNED" && (
+                        {canEdit && groupKey !== "UNASSIGNED" && (
                           <button
                             onClick={(e) => startEdit(groupKey, e)}
                             className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
@@ -325,7 +365,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                         </Button>
                       </Link>
                     )}
-                    {groupKey !== "UNASSIGNED" && (
+                    {canEdit && groupKey !== "UNASSIGNED" && (
                       <a
                         href={`/mix-calculator?clone=${latestId}&contractor=${encodeURIComponent(ests[0]?.contractor || "")}`}
                         title="Add new site using same base rates"
@@ -392,15 +432,17 @@ export default function MixEstimates({ embedded = false }: Props) {
                                     >
                                       Load
                                     </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
-                                      onClick={() => handleDelete(est)}
-                                      data-testid={`btn-delete-estimate-${est.id}`}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </Button>
+                                    {canEdit && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
+                                        onClick={() => handleDelete(est)}
+                                        data-testid={`btn-delete-estimate-${est.id}`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -440,15 +482,17 @@ export default function MixEstimates({ embedded = false }: Props) {
                                   >
                                     Load
                                   </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
-                                    onClick={() => handleDelete(est)}
-                                    data-testid={`btn-delete-estimate-${est.id}`}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </Button>
+                                  {canEdit && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
+                                      onClick={() => handleDelete(est)}
+                                      data-testid={`btn-delete-estimate-${est.id}`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  )}
                                 </div>
                               </td>
                             </tr>

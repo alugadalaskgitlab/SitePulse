@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -567,6 +567,15 @@ function ScenarioComparison({
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function MixImpact() {
+  useEffect(() => {
+    const r = localStorage.getItem("hlc_mix_role");
+    if (r !== "admin" && r !== "manager") {
+      window.location.href = "/mix-calculator/login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  const canEdit = typeof window !== "undefined" && localStorage.getItem("hlc_mix_role") === "admin";
+
   const search = useSearch();
   const params = new URLSearchParams(search);
   const initEstimateId = parseInt(params.get("estimateId") || "0") || null;
@@ -752,14 +761,16 @@ export default function MixImpact() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Scenarios</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowCreateForm((v) => !v)}
-                  data-testid="btn-new-scenario"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" /> New Scenario
-                </Button>
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowCreateForm((v) => !v)}
+                    data-testid="btn-new-scenario"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> New Scenario
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -822,27 +833,29 @@ export default function MixImpact() {
                       )}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openInCalculator(sc.id)}
-                      data-testid={`btn-edit-scenario-${sc.id}`}
-                      title="Open in Mix Calculator to edit"
-                    >
-                      <PencilLine className="w-3.5 h-3.5 mr-1" /> Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteScenarioMutation.mutate(sc.id)}
-                      disabled={deleteScenarioMutation.isPending}
-                      className="text-destructive hover:text-destructive"
-                      data-testid={`btn-delete-scenario-${sc.id}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openInCalculator(sc.id)}
+                        data-testid={`btn-edit-scenario-${sc.id}`}
+                        title="Open in Mix Calculator to edit"
+                      >
+                        <PencilLine className="w-3.5 h-3.5 mr-1" /> Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteScenarioMutation.mutate(sc.id)}
+                        disabled={deleteScenarioMutation.isPending}
+                        className="text-destructive hover:text-destructive"
+                        data-testid={`btn-delete-scenario-${sc.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </CardContent>

@@ -1,4 +1,4 @@
-import { useMemo, Fragment } from "react";
+import { useMemo, useEffect, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -265,6 +265,13 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
 }
 
 export default function MixComparativeReport() {
+  useEffect(() => {
+    const r = localStorage.getItem("hlc_mix_role");
+    if (r !== "admin" && r !== "manager") {
+      window.location.href = "/mix-calculator/login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+  }, []);
+
   const { data: estimates = [], isLoading } = useQuery<MixEstimate[]>({
     queryKey: ["/api/mix-estimates"],
   });
