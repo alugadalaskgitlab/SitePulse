@@ -98,18 +98,34 @@ export default function MixEstimates({ embedded = false }: Props) {
     window.location.href = "/mix-calculator";
   }
 
+  interface SiteInfo {
+    name: string;
+    mt: number;
+    amt: number;
+    estimateId: number;
+  }
+
   const parsedStates = useMemo(() => {
-    const map: Record<number, { projName: string; siteNames: string[] }> = {};
+    const map: Record<number, { projName: string; siteNames: string[]; sites: SiteInfo[] }> = {};
     estimates.forEach((est) => {
       try {
         const state = JSON.parse(est.state);
         const projName = state?.inputs?.projName || "";
-        const siteNames = Array.isArray(state?.sites)
-          ? state.sites.map((s: { name?: string }) => s.name?.trim()).filter(Boolean) as string[]
-          : [];
-        map[est.id] = { projName, siteNames };
+        const sites: SiteInfo[] = [];
+        if (Array.isArray(state?.sites)) {
+          state.sites.forEach((s: { name?: string; jobs?: { _mt?: number; _totalAmt?: number }[] }) => {
+            const name = s.name?.trim() || "";
+            let mt = 0, amt = 0;
+            if (Array.isArray(s.jobs)) {
+              s.jobs.forEach((j) => { mt += (j._mt || 0); amt += (j._totalAmt || 0); });
+            }
+            if (name) sites.push({ name, mt, amt, estimateId: est.id });
+          });
+        }
+        const siteNames = sites.map(s => s.name);
+        map[est.id] = { projName, siteNames, sites };
       } catch {
-        map[est.id] = { projName: "", siteNames: [] };
+        map[est.id] = { projName: "", siteNames: [], sites: [] };
       }
     });
     return map;
@@ -168,7 +184,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                 Mix Rate Estimates
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Saved estimates grouped by contractor — each row is a separate site
+                Saved estimates grouped by project — each row is a site from the Job Estimator
               </p>
             </>
           )}
@@ -234,6 +250,8 @@ export default function MixEstimates({ embedded = false }: Props) {
             const isCollapsed = collapsedContractors[groupKey];
             const totalMt = ests.reduce((s, e) => s + (e.totalMt || 0), 0);
             const totalAmt = ests.reduce((s, e) => s + (e.totalAmt || 0), 0);
+            const allSites = ests.flatMap(e => parsedStates[e.id]?.sites || []);
+            const siteCount = allSites.length || ests.length;
 
             return (
               <Card key={groupKey} className="border-l-4 border-l-primary overflow-hidden" data-testid={`card-contractor-${groupKey}`}>
@@ -278,7 +296,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-base text-foreground">{projName}</span>
                         <span className="text-sm text-muted-foreground">
-                          {ests.length} site{ests.length !== 1 ? "s" : ""}
+                          {siteCount} site{siteCount !== 1 ? "s" : ""}
                         </span>
                         {groupKey !== "UNASSIGNED" && (
                           <button
@@ -332,7 +350,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                          <th className="text-left px-5 py-2.5 font-semibold">Site / Estimate Name</th>
+                          <th className="text-left px-5 py-2.5 font-semibold">Site Name</th>
                           <th className="text-right px-4 py-2.5 font-semibold">MT</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Amount</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Saved</th>
@@ -340,53 +358,102 @@ export default function MixEstimates({ embedded = false }: Props) {
                         </tr>
                       </thead>
                       <tbody>
-                        {ests.map((est) => (
-                          <tr
-                            key={est.id}
-                            className="border-t border-border/50 hover:bg-muted/20 transition-colors"
-                            data-testid={`row-estimate-${est.id}`}
-                          >
-                            <td className="px-5 py-3">
-                              <span className="font-medium text-foreground">{est.name}</span>
-                              {est.contractorList && (
-                                <span className="block text-xs text-muted-foreground mt-0.5">{est.contractorList}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right text-muted-foreground">
-                              {est.totalMt && est.totalMt > 0 ? `${est.totalMt.toFixed(0)} MT` : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-medium text-foreground">
-                              {fmtAmt(est.totalAmt)}
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-                              <span className="flex items-center justify-end gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {fmtDate(est.updatedAt)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => loadInCalculator(est)}
-                                  data-testid={`btn-load-estimate-${est.id}`}
-                                >
-                                  Load
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
-                                  onClick={() => handleDelete(est)}
-                                  data-testid={`btn-delete-estimate-${est.id}`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {ests.flatMap((est) => {
+                          const estSites = parsedStates[est.id]?.sites || [];
+                          if (estSites.length > 0) {
+                            return estSites.map((site, idx) => (
+                              <tr
+                                key={`${est.id}-site-${idx}`}
+                                className="border-t border-border/50 hover:bg-muted/20 transition-colors"
+                                data-testid={`row-site-${est.id}-${idx}`}
+                              >
+                                <td className="px-5 py-3">
+                                  <span className="font-medium text-foreground">{site.name}</span>
+                                </td>
+                                <td className="px-4 py-3 text-right text-muted-foreground">
+                                  {site.mt > 0 ? `${site.mt.toFixed(0)} MT` : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right font-medium text-foreground">
+                                  {fmtAmt(site.amt)}
+                                </td>
+                                <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                                  <span className="flex items-center justify-end gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    {fmtDate(est.updatedAt)}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => loadInCalculator(est)}
+                                      data-testid={`btn-load-estimate-${est.id}`}
+                                    >
+                                      Load
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
+                                      onClick={() => handleDelete(est)}
+                                      data-testid={`btn-delete-estimate-${est.id}`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ));
+                          }
+                          return [(
+                            <tr
+                              key={est.id}
+                              className="border-t border-border/50 hover:bg-muted/20 transition-colors"
+                              data-testid={`row-estimate-${est.id}`}
+                            >
+                              <td className="px-5 py-3">
+                                <span className="font-medium text-foreground">{est.name}</span>
+                                {est.contractorList && (
+                                  <span className="block text-xs text-muted-foreground mt-0.5">{est.contractorList}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right text-muted-foreground">
+                                {est.totalMt && est.totalMt > 0 ? `${est.totalMt.toFixed(0)} MT` : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-right font-medium text-foreground">
+                                {fmtAmt(est.totalAmt)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                                <span className="flex items-center justify-end gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {fmtDate(est.updatedAt)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => loadInCalculator(est)}
+                                    data-testid={`btn-load-estimate-${est.id}`}
+                                  >
+                                    Load
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
+                                    onClick={() => handleDelete(est)}
+                                    data-testid={`btn-delete-estimate-${est.id}`}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          )];
+                        })}
                       </tbody>
                     </table>
                   </div>
