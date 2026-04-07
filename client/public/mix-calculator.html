@@ -2846,41 +2846,42 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   if(_scopeActive){
     var _sc=calcScopeComponents();
     _smf=1+(parseFloat(document.getElementById('scopeMarginPct').value)||0)/100;
-    function _sumMixPav(hm,lm,am){
+    function _sumMixPav(hm,lm,am,scOverride){
       if(am===undefined) am=1;
+      var sc2=scOverride||_sc;
       var mx=0,pv=0;
       if(_sg.mixing){
-        if(scopeState.mixing.hotmixHire) mx+=_sc.hotmixHire;
-        if(scopeState.mixing.ldo) mx+=_sc.ldo*lm;
-        if(scopeState.mixing.dgHire) mx+=_sc.dgHire;
-        if(scopeState.mixing.dgHsd) mx+=_sc.dgHsd*hm;
-        if(scopeState.mixing.jcbHire) mx+=_sc.jcbHire;
-        if(scopeState.mixing.jcbHsd) mx+=_sc.jcbHsd*hm;
-        if(scopeState.mixing.tipperHire) mx+=_sc.tipperHire;
-        if(scopeState.mixing.tipperHsd) mx+=_sc.tipperHsd*hm;
-        if(scopeState.mixing.aggregate) mx+=_sc.aggregate*am;
-        mx+=_sc.crewPerMT;
-        (_sc.customEquip||[]).forEach(function(ce){
+        if(scopeState.mixing.hotmixHire) mx+=sc2.hotmixHire;
+        if(scopeState.mixing.ldo) mx+=sc2.ldo*lm;
+        if(scopeState.mixing.dgHire) mx+=sc2.dgHire;
+        if(scopeState.mixing.dgHsd) mx+=sc2.dgHsd*hm;
+        if(scopeState.mixing.jcbHire) mx+=sc2.jcbHire;
+        if(scopeState.mixing.jcbHsd) mx+=sc2.jcbHsd*hm;
+        if(scopeState.mixing.tipperHire) mx+=sc2.tipperHire;
+        if(scopeState.mixing.tipperHsd) mx+=sc2.tipperHsd*hm;
+        if(scopeState.mixing.aggregate) mx+=sc2.aggregate*am;
+        mx+=sc2.crewPerMT;
+        (sc2.customEquip||[]).forEach(function(ce){
           if(ce.isLaying||!ce.enabled) return;
           if(scopeState.mixing[ce.id+'Hire']) mx+=ce.hire;
           if(scopeState.mixing[ce.id+'Hsd']) mx+=ce.hsd*hm;
         });
       }
       if(_sg.paving){
-        if(scopeState.paving.paverHire) pv+=_sc.paverHire;
-        if(scopeState.paving.paverHsd) pv+=_sc.paverHsd*hm;
-        if(scopeState.paving.rollerHire) pv+=_sc.rollerHire;
-        if(scopeState.paving.rollerHsd) pv+=_sc.rollerHsd*hm;
-        if(_sc.ptrEnabled){
-          if(scopeState.paving.ptrHire) pv+=_sc.ptrHire;
-          if(scopeState.paving.ptrHsd) pv+=_sc.ptrHsd*hm;
+        if(scopeState.paving.paverHire) pv+=sc2.paverHire;
+        if(scopeState.paving.paverHsd) pv+=sc2.paverHsd*hm;
+        if(scopeState.paving.rollerHire) pv+=sc2.rollerHire;
+        if(scopeState.paving.rollerHsd) pv+=sc2.rollerHsd*hm;
+        if(sc2.ptrEnabled){
+          if(scopeState.paving.ptrHire) pv+=sc2.ptrHire;
+          if(scopeState.paving.ptrHsd) pv+=sc2.ptrHsd*hm;
         }
-        (_sc.customEquip||[]).forEach(function(ce){
+        (sc2.customEquip||[]).forEach(function(ce){
           if(!ce.isLaying||!ce.enabled) return;
           if(scopeState.paving[ce.id+'Hire']) pv+=ce.hire;
           if(scopeState.paving[ce.id+'Hsd']) pv+=ce.hsd*hm;
         });
-        pv+=_sc.layCrewPerMT;
+        pv+=sc2.layCrewPerMT;
       }
       return {mix:mx,pav:pv};
     }
@@ -2892,7 +2893,16 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       _sTack=(_sOp+(scopeState.spraying.tackEmulsion?_sc.tackEm:0))*_smf;
     } else { _sPrime=0; _sTack=0; }
     _rScopeMix=_scopeMix; _rScopePav=_scopePav;
-    if(hasRevised&&revProcPrices){
+    if(scenarioMode && scenarioBaseSnapshot){
+      var _snapInpSrc = scenarioBaseSnapshot.inputs||{};
+      var _snapInp = {}; for(var _k in _snapInpSrc) _snapInp[_k]=_snapInpSrc[_k];
+      _snapInp._aggBasis = scenarioBaseSnapshot.aggBasis||'MT';
+      var _snapEq = scenarioBaseSnapshot.equipDefs||equipDefs;
+      var _snapMt = scenarioBaseSnapshot.mixTypes||mixTypes;
+      var _snapSc = calcScopeComponentsFromInputs(_snapInp, _snapEq, _snapMt);
+      var _snapBase = _sumMixPav(1,1,1,_snapSc);
+      _rScopeMix = _snapBase.mix; _rScopePav = _snapBase.pav;
+    } else if(hasRevised&&revProcPrices){
       var _bH=n('hsdPrice'),_bL=n('ldoRate');
       var _bAgg=_sc.aggregate;
       var _hr=(_bH>0&&revProcPrices.hsdPrice)?revProcPrices.hsdPrice/_bH:1;
@@ -3849,29 +3859,28 @@ function openScopeSection(){
   if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
-function calcScopeComponents(){
-  var tph     = n('tph');
-  var layProd = n('layProductivity');
-  var ldoC    = n('ldoConsump'), ldoR = n('ldoRate');
-  var bProdL  = n('boilerProdLhr'), bPreL = n('boilerPreheatLhr');
-  var bFuelR  = ldoR;
-  var bProdH  = n('boilerProdHrs'), bPreH = n('boilerPreheatHrs');
-  var bCamp   = n('boilerCampaignMt');
-  var crewMon = n('crewMonthly'), crewD = n('crewDays'), crewH = n('crewHrs');
-  var sprayBow= n('sprayBowser'), sprayCrw = n('sprayCrew'), sprayPr = n('sprayProd');
-  var primeSp = n('primeSpray'), primeP = n('primePrice'), primeDil = n('primeDilution')||1;
-  var tackSp  = n('tackSpray'),  tackP  = n('tackPrice'),  tackDil  = n('tackDilution')||1;
-  var layCrewD= n('layCrew');
-  var transDist= n('transDist'), transRate= n('transRate'), transPayload= n('transPayload');
+function calcScopeComponentsFromInputs(inp, eqDefs, mTypes){
+  function _v(k,d){ var v=parseFloat(inp[k]); return isNaN(v)?(d||0):v; }
+  var tph      = _v('tph');
+  var phm      = _v('plantHrsMonth');
+  var hsdPrice = _v('hsdPrice');
+  var layProd  = _v('layProductivity');
+  var ldoC     = _v('ldoConsump'), ldoR = _v('ldoRate');
+  var bFuelR   = ldoR;
+  var bProdL   = _v('boilerProdLhr'), bPreL = _v('boilerPreheatLhr');
+  var bProdH   = _v('boilerProdHrs'), bPreH = _v('boilerPreheatHrs');
+  var bCamp    = _v('boilerCampaignMt');
+  var crewMon  = _v('crewMonthly'), crewD = _v('crewDays'), crewH = _v('crewHrs');
+  var sprayBow = _v('sprayBowser'), sprayCrw = _v('sprayCrew'), sprayPr = _v('sprayProd');
+  var primeSp  = _v('primeSpray'), primeP = _v('primePrice'), primeDil = _v('primeDilution')||1;
+  var tackSp   = _v('tackSpray'),  tackP  = _v('tackPrice'),  tackDil  = _v('tackDilution')||1;
+  var layCrewD = _v('layCrew');
+  var transDist= _v('transDist'), transRate= _v('transRate'), transPayload= _v('transPayload');
   var transPerMT = transPayload>0 ? (transDist*2*transRate/transPayload) : 0;
 
-  var hotmixEq = equipDefs.find(function(e){return e.id==='hotmix';});
-  var dgEq     = equipDefs.find(function(e){return e.id==='dg';});
-  var jcbEq    = equipDefs.find(function(e){return e.id==='jcb';});
-  var tipperEq = equipDefs.find(function(e){return e.id==='tipper';});
-  var paverEq  = equipDefs.find(function(e){return e.id==='paver';});
-  var rollerEq = equipDefs.find(function(e){return e.id==='roller';});
-  var ptrEq    = equipDefs.find(function(e){return e.id==='ptr';});
+  function _findEq(id){ return eqDefs.find(function(e){return e.id===id;}); }
+  var hotmixEq=_findEq('hotmix'), dgEq=_findEq('dg'), jcbEq=_findEq('jcb'), tipperEq=_findEq('tipper');
+  var paverEq=_findEq('paver'), rollerEq=_findEq('roller'), ptrEq=_findEq('ptr');
 
   var ldoPerMT      = ldoC * ldoR;
   var boilerProdPMT = bCamp>0 ? (bProdL*bFuelR*bProdH/bCamp) : 0;
@@ -3880,25 +3889,52 @@ function calcScopeComponents(){
   var sprayOpSqm    = sprayPr>0 ? ((sprayBow+sprayCrw)/sprayPr) : 0;
   var layCrewPerMT  = layProd>0 ? layCrewD/layProd : 0;
 
-  function layHirePerMT(eq){ return (eq&&eq.enabled&&layProd>0) ? getEquipHireDailyCost(eq)/layProd : 0; }
-  function layFuelPerMT(eq){ return (eq&&eq.enabled&&layProd>0) ? getEquipFuelPerDay(eq)/layProd    : 0; }
+  function _eqHirePMT(eq){
+    if(!eq||!eq.enabled) return 0;
+    if(tph<=0) return 0;
+    if(eq.mode==='owned'){ if(eq.life<=0||phm<=0) return 0; return (eq.capex/eq.life/12)*(1+eq.maint/100)/phm/tph; }
+    else { if(eq.hireBasis==='daily') return eq.hireHrsDay>0?eq.hireRate/eq.hireHrsDay/tph:0; if(eq.hireBasis==='hourly') return eq.hireRate/tph; var bh=eq.hireHrsMonth||phm; return bh>0?eq.hireRate/bh/tph:0; }
+  }
+  function _eqFuelPMT(eq){
+    if(!eq||!eq.enabled||eq.isLaying) return 0;
+    return tph>0?(eq.fuelConsump||0)*hsdPrice/tph:0;
+  }
+  function _eqHireDaily(eq){
+    if(!eq||!eq.enabled) return 0;
+    if(eq.mode==='owned'){ if(eq.life<=0) return 0; return (eq.capex/eq.life/12)*(1+eq.maint/100)/25; }
+    else { if(eq.hireBasis==='daily') return eq.hireRate; if(eq.hireBasis==='hourly') return eq.hireRate*(eq.hireHrsDay||8); return eq.hireRate/25; }
+  }
+  function _eqFuelDay(eq){
+    if(!eq||!eq.enabled||!eq.isLaying) return 0;
+    return (eq.fuelConsump||0)*(eq.hireHrsDay||8)*hsdPrice;
+  }
+  function _layHirePMT(eq){ return (eq&&eq.enabled&&layProd>0) ? _eqHireDaily(eq)/layProd : 0; }
+  function _layFuelPMT(eq){ return (eq&&eq.enabled&&layProd>0) ? _eqFuelDay(eq)/layProd    : 0; }
 
-  var bitPrice = n('bitPrice');
-  var bitCostPerMT = mixTypes.length>0 ? mixTypes.reduce(function(s,m){return s+m.binderPct;},0)/mixTypes.length/100*1000*bitPrice : 0;
+  var bitPrice = _v('bitPrice');
+  var bitCostPerMT = mTypes.length>0 ? mTypes.reduce(function(s,m){return s+(m.binderPct||0);},0)/mTypes.length/100*1000*bitPrice : 0;
 
-  var aggLandedVal = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
-  var avgAggFrac = mixTypes.length>0 ? mixTypes.reduce(function(s,m){return s+FRAC_KEYS.reduce(function(a,k){return a+(m.fractions[k]||0);},0);},0)/mixTypes.length/100 : 0;
+  var aggLandedVal = 0;
+  if(inp._aggLanded!=null){ aggLandedVal=parseFloat(inp._aggLanded)||0; }
+  else {
+    var _aRate=_v('aggRate'), _aDens=_v('aggDensity'), _aDist=_v('aggDist'), _aFr=_v('aggFreightRate'), _aPl=_v('aggPayload');
+    var _aFrt=_aPl>0?(_aDist*2*_aFr/_aPl):0;
+    var _aBasis=inp._aggBasis||'MT';
+    var _aRateMT=(_aBasis==='CFT'&&_aDens>0)?(_aRate/_aDens*35.3147):_aRate;
+    aggLandedVal=_aRateMT+_aFrt;
+  }
+  var avgAggFrac = mTypes.length>0 ? mTypes.reduce(function(s,m){return s+FRAC_KEYS.reduce(function(a,k){return a+((m.fractions||{})[k]||0);},0);},0)/mTypes.length/100 : 0;
   var aggCostPerMT = avgAggFrac * aggLandedVal;
 
   var result = {
-    hotmixHire : getEquipHireCostPerMT(hotmixEq),
+    hotmixHire : _eqHirePMT(hotmixEq),
     ldo        : ldoPerMT + boilerProdPMT + boilerPrePMT,
-    dgHire     : getEquipHireCostPerMT(dgEq),
-    dgHsd      : getEquipFuelPerMT(dgEq),
-    jcbHire    : getEquipHireCostPerMT(jcbEq),
-    jcbHsd     : getEquipFuelPerMT(jcbEq),
-    tipperHire : getEquipHireCostPerMT(tipperEq),
-    tipperHsd  : getEquipFuelPerMT(tipperEq),
+    dgHire     : _eqHirePMT(dgEq),
+    dgHsd      : _eqFuelPMT(dgEq),
+    jcbHire    : _eqHirePMT(jcbEq),
+    jcbHsd     : _eqFuelPMT(jcbEq),
+    tipperHire : _eqHirePMT(tipperEq),
+    tipperHsd  : _eqFuelPMT(tipperEq),
     bitumen    : bitCostPerMT,
     aggregate  : aggCostPerMT,
     crewPerMT  : crewPerMT,
@@ -3906,25 +3942,32 @@ function calcScopeComponents(){
     sprayOp    : sprayOpSqm,
     primeEm    : primeSp*primeP/primeDil,
     tackEm     : tackSp*tackP/tackDil,
-    paverHire  : layHirePerMT(paverEq),
-    paverHsd   : layFuelPerMT(paverEq),
-    rollerHire : layHirePerMT(rollerEq),
-    rollerHsd  : layFuelPerMT(rollerEq),
-    ptrHire    : layHirePerMT(ptrEq),
-    ptrHsd     : layFuelPerMT(ptrEq),
+    paverHire  : _layHirePMT(paverEq),
+    paverHsd   : _layFuelPMT(paverEq),
+    rollerHire : _layHirePMT(rollerEq),
+    rollerHsd  : _layFuelPMT(rollerEq),
+    ptrHire    : _layHirePMT(ptrEq),
+    ptrHsd     : _layFuelPMT(ptrEq),
     layCrewPerMT: layCrewPerMT,
     ptrEnabled : ptrEq&&ptrEq.enabled,
     customEquip: []
   };
-  equipDefs.forEach(function(eq){
+  eqDefs.forEach(function(eq){
     if(!eq.custom) return;
     result.customEquip.push({
       id: eq.id, name: eq.name, isLaying: eq.isLaying, enabled: eq.enabled,
-      hire: eq.isLaying ? layHirePerMT(eq) : getEquipHireCostPerMT(eq),
-      hsd:  eq.isLaying ? layFuelPerMT(eq) : getEquipFuelPerMT(eq)
+      hire: eq.isLaying ? _layHirePMT(eq) : _eqHirePMT(eq),
+      hsd:  eq.isLaying ? _layFuelPMT(eq) : _eqFuelPMT(eq)
     });
   });
   return result;
+}
+
+function calcScopeComponents(){
+  var inp = {};
+  PERSIST_INPUTS.forEach(function(id){ var el=document.getElementById(id); if(el) inp[id]=el.value; });
+  inp._aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  return calcScopeComponentsFromInputs(inp, equipDefs, mixTypes);
 }
 
 function renderScopeRow(container, stateObj, key, label, val, unit){
