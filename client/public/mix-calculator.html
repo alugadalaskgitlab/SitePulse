@@ -4374,24 +4374,39 @@ function applyRoleRestrictions() {
   for (var i = 0; i < els.length; i++) {
     els[i].style.display = 'none';
   }
-  var inputs = document.querySelectorAll('.grid input, .grid select, .grid textarea, .card-body input, .card-body select, .card-body textarea, .job-card input, .job-card select');
+  var inputs = document.querySelectorAll('input, select, textarea');
   for (var i = 0; i < inputs.length; i++) {
     var el = inputs[i];
-    if (el.classList.contains('derived') || el.readOnly) continue;
-    if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'number') {
-      el.disabled = true;
-    } else {
-      el.readOnly = true;
-    }
+    if (el.id === 'pinInput' || el.closest('#printSettingsOverlay') || el.closest('.top-bar')) continue;
+    if (el.classList.contains('derived')) continue;
+    el.disabled = true;
     el.style.opacity = '0.7';
     el.style.cursor = 'default';
   }
-  var toggleBtns = document.querySelectorAll('.toggle-btn');
-  for (var i = 0; i < toggleBtns.length; i++) {
-    toggleBtns[i].disabled = true;
-    toggleBtns[i].style.pointerEvents = 'none';
+  var btns = document.querySelectorAll('.toggle-btn, .card-body button, .job-card button, .full-width button, #procScenarioBar button');
+  for (var i = 0; i < btns.length; i++) {
+    var b = btns[i];
+    if (b.closest('.top-bar') || b.closest('#printSettingsOverlay')) continue;
+    if (b.classList.contains('admin-only')) continue;
+    b.disabled = true;
+    b.style.pointerEvents = 'none';
+    b.style.opacity = '0.6';
   }
 }
+
+if (!_isAdmin) {
+  document.addEventListener('input', function(e) {
+    var el = e.target;
+    if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
+      e.stopPropagation();
+    }
+  }, true);
+
+  var _managerStyle = document.createElement('style');
+  _managerStyle.textContent = '.card-body input:not(.derived), .card-body select, .card-body textarea, .job-card input, .job-card select, .grid input, .grid select { pointer-events: none !important; opacity: 0.7 !important; } .admin-only { display: none !important; } .toggle-btn { pointer-events: none !important; }';
+  document.head.appendChild(_managerStyle);
+}
+
 applyRoleRestrictions();
 
 var _renderFnsToWrap = ['renderSites','renderEquipCards','renderMixTabs','renderMixPanels','renderScopeQuotation','renderProcurement','renderProfitability'];
@@ -4411,6 +4426,11 @@ if (typeof recalc === 'function') {
     _baseRecalc.apply(this, arguments);
     applyRoleRestrictions();
   };
+}
+
+if (!_isAdmin) {
+  new MutationObserver(function() { applyRoleRestrictions(); })
+    .observe(document.body, { childList: true, subtree: true });
 }
 
 // ====== PRINT SETTINGS ======

@@ -833,17 +833,17 @@ export default function MixImpact() {
                       )}
                     </p>
                   </div>
-                  {canEdit && (
-                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openInCalculator(sc.id)}
-                        data-testid={`btn-edit-scenario-${sc.id}`}
-                        title="Open in Mix Calculator to edit"
-                      >
-                        <PencilLine className="w-3.5 h-3.5 mr-1" /> Edit
-                      </Button>
+                  <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openInCalculator(sc.id)}
+                      data-testid={`btn-edit-scenario-${sc.id}`}
+                      title={canEdit ? "Open in Mix Calculator to edit" : "View in Mix Calculator (read-only)"}
+                    >
+                      <PencilLine className="w-3.5 h-3.5 mr-1" /> {canEdit ? "Edit" : "View"}
+                    </Button>
+                    {canEdit && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -854,8 +854,8 @@ export default function MixImpact() {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
             </CardContent>
