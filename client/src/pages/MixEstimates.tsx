@@ -39,27 +39,31 @@ export default function MixEstimates({ embedded = false }: Props) {
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const renameMutation = useMutation({
-    mutationFn: ({ from, to }: { from: string; to: string }) =>
-      apiRequest("PATCH", "/api/mix-estimates/rename-contractor", { from, to }),
+    mutationFn: ({ ids, to }: { ids: number[]; to: string }) =>
+      apiRequest("PATCH", "/api/mix-estimates/rename-project", { ids, to }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mix-estimates"] });
-      toast({ title: "Contractor renamed" });
+      toast({ title: "Project renamed" });
       setEditingContractor(null);
     },
-    onError: () => toast({ title: "Failed to rename contractor", variant: "destructive" }),
+    onError: () => toast({ title: "Failed to rename project", variant: "destructive" }),
   });
 
-  function startEdit(contractor: string, e: React.MouseEvent) {
+  function startEdit(groupKey: string, e: React.MouseEvent) {
     e.stopPropagation();
-    setEditingContractor(contractor);
-    setEditValue(contractor);
+    setEditingContractor(groupKey);
+    const group = groups.find(g => g.groupKey === groupKey);
+    setEditValue(group?.projName || groupKey);
     setTimeout(() => editInputRef.current?.focus(), 50);
   }
 
-  function confirmRename(from: string) {
+  function confirmRename(groupKey: string) {
     const to = editValue.trim().toUpperCase();
-    if (!to || to === from) { setEditingContractor(null); return; }
-    renameMutation.mutate({ from, to });
+    if (!to) { setEditingContractor(null); return; }
+    const group = groups.find(g => g.groupKey === groupKey);
+    if (!group || to === group.projName?.toUpperCase()) { setEditingContractor(null); return; }
+    const ids = group.estimates.map(e => e.id);
+    renameMutation.mutate({ ids, to });
   }
 
   const { data: estimates = [], isLoading } = useQuery<MixEstimate[]>({
@@ -111,28 +115,29 @@ export default function MixEstimates({ embedded = false }: Props) {
     return map;
   }, [estimates]);
 
-  type Group = { contractor: string; estimates: MixEstimate[]; latestId: number; projName: string };
+  type Group = { groupKey: string; estimates: MixEstimate[]; latestId: number; projName: string };
   const groups: Group[] = [];
-  const contractorMap: Record<string, MixEstimate[]> = {};
+  const groupMap: Record<string, MixEstimate[]> = {};
 
   estimates.forEach((est) => {
-    const key = est.contractor?.trim().toUpperCase() || "UNASSIGNED";
-    if (!contractorMap[key]) contractorMap[key] = [];
-    contractorMap[key].push(est);
+    const pn = parsedStates[est.id]?.projName?.trim().toUpperCase() || "";
+    const key = pn || est.contractor?.trim().toUpperCase() || "UNASSIGNED";
+    if (!groupMap[key]) groupMap[key] = [];
+    groupMap[key].push(est);
   });
 
-  Object.keys(contractorMap).sort((a, b) => {
-    const la = contractorMap[a][0]?.updatedAt;
-    const lb = contractorMap[b][0]?.updatedAt;
+  Object.keys(groupMap).sort((a, b) => {
+    const la = groupMap[a][0]?.updatedAt;
+    const lb = groupMap[b][0]?.updatedAt;
     if (!la && !lb) return 0;
     if (!la) return 1;
     if (!lb) return -1;
     return new Date(lb).getTime() - new Date(la).getTime();
   }).forEach((key) => {
-    const ests = contractorMap[key];
+    const ests = groupMap[key];
     const latestId = ests[0]?.id;
-    const projName = ests[0] ? (parsedStates[ests[0].id]?.projName || "") : "";
-    groups.push({ contractor: key, estimates: ests, latestId, projName });
+    const projName = parsedStates[ests[0]?.id]?.projName || key;
+    groups.push({ groupKey: key, estimates: ests, latestId, projName });
   });
 
   const comparisonData = useMemo(() => buildMixComparisonData(estimates), [estimates]);
@@ -225,39 +230,38 @@ export default function MixEstimates({ embedded = false }: Props) {
         </Card>
       ) : (
         <div className="space-y-4">
-          {groups.map(({ contractor, estimates: ests, latestId, projName }) => {
-            const isCollapsed = collapsedContractors[contractor];
+          {groups.map(({ groupKey, estimates: ests, latestId, projName }) => {
+            const isCollapsed = collapsedContractors[groupKey];
             const totalMt = ests.reduce((s, e) => s + (e.totalMt || 0), 0);
             const totalAmt = ests.reduce((s, e) => s + (e.totalAmt || 0), 0);
 
             return (
-              <Card key={contractor} className="border-l-4 border-l-primary overflow-hidden" data-testid={`card-contractor-${contractor}`}>
-                {/* Contractor header */}
+              <Card key={groupKey} className="border-l-4 border-l-primary overflow-hidden" data-testid={`card-contractor-${groupKey}`}>
                 <div
                   className="flex items-center justify-between px-5 py-3.5 bg-amber-50 dark:bg-amber-950/30 cursor-pointer select-none border-b border-amber-100 dark:border-amber-900"
-                  onClick={() => toggleContractor(contractor)}
+                  onClick={() => toggleContractor(groupKey)}
                 >
                   <div className="flex items-center gap-3">
                     <Building2 className="w-5 h-5 text-primary shrink-0" />
-                    {editingContractor === contractor ? (
+                    {editingContractor === groupKey ? (
                       <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           ref={editInputRef}
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value.toUpperCase())}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") confirmRename(contractor);
+                            if (e.key === "Enter") confirmRename(groupKey);
                             if (e.key === "Escape") setEditingContractor(null);
                           }}
-                          className="border border-primary rounded px-2 py-0.5 text-sm font-bold w-40 focus:outline-none focus:ring-2 focus:ring-primary"
-                          data-testid={`input-rename-${contractor}`}
+                          className="border border-primary rounded px-2 py-0.5 text-sm font-bold w-48 focus:outline-none focus:ring-2 focus:ring-primary"
+                          data-testid={`input-rename-${groupKey}`}
                         />
                         <button
-                          onClick={() => confirmRename(contractor)}
+                          onClick={() => confirmRename(groupKey)}
                           className="text-green-600 hover:text-green-700 p-0.5"
                           title="Confirm rename"
                           disabled={renameMutation.isPending}
-                          data-testid={`btn-confirm-rename-${contractor}`}
+                          data-testid={`btn-confirm-rename-${groupKey}`}
                         >
                           <Check className="w-4 h-4" />
                         </button>
@@ -265,62 +269,57 @@ export default function MixEstimates({ embedded = false }: Props) {
                           onClick={() => setEditingContractor(null)}
                           className="text-muted-foreground hover:text-foreground p-0.5"
                           title="Cancel"
-                          data-testid={`btn-cancel-rename-${contractor}`}
+                          data-testid={`btn-cancel-rename-${groupKey}`}
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
                     ) : (
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-base text-foreground">{contractor}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {ests.length} site{ests.length !== 1 ? "s" : ""}
-                          </span>
-                          {contractor !== "UNASSIGNED" && (
-                            <button
-                              onClick={(e) => startEdit(contractor, e)}
-                              className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
-                              title="Rename contractor"
-                              data-testid={`btn-rename-${contractor}`}
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                        {projName && projName !== contractor && (
-                          <span className="text-xs text-muted-foreground mt-0.5" data-testid={`text-projname-${contractor}`}>{projName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-base text-foreground">{projName}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {ests.length} site{ests.length !== 1 ? "s" : ""}
+                        </span>
+                        {groupKey !== "UNASSIGNED" && (
+                          <button
+                            onClick={(e) => startEdit(groupKey, e)}
+                            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors p-0.5"
+                            title="Rename project"
+                            data-testid={`btn-rename-${groupKey}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     )}
-                    {editingContractor !== contractor && totalMt > 0 && (
+                    {editingContractor !== groupKey && totalMt > 0 && (
                       <Badge variant="outline" className="text-xs">{totalMt.toFixed(0)} MT total</Badge>
                     )}
-                    {editingContractor !== contractor && totalAmt > 0 && (
+                    {editingContractor !== groupKey && totalAmt > 0 && (
                       <Badge className="text-xs bg-green-600 text-white border-green-700">{fmtAmt(totalAmt)}</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     {latestId && (
                       <Link href={`/admin/mix-impact?estimateId=${latestId}`}>
-                        <Button variant="outline" size="sm" data-testid={`btn-price-impact-${contractor}`} title="Price Impact Analysis">
+                        <Button variant="outline" size="sm" data-testid={`btn-price-impact-${groupKey}`} title="Price Impact Analysis">
                           <FlaskConical className="w-3.5 h-3.5 mr-1" /> Price Impact
                         </Button>
                       </Link>
                     )}
-                    {contractor !== "UNASSIGNED" && (
+                    {groupKey !== "UNASSIGNED" && (
                       <a
-                        href={`/mix-calculator?clone=${latestId}&contractor=${encodeURIComponent(contractor)}`}
-                        title="Add new site for this contractor using same base rates"
+                        href={`/mix-calculator?clone=${latestId}&contractor=${encodeURIComponent(ests[0]?.contractor || "")}`}
+                        title="Add new site using same base rates"
                       >
-                        <Button variant="default" size="sm" data-testid={`btn-new-site-${contractor}`}>
+                        <Button variant="default" size="sm" data-testid={`btn-new-site-${groupKey}`}>
                           <Plus className="w-3.5 h-3.5 mr-1" /> New Site
                         </Button>
                       </a>
                     )}
                     <button
                       className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                      onClick={() => toggleContractor(contractor)}
+                      onClick={() => toggleContractor(groupKey)}
                       aria-label={isCollapsed ? "Expand" : "Collapse"}
                     >
                       {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -328,7 +327,6 @@ export default function MixEstimates({ embedded = false }: Props) {
                   </div>
                 </div>
 
-                {/* Sites table */}
                 {!isCollapsed && (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
@@ -350,7 +348,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                           >
                             <td className="px-5 py-3">
                               <span className="font-medium text-foreground">{est.name}</span>
-                              {est.contractorList && est.contractorList !== contractor && (
+                              {est.contractorList && (
                                 <span className="block text-xs text-muted-foreground mt-0.5">{est.contractorList}</span>
                               )}
                             </td>

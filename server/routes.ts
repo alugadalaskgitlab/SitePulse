@@ -3407,6 +3407,29 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/mix-estimates/rename-project", async (req, res) => {
+    try {
+      const { ids, to } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0 || !to) return res.status(400).json({ message: "ids and to are required" });
+      let count = 0;
+      for (const id of ids) {
+        const est = await storage.getMixEstimate(id);
+        if (!est) continue;
+        try {
+          const state = JSON.parse(est.state);
+          if (!state.inputs) state.inputs = {};
+          state.inputs.projName = to;
+          await storage.updateMixEstimate(id, { state: JSON.stringify(state) });
+          count++;
+        } catch { continue; }
+      }
+      res.json({ updated: count });
+    } catch (err) {
+      console.error("Error renaming project:", err);
+      res.status(500).json({ message: "Failed to rename project" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();
