@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, Calculator, BarChart3, TrendingUp, Eye, EyeOff, Building2, ChevronRight, FlaskConical, Printer, ExternalLink, LogOut, Plus, Shield } from "lucide-react";
+import { Lock, Calculator, BarChart3, TrendingUp, Eye, EyeOff, Building2, ChevronRight, FlaskConical, Printer, ExternalLink, LogOut, Plus, Shield, Power } from "lucide-react";
 
 export function LoginPage() {
   const [pin, setPin] = useState("");
@@ -74,6 +74,13 @@ export function LoginPage() {
                 title="Logout"
               >
                 <LogOut className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => { window.close(); }}
+                className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                title="Exit App"
+              >
+                <Power className="w-4 h-4" />
               </button>
             </div>
           </div>
