@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export default function ConcreteCalcTop() {
   const [bulkage, setBulkage] = useState([25]);
+  const [batchMode, setBatchMode] = useState<"own" | "hired" | "rmc">("hired");
 
   return (
     <div className="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-900">
@@ -34,7 +35,7 @@ export default function ConcreteCalcTop() {
             {/* 1. Project Info */}
             <Card className="border-l-4 border-l-amber-600 shadow-sm">
               <CardHeader className="pb-3 flex flex-row items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">1</div>
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">①</div>
                 <CardTitle className="text-lg">Project Info</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -74,7 +75,7 @@ export default function ConcreteCalcTop() {
             {/* 2. Concrete Grade & Mix Design */}
             <Card className="border-l-4 border-l-amber-600 shadow-sm">
               <CardHeader className="pb-3 flex flex-row items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">2</div>
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">②</div>
                 <CardTitle className="text-lg">Concrete Grade & Mix Design</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -155,7 +156,7 @@ export default function ConcreteCalcTop() {
             {/* 3. Raw Materials */}
             <Card className="border-l-4 border-l-amber-600 shadow-sm">
               <CardHeader className="pb-3 flex flex-row items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">3</div>
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">③</div>
                 <CardTitle className="text-lg">Raw Materials Rate</CardTitle>
               </CardHeader>
               <CardContent className="space-y-8">
@@ -342,49 +343,105 @@ export default function ConcreteCalcTop() {
             {/* 4. Batching & Production */}
             <Card className="border-l-4 border-l-amber-600 shadow-sm">
               <CardHeader className="pb-3 flex flex-row items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">4</div>
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">④</div>
                 <CardTitle className="text-lg">Batching & Production</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <RadioGroup defaultValue="hired" className="flex flex-col sm:flex-row gap-4">
-                  <div className="flex items-center space-x-2 border rounded-md p-3 flex-1">
+                <RadioGroup value={batchMode} onValueChange={(v) => setBatchMode(v as "own" | "hired" | "rmc")} className="flex flex-col sm:flex-row gap-4">
+                  <div className={`flex items-center space-x-2 border rounded-md p-3 flex-1 cursor-pointer ${batchMode === "own" ? "bg-blue-50 border-blue-200" : ""}`}>
                     <RadioGroupItem value="own" id="r1" />
                     <Label htmlFor="r1" className="cursor-pointer">Own Batching Plant</Label>
                   </div>
-                  <div className="flex items-center space-x-2 border rounded-md p-3 flex-1 bg-blue-50 border-blue-200">
-                    <RadioGroupItem value="hired" id="r2" className="text-blue-600 border-blue-600" />
-                    <Label htmlFor="r2" className="cursor-pointer text-blue-900 font-medium">Hired Batching Plant</Label>
+                  <div className={`flex items-center space-x-2 border rounded-md p-3 flex-1 cursor-pointer ${batchMode === "hired" ? "bg-blue-50 border-blue-200" : ""}`}>
+                    <RadioGroupItem value="hired" id="r2" />
+                    <Label htmlFor="r2" className={`cursor-pointer ${batchMode === "hired" ? "text-blue-900 font-medium" : ""}`}>Hired Batching Plant</Label>
                   </div>
-                  <div className="flex items-center space-x-2 border rounded-md p-3 flex-1">
+                  <div className={`flex items-center space-x-2 border rounded-md p-3 flex-1 cursor-pointer ${batchMode === "rmc" ? "bg-blue-50 border-blue-200" : ""}`}>
                     <RadioGroupItem value="rmc" id="r3" />
                     <Label htmlFor="r3" className="cursor-pointer">RMC Supply</Label>
                   </div>
                 </RadioGroup>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-lg bg-slate-50">
-                  <div className="space-y-1">
-                    <Label>Hire Rate</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
-                      <Input defaultValue="450" className="pl-7 bg-white max-w-[200px]" />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">/m³</span>
+                {batchMode === "hired" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-lg bg-blue-50 border-blue-100">
+                    <div className="space-y-1">
+                      <Label>Hire Rate</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
+                        <Input defaultValue="450" className="pl-7 bg-white max-w-[200px]" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">/m³</span>
+                      </div>
+                      <span className="text-xs text-slate-500 mt-1 block">Includes: batching, water, operator</span>
                     </div>
-                    <span className="text-xs text-slate-500 mt-1 block">Includes: batching, water, operator</span>
-                  </div>
-                  <div className="flex items-center justify-end">
-                    <div className="text-right">
-                      <span className="text-sm text-slate-500 block">Cost per m³</span>
-                      <span className="text-xl font-semibold text-blue-700">₹450</span>
+                    <div className="flex items-center justify-end">
+                      <div className="text-right">
+                        <span className="text-sm text-slate-500 block">Cost per m³</span>
+                        <span className="text-xl font-semibold text-blue-700">₹450</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {batchMode === "own" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 border rounded-lg bg-amber-50 border-amber-100">
+                    <div className="space-y-1">
+                      <Label>Plant capacity</Label>
+                      <div className="relative">
+                        <Input defaultValue="30" className="bg-white max-w-[140px]" />
+                        <span className="text-xs text-slate-500 block mt-1">m³/hr</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Fuel cost/hr</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
+                        <Input defaultValue="850" className="pl-7 bg-white" />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Operator & misc/hr</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
+                        <Input defaultValue="320" className="pl-7 bg-white" />
+                      </div>
+                    </div>
+                    <div className="col-span-3 flex justify-end">
+                      <div className="text-right">
+                        <span className="text-sm text-slate-500 block">Derived cost per m³</span>
+                        <span className="text-xl font-semibold text-amber-700">₹39</span>
+                        <span className="text-xs text-slate-500 block">(₹1,170/hr ÷ 30 m³/hr)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {batchMode === "rmc" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-lg bg-green-50 border-green-100">
+                    <div className="space-y-1">
+                      <Label>RMC quoted rate</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
+                        <Input defaultValue="6800" className="pl-7 bg-white max-w-[200px]" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">/m³</span>
+                      </div>
+                      <span className="text-xs text-green-700 mt-1 block">⚠ This replaces raw material cost — enter full delivered rate</span>
+                    </div>
+                    <div className="flex items-center justify-end">
+                      <div className="text-right">
+                        <span className="text-sm text-slate-500 block">Cost per m³</span>
+                        <span className="text-xl font-semibold text-green-700">₹6,800</span>
+                        <span className="text-xs text-slate-500 block">Includes mix, delivery, pump</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             {/* 5. Concrete Pump */}
             <Card className="border-l-4 border-l-amber-600 shadow-sm">
               <CardHeader className="pb-3 flex flex-row items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">5</div>
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold font-mono shrink-0">⑤</div>
                 <CardTitle className="text-lg">Concrete Pump</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">

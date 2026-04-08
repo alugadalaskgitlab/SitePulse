@@ -27,7 +27,7 @@ export default function ConcreteCalcBottom() {
           <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-stone-50 transition-colors">
             <div className="flex items-center gap-3 text-left">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm shrink-0">
-                6
+                ⑥
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-stone-800">Formwork (Shuttering)</h3>
@@ -146,7 +146,7 @@ export default function ConcreteCalcBottom() {
           <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-stone-50 transition-colors">
             <div className="flex items-center gap-3 text-left">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm shrink-0">
-                7
+                ⑦
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-stone-800">Labour & Curing</h3>
@@ -234,7 +234,7 @@ export default function ConcreteCalcBottom() {
           <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-stone-50 transition-colors">
             <div className="flex items-center gap-3 text-left">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm shrink-0">
-                8
+                ⑧
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-stone-800">Overhead & Margin</h3>
@@ -317,7 +317,7 @@ export default function ConcreteCalcBottom() {
           <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-stone-50 transition-colors">
             <div className="flex items-center gap-3 text-left">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm shrink-0">
-                9
+                ⑨
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-stone-800">BOQ Items & Profitability</h3>
@@ -419,7 +419,7 @@ export default function ConcreteCalcBottom() {
           <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-stone-50 transition-colors">
             <div className="flex items-center gap-3 text-left">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm shrink-0">
-                10
+                ⑩
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-stone-800">HYSD Reinforcement Rate Analysis</h3>
@@ -536,7 +536,8 @@ export default function ConcreteCalcBottom() {
 
       {/* 11. Hidden Factors Panel */}
       <div className="border-2 border-amber-400 bg-amber-50 rounded-lg overflow-hidden shadow-sm mt-8">
-        <div className="bg-amber-100 px-4 py-3 flex items-center gap-2 border-b border-amber-200">
+        <div className="bg-amber-100 px-4 py-3 flex items-center gap-3 border-b border-amber-200">
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-200 text-amber-800 font-bold text-sm shrink-0">⑪</div>
           <AlertTriangle className="h-5 w-5 text-amber-600" />
           <div>
             <h3 className="font-bold text-amber-900">Hidden Factors — Sensitivity Analysis</h3>
