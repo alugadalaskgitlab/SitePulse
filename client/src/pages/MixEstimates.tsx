@@ -50,8 +50,9 @@ export default function MixEstimates({ embedded = false }: Props) {
   const canEdit = role === "admin";
 
   const isStandalonePWA = useMemo(() => {
+    const nav: Navigator & { standalone?: boolean } = window.navigator;
     return window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
+      nav.standalone === true ||
       document.referrer.includes('/mix-calculator');
   }, []);
 
