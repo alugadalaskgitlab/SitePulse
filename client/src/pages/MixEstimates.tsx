@@ -53,7 +53,7 @@ export default function MixEstimates({ embedded = false }: Props) {
     const nav: Navigator & { standalone?: boolean } = window.navigator;
     return window.matchMedia('(display-mode: standalone)').matches ||
       nav.standalone === true ||
-      document.referrer.includes('/mix-calculator');
+      document.referrer.includes('/mix-calculator/login');
   }, []);
 
   useEffect(() => {
