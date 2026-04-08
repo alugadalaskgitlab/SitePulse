@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "miVTzLxjplpQr51dl_tb1"
+uri = "file://client/public/icons/mix-calc-icon-512x512.png"
+type = "image"
+title = "generated_image"
