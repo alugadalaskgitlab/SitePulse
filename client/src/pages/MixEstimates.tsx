@@ -49,6 +49,12 @@ export default function MixEstimates({ embedded = false }: Props) {
   const role = getMixRole();
   const canEdit = role === "admin";
 
+  const isStandalonePWA = useMemo(() => {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('/mix-calculator');
+  }, []);
+
   useEffect(() => {
     if (!embedded && !role) {
       window.location.href = "/mix-calculator/login?returnTo=/admin/mix-estimates";
@@ -186,7 +192,7 @@ export default function MixEstimates({ embedded = false }: Props) {
     <div className={embedded ? "p-0" : "p-6 max-w-5xl mx-auto"}>
       {/* Header */}
       <div className="flex items-center gap-4 mb-5">
-        {!embedded && (
+        {!embedded && !isStandalonePWA && (
           <Link href="/">
             <Button variant="ghost" size="sm" data-testid="btn-back">
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
