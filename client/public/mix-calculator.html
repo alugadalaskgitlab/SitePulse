@@ -3199,6 +3199,26 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     if(primeArea>0) autoRates[s.id+'_PRIME'] = Math.round(primePerSqm*100)/100;
     if(tackArea>0) autoRates[s.id+'_TACK'] = Math.round(tackPerSqm*100)/100;
 
+    var revAutoRates = null;
+    if(hasRevised && revisedMixRates){
+      revAutoRates = {};
+      var _ratStp = scenarioMode ? baseSiteTransPerMT : siteTransPerMT;
+      var _ratLay = scenarioMode ? baseLayPerMT : layPerMT;
+      var _ratPrime = scenarioMode ? basePrimePerSqm : primePerSqm;
+      var _ratTack = scenarioMode ? baseTackPerSqm : tackPerSqm;
+      Object.keys(mixQty).forEach(function(mn){
+        var mq=mixQty[mn];
+        var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0]; if(!rmr) return;
+        var mix=mixTypes[mq.mixIdx]||mixTypes[0];
+        var perMT = (rmr.exPlant + _ratStp + _ratLay + (rmr.overhead||0)) * _marginMul;
+        var perCUM = mix.density > 0 ? perMT * mix.density : 0;
+        var key = s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
+        revAutoRates[key] = Math.round(perCUM*100)/100;
+      });
+      if(primeArea>0) revAutoRates[s.id+'_PRIME'] = Math.round(_ratPrime*100)/100;
+      if(tackArea>0) revAutoRates[s.id+'_TACK'] = Math.round(_ratTack*100)/100;
+    }
+
     var baseOverheadPerMT = (_sbv ? _sbv.overheadPerMT : (mixRates[0]?(mixRates[0].overhead||0):0));
     var fullCoatCost = primeArea*rawBasePrimePerSqm + tackArea*rawBaseTackPerSqm;
     var fullJobCost = fullCoatCost;
@@ -3259,7 +3279,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     if(scenarioMode && procScenarioContractRates){
       var baseMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
       curRev = _calcSiteRevenue(s.id, baseMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates, autoRates);
-      var revRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, null, autoRates);
+      var revRev = _calcSiteRevenue(s.id, mode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, null, revAutoRates||autoRates);
       scRevenue = revRev.revenue;
       scHasRev = revRev.hasRev;
     } else {
@@ -3272,7 +3292,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       }
       if(procScenarioContractRates){
         var scMode = procScenarioContractRates[s.id+'__MODE']||'itemised';
-        var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates, autoRates);
+        var _scR = _calcSiteRevenue(s.id, scMode, mixQty, primeArea, tackArea, totalRoadKm, totalSiteMT, totalSiteCUM, procScenarioContractRates, revAutoRates||autoRates);
         scRevenue = _scR.revenue;
         scHasRev = _scR.hasRev;
       }
@@ -3367,7 +3387,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
     siteRows.push({
       site: s, mode: mode, mixQty: mixQty, primeArea: primeArea, tackArea: tackArea,
-      totalRoadKm: totalRoadKm, siteTransPerMT: siteTransPerMT, _useScope: _useScope, autoRates: autoRates,
+      totalRoadKm: totalRoadKm, siteTransPerMT: siteTransPerMT, _useScope: _useScope, autoRates: autoRates, revAutoRates: revAutoRates,
       fullJobCost: fullJobCost, inScopeCost: inScopeCost,
       revInScopeCost: revInScopeCost, revenue: revenue, hasRev: hasRev,
       excluded: excluded, profit: profit, margin: margin,
