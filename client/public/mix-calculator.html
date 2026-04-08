@@ -4482,6 +4482,8 @@ function applyRoleRestrictions() {
     if (b.closest('.top-bar') || b.closest('#printSettingsOverlay')) continue;
     if (b.classList.contains('admin-only')) continue;
     if (b.getAttribute('onclick') && b.getAttribute('onclick').indexOf('toggleCard') !== -1) continue;
+    var oc = b.getAttribute('onclick')||'';
+    if (oc.indexOf('setContractMode') !== -1 || oc.indexOf('setRevMode') !== -1) continue;
     b.disabled = true;
     b.tabIndex = -1;
   }
