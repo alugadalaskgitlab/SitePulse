@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, Download, LogOut } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
@@ -96,6 +96,8 @@ const HOOK_ALLOWANCE: Record<string, (dia: number) => number> = {
   "Ring":     (d) => 2 * 9 * d / 1000 + 10 * d / 1000,
   "Stirrup":  (d) => 2 * 9 * d / 1000 + 10 * d / 1000,
 };
+
+const MAX_SCENARIOS = 3;
 
 // ─── Default state ─────────────────────────────────────────────────────────────
 
@@ -287,11 +289,14 @@ export default function ConcreteCalculator() {
   const [activeMainTab, setActiveMainTab] = useState("calculator");
   const [activeAnalysisTab, setActiveAnalysisTab] = useState("price-impact");
   const [savedEstimateId, setSavedEstimateId] = useState<number | null>(() => {
-    const id = localStorage.getItem(LS_KEY + "_estId");
-    return id ? parseInt(id) : null;
+    // Support ?estimateId= query param
+    const params = new URLSearchParams(window.location.search);
+    const qid = params.get("estimateId");
+    if (qid) return parseInt(qid);
+    const lsId = localStorage.getItem(LS_KEY + "_estId");
+    return lsId ? parseInt(lsId) : null;
   });
   const [priceImpactChanges, setPriceImpactChanges] = useState<Record<string, number>>({});
-  const [compareScenarios, setCompareScenarios] = useState<Scenario[]>([]);
 
   const isStandalonePWA = useMemo(() => {
     const nav: Navigator & { standalone?: boolean } = window.navigator;
@@ -301,6 +306,25 @@ export default function ConcreteCalculator() {
   useEffect(() => {
     if (!role) window.location.href = "/mix-calculator/login?returnTo=/concrete-calculator";
   }, [role]);
+
+  // Load estimate by query-param estimateId on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const qid = params.get("estimateId");
+    if (!qid) return;
+    const id = parseInt(qid);
+    fetch(`/api/concrete-estimates/${id}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((est: ConcreteEstimate) => {
+        try {
+          const loaded = JSON.parse(est.state);
+          setS((prev) => ({ ...DEFAULT_STATE, ...loaded }));
+          setSavedEstimateId(id);
+          localStorage.setItem(LS_KEY + "_estId", String(id));
+        } catch {}
+      })
+      .catch(() => {});
+  }, []);
 
   // Persist state
   useEffect(() => {
@@ -326,7 +350,7 @@ export default function ConcreteCalculator() {
   // Main cost calculation
   const costs = useMemo(() => computeCosts(s, steelCostPerM3), [s, steelCostPerM3]);
 
-  // Price Impact revised costs
+  // Price Impact revised costs — uses same applyChangesToState as scenarios (defined below)
   const revisedCosts = useMemo(() => {
     const changes = priceImpactChanges;
     const revised = {
@@ -336,16 +360,23 @@ export default function ConcreteCalculator() {
       faPurchaseRate: s.faPurchaseRate * (1 + (changes.fa || 0) / 100),
       labourRatePerM3: s.labourRatePerM3 * (1 + (changes.labour || 0) / 100),
       marginPct: s.marginPct + (changes.margin || 0),
-      caTabs: s.caTabs.map((t, i) => ({
-        ...t,
-        purchaseRate: t.purchaseRate * (1 + (changes[`ca${i}`] || 0) / 100),
+      shutteringCostPerM2: s.shutteringCostPerM2 * (1 + (changes.formwork || 0) / 100),
+      caTabs: s.caTabs.map((t, i) => ({ ...t, purchaseRate: t.purchaseRate * (1 + (changes[`ca${i}`] || 0) / 100) })),
+      batchingRows: s.batchingRows.map((row) => ({
+        ...row,
+        hireRate: row.hireRate * (1 + (changes.batching || 0) / 100),
+        depreciation: row.depreciation * (1 + (changes.batching || 0) / 100),
+        fuel: row.fuel * (1 + (changes.batching || 0) / 100),
       })),
     };
-    return computeCosts(revised, steelCostPerM3 * (1 + (changes.steel || 0) / 100));
+    const steelFactor = 1 +
+      (changes.steel8 || 0) / 100 * 0.1 +
+      (changes.steel12p || 0) / 100 * 0.7;
+    return computeCosts(revised, steelCostPerM3 * steelFactor);
   }, [s, priceImpactChanges, steelCostPerM3]);
 
   // Save mutation
-  const saveMutation = useMutation({
+  const saveMutation = useMutation<ConcreteEstimate, Error, void>({
     mutationFn: async () => {
       const payload = {
         name: s.estimateName || "Untitled Estimate",
@@ -356,17 +387,16 @@ export default function ConcreteCalculator() {
         totalCum: s.totalVolume || null,
         totalAmt: s.totalVolume ? costs.totalWithEsc * s.totalVolume : null,
       };
-      if (savedEstimateId) {
-        return apiRequest("PATCH", `/api/concrete-estimates/${savedEstimateId}`, payload);
-      } else {
-        return apiRequest("POST", "/api/concrete-estimates", payload);
-      }
+      const response = savedEstimateId
+        ? await apiRequest("PATCH", `/api/concrete-estimates/${savedEstimateId}`, payload)
+        : await apiRequest("POST", "/api/concrete-estimates", payload);
+      return response.json() as Promise<ConcreteEstimate>;
     },
-    onSuccess: async (res: ConcreteEstimate) => {
-      setSavedEstimateId(res.id);
-      localStorage.setItem(LS_KEY + "_estId", String(res.id));
+    onSuccess: (data: ConcreteEstimate) => {
+      setSavedEstimateId(data.id);
+      localStorage.setItem(LS_KEY + "_estId", String(data.id));
       queryClient.invalidateQueries({ queryKey: ["/api/concrete-estimates"] });
-      toast({ title: "Estimate saved" });
+      toast({ title: savedEstimateId ? "Estimate updated" : "Estimate saved" });
     },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
@@ -422,7 +452,7 @@ export default function ConcreteCalculator() {
 
   function saveAsScenario(name: string) {
     const newScenario: Scenario = { id: uid(), name, changes: { ...priceImpactChanges } };
-    setCompareScenarios((prev) => [...prev.slice(0, 2), newScenario]);
+    update({ scenarios: [...(s.scenarios || []).slice(0, MAX_SCENARIOS - 1), newScenario] });
     toast({ title: `Scenario "${name}" saved` });
   }
 
@@ -454,34 +484,50 @@ export default function ConcreteCalculator() {
     return sum + vol * item.rate;
   }, 0);
 
+  // All 12 spec-required price sensitivity variables
   const PRICE_VARIABLES = [
     { key: "cement", label: "Cement Rate", baseValue: s.cementBagPrice, unit: "₹/bag", impact: costs.cement },
     { key: "admix", label: "Admixture Rate", baseValue: s.admixRate, unit: "₹/L", impact: costs.admix },
-    { key: "ca0", label: "CA 20mm Rate", baseValue: s.caTabs[0]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * 0.6 },
-    { key: "ca1", label: "CA 10mm Rate", baseValue: s.caTabs[1]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * 0.3 },
-    { key: "ca2", label: "CA 6mm Rate", baseValue: s.caTabs[2]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * 0.1 },
+    { key: "ca0", label: "CA 20mm Rate", baseValue: s.caTabs[0]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * (s.caTabs[0]?.proportion || 60) / 100 },
+    { key: "ca1", label: "CA 10mm Rate", baseValue: s.caTabs[1]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * (s.caTabs[1]?.proportion || 30) / 100 },
+    { key: "ca2", label: "CA 6mm Rate", baseValue: s.caTabs[2]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * (s.caTabs[2]?.proportion || 10) / 100 },
     { key: "fa", label: "Fine Aggregate Rate", baseValue: s.faPurchaseRate, unit: "₹/CFT", impact: costs.fa },
-    { key: "steel", label: "Steel Rate", baseValue: s.steelRates.r12, unit: "₹/MT", impact: steelCostPerM3 },
+    { key: "steel8", label: "Steel 8mm Rate", baseValue: s.steelRates.r8, unit: "₹/MT", impact: steelCostPerM3 * (bbsSummary.byDia[8]?.kg || 0) / (bbsSummary.totalKg || 1) },
+    { key: "steel12p", label: "Steel 12mm+ Rate", baseValue: s.steelRates.r12, unit: "₹/MT", impact: steelCostPerM3 * ([12, 16, 20, 25].reduce((s2, d) => s2 + (bbsSummary.byDia[d]?.kg || 0), 0)) / (bbsSummary.totalKg || 1) },
+    { key: "batching", label: "Batching Rate", baseValue: s.batchingRows[0]?.hireRate || 0, unit: "₹/day", impact: costs.batching },
+    { key: "formwork", label: "Formwork+Staging", baseValue: s.shutteringCostPerM2, unit: "₹/m²/use", impact: costs.formwork },
     { key: "labour", label: "Labour Rate", baseValue: s.labourRatePerM3, unit: "₹/m³", impact: costs.labour },
     { key: "margin", label: "Contractor Margin", baseValue: s.marginPct, unit: "%", impact: costs.margin },
   ].sort((a, b) => b.impact - a.impact);
 
-  const MAX_SCENARIOS = 3;
   const [scenarioNameInput, setScenarioNameInput] = useState("");
   const [addingScenario, setAddingScenario] = useState(false);
 
-  function computeScenarioCosts(scenario: Scenario) {
-    const changes = scenario.changes;
+  function applyChangesToState(base: CalcState, changes: Record<string, number>, baseSteelPerM3: number) {
     const revised = {
-      ...s,
-      cementBagPrice: s.cementBagPrice * (1 + (changes.cement || 0) / 100),
-      admixRate: s.admixRate * (1 + (changes.admix || 0) / 100),
-      faPurchaseRate: s.faPurchaseRate * (1 + (changes.fa || 0) / 100),
-      labourRatePerM3: s.labourRatePerM3 * (1 + (changes.labour || 0) / 100),
-      marginPct: s.marginPct + (changes.margin || 0),
-      caTabs: s.caTabs.map((t, i) => ({ ...t, purchaseRate: t.purchaseRate * (1 + (changes[`ca${i}`] || 0) / 100) })),
+      ...base,
+      cementBagPrice: base.cementBagPrice * (1 + (changes.cement || 0) / 100),
+      admixRate: base.admixRate * (1 + (changes.admix || 0) / 100),
+      faPurchaseRate: base.faPurchaseRate * (1 + (changes.fa || 0) / 100),
+      labourRatePerM3: base.labourRatePerM3 * (1 + (changes.labour || 0) / 100),
+      marginPct: base.marginPct + (changes.margin || 0),
+      shutteringCostPerM2: base.shutteringCostPerM2 * (1 + (changes.formwork || 0) / 100),
+      caTabs: base.caTabs.map((t, i) => ({ ...t, purchaseRate: t.purchaseRate * (1 + (changes[`ca${i}`] || 0) / 100) })),
+      batchingRows: base.batchingRows.map((row) => ({
+        ...row,
+        hireRate: row.hireRate * (1 + (changes.batching || 0) / 100),
+        depreciation: row.depreciation * (1 + (changes.batching || 0) / 100),
+        fuel: row.fuel * (1 + (changes.batching || 0) / 100),
+      })),
     };
-    return computeCosts(revised, steelCostPerM3 * (1 + (changes.steel || 0) / 100));
+    const steelFactor = 1 +
+      (changes.steel8 || 0) / 100 * 0.1 +
+      (changes.steel12p || 0) / 100 * 0.7;
+    return computeCosts(revised, baseSteelPerM3 * steelFactor);
+  }
+
+  function computeScenarioCosts(scenario: Scenario) {
+    return applyChangesToState(s, scenario.changes, steelCostPerM3);
   }
 
   const [piChange, setPiChange] = useState<Record<string, string>>({});
@@ -1116,8 +1162,18 @@ export default function ConcreteCalculator() {
                         <tr className="border-t-2 border-border bg-muted/20 font-semibold">
                           <td className="p-2 text-xs" colSpan={4}>Total</td>
                           <td className="p-2 text-right text-xs">{boqTotalCum.toFixed(2)} m³</td>
-                          <td className="p-2"></td>
-                          <td className="p-2"></td>
+                          <td className="p-2 text-right text-xs">
+                            {boqTotalCum > 0 ? fmtR(boqTotalAmt / boqTotalCum) + "/m³ avg" : "—"}
+                          </td>
+                          <td className="p-2 text-right text-xs">
+                            {(() => {
+                              const contractorTotal = s.boqItems.reduce((sum, item) => {
+                                const vol = item.unit === "m³" && item.dimL && item.dimW && item.dimD ? item.dimL * item.dimW * item.dimD * item.qty : item.qty;
+                                return sum + vol * item.contractorRate;
+                              }, 0);
+                              return boqTotalCum > 0 ? fmtR(contractorTotal / boqTotalCum) + "/m³" : "—";
+                            })()}
+                          </td>
                           <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
                           <td></td>
                         </tr>
@@ -1435,11 +1491,11 @@ export default function ConcreteCalculator() {
                             variant="outline"
                             size="sm"
                             onClick={() => setAddingScenario(true)}
-                            disabled={compareScenarios.length >= MAX_SCENARIOS}
+                            disabled={(s.scenarios || []).length >= MAX_SCENARIOS}
                             data-testid="btn-save-scenario"
                           >
                             <Plus className="w-3.5 h-3.5 mr-1" />
-                            {compareScenarios.length >= MAX_SCENARIOS ? "Max 3 Scenarios" : "Save as Scenario"}
+                            {(s.scenarios || []).length >= MAX_SCENARIOS ? "Max 3 Scenarios" : "Save as Scenario"}
                           </Button>
                         ) : (
                           <div className="flex items-center gap-2">
@@ -1494,7 +1550,7 @@ export default function ConcreteCalculator() {
                 <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold">Scenario Comparison</CardTitle>
                   <div className="flex items-center gap-2">
-                    {!addingScenario && compareScenarios.length < MAX_SCENARIOS ? (
+                    {!addingScenario && (s.scenarios || []).length < MAX_SCENARIOS ? (
                       <Button size="sm" variant="outline" onClick={() => setAddingScenario(true)} data-testid="btn-compare-add-scenario">
                         <Plus className="w-3.5 h-3.5 mr-1" /> Save Current as Scenario
                       </Button>
@@ -1524,7 +1580,7 @@ export default function ConcreteCalculator() {
                   </div>
                 </CardHeader>
                 <CardContent className="px-5 pb-5">
-                  {compareScenarios.length === 0 ? (
+                  {(s.scenarios || []).length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
                       <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-40" />
                       <p className="text-sm font-medium">No scenarios yet</p>
@@ -1537,11 +1593,11 @@ export default function ConcreteCalculator() {
                           <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                             <th className="text-left px-3 py-2.5 font-semibold">Component</th>
                             <th className="text-right px-3 py-2.5 font-semibold">Base</th>
-                            {compareScenarios.map((sc) => (
+                            {(s.scenarios || []).map((sc) => (
                               <th key={sc.id} className="text-right px-3 py-2.5 font-semibold">
                                 <div className="flex items-center justify-end gap-1">
                                   {sc.name}
-                                  <button onClick={() => setCompareScenarios((prev) => prev.filter((x) => x.id !== sc.id))} className="text-muted-foreground hover:text-destructive ml-1">
+                                  <button onClick={() => update({ scenarios: (s.scenarios || []).filter((x) => x.id !== sc.id) })} className="text-muted-foreground hover:text-destructive ml-1">
                                     <Trash2 className="w-3 h-3" />
                                   </button>
                                 </div>
@@ -1574,7 +1630,7 @@ export default function ConcreteCalculator() {
                           ].map((section) => (
                             <>
                               <tr key={section.label} className="bg-muted/20">
-                                <td colSpan={2 + compareScenarios.length} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{section.label}</td>
+                                <td colSpan={2 + (s.scenarios || []).length} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{section.label}</td>
                               </tr>
                               {section.rows.map(({ label, key }) => {
                                 const baseVal = costs[key] as number;
@@ -1582,7 +1638,7 @@ export default function ConcreteCalculator() {
                                   <tr key={key} className="border-t border-border/30 hover:bg-muted/10">
                                     <td className="px-3 py-2 text-sm">{label}</td>
                                     <td className="px-3 py-2 text-right text-sm">{fmtR(baseVal)}</td>
-                                    {compareScenarios.map((sc) => {
+                                    {(s.scenarios || []).map((sc) => {
                                       const scCosts = computeScenarioCosts(sc);
                                       const scVal = scCosts[key] as number;
                                       const delta = scVal - baseVal;
@@ -1602,7 +1658,7 @@ export default function ConcreteCalculator() {
                           <tr className="border-t-2 border-border font-bold bg-muted/20">
                             <td className="px-3 py-2.5">Grand Total ₹/m³</td>
                             <td className="px-3 py-2.5 text-right">{fmtR(costs.totalWithEsc)}</td>
-                            {compareScenarios.map((sc) => {
+                            {(s.scenarios || []).map((sc) => {
                               const scCosts = computeScenarioCosts(sc);
                               const delta = scCosts.totalWithEsc - costs.totalWithEsc;
                               return (
@@ -1623,7 +1679,7 @@ export default function ConcreteCalculator() {
                                 return <Badge variant="outline" className={`text-xs font-bold ${cls}`}>{m.toFixed(1)}%</Badge>;
                               })()}
                             </td>
-                            {compareScenarios.map((sc) => {
+                            {(s.scenarios || []).map((sc) => {
                               const scCosts = computeScenarioCosts(sc);
                               const m = ((s.contractRate - scCosts.totalWithEsc) / s.contractRate) * 100;
                               const baseM = ((s.contractRate - costs.totalWithEsc) / s.contractRate) * 100;
@@ -1644,7 +1700,7 @@ export default function ConcreteCalculator() {
 
                       {/* Savings cards */}
                       <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {compareScenarios.map((sc) => {
+                        {(s.scenarios || []).map((sc) => {
                           const scCosts = computeScenarioCosts(sc);
                           const savings = costs.totalWithEsc - scCosts.totalWithEsc;
                           const margin = ((s.contractRate - scCosts.totalWithEsc) / s.contractRate) * 100;

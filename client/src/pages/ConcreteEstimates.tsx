@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
 
 const ROLE_KEY = "hlc_mix_role";
-const LS_KEY = "hlc_concrete_calc_v1";
 
 const STRUCTURE_TYPE_COLORS: Record<string, string> = {
   "Drain": "bg-blue-100 text-blue-700 border-blue-200",
@@ -95,16 +94,7 @@ export default function ConcreteEstimates() {
   });
 
   function loadInCalculator(est: ConcreteEstimate) {
-    try {
-      const state = JSON.parse(est.state);
-      localStorage.setItem(LS_KEY, JSON.stringify(state));
-      localStorage.setItem(LS_KEY + "_estId", String(est.id));
-      localStorage.setItem(LS_KEY + "_estName", est.name);
-    } catch {
-      toast({ title: "Invalid estimate data", variant: "destructive" });
-      return;
-    }
-    window.location.href = "/concrete-calculator";
+    window.location.href = `/concrete-calculator?estimateId=${est.id}`;
   }
 
   const filtered = useMemo(() => {
