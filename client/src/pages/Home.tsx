@@ -51,7 +51,7 @@ export default function Home() {
       </div>
 
       <div className="mt-8 flex items-center gap-4">
-        <Link href="/estimator-login">
+        <Link href="/estimator-hub">
           <Button variant="outline" className="gap-2" data-testid="button-estimate-manager">
             <BarChart3 className="w-4 h-4" />
             Estimate Manager
