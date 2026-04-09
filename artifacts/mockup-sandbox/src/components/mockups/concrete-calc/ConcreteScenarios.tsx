@@ -73,7 +73,6 @@ const INITIAL_COLUMNS: ScenarioColumn[] = [
   { id: "base", label: "Base Estimate",         isBase: true },
   { id: "sc_a", label: "Robosand + Cheaper CA", tag: "Scenario A", tagColor: "bg-violet-100 text-violet-700" },
   { id: "sc_b", label: "Own Ajax + Higher Cem", tag: "Scenario B", tagColor: "bg-amber-100 text-amber-700" },
-  { id: "sc_c", label: "Cement +₹40/bag",       tag: "Scenario C", tagColor: "bg-rose-100 text-rose-700" },
 ];
 
 const categoryColors: Record<string, string> = {
