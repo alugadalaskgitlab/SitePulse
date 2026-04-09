@@ -51,7 +51,8 @@ interface CalcState {
   stagingHeight: number; stagingHireRate: number; stagingMonths: number;
   waterCuringMode: "tanker" | "static";
   tankerCapKL: number; tankerTripsPerDay: number; tankerHireRate: number; curingDays: number;
-  staticPumpKw: number; staticElecRate: number; staticWaterCostKL: number;
+  staticPumpKw: number; staticElecRate: number; staticWaterCostKL: number; staticDailyWaterKL: number;
+  stagingAreaPerM3: number;
   curingCompoundEnabled: boolean; curingCompoundRate: number; curingCompoundCoverage: number; curingCompoundSurfaceArea: number;
   overheadPct: number; marginPct: number; escalationPct: number;
   labourRatePerM3: number;
@@ -124,7 +125,8 @@ const DEFAULT_STATE: CalcState = {
   stagingHeight: 3.5, stagingHireRate: 85, stagingMonths: 2,
   waterCuringMode: "tanker",
   tankerCapKL: 6, tankerTripsPerDay: 2, tankerHireRate: 800, curingDays: 7,
-  staticPumpKw: 1.5, staticElecRate: 8, staticWaterCostKL: 30,
+  staticPumpKw: 1.5, staticElecRate: 8, staticWaterCostKL: 30, staticDailyWaterKL: 2,
+  stagingAreaPerM3: 1.5,
   curingCompoundEnabled: false, curingCompoundRate: 45, curingCompoundCoverage: 5, curingCompoundSurfaceArea: 2,
   overheadPct: 8, marginPct: 10, escalationPct: 2,
   labourRatePerM3: 350,
@@ -199,8 +201,10 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
   }
 
   // Formwork & Staging
+  // shuttering: area per m³ × cost per m² per use ÷ reuse cycles → ₹/m³
   const shutteringCost = (s.shutteringAreaPerM3 * s.shutteringCostPerM2) / (s.shutteringReuseCycles || 1);
-  const stagingCost = s.stagingHeight * s.stagingHireRate * s.stagingMonths;
+  // staging: soffit/horizontal area per m³ × hire rate (₹/m²/month) × months → ₹/m³
+  const stagingCost = s.stagingAreaPerM3 * s.stagingHireRate * s.stagingMonths;
   const formwork = shutteringCost + stagingCost;
 
   // Curing
@@ -209,8 +213,10 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
     const totalWater = s.tankerCapKL * s.tankerTripsPerDay * s.curingDays;
     waterCuring = (totalWater > 0 && s.totalVolume > 0) ? (s.tankerTripsPerDay * s.tankerHireRate * s.curingDays) / s.totalVolume : 0;
   } else {
+    // Static: pump electricity + water purchase (using static-specific daily water volume)
     const elecKwh = s.staticPumpKw * 8 * s.curingDays;
-    waterCuring = (s.totalVolume > 0) ? (elecKwh * s.staticElecRate + s.staticWaterCostKL * s.tankerCapKL * s.curingDays) / s.totalVolume : 0;
+    const waterCostTotal = s.staticDailyWaterKL * s.curingDays * s.staticWaterCostKL;
+    waterCuring = (s.totalVolume > 0) ? (elecKwh * s.staticElecRate + waterCostTotal) / s.totalVolume : 0;
   }
   const compoundCost = s.curingCompoundEnabled ? (s.curingCompoundSurfaceArea / (s.curingCompoundCoverage || 1)) * s.curingCompoundRate : 0;
   const curing = waterCuring + compoundCost;
@@ -219,7 +225,7 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
   const labour = s.labourRatePerM3;
 
   // Wastage
-  const faBulkageImpact = s.wastage.sandBulkage ? fa * (s.faBulkagePct / 100 / (1 + s.faBulkagePct / 100)) : 0;
+  const faBulkageImpact = (s.wastage.sandBulkage && s.faType === "natural") ? fa * (s.faBulkagePct / 100 / (1 + s.faBulkagePct / 100)) : 0;
   const cementWastageAmt = s.wastage.cementWastage ? cement * (s.wastage.cementWastagePct / 100) : 0;
   const steelWasteAmt = s.wastage.steelCuttingWaste ? steelCostPerM3 * (s.wastage.steelCuttingPct / 100) : 0;
   const formworkDamageAmt = s.wastage.formworkDamage ? (shutteringCost * (s.wastage.formworkDamageReduction / 100)) : 0;
@@ -959,12 +965,13 @@ export default function ConcreteCalculator() {
                         >{opt}</button>
                       ))}
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {numInput("Soffit Area (m²/m³)", s.stagingAreaPerM3, (v) => update({ stagingAreaPerM3: v }), { step: 0.1 })}
                       {numInput("Staging Height (m)", s.stagingHeight, (v) => update({ stagingHeight: v }), { step: 0.5 })}
                       {numInput("Hire Rate (₹/m²/month)", s.stagingHireRate, (v) => update({ stagingHireRate: v }))}
                       {numInput("Months in Use", s.stagingMonths, (v) => update({ stagingMonths: v }))}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">Soffit staging cost applies to horizontal/soffit areas (invert slab, deck slab, culvert roof)</p>
+                    <p className="text-xs text-muted-foreground mt-1.5">Cost = Soffit Area (m²/m³) × Hire Rate (₹/m²/month) × Months. Applies only to horizontal/soffit surfaces (invert slab, deck, culvert roof).</p>
                   </div>
                   <p className="text-xs text-muted-foreground">Total formwork + staging: {fmtR(costs.formwork)}/m³</p>
                 </CardContent>
@@ -994,10 +1001,12 @@ export default function ConcreteCalculator() {
                         {numInput("Curing Days", s.curingDays, (v) => update({ curingDays: v }))}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         {numInput("Pump (kW)", s.staticPumpKw, (v) => update({ staticPumpKw: v }), { step: 0.5 })}
                         {numInput("Electricity (₹/kWh)", s.staticElecRate, (v) => update({ staticElecRate: v }))}
+                        {numInput("Daily Water (KL/day)", s.staticDailyWaterKL, (v) => update({ staticDailyWaterKL: v }), { step: 0.5 })}
                         {numInput("Water Cost (₹/KL)", s.staticWaterCostKL, (v) => update({ staticWaterCostKL: v }))}
+                        {numInput("Curing Days", s.curingDays, (v) => update({ curingDays: v }))}
                       </div>
                     )}
                   </div>
