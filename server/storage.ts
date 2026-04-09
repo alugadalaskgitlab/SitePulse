@@ -132,6 +132,9 @@ import {
   vendorRateCards,
   type VendorRateCard,
   type InsertVendorRateCard,
+  concreteEstimates,
+  type ConcreteEstimate,
+  type InsertConcreteEstimate,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
@@ -410,6 +413,11 @@ export interface IStorage {
   createPriceScenario(data: InsertPriceScenario): Promise<PriceScenario>;
   updatePriceScenario(id: number, data: { name?: string; state?: string; baseState?: string }): Promise<PriceScenario | undefined>;
   deletePriceScenario(id: number): Promise<boolean>;
+  getConcreteEstimates(): Promise<ConcreteEstimate[]>;
+  getConcreteEstimate(id: number): Promise<ConcreteEstimate | undefined>;
+  createConcreteEstimate(data: InsertConcreteEstimate): Promise<ConcreteEstimate>;
+  updateConcreteEstimate(id: number, data: Partial<InsertConcreteEstimate>): Promise<ConcreteEstimate | undefined>;
+  deleteConcreteEstimate(id: number): Promise<boolean>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -7123,6 +7131,33 @@ export class DatabaseStorage implements IStorage {
 
   async deletePriceScenario(id: number): Promise<boolean> {
     const result = await db.delete(priceScenarios).where(eq(priceScenarios.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getConcreteEstimates(): Promise<ConcreteEstimate[]> {
+    return await db.select().from(concreteEstimates).orderBy(desc(concreteEstimates.updatedAt));
+  }
+
+  async getConcreteEstimate(id: number): Promise<ConcreteEstimate | undefined> {
+    const [row] = await db.select().from(concreteEstimates).where(eq(concreteEstimates.id, id));
+    return row;
+  }
+
+  async createConcreteEstimate(data: InsertConcreteEstimate): Promise<ConcreteEstimate> {
+    const [row] = await db.insert(concreteEstimates).values(data).returning();
+    return row;
+  }
+
+  async updateConcreteEstimate(id: number, data: Partial<InsertConcreteEstimate>): Promise<ConcreteEstimate | undefined> {
+    const [row] = await db.update(concreteEstimates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(concreteEstimates.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteConcreteEstimate(id: number): Promise<boolean> {
+    const result = await db.delete(concreteEstimates).where(eq(concreteEstimates.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 }

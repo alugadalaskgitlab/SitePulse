@@ -1047,6 +1047,23 @@ export const insertPriceScenarioSchema = createInsertSchema(priceScenarios).omit
 export type PriceScenario = typeof priceScenarios.$inferSelect;
 export type InsertPriceScenario = z.infer<typeof insertPriceScenarioSchema>;
 
+export const concreteEstimates = pgTable("concrete_estimates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  contractor: text("contractor"),
+  structureType: text("structure_type"),
+  grade: text("grade"),
+  state: text("state").notNull(),
+  totalCum: real("total_cum"),
+  totalAmt: real("total_amt"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertConcreteEstimateSchema = createInsertSchema(concreteEstimates).omit({ id: true, createdAt: true, updatedAt: true });
+export type ConcreteEstimate = typeof concreteEstimates.$inferSelect;
+export type InsertConcreteEstimate = z.infer<typeof insertConcreteEstimateSchema>;
+
 export const vendorRateCards = pgTable("vendor_rate_cards", {
   id: serial("id").primaryKey(),
   vendorName: text("vendor_name").notNull(),

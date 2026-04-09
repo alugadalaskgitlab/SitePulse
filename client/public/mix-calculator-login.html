@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login — Mix Rate Estimate & Scenario Manager</title>
+<title>HLC Estimator Portal</title>
 <meta name="theme-color" content="#d97706">
 <link rel="manifest" href="/mix-calculator.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -51,14 +51,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .feat-icon svg{width:16px;height:16px}
 .feat span{font-size:11px;color:#6b7280;font-weight:500}
 .footer-note{text-align:center;font-size:12px;color:#9ca3af;margin-top:24px}
+
+/* Hub styles */
+#hubSection{display:none}
+.hub-box{width:100%;max-width:560px}
+.hub-greeting{text-align:center;margin-bottom:28px}
+.hub-greeting .logo-img{width:72px;height:72px}
+.hub-title{font-size:22px;font-weight:700;color:#111827}
+.hub-sub{color:#6b7280;font-size:13px;margin-top:4px}
+.hub-tiles{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+@media(max-width:440px){.hub-tiles{grid-template-columns:1fr}}
+.tile{display:block;border-radius:16px;padding:28px 20px;text-decoration:none;border:2px solid #fde68a;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,.06);transition:all .18s;cursor:pointer;text-align:center;position:relative;overflow:hidden}
+.tile:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(217,119,6,.18);border-color:#f59e0b}
+.tile.concrete{border-color:#bfdbfe}
+.tile.concrete:hover{border-color:#3b82f6;box-shadow:0 8px 24px rgba(59,130,246,.18)}
+.tile-icon{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.tile-icon.amber-bg{background:linear-gradient(135deg,#fef3c7,#fde68a)}
+.tile-icon.blue-bg{background:linear-gradient(135deg,#dbeafe,#bfdbfe)}
+.tile-icon svg{width:28px;height:28px}
+.tile-name{font-size:16px;font-weight:700;color:#1f2937;margin-bottom:6px}
+.tile-desc{font-size:12px;color:#6b7280;line-height:1.4}
+.new-badge{position:absolute;top:12px;right:12px;background:#3b82f6;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em}
+.hub-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.logout-btn{background:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 14px;font-size:13px;color:#6b7280;cursor:pointer;transition:all .15s}
+.logout-btn:hover{border-color:#f87171;color:#dc2626}
 </style>
 </head>
 <body>
 <div class="center-wrap">
-  <div class="login-box">
+
+  <!-- ── Login section ── -->
+  <div class="login-box" id="loginSection">
     <div class="logo-area">
       <img src="/hlc-logo.jpg" alt="HLC" class="logo-img" onerror="this.style.display='none'">
-      <div class="title">Mix Rate Estimate &<br>Scenario Manager</div>
+      <div class="title">HLC Estimator Portal</div>
       <div class="subtitle">High Lane Constructions</div>
     </div>
 
@@ -94,32 +120,67 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
           <div class="feat-icon amber">
             <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><path d="M4 10h16"/><path d="M10 4v16"/></svg>
           </div>
-          <span>Rate Calculator</span>
+          <span>Mix Calculator</span>
         </div>
         <div class="feat">
           <div class="feat-icon blue">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
-          <span>Scenarios</span>
+          <span>Concrete Rates</span>
         </div>
         <div class="feat">
           <div class="feat-icon green">
             <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
           </div>
-          <span>Compare</span>
+          <span>Scenarios</span>
         </div>
       </div>
     </div>
 
     <p class="footer-note">Contact administrator if you forgot your PIN</p>
   </div>
+
+  <!-- ── Hub section (shown post-login when no returnTo) ── -->
+  <div class="hub-box" id="hubSection">
+    <div class="hub-greeting">
+      <img src="/hlc-logo.jpg" alt="HLC" class="logo-img" onerror="this.style.display='none'">
+      <div class="hub-title">Estimator Portal</div>
+      <div class="hub-sub">High Lane Constructions — choose your calculator</div>
+    </div>
+
+    <div class="hub-tiles">
+      <a class="tile" href="/admin/mix-estimates">
+        <div class="tile-icon amber-bg">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M6 20V10l6-6 6 6v10"/><path d="M9 20v-5h6v5"/></svg>
+        </div>
+        <div class="tile-name">Bituminous Mix Calculator</div>
+        <div class="tile-desc">DBM, BC, WMM rate build-up with job estimator and scenario comparison</div>
+      </a>
+
+      <a class="tile concrete" href="/admin/concrete-estimates">
+        <div class="new-badge">NEW</div>
+        <div class="tile-icon blue-bg">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+        </div>
+        <div class="tile-name">Concrete Rate Calculator</div>
+        <div class="tile-desc">Full cost build-up for drains, box culverts, bridges with BBS and BOQ analysis</div>
+      </a>
+    </div>
+
+    <div class="hub-footer">
+      <button class="logout-btn" onclick="handleLogout()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:4px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+        Sign Out
+      </button>
+    </div>
+  </div>
+
 </div>
 
 <script>
 var ADMIN_PIN = '0808';
 var MANAGER_PIN = '1234';
 var ROLE_KEY = 'hlc_mix_role';
-
 var pinVisible = false;
 
 function onPinInput(el) {
@@ -171,17 +232,38 @@ function redirect() {
   if (returnTo && returnTo.startsWith('/')) {
     window.location.href = returnTo;
   } else {
-    window.location.href = '/admin/mix-estimates';
+    showHub();
   }
 }
 
-var params = new URLSearchParams(window.location.search);
-if (params.get('returnTo')) {
+function showHub() {
+  document.getElementById('loginSection').style.display = 'none';
+  document.getElementById('hubSection').style.display = 'block';
+}
+
+function handleLogout() {
+  localStorage.removeItem(ROLE_KEY);
+  document.getElementById('hubSection').style.display = 'none';
+  document.getElementById('loginSection').style.display = 'block';
+  document.getElementById('pinInput').value = '';
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('submitBtn').classList.remove('active');
+  setTimeout(function() { document.getElementById('pinInput').focus(); }, 50);
+}
+
+// On load: if already authenticated and no returnTo, show hub
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var returnTo = params.get('returnTo');
   var role = localStorage.getItem(ROLE_KEY);
   if (role === 'admin' || role === 'manager') {
-    redirect();
+    if (returnTo && returnTo.startsWith('/')) {
+      window.location.href = returnTo;
+    } else {
+      showHub();
+    }
   }
-}
+})();
 </script>
 </body>
 </html>

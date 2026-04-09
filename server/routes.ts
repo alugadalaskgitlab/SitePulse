@@ -3440,6 +3440,66 @@ export async function registerRoutes(
     }
   });
 
+  // Concrete Estimates CRUD
+  app.get("/api/concrete-estimates", async (_req, res) => {
+    try {
+      const estimates = await storage.getConcreteEstimates();
+      res.json(estimates);
+    } catch (err) {
+      console.error("Error fetching concrete estimates:", err);
+      res.status(500).json({ message: "Failed to fetch estimates" });
+    }
+  });
+
+  app.get("/api/concrete-estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const estimate = await storage.getConcreteEstimate(id);
+      if (!estimate) return res.status(404).json({ message: "Estimate not found" });
+      res.json(estimate);
+    } catch (err) {
+      console.error("Error fetching concrete estimate:", err);
+      res.status(500).json({ message: "Failed to fetch estimate" });
+    }
+  });
+
+  app.post("/api/concrete-estimates", async (req, res) => {
+    try {
+      const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
+      if (!name || !state) return res.status(400).json({ message: "name and state required" });
+      const estimate = await storage.createConcreteEstimate({ name, contractor: contractor || null, structureType: structureType || null, grade: grade || null, state, totalCum: totalCum || null, totalAmt: totalAmt || null });
+      res.status(201).json(estimate);
+    } catch (err) {
+      console.error("Error creating concrete estimate:", err);
+      res.status(500).json({ message: "Failed to create estimate" });
+    }
+  });
+
+  app.patch("/api/concrete-estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
+      const estimate = await storage.updateConcreteEstimate(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, grade: grade || null, ...(state ? { state } : {}), totalCum: totalCum || null, totalAmt: totalAmt || null });
+      if (!estimate) return res.status(404).json({ message: "Estimate not found" });
+      res.json(estimate);
+    } catch (err) {
+      console.error("Error updating concrete estimate:", err);
+      res.status(500).json({ message: "Failed to update estimate" });
+    }
+  });
+
+  app.delete("/api/concrete-estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteConcreteEstimate(id);
+      if (!deleted) return res.status(404).json({ message: "Estimate not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting concrete estimate:", err);
+      res.status(500).json({ message: "Failed to delete estimate" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();
