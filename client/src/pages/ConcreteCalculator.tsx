@@ -44,7 +44,8 @@ interface CalcState {
   faPurchaseRate: number; faLeadKm: number; faFreightRate: number; faPayload: number; faBulkagePct: number;
   admixDosage: number; admixRate: number;
   batchingRows: BatchingRow[];
-  placementMode: "own" | "hired"; placementRatePerDay: number; placementOutputPerDay: number;
+  placementMode: "own" | "hired" | "transit_mixer"; placementRatePerDay: number; placementOutputPerDay: number;
+  tmHirePerTrip: number; tmTripsPerDay: number;
   shutteringSystem: string; stagingSystem: string;
   shutteringAreaPerM3: number; shutteringCostPerM2: number; shutteringReuseCycles: number;
   stagingHeight: number; stagingHireRate: number; stagingMonths: number;
@@ -59,6 +60,8 @@ interface CalcState {
   bbsRows: BBSRow[];
   steelRates: SteelRates;
   contractRate: number;
+  profitMode: "per_item" | "lumpsum";
+  lumpsumContractAmt: number;
   scenarios: Scenario[];
 }
 
@@ -115,6 +118,7 @@ const DEFAULT_STATE: CalcState = {
   admixDosage: 0.35, admixRate: 90,
   batchingRows: [{ id: "b1", type: "Ajax Self-Loader", model: "Ajax 500L", mode: "hired", depreciation: 0, fuel: 0, operator: 0, output: 6, hireRate: 2500, hireMode: "per_day" }],
   placementMode: "hired", placementRatePerDay: 3000, placementOutputPerDay: 20,
+  tmHirePerTrip: 500, tmTripsPerDay: 10,
   shutteringSystem: "Steel Frame + Timber Ply", stagingSystem: "Prop & Beam",
   shutteringAreaPerM3: 3.0, shutteringCostPerM2: 180, shutteringReuseCycles: 20,
   stagingHeight: 3.5, stagingHireRate: 85, stagingMonths: 2,
@@ -134,6 +138,8 @@ const DEFAULT_STATE: CalcState = {
   bbsRows: [],
   steelRates: { r8: 58000, r10: 57000, r12: 56500, r16: 56000, r20: 55500, r25: 55000 },
   contractRate: 15000,
+  profitMode: "per_item",
+  lumpsumContractAmt: 0,
   scenarios: [],
 };
 
@@ -148,7 +154,7 @@ function loadState(): CalcState {
 // ─── Cost Calculations ─────────────────────────────────────────────────────────
 
 interface CostBreakdown {
-  cement: number; ca: number; fa: number; admix: number;
+  cement: number; ca: number; fa: number; admix: number; steel: number;
   batching: number; placement: number; formwork: number; labour: number;
   curing: number; wastage: number; overhead: number; margin: number;
   total: number; totalWithEsc: number;
@@ -185,7 +191,12 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
   }, 0);
 
   // Placement
-  const placement = s.placementOutputPerDay > 0 ? s.placementRatePerDay / s.placementOutputPerDay : 0;
+  let placement = 0;
+  if (s.placementMode === "transit_mixer") {
+    placement = s.placementOutputPerDay > 0 ? (s.tmHirePerTrip * s.tmTripsPerDay) / s.placementOutputPerDay : 0;
+  } else {
+    placement = s.placementOutputPerDay > 0 ? s.placementRatePerDay / s.placementOutputPerDay : 0;
+  }
 
   // Formwork & Staging
   const shutteringCost = (s.shutteringAreaPerM3 * s.shutteringCostPerM2) / (s.shutteringReuseCycles || 1);
@@ -221,7 +232,7 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
   const total = direct + overhead + margin;
   const totalWithEsc = total * (1 + s.escalationPct / 100);
 
-  return { cement, ca, fa, admix, batching, placement, formwork, labour, curing, wastage, overhead, margin, total, totalWithEsc };
+  return { cement, ca, fa, admix, steel: steelCostPerM3, batching, placement, formwork, labour, curing, wastage, overhead, margin, total, totalWithEsc };
 }
 
 // ─── BBS Calculations ──────────────────────────────────────────────────────────
@@ -474,15 +485,12 @@ export default function ConcreteCalculator() {
 
   const maxBar = Math.max(...totalRow.map((r) => r.value), 1);
 
-  const boqTotalCum = s.boqItems.reduce((sum, item) => {
-    const vol = item.unit === "m³" && item.dimL && item.dimW && item.dimD ? item.dimL * item.dimW * item.dimD * item.qty : item.qty;
-    return sum + vol;
-  }, 0);
+  function boqVol(item: BOQItem) {
+    return (item.dimL && item.dimW && item.dimD) ? item.dimL * item.dimW * item.dimD * item.qty : item.qty;
+  }
 
-  const boqTotalAmt = s.boqItems.reduce((sum, item) => {
-    const vol = item.unit === "m³" && item.dimL && item.dimW && item.dimD ? item.dimL * item.dimW * item.dimD * item.qty : item.qty;
-    return sum + vol * item.rate;
-  }, 0);
+  const boqTotalCum = s.boqItems.reduce((sum, item) => sum + boqVol(item), 0);
+  const boqTotalAmt = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.rate, 0);
 
   // All 12 spec-required price sensitivity variables
   const PRICE_VARIABLES = [
@@ -890,19 +898,30 @@ export default function ConcreteCalculator() {
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑤ Concrete Placement</CardTitle>
                 </CardHeader>
                 <CardContent className="px-5 pb-5">
-                  <div className="flex items-center gap-4 mb-3">
-                    {["own", "hired"].map((m) => (
+                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                    {(["own", "hired", "transit_mixer"] as const).map((m) => (
                       <button key={m} className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.placementMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}
-                        onClick={() => update({ placementMode: m as "own" | "hired" })}>
-                        {m === "own" ? "Own Pump" : "Hired Pump"}
+                        onClick={() => update({ placementMode: m })}>
+                        {m === "own" ? "Own Pump" : m === "hired" ? "Hired Pump" : "Transit Mixer"}
                       </button>
                     ))}
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {numInput("Rate (₹/day)", s.placementRatePerDay, (v) => update({ placementRatePerDay: v }))}
-                    {numInput("Output (m³/day)", s.placementOutputPerDay, (v) => update({ placementOutputPerDay: v }))}
-                    <div className="flex items-end pb-1 text-xs text-muted-foreground">→ {fmtR(costs.placement)}/m³</div>
-                  </div>
+                  {s.placementMode === "transit_mixer" ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {numInput("Hire per Trip (₹)", s.tmHirePerTrip, (v) => update({ tmHirePerTrip: v }))}
+                      {numInput("Trips/day", s.tmTripsPerDay, (v) => update({ tmTripsPerDay: v }), { step: 1 })}
+                      {numInput("Output (m³/day)", s.placementOutputPerDay, (v) => update({ placementOutputPerDay: v }))}
+                      <div className="flex items-end pb-1 text-xs text-muted-foreground col-span-3">
+                        → {fmtR(costs.placement)}/m³ &nbsp;({fmtR(s.tmHirePerTrip * s.tmTripsPerDay)}/day total ÷ {s.placementOutputPerDay} m³/day)
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-3">
+                      {numInput(`${s.placementMode === "own" ? "Operating Cost" : "Hire Rate"} (₹/day)`, s.placementRatePerDay, (v) => update({ placementRatePerDay: v }))}
+                      {numInput("Output (m³/day)", s.placementOutputPerDay, (v) => update({ placementOutputPerDay: v }))}
+                      <div className="flex items-end pb-1 text-xs text-muted-foreground">→ {fmtR(costs.placement)}/m³</div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1108,8 +1127,7 @@ export default function ConcreteCalculator() {
                       </thead>
                       <tbody>
                         {s.boqItems.map((item) => {
-                          const hasDims = item.dimL && item.dimW && item.dimD;
-                          const vol = hasDims ? item.dimL * item.dimW * item.dimD * item.qty : item.qty;
+                          const vol = boqVol(item);
                           const amount = vol * item.rate;
                           const contractorAmt = vol * item.contractorRate;
                           const margin = item.contractorRate > 0 ? ((item.contractorRate - item.rate) / item.contractorRate) * 100 : 0;
@@ -1166,19 +1184,117 @@ export default function ConcreteCalculator() {
                             {boqTotalCum > 0 ? fmtR(boqTotalAmt / boqTotalCum) + "/m³ avg" : "—"}
                           </td>
                           <td className="p-2 text-right text-xs">
-                            {(() => {
-                              const contractorTotal = s.boqItems.reduce((sum, item) => {
-                                const vol = item.unit === "m³" && item.dimL && item.dimW && item.dimD ? item.dimL * item.dimW * item.dimD * item.qty : item.qty;
-                                return sum + vol * item.contractorRate;
-                              }, 0);
-                              return boqTotalCum > 0 ? fmtR(contractorTotal / boqTotalCum) + "/m³" : "—";
-                            })()}
+                            {boqTotalCum > 0 ? fmtR(s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0) / boqTotalCum) + "/m³" : "—"}
                           </td>
                           <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
                           <td></td>
                         </tr>
                       </tfoot>
                     </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ⑪ Contract Profitability */}
+            <Card>
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑪ Contract Profitability</CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Mode:</span>
+                  {(["per_item", "lumpsum"] as const).map((m) => (
+                    <button key={m} onClick={() => update({ profitMode: m })}
+                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.profitMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>
+                      {m === "per_item" ? "Per Item (BOQ)" : "Lumpsum"}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-5">
+                {s.profitMode === "lumpsum" ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {numInput("Total Contract Amount (₹)", s.lumpsumContractAmt, (v) => update({ lumpsumContractAmt: v }))}
+                    </div>
+                    {(() => {
+                      const totalCost = costs.totalWithEsc * s.totalVolume;
+                      const revenue = s.lumpsumContractAmt;
+                      const profit = revenue - totalCost;
+                      const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
+                      const cls = pct >= 10 ? "text-green-700 bg-green-50 border-green-200" : pct >= 5 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200";
+                      return (
+                        <div className={`rounded-xl border p-4 flex flex-wrap gap-6 ${cls}`}>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Contract Value</p><p className="text-lg font-bold">{fmtR(revenue)}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Estimated Cost</p><p className="text-lg font-bold">{fmtR(totalCost)}</p><p className="text-xs opacity-60">{fmtR(costs.totalWithEsc)}/m³ × {s.totalVolume} m³</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Gross Profit</p><p className="text-lg font-bold">{fmtR(profit)}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Margin %</p><p className="text-2xl font-bold">{pct.toFixed(1)}%</p></div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div>
+                    {s.boqItems.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Add BOQ items above to see profitability analysis.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide text-xs">
+                              <th className="text-left p-2 font-semibold">Item</th>
+                              <th className="text-right p-2 font-semibold">m³</th>
+                              <th className="text-right p-2 font-semibold">Revenue (₹)</th>
+                              <th className="text-right p-2 font-semibold">Cost (₹)</th>
+                              <th className="text-right p-2 font-semibold">Profit (₹)</th>
+                              <th className="text-right p-2 font-semibold">Margin %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {s.boqItems.map((item) => {
+                              const vol = boqVol(item);
+                              const revenue = vol * item.contractorRate;
+                              const itemCost = vol * item.rate;
+                              const profit = revenue - itemCost;
+                              const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
+                              const badgeCls = pct >= 10 ? "bg-green-100 text-green-700 border-green-300" : pct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
+                              return (
+                                <tr key={item.id} className="border-t border-border/40 hover:bg-muted/10">
+                                  <td className="p-2 font-medium">{item.description || "—"}</td>
+                                  <td className="p-2 text-right">{vol.toFixed(2)}</td>
+                                  <td className="p-2 text-right">{fmtR(revenue)}</td>
+                                  <td className="p-2 text-right">{fmtR(itemCost)}</td>
+                                  <td className={`p-2 text-right font-semibold ${profit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(profit)}</td>
+                                  <td className="p-2 text-right">
+                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{pct.toFixed(1)}%</Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            {(() => {
+                              const totalRev = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0);
+                              const totalCost = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.rate, 0);
+                              const totalProfit = totalRev - totalCost;
+                              const totalPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
+                              const badgeCls = totalPct >= 10 ? "bg-green-100 text-green-700 border-green-300" : totalPct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
+                              return (
+                                <tr className="border-t-2 border-border bg-muted/20 font-bold">
+                                  <td className="p-2">Total</td>
+                                  <td className="p-2 text-right">{boqTotalCum.toFixed(2)} m³</td>
+                                  <td className="p-2 text-right">{fmtR(totalRev)}</td>
+                                  <td className="p-2 text-right">{fmtR(totalCost)}</td>
+                                  <td className={`p-2 text-right ${totalProfit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(totalProfit)}</td>
+                                  <td className="p-2 text-right">
+                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{totalPct.toFixed(1)}%</Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })()}
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -1612,6 +1728,7 @@ export default function ConcreteCalculator() {
                               { label: "Coarse Agg", key: "ca" as keyof CostBreakdown },
                               { label: "Fine Agg", key: "fa" as keyof CostBreakdown },
                               { label: "Admixture", key: "admix" as keyof CostBreakdown },
+                              { label: "Steel (BBS)", key: "steel" as keyof CostBreakdown },
                             ]},
                             { label: "Plant & Formwork", rows: [
                               { label: "Batching", key: "batching" as keyof CostBreakdown },
