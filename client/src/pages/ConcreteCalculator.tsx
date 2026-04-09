@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
@@ -19,14 +19,24 @@ const LS_KEY = "hlc_concrete_calc_v1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type AggUoM = "per_mt" | "per_cft" | "per_m3";
+
 interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: number; admixPct: number; }
-interface CATab { proportion: number; purchaseRate: number; leadKm: number; freightRate: number; payload: number; }
-interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; hireRate: number; hireMode: "per_day" | "per_m3"; }
+interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
+interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
 interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; contractorRate: number; }
 interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; }
+
+interface LocationVariant {
+  id: string;
+  name: string;
+  lengthM: number;
+  caTabs: CATab[];
+  faOverride: { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; };
+}
 
 interface CalcState {
   estimateName: string; preparedBy: string; date: string;
@@ -35,10 +45,10 @@ interface CalcState {
   cementBagPrice: number;
   caTabs: CATab[];
   faType: "natural" | "robosand";
-  faPurchaseRate: number; faLeadKm: number; faFreightRate: number; faPayload: number; faBulkagePct: number;
+  faPurchaseRate: number; faUom: AggUoM; faLeadKm: number; faFreightRate: number; faPayload: number; faBulkagePct: number;
   admixDosage: number; admixRate: number;
   batchingRows: BatchingRow[];
-  placementMode: "own" | "hired" | "transit_mixer"; placementRatePerDay: number; placementOutputPerDay: number;
+  placementMode: "own" | "hired" | "transit_mixer" | "labour"; placementRatePerDay: number; placementOutputPerDay: number;
   tmHirePerTrip: number; tmTripsPerDay: number;
   shutteringSystem: string; stagingSystem: string;
   shutteringAreaPerM3: number; shutteringCostPerM2: number; shutteringReuseCycles: number;
@@ -58,6 +68,8 @@ interface CalcState {
   profitMode: "per_item" | "lumpsum";
   lumpsumContractAmt: number;
   scenarios: Scenario[];
+  locationVariants: LocationVariant[];
+  blendedMarkupPct: number;
 }
 
 // ─── Mix Design presets ────────────────────────────────────────────────────────
@@ -105,11 +117,11 @@ const DEFAULT_STATE: CalcState = {
   mix: { ...MIX_PRESETS["M25"] },
   cementBagPrice: 380,
   caTabs: [
-    { proportion: 60, purchaseRate: 1200, leadKm: 20, freightRate: 3.5, payload: 9 },
-    { proportion: 30, purchaseRate: 1300, leadKm: 20, freightRate: 3.5, payload: 9 },
-    { proportion: 10, purchaseRate: 1400, leadKm: 25, freightRate: 3.5, payload: 9 },
+    { proportion: 60, purchaseRate: 1200, uom: "per_mt", leadKm: 20, freightRate: 3.5, payload: 9 },
+    { proportion: 30, purchaseRate: 1300, uom: "per_mt", leadKm: 20, freightRate: 3.5, payload: 9 },
+    { proportion: 10, purchaseRate: 1400, uom: "per_mt", leadKm: 25, freightRate: 3.5, payload: 9 },
   ],
-  faType: "natural", faPurchaseRate: 55, faLeadKm: 15, faFreightRate: 3.5, faPayload: 9, faBulkagePct: 12,
+  faType: "natural", faPurchaseRate: 55, faUom: "per_cft", faLeadKm: 15, faFreightRate: 3.5, faPayload: 9, faBulkagePct: 12,
   admixDosage: 0.35, admixRate: 90,
   batchingRows: [{ id: "b1", type: "Ajax Self-Loader", model: "Ajax 500L", mode: "hired", depreciation: 0, fuel: 0, operator: 0, output: 6, hireRate: 2500, hireMode: "per_day" }],
   placementMode: "hired", placementRatePerDay: 3000, placementOutputPerDay: 20,
@@ -137,6 +149,8 @@ const DEFAULT_STATE: CalcState = {
   profitMode: "per_item",
   lumpsumContractAmt: 0,
   scenarios: [],
+  locationVariants: [],
+  blendedMarkupPct: 0,
 };
 
 function loadState(): CalcState {
@@ -156,20 +170,35 @@ interface CostBreakdown {
   total: number; totalWithEsc: number;
 }
 
-function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
+// Normalize aggregate purchase rate to ₹/MT
+function aggRateToPerMT(rate: number, uom: AggUoM): number {
+  if (uom === "per_cft") return rate * 35.315; // 1 m³ = 35.315 CFT, treating 1 m³ ≈ 1 MT
+  return rate; // per_mt or per_m3 treated same as per_mt
+}
+
+function computeCosts(s: CalcState, steelCostPerM3 = 0, caTabs?: CATab[], faOverride?: { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number }): CostBreakdown {
+  const tabs = caTabs ?? s.caTabs;
+  const faRate = faOverride?.purchaseRate ?? s.faPurchaseRate;
+  const faUom = faOverride?.uom ?? s.faUom ?? "per_cft";
+  const faLeadKm = faOverride?.leadKm ?? s.faLeadKm;
+  const faFreightRate = faOverride?.freightRate ?? s.faFreightRate;
+  const faPayload = faOverride?.payload ?? s.faPayload;
+
   // Cement
   const cement = (s.mix.cementKg / 50) * s.cementBagPrice;
 
-  // Coarse Aggregate
-  const totalProp = s.caTabs.reduce((sum, t) => sum + t.proportion, 0) || 100;
-  const ca = s.caTabs.reduce((sum, t) => {
-    const landed = t.purchaseRate + (t.leadKm * 2 * t.freightRate / (t.payload || 1));
+  // Coarse Aggregate – normalize purchase rate to ₹/MT per UoM
+  const totalProp = tabs.reduce((sum, t) => sum + t.proportion, 0) || 100;
+  const ca = tabs.reduce((sum, t) => {
+    const ratePerMT = aggRateToPerMT(t.purchaseRate, t.uom ?? "per_mt");
+    const landed = ratePerMT + (t.leadKm * 2 * t.freightRate / (t.payload || 1));
     const weight = (t.proportion / totalProp) * (s.mix.caKg / 1000);
     return sum + weight * landed;
   }, 0);
 
-  // Fine Aggregate
-  const faLanded = s.faPurchaseRate * 35.315 + (s.faLeadKm * 2 * s.faFreightRate / (s.faPayload || 1));
+  // Fine Aggregate – normalize purchase rate to ₹/MT
+  const faRatePerMT = aggRateToPerMT(faRate, faUom);
+  const faLanded = faRatePerMT + (faLeadKm * 2 * faFreightRate / (faPayload || 1));
   const faBulkageFactor = s.faType === "natural" ? (1 + s.faBulkagePct / 100) : 1;
   const fa = (s.mix.faKg / 1000) * faLanded * faBulkageFactor;
 
@@ -182,7 +211,9 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
       const totalPerHr = row.depreciation + row.fuel + row.operator;
       return sum + (row.output > 0 ? totalPerHr / row.output : 0);
     } else {
-      return sum + (row.hireMode === "per_m3" ? row.hireRate : (row.output > 0 ? row.hireRate / row.output : 0));
+      if (row.hireMode === "per_m3") return sum + row.hireRate;
+      // per_day or per_month: output = m³/day or m³/month; both divide same way
+      return sum + (row.output > 0 ? row.hireRate / row.output : 0);
     }
   }, 0);
 
@@ -190,6 +221,8 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0): CostBreakdown {
   let placement = 0;
   if (s.placementMode === "transit_mixer") {
     placement = s.placementOutputPerDay > 0 ? (s.tmHirePerTrip * s.tmTripsPerDay) / s.placementOutputPerDay : 0;
+  } else if (s.placementMode === "labour") {
+    placement = s.placementRatePerDay; // direct ₹/m³ for labour mode
   } else {
     placement = s.placementOutputPerDay > 0 ? s.placementRatePerDay / s.placementOutputPerDay : 0;
   }
@@ -736,30 +769,55 @@ export default function ConcreteCalculator() {
                           <TabsTrigger key={i} value={String(i)} className="text-xs px-3 py-1">{lbl}</TabsTrigger>
                         ))}
                       </TabsList>
-                      {s.caTabs.map((tab, i) => (
-                        <TabsContent key={i} value={String(i)} className="pt-3">
-                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                            {numInput("Proportion %", tab.proportion, (v) => {
-                              const tabs = [...s.caTabs]; tabs[i] = { ...tab, proportion: v }; update({ caTabs: tabs });
-                            }, { unit: "%", testId: `input-ca-prop-${i}` })}
-                            {numInput("Purchase Rate", tab.purchaseRate, (v) => {
-                              const tabs = [...s.caTabs]; tabs[i] = { ...tab, purchaseRate: v }; update({ caTabs: tabs });
-                            }, { unit: "₹/MT" })}
-                            {numInput("Lead Distance", tab.leadKm, (v) => {
-                              const tabs = [...s.caTabs]; tabs[i] = { ...tab, leadKm: v }; update({ caTabs: tabs });
-                            }, { unit: "km" })}
-                            {numInput("Freight Rate", tab.freightRate, (v) => {
-                              const tabs = [...s.caTabs]; tabs[i] = { ...tab, freightRate: v }; update({ caTabs: tabs });
-                            }, { unit: "₹/MT/km" })}
-                            {numInput("Payload", tab.payload, (v) => {
-                              const tabs = [...s.caTabs]; tabs[i] = { ...tab, payload: v }; update({ caTabs: tabs });
-                            }, { unit: "MT" })}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Landed = purchase + (lead × 2 × freight / payload) = {fmtR(tab.purchaseRate + (tab.leadKm * 2 * tab.freightRate / (tab.payload || 1)))}/MT
-                          </p>
-                        </TabsContent>
-                      ))}
+                      {s.caTabs.map((tab, i) => {
+                        const uom = tab.uom ?? "per_mt";
+                        const uomLabel = uom === "per_cft" ? "₹/CFT" : uom === "per_m3" ? "₹/m³" : "₹/MT";
+                        const ratePerMT = aggRateToPerMT(tab.purchaseRate, uom);
+                        const landed = ratePerMT + (tab.leadKm * 2 * tab.freightRate / (tab.payload || 1));
+                        return (
+                          <TabsContent key={i} value={String(i)} className="pt-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+                              {numInput("Proportion %", tab.proportion, (v) => {
+                                const tabs = [...s.caTabs]; tabs[i] = { ...tab, proportion: v }; update({ caTabs: tabs });
+                              }, { unit: "%", testId: `input-ca-prop-${i}` })}
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Purchase Rate ({uomLabel})</Label>
+                                <div className="flex gap-1">
+                                  <Input
+                                    type="number"
+                                    step="any"
+                                    min={0}
+                                    value={tab.purchaseRate}
+                                    onChange={(e) => { const tabs = [...s.caTabs]; tabs[i] = { ...tab, purchaseRate: parseFloat(e.target.value) || 0 }; update({ caTabs: tabs }); }}
+                                    className="h-8 text-sm flex-1"
+                                    data-testid={`input-ca-rate-${i}`}
+                                  />
+                                  <Select value={uom} onValueChange={(v) => { const tabs = [...s.caTabs]; tabs[i] = { ...tab, uom: v as AggUoM }; update({ caTabs: tabs }); }}>
+                                    <SelectTrigger className="h-8 w-20 text-xs" data-testid={`select-ca-uom-${i}`}><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="per_mt">₹/MT</SelectItem>
+                                      <SelectItem value="per_cft">₹/CFT</SelectItem>
+                                      <SelectItem value="per_m3">₹/m³</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              {numInput("Lead (km)", tab.leadKm, (v) => {
+                                const tabs = [...s.caTabs]; tabs[i] = { ...tab, leadKm: v }; update({ caTabs: tabs });
+                              })}
+                              {numInput("Freight (₹/MT/km)", tab.freightRate, (v) => {
+                                const tabs = [...s.caTabs]; tabs[i] = { ...tab, freightRate: v }; update({ caTabs: tabs });
+                              })}
+                              {numInput("Payload (MT)", tab.payload, (v) => {
+                                const tabs = [...s.caTabs]; tabs[i] = { ...tab, payload: v }; update({ caTabs: tabs });
+                              })}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Landed = {fmtR(ratePerMT)}/MT (normalized) + freight = <strong>{fmtR(landed)}/MT</strong>
+                            </p>
+                          </TabsContent>
+                        );
+                      })}
                     </Tabs>
                   </div>
 
@@ -780,8 +838,23 @@ export default function ConcreteCalculator() {
                         >Robosand / M-Sand</button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                      {numInput("Purchase Rate", s.faPurchaseRate, (v) => update({ faPurchaseRate: v }), { unit: "₹/CFT" })}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Purchase Rate ({(s.faUom ?? "per_cft") === "per_cft" ? "₹/CFT" : (s.faUom ?? "per_cft") === "per_m3" ? "₹/m³" : "₹/MT"})</Label>
+                        <div className="flex gap-1">
+                          <Input type="number" step="any" min={0} value={s.faPurchaseRate}
+                            onChange={(e) => update({ faPurchaseRate: parseFloat(e.target.value) || 0 })}
+                            className="h-8 text-sm flex-1" data-testid="input-fa-rate" />
+                          <Select value={s.faUom ?? "per_cft"} onValueChange={(v) => update({ faUom: v as AggUoM })}>
+                            <SelectTrigger className="h-8 w-20 text-xs" data-testid="select-fa-uom"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="per_mt">₹/MT</SelectItem>
+                              <SelectItem value="per_cft">₹/CFT</SelectItem>
+                              <SelectItem value="per_m3">₹/m³</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                       {numInput("Lead (km)", s.faLeadKm, (v) => update({ faLeadKm: v }))}
                       {numInput("Freight (₹/MT/km)", s.faFreightRate, (v) => update({ faFreightRate: v }))}
                       {numInput("Payload (MT)", s.faPayload, (v) => update({ faPayload: v }))}
@@ -806,6 +879,114 @@ export default function ConcreteCalculator() {
                     </div>
                   </div>
                 </CardContent>
+              </Card>
+
+              {/* Location Variants Card */}
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-violet-500" /> Location Variants — Rate Blender
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">Add different sourcing locations. Each overrides CA & FA rates/lead for that stretch. Weighted blend visible in Analysis → Rate Blender tab.</p>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
+                    onClick={() => {
+                      const loc: LocationVariant = {
+                        id: uid(), name: "Location " + ((s.locationVariants ?? []).length + 1), lengthM: 1000,
+                        caTabs: s.caTabs.map(t => ({ ...t })),
+                        faOverride: { purchaseRate: s.faPurchaseRate, uom: s.faUom ?? "per_cft", leadKm: s.faLeadKm, freightRate: s.faFreightRate, payload: s.faPayload },
+                      };
+                      update({ locationVariants: [...(s.locationVariants ?? []), loc] });
+                    }}
+                    data-testid="btn-add-location"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Location
+                  </Button>
+                </CardHeader>
+                {(s.locationVariants ?? []).length > 0 && (
+                  <CardContent className="px-5 pb-5 space-y-4">
+                    {(s.locationVariants ?? []).map((loc) => {
+                      const locCosts = computeCosts(s, steelCostPerM3, loc.caTabs, loc.faOverride);
+                      const totalLen = (s.locationVariants ?? []).reduce((sum, l) => sum + l.lengthM, 0);
+                      const wt = totalLen > 0 ? (loc.lengthM / totalLen * 100).toFixed(1) : "0.0";
+                      return (
+                        <div key={loc.id} className="border border-violet-200 rounded-lg p-3 space-y-3 bg-violet-50/30" data-testid={`location-row-${loc.id}`}>
+                          <div className="flex items-center gap-3">
+                            <Input value={loc.name} onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, name: e.target.value.toUpperCase() } : l) })}
+                              className="h-7 text-xs font-semibold uppercase flex-1" placeholder="Location name" data-testid={`input-loc-name-${loc.id}`} />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Label className="text-xs text-muted-foreground whitespace-nowrap">Length (m)</Label>
+                              <Input type="number" step="100" min={1} value={loc.lengthM}
+                                onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, lengthM: parseFloat(e.target.value) || 1 } : l) })}
+                                className="h-7 w-24 text-xs" data-testid={`input-loc-length-${loc.id}`} />
+                            </div>
+                            <Badge variant="outline" className="text-xs text-violet-700 border-violet-300 shrink-0">{wt}%</Badge>
+                            <Badge variant="outline" className="text-xs font-semibold shrink-0">{fmtR(locCosts.totalWithEsc)}/m³</Badge>
+                            <button onClick={() => update({ locationVariants: (s.locationVariants ?? []).filter(l => l.id !== loc.id) })} className="text-destructive hover:text-destructive/70 p-1" data-testid={`btn-del-loc-${loc.id}`}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {/* CA overrides */}
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">CA Rates Override</p>
+                            {loc.caTabs.map((tab, i) => {
+                              const uom = tab.uom ?? "per_mt";
+                              const uomLabel = uom === "per_cft" ? "₹/CFT" : uom === "per_m3" ? "₹/m³" : "₹/MT";
+                              const labels = ["20mm", "10mm", "6mm"];
+                              return (
+                                <div key={i} className="flex items-end gap-2 mb-1.5">
+                                  <span className="text-xs text-muted-foreground w-10 shrink-0">{labels[i]}</span>
+                                  <div className="flex gap-1 flex-1">
+                                    <Input type="number" step="any" min={0} value={tab.purchaseRate}
+                                      onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, purchaseRate: parseFloat(e.target.value) || 0 } : t) } : l) })}
+                                      className="h-7 text-xs flex-1" placeholder={`Rate (${uomLabel})`} data-testid={`input-loc-ca-rate-${loc.id}-${i}`} />
+                                    <Select value={uom} onValueChange={(v) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, uom: v as AggUoM } : t) } : l) })}>
+                                      <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="per_mt">₹/MT</SelectItem>
+                                        <SelectItem value="per_cft">₹/CFT</SelectItem>
+                                        <SelectItem value="per_m3">₹/m³</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <Input type="number" step="1" min={0} value={tab.leadKm}
+                                    onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, leadKm: parseFloat(e.target.value) || 0 } : t) } : l) })}
+                                    className="h-7 w-16 text-xs" placeholder="Lead km" data-testid={`input-loc-ca-lead-${loc.id}-${i}`} />
+                                  <span className="text-xs text-muted-foreground pb-1">km</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* FA override */}
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">FA Rate Override</p>
+                            <div className="flex items-end gap-2">
+                              <div className="flex gap-1 flex-1">
+                                <Input type="number" step="any" min={0} value={loc.faOverride.purchaseRate}
+                                  onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, purchaseRate: parseFloat(e.target.value) || 0 } } : l) })}
+                                  className="h-7 text-xs flex-1" placeholder="FA Rate" data-testid={`input-loc-fa-rate-${loc.id}`} />
+                                <Select value={loc.faOverride.uom} onValueChange={(v) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, uom: v as AggUoM } } : l) })}>
+                                  <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="per_mt">₹/MT</SelectItem>
+                                    <SelectItem value="per_cft">₹/CFT</SelectItem>
+                                    <SelectItem value="per_m3">₹/m³</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Input type="number" step="1" min={0} value={loc.faOverride.leadKm}
+                                onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, leadKm: parseFloat(e.target.value) || 0 } } : l) })}
+                                className="h-7 w-16 text-xs" placeholder="Lead km" data-testid={`input-loc-fa-lead-${loc.id}`} />
+                              <span className="text-xs text-muted-foreground pb-1">km</span>
+                              <span className="text-xs text-muted-foreground pb-1">→ {fmtR(locCosts.ca + locCosts.fa)} CA+FA/m³</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                )}
               </Card>
 
               {/* Section ④: Batching Equipment */}
@@ -865,17 +1046,19 @@ export default function ConcreteCalculator() {
                                 {numInput("Hire Rate", row.hireRate, (v) => updateBatchingRow(row.id, { hireRate: v }))}
                                 <div className="space-y-1">
                                   <Label className="text-xs text-muted-foreground">Rate Mode</Label>
-                                  <Select value={row.hireMode} onValueChange={(v: "per_day" | "per_m3") => updateBatchingRow(row.id, { hireMode: v })}>
+                                  <Select value={row.hireMode} onValueChange={(v: "per_day" | "per_m3" | "per_month") => updateBatchingRow(row.id, { hireMode: v })}>
                                     <SelectTrigger className="h-8 text-xs">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="per_day">₹/day</SelectItem>
                                       <SelectItem value="per_m3">₹/m³</SelectItem>
+                                      <SelectItem value="per_month">₹/month</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 {row.hireMode === "per_day" && numInput("Output (m³/day)", row.output, (v) => updateBatchingRow(row.id, { output: v }), { step: 1 })}
+                                {row.hireMode === "per_month" && numInput("Output (m³/month)", row.output, (v) => updateBatchingRow(row.id, { output: v }), { step: 10 })}
                                 <div className="flex items-end pb-1 text-xs text-muted-foreground">
                                   → {fmtR(row.hireMode === "per_m3" ? row.hireRate : (row.output > 0 ? row.hireRate / row.output : 0))}/m³
                                 </div>
@@ -897,10 +1080,10 @@ export default function ConcreteCalculator() {
                 </CardHeader>
                 <CardContent className="px-5 pb-5">
                   <div className="flex items-center gap-2 flex-wrap mb-3">
-                    {(["own", "hired", "transit_mixer"] as const).map((m) => (
+                    {(["own", "hired", "transit_mixer", "labour"] as const).map((m) => (
                       <button key={m} className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.placementMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}
                         onClick={() => update({ placementMode: m })}>
-                        {m === "own" ? "Own Pump" : m === "hired" ? "Hired Pump" : "Transit Mixer"}
+                        {m === "own" ? "Own Pump" : m === "hired" ? "Hired Pump" : m === "transit_mixer" ? "Transit Mixer" : "Labour Only"}
                       </button>
                     ))}
                   </div>
@@ -912,6 +1095,11 @@ export default function ConcreteCalculator() {
                       <div className="flex items-end pb-1 text-xs text-muted-foreground col-span-3">
                         → {fmtR(costs.placement)}/m³ &nbsp;({fmtR(s.tmHirePerTrip * s.tmTripsPerDay)}/day total ÷ {s.placementOutputPerDay} m³/day)
                       </div>
+                    </div>
+                  ) : s.placementMode === "labour" ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {numInput("Labour Placement Rate (₹/m³)", s.placementRatePerDay, (v) => update({ placementRatePerDay: v }))}
+                      <div className="flex items-end pb-1 text-xs text-muted-foreground col-span-2">→ {fmtR(costs.placement)}/m³ (direct rate)</div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-3 gap-3">
@@ -1521,6 +1709,7 @@ export default function ConcreteCalculator() {
             <TabsList className="mb-4">
               <TabsTrigger value="price-impact"><TrendingUp className="w-3.5 h-3.5 mr-1" />Price Impact</TabsTrigger>
               <TabsTrigger value="compare"><BarChart3 className="w-3.5 h-3.5 mr-1" />Compare Scenarios</TabsTrigger>
+              <TabsTrigger value="rate-blender"><MapPin className="w-3.5 h-3.5 mr-1" />Rate Blender</TabsTrigger>
             </TabsList>
 
             {/* ── Price Impact ── */}
@@ -1845,6 +2034,150 @@ export default function ConcreteCalculator() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* ── Rate Blender ── */}
+            <TabsContent value="rate-blender">
+              {(s.locationVariants ?? []).length === 0 ? (
+                <Card>
+                  <CardContent className="py-16 text-center text-muted-foreground">
+                    <MapPin className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm font-medium">No location variants yet</p>
+                    <p className="text-xs mt-1">Go to Calculator tab → Location Variants card and add locations with different sourcing rates.</p>
+                  </CardContent>
+                </Card>
+              ) : (() => {
+                const locs = s.locationVariants ?? [];
+                const totalLen = locs.reduce((sum, l) => sum + l.lengthM, 0);
+                const locCalcs = locs.map(loc => ({
+                  loc,
+                  costs: computeCosts(s, steelCostPerM3, loc.caTabs, loc.faOverride),
+                  weight: totalLen > 0 ? loc.lengthM / totalLen : 0,
+                }));
+                const blendedCost = locCalcs.reduce((sum, lc) => sum + lc.costs.totalWithEsc * lc.weight, 0);
+                const minCost = Math.min(...locCalcs.map(lc => lc.costs.totalWithEsc));
+                const maxCost = Math.max(...locCalcs.map(lc => lc.costs.totalWithEsc));
+                const quotedRate = blendedCost * (1 + (s.blendedMarkupPct ?? 0) / 100);
+                const blendedMargin = s.contractRate > 0 ? ((s.contractRate - blendedCost) / s.contractRate) * 100 : 0;
+                const quotedMargin = s.contractRate > 0 ? ((s.contractRate - quotedRate) / s.contractRate) * 100 : 0;
+                const marginColor = (m: number) => m >= 10 ? "text-green-600" : m >= 5 ? "text-amber-600" : "text-red-600";
+                return (
+                  <div className="space-y-4">
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <Card className="border-violet-200 bg-violet-50">
+                        <CardContent className="py-4 px-4 text-center">
+                          <p className="text-xs text-muted-foreground font-semibold mb-1">Blended Cost</p>
+                          <p className="text-xl font-bold text-violet-800">{fmtR(blendedCost)}/m³</p>
+                          <p className="text-xs text-muted-foreground mt-1">{locs.length} locations · {(totalLen / 1000).toFixed(1)} km total</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-slate-200">
+                        <CardContent className="py-4 px-4 text-center">
+                          <p className="text-xs text-muted-foreground font-semibold mb-1">Range</p>
+                          <p className="text-sm font-bold">{fmtR(minCost)} – {fmtR(maxCost)}/m³</p>
+                          <p className="text-xs text-muted-foreground mt-1">Spread: {fmtR(maxCost - minCost)}/m³</p>
+                        </CardContent>
+                      </Card>
+                      <Card className={`border-2 ${blendedMargin >= 10 ? "border-green-200 bg-green-50" : blendedMargin >= 5 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}>
+                        <CardContent className="py-4 px-4 text-center">
+                          <p className="text-xs text-muted-foreground font-semibold mb-1">Blended BOQ Margin</p>
+                          <p className={`text-xl font-bold ${marginColor(blendedMargin)}`}>{blendedMargin.toFixed(1)}%</p>
+                          <p className="text-xs text-muted-foreground mt-1">Contract: {fmtR(s.contractRate)}/m³</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-slate-200">
+                        <CardContent className="py-4 px-4 text-center">
+                          <p className="text-xs text-muted-foreground font-semibold mb-1">Quoted Rate</p>
+                          <p className="text-lg font-bold">{fmtR(quotedRate)}/m³</p>
+                          <p className={`text-xs mt-1 font-semibold ${marginColor(quotedMargin)}`}>Margin: {quotedMargin.toFixed(1)}%</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Location table */}
+                    <Card>
+                      <CardHeader className="pb-2 pt-4 px-5">
+                        <CardTitle className="text-sm font-semibold">Location Cost Breakdown</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-5 pb-5">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                                <th className="text-left px-3 py-2.5 font-semibold">Location</th>
+                                <th className="text-right px-3 py-2.5">Length (m)</th>
+                                <th className="text-right px-3 py-2.5">Weight %</th>
+                                <th className="text-right px-3 py-2.5">CA+FA /m³</th>
+                                <th className="text-right px-3 py-2.5">Total Cost /m³</th>
+                                <th className="text-right px-3 py-2.5">BOQ Margin</th>
+                                <th className="text-right px-3 py-2.5">Contribution</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {locCalcs.map(({ loc, costs: lc, weight }) => {
+                                const margin = s.contractRate > 0 ? ((s.contractRate - lc.totalWithEsc) / s.contractRate) * 100 : 0;
+                                const contribution = lc.totalWithEsc * weight;
+                                return (
+                                  <tr key={loc.id} className="border-t border-border/30 hover:bg-muted/10">
+                                    <td className="px-3 py-2.5 font-medium">{loc.name}</td>
+                                    <td className="px-3 py-2.5 text-right">{loc.lengthM.toLocaleString()}</td>
+                                    <td className="px-3 py-2.5 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <div className="w-16 bg-muted rounded-full h-1.5">
+                                          <div className="bg-violet-500 h-1.5 rounded-full" style={{ width: `${weight * 100}%` }} />
+                                        </div>
+                                        {(weight * 100).toFixed(1)}%
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{fmtR(lc.ca + lc.fa)}</td>
+                                    <td className="px-3 py-2.5 text-right font-semibold">{fmtR(lc.totalWithEsc)}</td>
+                                    <td className={`px-3 py-2.5 text-right font-semibold ${marginColor(margin)}`}>{margin.toFixed(1)}%</td>
+                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{fmtR(contribution)}</td>
+                                  </tr>
+                                );
+                              })}
+                              <tr className="border-t-2 border-border bg-muted/20 font-semibold">
+                                <td className="px-3 py-2.5">Weighted Blend</td>
+                                <td className="px-3 py-2.5 text-right">{totalLen.toLocaleString()}</td>
+                                <td className="px-3 py-2.5 text-right">100%</td>
+                                <td className="px-3 py-2.5 text-right text-muted-foreground">—</td>
+                                <td className="px-3 py-2.5 text-right text-violet-700">{fmtR(blendedCost)}</td>
+                                <td className={`px-3 py-2.5 text-right ${marginColor(blendedMargin)}`}>{blendedMargin.toFixed(1)}%</td>
+                                <td className="px-3 py-2.5 text-right">{fmtR(blendedCost)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Markup & quoted rate */}
+                    <Card>
+                      <CardHeader className="pb-2 pt-4 px-5">
+                        <CardTitle className="text-sm font-semibold">Quote Rate Builder</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-5 pb-5">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 items-end">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Blended Cost /m³</Label>
+                            <div className="h-8 px-3 flex items-center text-sm font-semibold text-muted-foreground bg-muted/40 rounded-md border">{fmtR(blendedCost)}</div>
+                          </div>
+                          {numInput("Markup %", s.blendedMarkupPct ?? 0, (v) => update({ blendedMarkupPct: v }), { unit: "%", step: 0.5, testId: "input-blended-markup" })}
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Quoted Rate /m³</Label>
+                            <div className={`h-8 px-3 flex items-center text-sm font-bold rounded-md border ${quotedMargin >= 10 ? "bg-green-50 border-green-200 text-green-800" : quotedMargin >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"}`}>{fmtR(quotedRate)}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">BOQ Margin at Quote</Label>
+                            <div className={`h-8 px-3 flex items-center text-sm font-bold rounded-md border ${quotedMargin >= 10 ? "bg-green-50 border-green-200 text-green-800" : quotedMargin >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"}`}>{quotedMargin.toFixed(1)}%</div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                );
+              })()}
             </TabsContent>
           </Tabs>
         </TabsContent>
