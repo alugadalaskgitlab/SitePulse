@@ -930,30 +930,38 @@ export default function ConcreteCalculator() {
                           {/* CA overrides */}
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-2">CA Rates Override</p>
+                            <div className="grid grid-cols-6 gap-1 mb-1">
+                              {["Size", "Purchase Rate", "UoM", "Lead (km)", "Freight (₹/MT/km)", "Payload (MT)"].map(h => (
+                                <span key={h} className="text-xs text-muted-foreground font-medium">{h}</span>
+                              ))}
+                            </div>
                             {loc.caTabs.map((tab, i) => {
                               const uom = tab.uom ?? "per_mt";
-                              const uomLabel = uom === "per_cft" ? "₹/CFT" : uom === "per_m3" ? "₹/m³" : "₹/MT";
                               const labels = ["20mm", "10mm", "6mm"];
+                              const upd = (patch: Partial<CATab>) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, ...patch } : t) } : l) });
                               return (
-                                <div key={i} className="flex items-end gap-2 mb-1.5">
-                                  <span className="text-xs text-muted-foreground w-10 shrink-0">{labels[i]}</span>
-                                  <div className="flex gap-1 flex-1">
-                                    <Input type="number" step="any" min={0} value={tab.purchaseRate}
-                                      onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, purchaseRate: parseFloat(e.target.value) || 0 } : t) } : l) })}
-                                      className="h-7 text-xs flex-1" placeholder={`Rate (${uomLabel})`} data-testid={`input-loc-ca-rate-${loc.id}-${i}`} />
-                                    <Select value={uom} onValueChange={(v) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, uom: v as AggUoM } : t) } : l) })}>
-                                      <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="per_mt">₹/MT</SelectItem>
-                                        <SelectItem value="per_cft">₹/CFT</SelectItem>
-                                        <SelectItem value="per_m3">₹/m³</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                <div key={i} className="grid grid-cols-6 gap-1 mb-1.5 items-center">
+                                  <span className="text-xs text-muted-foreground font-semibold">{labels[i]}</span>
+                                  <Input type="number" step="any" min={0} value={tab.purchaseRate}
+                                    onChange={(e) => upd({ purchaseRate: parseFloat(e.target.value) || 0 })}
+                                    className="h-7 text-xs" data-testid={`input-loc-ca-rate-${loc.id}-${i}`} />
+                                  <Select value={uom} onValueChange={(v) => upd({ uom: v as AggUoM })}>
+                                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="per_mt">₹/MT</SelectItem>
+                                      <SelectItem value="per_cft">₹/CFT</SelectItem>
+                                      <SelectItem value="per_m3">₹/m³</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                   <Input type="number" step="1" min={0} value={tab.leadKm}
-                                    onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, leadKm: parseFloat(e.target.value) || 0 } : t) } : l) })}
-                                    className="h-7 w-16 text-xs" placeholder="Lead km" data-testid={`input-loc-ca-lead-${loc.id}-${i}`} />
-                                  <span className="text-xs text-muted-foreground pb-1">km</span>
+                                    onChange={(e) => upd({ leadKm: parseFloat(e.target.value) || 0 })}
+                                    className="h-7 text-xs" data-testid={`input-loc-ca-lead-${loc.id}-${i}`} />
+                                  <Input type="number" step="0.5" min={0} value={tab.freightRate}
+                                    onChange={(e) => upd({ freightRate: parseFloat(e.target.value) || 0 })}
+                                    className="h-7 text-xs" data-testid={`input-loc-ca-freight-${loc.id}-${i}`} />
+                                  <Input type="number" step="0.5" min={0.1} value={tab.payload}
+                                    onChange={(e) => upd({ payload: parseFloat(e.target.value) || 1 })}
+                                    className="h-7 text-xs" data-testid={`input-loc-ca-payload-${loc.id}-${i}`} />
                                 </div>
                               );
                             })}
@@ -961,26 +969,35 @@ export default function ConcreteCalculator() {
                           {/* FA override */}
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-2">FA Rate Override</p>
-                            <div className="flex items-end gap-2">
-                              <div className="flex gap-1 flex-1">
-                                <Input type="number" step="any" min={0} value={loc.faOverride.purchaseRate}
-                                  onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, purchaseRate: parseFloat(e.target.value) || 0 } } : l) })}
-                                  className="h-7 text-xs flex-1" placeholder="FA Rate" data-testid={`input-loc-fa-rate-${loc.id}`} />
-                                <Select value={loc.faOverride.uom} onValueChange={(v) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, uom: v as AggUoM } } : l) })}>
-                                  <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="per_mt">₹/MT</SelectItem>
-                                    <SelectItem value="per_cft">₹/CFT</SelectItem>
-                                    <SelectItem value="per_m3">₹/m³</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                            <div className="grid grid-cols-6 gap-1 mb-1">
+                              {["", "Purchase Rate", "UoM", "Lead (km)", "Freight (₹/MT/km)", "Payload (MT)"].map(h => (
+                                <span key={h} className="text-xs text-muted-foreground font-medium">{h}</span>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-6 gap-1 items-center">
+                              <span className="text-xs text-muted-foreground font-semibold">FA</span>
+                              <Input type="number" step="any" min={0} value={loc.faOverride.purchaseRate}
+                                onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, purchaseRate: parseFloat(e.target.value) || 0 } } : l) })}
+                                className="h-7 text-xs" data-testid={`input-loc-fa-rate-${loc.id}`} />
+                              <Select value={loc.faOverride.uom} onValueChange={(v) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, uom: v as AggUoM } } : l) })}>
+                                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="per_mt">₹/MT</SelectItem>
+                                  <SelectItem value="per_cft">₹/CFT</SelectItem>
+                                  <SelectItem value="per_m3">₹/m³</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <Input type="number" step="1" min={0} value={loc.faOverride.leadKm}
                                 onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, leadKm: parseFloat(e.target.value) || 0 } } : l) })}
-                                className="h-7 w-16 text-xs" placeholder="Lead km" data-testid={`input-loc-fa-lead-${loc.id}`} />
-                              <span className="text-xs text-muted-foreground pb-1">km</span>
-                              <span className="text-xs text-muted-foreground pb-1">→ {fmtR(locCosts.ca + locCosts.fa)} CA+FA/m³</span>
+                                className="h-7 text-xs" data-testid={`input-loc-fa-lead-${loc.id}`} />
+                              <Input type="number" step="0.5" min={0} value={loc.faOverride.freightRate}
+                                onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, freightRate: parseFloat(e.target.value) || 0 } } : l) })}
+                                className="h-7 text-xs" data-testid={`input-loc-fa-freight-${loc.id}`} />
+                              <Input type="number" step="0.5" min={0.1} value={loc.faOverride.payload}
+                                onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, faOverride: { ...l.faOverride, payload: parseFloat(e.target.value) || 1 } } : l) })}
+                                className="h-7 text-xs" data-testid={`input-loc-fa-payload-${loc.id}`} />
                             </div>
+                            <p className="text-xs text-muted-foreground mt-1.5">→ {fmtR(locCosts.ca + locCosts.fa)} CA+FA/m³ for this location</p>
                           </div>
                         </div>
                       );
