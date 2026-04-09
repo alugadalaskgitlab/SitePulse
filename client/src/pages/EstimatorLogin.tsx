@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calculator, Lock } from "lucide-react";
+import { Calculator, Lock, Home } from "lucide-react";
 import { readEstimatorRole } from "@/lib/estimatorAuth";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -98,6 +98,15 @@ export default function EstimatorLogin() {
         <Calculator className="w-3 h-3 inline mr-1" />
         Bituminous Mix &amp; Concrete Rate Calculators
       </p>
+
+      <div className="mt-4">
+        <Link href="/">
+          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" data-testid="button-home">
+            <Home className="w-3.5 h-3.5" />
+            Back to Site Log
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }
