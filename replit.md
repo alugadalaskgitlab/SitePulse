@@ -36,13 +36,13 @@ PostgreSQL serves as the primary database, managed with Drizzle ORM and `drizzle
         - Fine Aggregate: toggle Natural River Sand vs Robosand/M-Sand; Natural Sand: bulkage slider 0–30% (default 12%) active, effective ₹/m³ includes bulkage; Robosand: no bulkage slider
         - Admixture: product name, dosage L/m³, rate ₹/L → ₹/m³
     - **Batching Equipment (④)**: editable add/remove rows; each row: type (Ajax Self-Loader/Drum Mixer/Pan Mixer/Transit Mixer/RMC), model (free text), mode (Own/Hired); Own: depreciation+fuel+operator ₹/hr, output m³/hr → ₹/m³; Hired: rate ₹/day or ₹/m³; total = sum of rows
-    - **Placement (⑤)**: concrete pump type (own/hired), rate ₹/day, output m³/day → ₹/m³
+    - **Placement (⑤)**: three modes — Own Pump (operating cost ₹/day), Hired Pump (hire rate ₹/day), Transit Mixer (hire per trip × trips/day ÷ output m³/day → ₹/m³)
     - **Formwork & Staging (⑥)**: two separate pickers:
         - Shuttering system: Steel Plates | Steel-Timber | Modular Aluminium | I-beam+Plywood; inputs: m²/m³ (structure-type-aware default), cost ₹/m²/use, reuse cycles
-        - Staging system: Cuplock Scaffolding | Prop & Beam | Timber Cribs | I-beam Spans; inputs: height m, hire rate ₹/m²/month, months in use; soffit staging cost applied only to horizontal/soffit areas
+        - Staging system: Cuplock Scaffolding | Prop & Beam | Timber Cribs | I-beam Spans; inputs: soffit area m²/m³, height m (informational), hire rate ₹/m²/month, months in use; formula: soffit area × hire rate × months → ₹/m³; applies only to horizontal/soffit areas
     - **Curing (⑦)**: two separate sub-modes:
-        - Water Curing: Mobile Tanker (capacity KL, trips/day, hire rate ₹/trip) OR Static Tank (pump kW, electricity ₹/kWh, water cost ₹/KL) — mutually exclusive within water curing
-        - Curing Compound: product name, rate ₹/L, coverage m²/L, surface area per m³ → litres + ₹/m³
+        - Water Curing: Mobile Tanker (capacity KL, trips/day, hire rate ₹/trip, curing days) OR Static Tank (pump kW, electricity ₹/kWh, daily water KL/day, water cost ₹/KL, curing days) — mutually exclusive; static uses own daily water volume, not tanker fields
+        - Curing Compound: rate ₹/L, coverage m²/L, surface area per m³ → litres + ₹/m³
     - **Overhead & Margin (⑧)**: overhead %, margin % on (direct + overhead), optional escalation provision %
     - **BBS — Bar Bending Schedule (⑨)**: table columns: bar mark, dia (8/10/12/16/20/25mm dropdown), shape (Straight/U-bar/L-bar/Ring/Stirrup), count, cut length m, hook allowance (auto by shape), overlap splice (N×dia, default N=50, editable per row), total length m, weight kg/m = dia²/162, weight kg; hook allowances: Straight=0, U-bar=2×9d, L-bar=1×9d, Ring/Stirrup=2×9d+10d; steel rates per dia (editable ₹/MT); summary: total MT, weighted avg ₹/MT, total ₹, steel ₹/m³
     - **Wastage & Risk Allowances (⑩)**: five toggle-able factors with enable/disable switch:

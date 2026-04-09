@@ -1247,13 +1247,17 @@ export default function ConcreteCalculator() {
                       <p className="text-xs text-muted-foreground">Add BOQ items above to see profitability analysis.</p>
                     ) : (
                       <div className="overflow-x-auto">
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Cost uses global calculator rate ({fmtR(costs.totalWithEsc)}/m³). Revenue uses contractor offered rate per item.
+                        </p>
                         <table className="w-full text-xs border-collapse">
                           <thead>
                             <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide text-xs">
                               <th className="text-left p-2 font-semibold">Item</th>
                               <th className="text-right p-2 font-semibold">m³</th>
+                              <th className="text-right p-2 font-semibold">Contractor Rate</th>
                               <th className="text-right p-2 font-semibold">Revenue (₹)</th>
-                              <th className="text-right p-2 font-semibold">Cost (₹)</th>
+                              <th className="text-right p-2 font-semibold">Cost @ {fmtR(costs.totalWithEsc)}/m³</th>
                               <th className="text-right p-2 font-semibold">Profit (₹)</th>
                               <th className="text-right p-2 font-semibold">Margin %</th>
                             </tr>
@@ -1262,7 +1266,7 @@ export default function ConcreteCalculator() {
                             {s.boqItems.map((item) => {
                               const vol = boqVol(item);
                               const revenue = vol * item.contractorRate;
-                              const itemCost = vol * item.rate;
+                              const itemCost = vol * costs.totalWithEsc;
                               const profit = revenue - itemCost;
                               const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
                               const badgeCls = pct >= 10 ? "bg-green-100 text-green-700 border-green-300" : pct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
@@ -1270,6 +1274,7 @@ export default function ConcreteCalculator() {
                                 <tr key={item.id} className="border-t border-border/40 hover:bg-muted/10">
                                   <td className="p-2 font-medium">{item.description || "—"}</td>
                                   <td className="p-2 text-right">{vol.toFixed(2)}</td>
+                                  <td className="p-2 text-right">{fmtR(item.contractorRate)}</td>
                                   <td className="p-2 text-right">{fmtR(revenue)}</td>
                                   <td className="p-2 text-right">{fmtR(itemCost)}</td>
                                   <td className={`p-2 text-right font-semibold ${profit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(profit)}</td>
@@ -1283,13 +1288,13 @@ export default function ConcreteCalculator() {
                           <tfoot>
                             {(() => {
                               const totalRev = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0);
-                              const totalCost = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.rate, 0);
+                              const totalCost = boqTotalCum * costs.totalWithEsc;
                               const totalProfit = totalRev - totalCost;
                               const totalPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
                               const badgeCls = totalPct >= 10 ? "bg-green-100 text-green-700 border-green-300" : totalPct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
                               return (
                                 <tr className="border-t-2 border-border bg-muted/20 font-bold">
-                                  <td className="p-2">Total</td>
+                                  <td className="p-2" colSpan={2}>Total</td>
                                   <td className="p-2 text-right">{boqTotalCum.toFixed(2)} m³</td>
                                   <td className="p-2 text-right">{fmtR(totalRev)}</td>
                                   <td className="p-2 text-right">{fmtR(totalCost)}</td>
