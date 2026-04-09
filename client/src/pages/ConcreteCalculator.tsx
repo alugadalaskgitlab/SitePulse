@@ -13,15 +13,9 @@ import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut } 
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
+import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
 
-const ROLE_KEY = "hlc_mix_role";
 const LS_KEY = "hlc_concrete_calc_v1";
-
-function getMixRole() {
-  const r = localStorage.getItem(ROLE_KEY);
-  if (r === "admin" || r === "manager") return r as "admin" | "manager";
-  return null;
-}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -299,7 +293,7 @@ function uid() { return Math.random().toString(36).slice(2, 8); }
 
 export default function ConcreteCalculator() {
   const { toast } = useToast();
-  const role = getMixRole();
+  const role = readEstimatorRole();
   const canEdit = role === "admin";
 
   const [s, setS] = useState<CalcState>(loadState);
@@ -321,7 +315,7 @@ export default function ConcreteCalculator() {
   }, []);
 
   useEffect(() => {
-    if (!role) window.location.href = "/mix-calculator/login?returnTo=/concrete-calculator";
+    if (!role) window.location.href = "/estimator-login?returnTo=/concrete-calculator";
   }, [role]);
 
   // Load estimate by query-param estimateId on mount
@@ -590,7 +584,7 @@ export default function ConcreteCalculator() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { localStorage.removeItem(ROLE_KEY); window.location.href = "/mix-calculator/login"; }}
+            onClick={async () => { await signOutEstimator(); window.location.href = "/estimator-login"; }}
             title="Logout"
           >
             <LogOut className="w-4 h-4" />
@@ -853,9 +847,11 @@ export default function ConcreteCalculator() {
                                 onClick={() => updateBatchingRow(row.id, { mode: "hired" })}
                               >Hired</button>
                             </div>
-                            <button onClick={() => removeBatchingRow(row.id)} className="text-destructive hover:text-destructive/70 p-1">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canEdit && (
+                              <button onClick={() => removeBatchingRow(row.id)} className="text-destructive hover:text-destructive/70 p-1">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                           <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                             {row.mode === "own" ? (
@@ -1179,7 +1175,7 @@ export default function ConcreteCalculator() {
                               </td>
                               <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
                               <td className="p-2">
-                                <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
+                                {canEdit && <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>}
                               </td>
                             </tr>
                           );
@@ -1387,7 +1383,7 @@ export default function ConcreteCalculator() {
                                 <td className="p-1.5 text-right font-medium">{totalLen.toFixed(2)} m</td>
                                 <td className="p-1.5 text-right font-medium">{kg.toFixed(1)} kg</td>
                                 <td className="p-1.5">
-                                  <button onClick={() => removeBBSRow(row.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
+                                  {canEdit && <button onClick={() => removeBBSRow(row.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>}
                                 </td>
                               </tr>
                             );
@@ -1727,9 +1723,11 @@ export default function ConcreteCalculator() {
                               <th key={sc.id} className="text-right px-3 py-2.5 font-semibold">
                                 <div className="flex items-center justify-end gap-1">
                                   {sc.name}
-                                  <button onClick={() => update({ scenarios: (s.scenarios || []).filter((x) => x.id !== sc.id) })} className="text-muted-foreground hover:text-destructive ml-1">
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                                  {canEdit && (
+                                    <button onClick={() => update({ scenarios: (s.scenarios || []).filter((x) => x.id !== sc.id) })} className="text-muted-foreground hover:text-destructive ml-1">
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
                                 </div>
                               </th>
                             ))}

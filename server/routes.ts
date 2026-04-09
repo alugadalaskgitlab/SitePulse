@@ -7,23 +7,89 @@ import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+
+const ESTIMATOR_COOKIE = 'hlc_est_role';
+
+function parseCookie(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k.trim() === name) return decodeURIComponent(v.join('='));
+  }
+  return undefined;
+}
+
+function signRole(role: string): string {
+  const secret = process.env.SESSION_SECRET || 'hlc-fallback-secret';
+  const hmac = crypto.createHmac('sha256', secret).update(role).digest('hex');
+  return `${role}.${hmac}`;
+}
+
+function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
+  if (!val) return null;
+  const dot = val.indexOf('.');
+  if (dot < 0) return null;
+  const role = val.slice(0, dot);
+  const hmac = val.slice(dot + 1);
+  if (role !== 'admin' && role !== 'manager') return null;
+  const secret = process.env.SESSION_SECRET || 'hlc-fallback-secret';
+  const expected = crypto.createHmac('sha256', secret).update(role).digest('hex');
+  if (hmac !== expected) return null;
+  return role as 'admin' | 'manager';
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  app.get('/mix-calculator/login', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    const root = process.env.NODE_ENV === 'production'
-      ? path.join(process.cwd(), 'dist', 'public')
-      : path.join(process.cwd(), 'client', 'public');
-    res.sendFile('mix-calculator-login.html', { root });
+  // ============================================
+  // ESTIMATOR PORTAL SESSION AUTH
+  // ============================================
+
+  app.post('/api/estimator/session', async (req, res) => {
+    try {
+      const { pin } = req.body || {};
+      if (!pin || typeof pin !== 'string') {
+        return res.status(400).json({ error: 'PIN required' });
+      }
+      const adminPin = await storage.getSetting('admin_pin');
+      const managerPin = await storage.getSetting('manager_pin');
+      let role: 'admin' | 'manager' | null = null;
+      if (adminPin && pin === adminPin) role = 'admin';
+      else if (managerPin && pin === managerPin) role = 'manager';
+      if (!role) {
+        return res.status(401).json({ error: 'Invalid PIN' });
+      }
+      const cookieVal = encodeURIComponent(signRole(role));
+      const maxAge = 7 * 24 * 60 * 60;
+      res.setHeader('Set-Cookie', `${ESTIMATOR_COOKIE}=${cookieVal}; Path=/; Max-Age=${maxAge}; SameSite=Lax`);
+      res.json({ role });
+    } catch (err) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  app.get('/api/estimator/session', (req, res) => {
+    const cookieVal = parseCookie(req.headers.cookie, ESTIMATOR_COOKIE);
+    const role = verifyRoleCookie(cookieVal ? decodeURIComponent(cookieVal) : undefined);
+    if (!role) return res.status(401).json({ error: 'Not authenticated' });
+    res.json({ role });
+  });
+
+  app.delete('/api/estimator/session', (_req, res) => {
+    res.setHeader('Set-Cookie', `${ESTIMATOR_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`);
+    res.json({ success: true });
+  });
+
+  // Legacy login page redirect → new React login
+  app.get('/mix-calculator/login', (req, res) => {
+    const returnTo = (req.query?.returnTo as string) || '/estimator-hub';
+    res.redirect(302, `/estimator-login?returnTo=${encodeURIComponent(returnTo)}`);
   });
 
   app.get('/mix-calculator', (_req, res) => {

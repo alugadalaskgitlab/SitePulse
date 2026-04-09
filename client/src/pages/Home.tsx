@@ -51,8 +51,14 @@ export default function Home() {
       </div>
 
       <div className="mt-8 flex items-center gap-4">
+        <Link href="/estimator-login">
+          <Button variant="outline" className="gap-2" data-testid="button-estimate-manager">
+            <BarChart3 className="w-4 h-4" />
+            Estimate Manager
+          </Button>
+        </Link>
         <Link href="/admin/reports">
-          <Button variant="outline" className="gap-2" data-testid="button-admin-reports">
+          <Button variant="ghost" className="gap-2 text-muted-foreground" data-testid="button-admin-reports">
             <BarChart3 className="w-4 h-4" />
             Admin Reports
           </Button>

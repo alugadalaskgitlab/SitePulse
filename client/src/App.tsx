@@ -36,6 +36,8 @@ import RateCards from "@/pages/RateCards";
 import DataSync from "@/pages/DataSync";
 import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
+import EstimatorLogin from "@/pages/EstimatorLogin";
+import EstimatorHub from "@/pages/EstimatorHub";
 import MixEstimates from "@/pages/MixEstimates";
 import MixImpact from "@/pages/MixImpact";
 import MixComparativeReport from "@/pages/MixComparativeReport";
@@ -113,6 +115,8 @@ function Router() {
             <Route path="/plant/data-sync" component={DataSync} />
             <Route path="/plant/:id" component={PlantDetails} />
             <Route path="/admin/settings" component={AdminSettings} />
+            <Route path="/estimator-login" component={EstimatorLogin} />
+            <Route path="/estimator-hub" component={EstimatorHub} />
             <Route path="/admin/reports" component={AdminReports} />
             <Route path="/admin/mix-estimates" component={MixEstimates} />
             <Route path="/admin/mix-impact" component={MixImpact} />

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, GitCompare, Printer } from "lucide-react";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
 import { calcMixRatesAndJobs, calcSiteProfitCosts, calcRevenue, type CalcState, type CalcResult, type RevenueResult, type SiteProfitResult } from "@/lib/mixCalc";
+import { readEstimatorRole } from "@/lib/estimatorAuth";
 
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
 function fmtR(v: number) { return v.toFixed(2).replace(/\B(?=(\d{2})+(\d)(?!\d))/g, ","); }
@@ -33,9 +34,9 @@ interface ScenarioEntry {
 
 export default function ScenarioComparison() {
   useEffect(() => {
-    const r = localStorage.getItem("hlc_mix_role");
-    if (r !== "admin" && r !== "manager") {
-      window.location.href = "/mix-calculator/login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
+    const r = readEstimatorRole();
+    if (!r) {
+      window.location.href = "/estimator-login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
     }
   }, []);
 

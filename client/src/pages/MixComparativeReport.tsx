@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronLeft, Download, Printer, BarChart3 } from "lucide-react";
 import type { MixEstimate } from "@shared/schema";
 import { buildMixComparisonData, type ComparisonData } from "@/lib/mixComparisonData";
+import { readEstimatorRole } from "@/lib/estimatorAuth";
 
 function fmt0(v: number) { return v > 0 ? Math.round(v).toLocaleString("en-IN") : "—"; }
 function fmt2(v: number) { return v > 0 ? v.toFixed(2) : "—"; }
@@ -266,9 +267,9 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
 
 export default function MixComparativeReport() {
   useEffect(() => {
-    const r = localStorage.getItem("hlc_mix_role");
-    if (r !== "admin" && r !== "manager") {
-      window.location.href = "/mix-calculator/login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
+    const r = readEstimatorRole();
+    if (!r) {
+      window.location.href = "/estimator-login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
     }
   }, []);
 

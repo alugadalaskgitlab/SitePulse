@@ -9,8 +9,7 @@ import { ChevronLeft, Trash2, Calendar, Plus, Building2, ChevronDown, ChevronUp,
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
-
-const ROLE_KEY = "hlc_mix_role";
+import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
 
 const STRUCTURE_TYPE_COLORS: Record<string, string> = {
   "Drain": "bg-blue-100 text-blue-700 border-blue-200",
@@ -18,12 +17,6 @@ const STRUCTURE_TYPE_COLORS: Record<string, string> = {
   "Bridge": "bg-orange-100 text-orange-700 border-orange-200",
   "Retaining Wall": "bg-green-100 text-green-700 border-green-200",
 };
-
-function getMixRole(): "admin" | "manager" | null {
-  const r = localStorage.getItem(ROLE_KEY);
-  if (r === "admin" || r === "manager") return r;
-  return null;
-}
 
 function fmtAmt(v: number | null | undefined) {
   if (!v) return "—";
@@ -44,19 +37,12 @@ export default function ConcreteEstimates() {
   const [structureFilter, setStructureFilter] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  const role = getMixRole();
+  const role = readEstimatorRole();
   const canEdit = role === "admin";
-
-  const isStandalonePWA = useMemo(() => {
-    const nav: Navigator & { standalone?: boolean } = window.navigator;
-    return window.matchMedia('(display-mode: standalone)').matches ||
-      nav.standalone === true ||
-      document.referrer.includes('/mix-calculator/login');
-  }, []);
 
   useEffect(() => {
     if (!role) {
-      window.location.href = "/mix-calculator/login?returnTo=/admin/concrete-estimates";
+      window.location.href = "/estimator-login?returnTo=/admin/concrete-estimates";
     }
   }, [role]);
 
@@ -138,13 +124,11 @@ export default function ConcreteEstimates() {
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4 mb-5">
-        {!isStandalonePWA && (
-          <Link href="/">
-            <Button variant="ghost" size="sm" data-testid="btn-back">
-              <ChevronLeft className="w-4 h-4 mr-1" /> Back
-            </Button>
-          </Link>
-        )}
+        <Link href="/estimator-hub">
+          <Button variant="ghost" size="sm" data-testid="btn-back">
+            <ChevronLeft className="w-4 h-4 mr-1" /> Hub
+          </Button>
+        </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Building2 className="w-6 h-6 text-blue-600" />
@@ -170,7 +154,7 @@ export default function ConcreteEstimates() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { localStorage.removeItem(ROLE_KEY); window.location.href = "/mix-calculator/login"; }}
+            onClick={async () => { await signOutEstimator(); window.location.href = "/estimator-login"; }}
             data-testid="btn-logout"
             title="Logout"
           >

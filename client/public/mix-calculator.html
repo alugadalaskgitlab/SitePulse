@@ -217,8 +217,21 @@ body{font-size:11px;background:#fff}
 <body>
 <script>
 (function(){
-  var r = localStorage.getItem('hlc_mix_role');
-  if (r === 'manager') document.body.classList.add('manager-mode');
+  var cookieVal = '';
+  var cookies = document.cookie.split(';');
+  for (var i = 0; i < cookies.length; i++) {
+    var c = cookies[i].trim();
+    if (c.indexOf('hlc_est_role=') === 0) {
+      cookieVal = decodeURIComponent(c.slice('hlc_est_role='.length));
+      break;
+    }
+  }
+  var role = cookieVal.split('.')[0];
+  if (role === 'manager') document.body.classList.add('manager-mode');
+  if (role !== 'admin' && role !== 'manager') {
+    window.location.href = '/estimator-login?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search);
+  }
+  window._mixRole = role;
 })();
 </script>
 <div class="top-bar">
@@ -228,7 +241,7 @@ body{font-size:11px;background:#fff}
   </div>
   <div style="display:flex;gap:8px;align-items:center">
     <button id="btnInstall" class="btn btn-secondary btn-sm no-print" onclick="triggerInstall()" title="Install as app on your device" style="display:none;color:#92400e;background:#fef3c7;border:1px solid #fde68a">📲 Install App</button>
-    <a href="/admin/mix-estimates" class="btn btn-secondary btn-sm no-print">← Overview</a>
+    <a href="/estimator-hub" class="btn btn-secondary btn-sm no-print">← Hub</a>
     <button class="btn btn-secondary btn-sm no-print" id="btnSaved" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
     <button class="btn btn-secondary btn-sm no-print admin-only" id="btnSave" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
     <button class="btn btn-secondary btn-sm no-print admin-only" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
@@ -644,13 +657,8 @@ body{font-size:11px;background:#fff}
 
 <script>
 // ====== AUTH GATE ======
-var ROLE_KEY = 'hlc_mix_role';
-var _mixRole = localStorage.getItem(ROLE_KEY);
-if (_mixRole !== 'admin' && _mixRole !== 'manager') {
-  window.location.href = '/mix-calculator/login?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search);
-}
+var _mixRole = window._mixRole || '';
 var _isAdmin = (_mixRole === 'admin');
-if (!_isAdmin) { document.body.classList.add('manager-mode'); }
 
 // ====== STATE ======
 var aggBasis = 'MT';
@@ -4451,13 +4459,14 @@ function triggerInstall() {
 
 // ====== AUTH HELPERS ======
 function mixLogout() {
-  localStorage.removeItem(ROLE_KEY);
-  window.location.href = '/mix-calculator/login';
+  fetch('/api/estimator/session', { method: 'DELETE', credentials: 'include' }).finally(function() {
+    window.location.href = '/estimator-login';
+  });
 }
 function mixExit() {
-  localStorage.removeItem(ROLE_KEY);
-  window.close();
-  setTimeout(function(){ window.location.href = '/mix-calculator/login'; }, 300);
+  fetch('/api/estimator/session', { method: 'DELETE', credentials: 'include' }).finally(function() {
+    window.location.href = '/estimator-hub';
+  });
 }
 
 function applyRoleRestrictions() {

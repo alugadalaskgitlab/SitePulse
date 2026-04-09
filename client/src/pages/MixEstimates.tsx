@@ -12,13 +12,7 @@ import type { MixEstimate } from "@shared/schema";
 import { buildMixComparisonData } from "@/lib/mixComparisonData";
 import { MixComparisonContent } from "./MixComparativeReport";
 
-const ROLE_KEY = "hlc_mix_role";
-
-function getMixRole(): "admin" | "manager" | null {
-  const r = localStorage.getItem(ROLE_KEY);
-  if (r === "admin" || r === "manager") return r;
-  return null;
-}
+import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
 
 function fmtAmt(v: number | null | undefined) {
   if (!v) return "—";
@@ -46,19 +40,17 @@ export default function MixEstimates({ embedded = false }: Props) {
   const [showComparison, setShowComparison] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  const role = getMixRole();
+  const role = readEstimatorRole();
   const canEdit = role === "admin";
 
   const isStandalonePWA = useMemo(() => {
     const nav: Navigator & { standalone?: boolean } = window.navigator;
-    return window.matchMedia('(display-mode: standalone)').matches ||
-      nav.standalone === true ||
-      document.referrer.includes('/mix-calculator/login');
+    return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
   }, []);
 
   useEffect(() => {
     if (!embedded && !role) {
-      window.location.href = "/mix-calculator/login?returnTo=/admin/mix-estimates";
+      window.location.href = "/estimator-login?returnTo=/admin/mix-estimates";
     }
   }, [role, embedded]);
 
@@ -253,7 +245,7 @@ export default function MixEstimates({ embedded = false }: Props) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { localStorage.removeItem(ROLE_KEY); window.location.href = "/mix-calculator/login"; }}
+                onClick={async () => { await signOutEstimator(); window.location.href = "/estimator-login"; }}
                 data-testid="btn-mix-logout"
                 title="Logout"
               >
@@ -262,10 +254,10 @@ export default function MixEstimates({ embedded = false }: Props) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { localStorage.removeItem(ROLE_KEY); window.close(); setTimeout(() => { window.location.href = "/mix-calculator/login"; }, 300); }}
+                onClick={async () => { await signOutEstimator(); window.location.href = "/estimator-hub"; }}
                 data-testid="btn-mix-exit"
-                title="Exit"
-                className="text-destructive hover:text-destructive"
+                title="Back to Hub"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <Power className="w-4 h-4" />
               </Button>

@@ -8,6 +8,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
 import { calcMixRatesAndJobs, diffCalcInputs, type CalcState, type RevisedPrices } from "@/lib/mixCalc";
+import { readEstimatorRole } from "@/lib/estimatorAuth";
 
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
 function fmtDateTime(d?: string | Date | null) {
@@ -568,13 +569,13 @@ function ScenarioComparison({
 
 export default function MixImpact() {
   useEffect(() => {
-    const r = localStorage.getItem("hlc_mix_role");
-    if (r !== "admin" && r !== "manager") {
-      window.location.href = "/mix-calculator/login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
+    const r = readEstimatorRole();
+    if (!r) {
+      window.location.href = "/estimator-login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
     }
   }, []);
 
-  const canEdit = typeof window !== "undefined" && localStorage.getItem("hlc_mix_role") === "admin";
+  const canEdit = readEstimatorRole() === "admin";
 
   const search = useSearch();
   const params = new URLSearchParams(search);
