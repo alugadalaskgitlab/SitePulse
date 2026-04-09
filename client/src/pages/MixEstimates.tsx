@@ -186,9 +186,9 @@ export default function MixEstimates({ embedded = false }: Props) {
       {/* Header */}
       <div className="flex items-center gap-4 mb-5">
         {!embedded && !isStandalonePWA && (
-          <Link href="/">
+          <Link href={role ? "/estimator-hub" : "/"}>
             <Button variant="ghost" size="sm" data-testid="btn-back">
-              <ChevronLeft className="w-4 h-4 mr-1" /> Back
+              <ChevronLeft className="w-4 h-4 mr-1" /> {role ? "Hub" : "Back"}
             </Button>
           </Link>
         )}

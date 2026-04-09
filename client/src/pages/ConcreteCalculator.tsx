@@ -272,7 +272,7 @@ function numInput(label: string, value: number, onChange: (v: number) => void, o
       <div className="flex items-center gap-1">
         <Input
           type="number"
-          step={opts.step ?? 1}
+          step={opts.step ?? "any"}
           min={opts.min ?? 0}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
@@ -570,17 +570,15 @@ export default function ConcreteCalculator() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {canEdit && (
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              size="sm"
-              data-testid="btn-save"
-            >
-              <Save className="w-4 h-4 mr-1" />
-              {saveMutation.isPending ? "Saving..." : savedEstimateId ? "Update" : "Save"}
-            </Button>
-          )}
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            size="sm"
+            data-testid="btn-save"
+          >
+            <Save className="w-4 h-4 mr-1" />
+            {saveMutation.isPending ? "Saving..." : savedEstimateId ? "Update" : "Save"}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -644,17 +642,17 @@ export default function ConcreteCalculator() {
                         value={s.estimateName}
                         onChange={(e) => update({ estimateName: e.target.value })}
                         placeholder="e.g. Drain Design Package - NH Highway"
-                        className="mt-1 h-8 text-sm"
+                        className="mt-1 h-8 text-sm uppercase"
                         data-testid="input-estimate-name"
                       />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Contractor</Label>
-                      <Input value={s.contractor} onChange={(e) => update({ contractor: e.target.value })} className="mt-1 h-8 text-sm" />
+                      <Input value={s.contractor} onChange={(e) => update({ contractor: e.target.value })} className="mt-1 h-8 text-sm uppercase" />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Prepared By</Label>
-                      <Input value={s.preparedBy} onChange={(e) => update({ preparedBy: e.target.value })} className="mt-1 h-8 text-sm" />
+                      <Input value={s.preparedBy} onChange={(e) => update({ preparedBy: e.target.value })} className="mt-1 h-8 text-sm uppercase" />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Structure Type</Label>
@@ -847,11 +845,9 @@ export default function ConcreteCalculator() {
                                 onClick={() => updateBatchingRow(row.id, { mode: "hired" })}
                               >Hired</button>
                             </div>
-                            {canEdit && (
-                              <button onClick={() => removeBatchingRow(row.id)} className="text-destructive hover:text-destructive/70 p-1">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button onClick={() => removeBatchingRow(row.id)} className="text-destructive hover:text-destructive/70 p-1">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                           <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                             {row.mode === "own" ? (
@@ -1175,7 +1171,7 @@ export default function ConcreteCalculator() {
                               </td>
                               <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
                               <td className="p-2">
-                                {canEdit && <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>}
+                                <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
                               </td>
                             </tr>
                           );
@@ -1383,7 +1379,7 @@ export default function ConcreteCalculator() {
                                 <td className="p-1.5 text-right font-medium">{totalLen.toFixed(2)} m</td>
                                 <td className="p-1.5 text-right font-medium">{kg.toFixed(1)} kg</td>
                                 <td className="p-1.5">
-                                  {canEdit && <button onClick={() => removeBBSRow(row.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>}
+                                  <button onClick={() => removeBBSRow(row.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
                                 </td>
                               </tr>
                             );
@@ -1629,7 +1625,7 @@ export default function ConcreteCalculator() {
                               placeholder="Scenario name..."
                               value={scenarioNameInput}
                               onChange={(e) => setScenarioNameInput(e.target.value)}
-                              className="h-8 w-48 text-sm"
+                              className="h-8 w-48 text-sm uppercase"
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" && scenarioNameInput.trim()) {
@@ -1688,7 +1684,7 @@ export default function ConcreteCalculator() {
                           placeholder="Scenario name..."
                           value={scenarioNameInput}
                           onChange={(e) => setScenarioNameInput(e.target.value)}
-                          className="h-8 w-40 text-sm"
+                          className="h-8 w-40 text-sm uppercase"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && scenarioNameInput.trim()) {
@@ -1723,11 +1719,9 @@ export default function ConcreteCalculator() {
                               <th key={sc.id} className="text-right px-3 py-2.5 font-semibold">
                                 <div className="flex items-center justify-end gap-1">
                                   {sc.name}
-                                  {canEdit && (
-                                    <button onClick={() => update({ scenarios: (s.scenarios || []).filter((x) => x.id !== sc.id) })} className="text-muted-foreground hover:text-destructive ml-1">
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  )}
+                                  <button onClick={() => update({ scenarios: (s.scenarios || []).filter((x) => x.id !== sc.id) })} className="text-muted-foreground hover:text-destructive ml-1">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
                                 </div>
                               </th>
                             ))}
