@@ -39,18 +39,18 @@ interface ScenarioColumn {
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
 const INITIAL_VARS: PriceVariable[] = [
-  { key: "cement",    label: "Cement (OPC 53)",             unit: "₹/bag (50 kg)",         baseValue: 420,   whatIfValue: 420,   category: "material", sensitivity10pct: 319, rankOrder: 1 },
-  { key: "admixture", label: "Admixture (Plasticizer)",     unit: "₹/litre",                baseValue: 120,   whatIfValue: 120,   category: "material", sensitivity10pct: 103, rankOrder: 2 },
-  { key: "ca_20mm",   label: "Coarse Agg 20mm",            unit: "₹/MT",                   baseValue: 1350,  whatIfValue: 1350,  category: "material", sensitivity10pct: 82,  rankOrder: 3 },
-  { key: "ca_10mm",   label: "Coarse Agg 10mm",            unit: "₹/MT",                   baseValue: 1450,  whatIfValue: 1450,  category: "material", sensitivity10pct: 44,  rankOrder: 4 },
-  { key: "fine_agg",  label: "Fine Aggregate (Sand)",       unit: "₹/CFT (incl. bulkage)", baseValue: 75,    whatIfValue: 75,    category: "material", sensitivity10pct: 78,  rankOrder: 5 },
-  { key: "steel_8mm", label: "Steel — 8mm Bars",           unit: "₹/MT",                   baseValue: 65500, whatIfValue: 65500, category: "material", sensitivity10pct: 52,  rankOrder: 6 },
-  { key: "steel_12",  label: "Steel — 12mm+ Bars",         unit: "₹/MT",                   baseValue: 63000, whatIfValue: 63000, category: "material", sensitivity10pct: 48,  rankOrder: 7 },
-  { key: "batching",  label: "Batching (Ajax / Drum)",     unit: "₹/m³",                   baseValue: 252,   whatIfValue: 252,   category: "plant",    sensitivity10pct: 25,  rankOrder: 8 },
-  { key: "formwork",  label: "Formwork + Staging",         unit: "₹/m²",                   baseValue: 620,   whatIfValue: 620,   category: "plant",    sensitivity10pct: 18,  rankOrder: 9 },
-  { key: "curing",    label: "Curing (Water + Compound)",  unit: "₹/m³",                   baseValue: 88,    whatIfValue: 88,    category: "labour",   sensitivity10pct: 9,   rankOrder: 10 },
-  { key: "labour",    label: "Labour (Placing & Finish)",  unit: "₹/m³",                   baseValue: 340,   whatIfValue: 340,   category: "labour",   sensitivity10pct: 34,  rankOrder: 11 },
-  { key: "margin",    label: "Contractor Margin",          unit: "% of direct cost",        baseValue: 12,    whatIfValue: 12,    category: "finance",  sensitivity10pct: 218, rankOrder: 12 },
+  { key: "cement",    label: "Cement (OPC 53)",             unit: "₹/bag (50 kg)",          baseValue: 420,   whatIfValue: 420,   category: "material", sensitivity10pct: 319, rankOrder: 1 },
+  { key: "admixture", label: "Admixture (Plasticizer)",     unit: "₹/litre",                 baseValue: 120,   whatIfValue: 120,   category: "material", sensitivity10pct: 103, rankOrder: 2 },
+  { key: "ca_20mm",   label: "Coarse Agg 20mm",            unit: "₹/MT",                    baseValue: 1350,  whatIfValue: 1350,  category: "material", sensitivity10pct: 82,  rankOrder: 3 },
+  { key: "ca_10mm",   label: "Coarse Agg 10mm",            unit: "₹/MT",                    baseValue: 1450,  whatIfValue: 1450,  category: "material", sensitivity10pct: 44,  rankOrder: 4 },
+  { key: "ca_6mm",    label: "Coarse Agg 6mm / Grit",      unit: "₹/MT",                    baseValue: 1550,  whatIfValue: 1550,  category: "material", sensitivity10pct: 18,  rankOrder: 5 },
+  { key: "fine_agg",  label: "Fine Aggregate (Sand)",       unit: "₹/CFT (incl. bulkage)",  baseValue: 75,    whatIfValue: 75,    category: "material", sensitivity10pct: 78,  rankOrder: 6 },
+  { key: "steel_8mm", label: "Steel — 8mm Bars",           unit: "₹/MT",                    baseValue: 65500, whatIfValue: 65500, category: "material", sensitivity10pct: 52,  rankOrder: 7 },
+  { key: "steel_12",  label: "Steel — 12mm+ Bars",         unit: "₹/MT",                    baseValue: 63000, whatIfValue: 63000, category: "material", sensitivity10pct: 48,  rankOrder: 8 },
+  { key: "batching",  label: "Batching Mode (Ajax/Drum)",  unit: "₹/m³",                    baseValue: 252,   whatIfValue: 252,   category: "plant",    sensitivity10pct: 25,  rankOrder: 9 },
+  { key: "staging",   label: "Staging System",             unit: "₹/m²/month",              baseValue: 620,   whatIfValue: 620,   category: "plant",    sensitivity10pct: 18,  rankOrder: 10 },
+  { key: "curing",    label: "Curing (Water + Compound)",  unit: "₹/m³",                    baseValue: 88,    whatIfValue: 88,    category: "labour",   sensitivity10pct: 9,   rankOrder: 11 },
+  { key: "margin",    label: "Contractor Margin",          unit: "% of direct cost",         baseValue: 12,    whatIfValue: 12,    category: "finance",  sensitivity10pct: 218, rankOrder: 12 },
 ];
 
 const BASE_COST = 11354; // ₹/m³
@@ -408,10 +408,15 @@ function PriceImpactTab() {
 
 // ─── Compare Scenarios Tab ────────────────────────────────────────────────────
 
+const MAX_EXTRA_SCENARIOS = 3;
+
 function CompareScenariosTab() {
   const [columns, setColumns] = useState<ScenarioColumn[]>(INITIAL_COLUMNS);
   const [addingScenario, setAddingScenario] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState("");
+
+  const extraScenarios = columns.filter(c => !c.isBase);
+  const atMaxScenarios = extraScenarios.length >= MAX_EXTRA_SCENARIOS;
 
   const colIds = columns.map(c => c.id);
 
@@ -492,13 +497,17 @@ function CompareScenariosTab() {
           </div>
         ))}
 
-        {!addingScenario ? (
+        {!addingScenario && !atMaxScenarios ? (
           <button
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-dashed border-slate-300 text-sm text-slate-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
             onClick={() => { setAddingScenario(true); setNewScenarioName(""); }}
           >
             <Plus className="h-4 w-4" /> Save Current as Scenario
           </button>
+        ) : !addingScenario && atMaxScenarios ? (
+          <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-dashed border-slate-200 text-sm text-slate-300 cursor-not-allowed" title="Maximum 3 scenarios reached">
+            <Plus className="h-4 w-4" /> Max 3 Scenarios
+          </div>
         ) : (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-blue-300 bg-blue-50">
             <PencilLine className="h-4 w-4 text-blue-500 shrink-0" />
