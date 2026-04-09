@@ -23,7 +23,8 @@ type AggUoM = "per_mt" | "per_cft" | "per_m3";
 
 interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: number; admixPct: number; }
 interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
-interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
+interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
+interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
 interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; contractorRate: number; }
 interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
@@ -34,7 +35,7 @@ interface LocationVariant {
   id: string;
   name: string;
   lengthM: number;
-  caTabs: CATab[];
+  caSources: CASourceOverride[];
   faOverride: { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; };
 }
 
@@ -123,7 +124,7 @@ const DEFAULT_STATE: CalcState = {
   ],
   faType: "natural", faPurchaseRate: 55, faUom: "per_cft", faLeadKm: 15, faFreightRate: 3.5, faPayload: 9, faBulkagePct: 12,
   admixDosage: 0.35, admixRate: 90,
-  batchingRows: [{ id: "b1", type: "Ajax Self-Loader", model: "Ajax 500L", mode: "hired", depreciation: 0, fuel: 0, operator: 0, output: 6, hireRate: 2500, hireMode: "per_day" }],
+  batchingRows: [{ id: "b1", type: "Ajax Self-Loader", model: "Ajax 500L", mode: "hired", depreciation: 0, fuel: 0, operator: 0, output: 6, outputPerMonth: 0, hireRate: 2500, hireMode: "per_day" }],
   placementMode: "hired", placementRatePerDay: 3000, placementOutputPerDay: 20,
   tmHirePerTrip: 500, tmTripsPerDay: 10,
   shutteringSystem: "Steel Frame + Timber Ply", stagingSystem: "Prop & Beam",
@@ -176,8 +177,11 @@ function aggRateToPerMT(rate: number, uom: AggUoM): number {
   return rate; // per_mt or per_m3 treated same as per_mt
 }
 
-function computeCosts(s: CalcState, steelCostPerM3 = 0, caTabs?: CATab[], faOverride?: { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number }): CostBreakdown {
-  const tabs = caTabs ?? s.caTabs;
+function computeCosts(s: CalcState, steelCostPerM3 = 0, locCASources?: CASourceOverride[], faOverride?: { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number }): CostBreakdown {
+  // Merge location CA sourcing overrides with base mix proportions (proportions always come from base)
+  const tabs: CATab[] = locCASources
+    ? s.caTabs.map((t, i) => locCASources[i] ? { ...locCASources[i], proportion: t.proportion } : t)
+    : s.caTabs;
   const faRate = faOverride?.purchaseRate ?? s.faPurchaseRate;
   const faUom = faOverride?.uom ?? s.faUom ?? "per_cft";
   const faLeadKm = faOverride?.leadKm ?? s.faLeadKm;
@@ -212,7 +216,8 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0, caTabs?: CATab[], faOver
       return sum + (row.output > 0 ? totalPerHr / row.output : 0);
     } else {
       if (row.hireMode === "per_m3") return sum + row.hireRate;
-      // per_day or per_month: output = m³/day or m³/month; both divide same way
+      if (row.hireMode === "per_month") return sum + (row.outputPerMonth > 0 ? row.hireRate / row.outputPerMonth : 0);
+      // per_day: output = m³/day
       return sum + (row.output > 0 ? row.hireRate / row.output : 0);
     }
   }, 0);
@@ -446,7 +451,7 @@ export default function ConcreteCalculator() {
   });
 
   function addBatchingRow() {
-    update({ batchingRows: [...s.batchingRows, { id: uid(), type: "Ajax Self-Loader", model: "", mode: "hired", depreciation: 0, fuel: 0, operator: 0, output: 6, hireRate: 2000, hireMode: "per_day" }] });
+    update({ batchingRows: [...s.batchingRows, { id: uid(), type: "Ajax Self-Loader", model: "", mode: "hired", depreciation: 0, fuel: 0, operator: 0, output: 6, outputPerMonth: 0, hireRate: 2000, hireMode: "per_day" }] });
   }
 
   function updateBatchingRow(id: string, patch: Partial<BatchingRow>) {
@@ -894,7 +899,7 @@ export default function ConcreteCalculator() {
                     onClick={() => {
                       const loc: LocationVariant = {
                         id: uid(), name: "Location " + ((s.locationVariants ?? []).length + 1), lengthM: 1000,
-                        caTabs: s.caTabs.map(t => ({ ...t })),
+                        caSources: s.caTabs.map(t => ({ purchaseRate: t.purchaseRate, uom: t.uom, leadKm: t.leadKm, freightRate: t.freightRate, payload: t.payload })),
                         faOverride: { purchaseRate: s.faPurchaseRate, uom: s.faUom ?? "per_cft", leadKm: s.faLeadKm, freightRate: s.faFreightRate, payload: s.faPayload },
                       };
                       update({ locationVariants: [...(s.locationVariants ?? []), loc] });
@@ -907,7 +912,7 @@ export default function ConcreteCalculator() {
                 {(s.locationVariants ?? []).length > 0 && (
                   <CardContent className="px-5 pb-5 space-y-4">
                     {(s.locationVariants ?? []).map((loc) => {
-                      const locCosts = computeCosts(s, steelCostPerM3, loc.caTabs, loc.faOverride);
+                      const locCosts = computeCosts(s, steelCostPerM3, loc.caSources, loc.faOverride);
                       const totalLen = (s.locationVariants ?? []).reduce((sum, l) => sum + l.lengthM, 0);
                       const wt = totalLen > 0 ? (loc.lengthM / totalLen * 100).toFixed(1) : "0.0";
                       return (
@@ -929,20 +934,20 @@ export default function ConcreteCalculator() {
                           </div>
                           {/* CA overrides */}
                           <div>
-                            <p className="text-xs font-semibold text-muted-foreground mb-2">CA Rates Override</p>
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">CA Rates Override <span className="font-normal text-muted-foreground">(proportions from base mix design)</span></p>
                             <div className="grid grid-cols-6 gap-1 mb-1">
                               {["Size", "Purchase Rate", "UoM", "Lead (km)", "Freight (₹/MT/km)", "Payload (MT)"].map(h => (
                                 <span key={h} className="text-xs text-muted-foreground font-medium">{h}</span>
                               ))}
                             </div>
-                            {loc.caTabs.map((tab, i) => {
-                              const uom = tab.uom ?? "per_mt";
+                            {(loc.caSources ?? []).map((src, i) => {
+                              const uom = src.uom ?? "per_mt";
                               const labels = ["20mm", "10mm", "6mm"];
-                              const upd = (patch: Partial<CATab>) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caTabs: l.caTabs.map((t, j) => j === i ? { ...t, ...patch } : t) } : l) });
+                              const upd = (patch: Partial<CASourceOverride>) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caSources: l.caSources.map((c, j) => j === i ? { ...c, ...patch } : c) } : l) });
                               return (
                                 <div key={i} className="grid grid-cols-6 gap-1 mb-1.5 items-center">
-                                  <span className="text-xs text-muted-foreground font-semibold">{labels[i]}</span>
-                                  <Input type="number" step="any" min={0} value={tab.purchaseRate}
+                                  <span className="text-xs text-muted-foreground font-semibold">{labels[i]} ({s.caTabs[i]?.proportion ?? 0}%)</span>
+                                  <Input type="number" step="any" min={0} value={src.purchaseRate}
                                     onChange={(e) => upd({ purchaseRate: parseFloat(e.target.value) || 0 })}
                                     className="h-7 text-xs" data-testid={`input-loc-ca-rate-${loc.id}-${i}`} />
                                   <Select value={uom} onValueChange={(v) => upd({ uom: v as AggUoM })}>
@@ -953,13 +958,13 @@ export default function ConcreteCalculator() {
                                       <SelectItem value="per_m3">₹/m³</SelectItem>
                                     </SelectContent>
                                   </Select>
-                                  <Input type="number" step="1" min={0} value={tab.leadKm}
+                                  <Input type="number" step="1" min={0} value={src.leadKm}
                                     onChange={(e) => upd({ leadKm: parseFloat(e.target.value) || 0 })}
                                     className="h-7 text-xs" data-testid={`input-loc-ca-lead-${loc.id}-${i}`} />
-                                  <Input type="number" step="0.5" min={0} value={tab.freightRate}
+                                  <Input type="number" step="0.5" min={0} value={src.freightRate}
                                     onChange={(e) => upd({ freightRate: parseFloat(e.target.value) || 0 })}
                                     className="h-7 text-xs" data-testid={`input-loc-ca-freight-${loc.id}-${i}`} />
-                                  <Input type="number" step="0.5" min={0.1} value={tab.payload}
+                                  <Input type="number" step="0.5" min={0.1} value={src.payload}
                                     onChange={(e) => upd({ payload: parseFloat(e.target.value) || 1 })}
                                     className="h-7 text-xs" data-testid={`input-loc-ca-payload-${loc.id}-${i}`} />
                                 </div>
@@ -1075,9 +1080,9 @@ export default function ConcreteCalculator() {
                                   </Select>
                                 </div>
                                 {row.hireMode === "per_day" && numInput("Output (m³/day)", row.output, (v) => updateBatchingRow(row.id, { output: v }), { step: 1 })}
-                                {row.hireMode === "per_month" && numInput("Output (m³/month)", row.output, (v) => updateBatchingRow(row.id, { output: v }), { step: 10 })}
+                                {row.hireMode === "per_month" && numInput("Output (m³/month)", row.outputPerMonth ?? 0, (v) => updateBatchingRow(row.id, { outputPerMonth: v }), { step: 10 })}
                                 <div className="flex items-end pb-1 text-xs text-muted-foreground">
-                                  → {fmtR(row.hireMode === "per_m3" ? row.hireRate : (row.output > 0 ? row.hireRate / row.output : 0))}/m³
+                                  → {fmtR(row.hireMode === "per_m3" ? row.hireRate : row.hireMode === "per_month" ? ((row.outputPerMonth ?? 0) > 0 ? row.hireRate / (row.outputPerMonth ?? 1) : 0) : (row.output > 0 ? row.hireRate / row.output : 0))}/m³
                                 </div>
                               </>
                             )}
@@ -2068,7 +2073,7 @@ export default function ConcreteCalculator() {
                 const totalLen = locs.reduce((sum, l) => sum + l.lengthM, 0);
                 const locCalcs = locs.map(loc => ({
                   loc,
-                  costs: computeCosts(s, steelCostPerM3, loc.caTabs, loc.faOverride),
+                  costs: computeCosts(s, steelCostPerM3, loc.caSources, loc.faOverride),
                   weight: totalLen > 0 ? loc.lengthM / totalLen : 0,
                 }));
                 const blendedCost = locCalcs.reduce((sum, lc) => sum + lc.costs.totalWithEsc * lc.weight, 0);
