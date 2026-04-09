@@ -204,7 +204,7 @@ function PriceImpactTab() {
               <p className={`text-base font-bold ${marginColor(baseBOQMargin)}`}>
                 {baseBOQMargin.toFixed(1)}%
               </p>
-              <p className="text-xs text-slate-400 mt-0.5">at ₹{fmtCur(BASE_COST)}/m³ cost</p>
+              <p className="text-xs text-slate-400 mt-0.5">at {fmtCur(BASE_COST)}/m³ cost</p>
             </CardContent>
           </Card>
           <Card className={`shadow-none ${
