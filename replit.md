@@ -27,6 +27,15 @@ PostgreSQL serves as the primary database, managed with Drizzle ORM and `drizzle
     - **Daily Diesel Requirements**: Manages diesel planning and procurement for equipment with an approval workflow.
     - **Vendor Bills**: A four-step workflow (Draft → Verified → Approved → Paid) for managing vendor invoices. It supports automatic line item population from various sources, vendor aliases, grouped line items by category, distance-based transport billing, and structured adjustments (GST, Advance Deduction, IT TDS). Includes duplicate billing detection and Vendor Rate Cards for automated rate application. Bill numbers follow a `HLC/VB/{YEAR}/{SEQUENCE}` format.
 - **Bituminous Mix Rate Calculator**: An interactive tool for calculating rates for bituminous road layers, supporting multiple mix types, configurable equipment modes, and detailed costing for fuel, laying, compaction, and transport. It includes Job Estimator, Contractor Summary, and Procurement Summary functionalities. The calculator supports database-backed saving of estimates, price impact analysis via scenarios, and side-by-side scenario comparisons. It also features a Contractor Comparative Rate Statement for comparing rates across contractors.
+- **Concrete Rate Analysis Calculator** (planned — Task #98): BOQ-based rate analysis for civil structures (drains, box culverts, bridges). Planned modules:
+    - Multi-size coarse aggregate tabs (20mm / 10mm / 6mm), Robosand/Natural Sand toggle with bulkage slider
+    - Row-based batching equipment table (own/hired modes), dual Shuttering + Staging System pickers
+    - Split curing modes: water curing (mobile tanker vs static tank) + curing compound
+    - Bar Bending Schedule (BBS) with dia²/162 formula and hook allowances by bar shape
+    - Five wastage and risk toggles (cement/aggregate/steel/formwork/misc)
+    - Price Impact tab: 12 ranked sensitivity variables, BOQ Margin Impact section (contract rate vs base cost %, colour-coded ≥10%/5-10%/<5%), inline Save-as-Scenario from price impact view
+    - Compare Scenarios tab: Base + up to 3 named scenarios (hard cap), grouped cost breakdown, Grand Total and BOQ Margin % rows (colour-coded badges, %-point delta vs base), savings summary cards
+    - UI mockups complete (5 canvas screens: LoginHub, EstimatesList, CalcTop, CalcBottom, Scenarios)
 - **Authentication & Access Control**: Role-Based Access Control (Engineer, Manager, Admin) with PIN-based authentication for critical actions.
 - **Reporting**: Includes Materials Received Report (combining site material trips, DPR material logs, and water tanker entries) and Site Purchases Report (merging DPR site purchases and direct diesel purchases).
 - **Data Export/Import**: Admin-only tools for selected table data transfer.
