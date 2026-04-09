@@ -4452,85 +4452,12 @@ function mixExit() {
 }
 
 function applyRoleRestrictions() {
-  if (_isAdmin) return;
-  document.body.classList.add('manager-mode');
-  var els = document.querySelectorAll('.admin-only');
-  for (var i = 0; i < els.length; i++) {
-    els[i].style.display = 'none';
+  if (!_isAdmin) {
+    document.body.classList.add('manager-mode');
   }
-  var inputs = document.querySelectorAll('input, select, textarea');
-  for (var i = 0; i < inputs.length; i++) {
-    var el = inputs[i];
-    if (el.id === 'pinInput' || el.closest('#printSettingsOverlay') || el.closest('.top-bar')) continue;
-    if (el.classList.contains('derived')) continue;
-    el.disabled = true;
-    el.readOnly = true;
-    el.tabIndex = -1;
-  }
-  var btns = document.querySelectorAll('.toggle-btn, .card-body button, .job-card button, .full-width button, #procScenarioBar button, #profitabilityContainer button');
-  for (var i = 0; i < btns.length; i++) {
-    var b = btns[i];
-    if (b.closest('.top-bar') || b.closest('#printSettingsOverlay')) continue;
-    if (b.classList.contains('admin-only')) continue;
-    if (b.getAttribute('onclick') && b.getAttribute('onclick').indexOf('toggleCard') !== -1) continue;
-    var oc = b.getAttribute('onclick')||'';
-    if (oc.indexOf('setContractMode') !== -1 || oc.indexOf('setRevMode') !== -1) continue;
-    b.disabled = true;
-    b.tabIndex = -1;
-  }
-}
-
-if (!_isAdmin) {
-  document.addEventListener('change', function(e) {
-    var el = e.target;
-    if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }
-  }, true);
-
-  document.addEventListener('input', function(e) {
-    var el = e.target;
-    if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
-      e.stopImmediatePropagation();
-    }
-  }, true);
-
-  document.addEventListener('keydown', function(e) {
-    var el = e.target;
-    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) {
-      if (el.closest && !el.closest('.top-bar') && !el.closest('#printSettingsOverlay')) {
-        e.preventDefault();
-      }
-    }
-  }, true);
 }
 
 applyRoleRestrictions();
-
-var _renderFnsToWrap = ['renderSites','renderEquipCards','renderMixTabs','renderMixPanels','renderScopeQuotation','renderProcurement','renderProfitability'];
-_renderFnsToWrap.forEach(function(fnName) {
-  if (typeof window[fnName] === 'function') {
-    var _base = window[fnName];
-    window[fnName] = function() {
-      _base.apply(this, arguments);
-      applyRoleRestrictions();
-    };
-  }
-});
-
-if (typeof recalc === 'function') {
-  var _baseRecalc = recalc;
-  recalc = function() {
-    _baseRecalc.apply(this, arguments);
-    applyRoleRestrictions();
-  };
-}
-
-if (!_isAdmin) {
-  new MutationObserver(function() { applyRoleRestrictions(); })
-    .observe(document.body, { childList: true, subtree: true });
-}
 
 // ====== PRINT SETTINGS ======
 var PRINT_SETTINGS_KEY = 'hlc_mix_print_settings';

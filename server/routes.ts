@@ -23,9 +23,14 @@ function parseCookie(header: string | undefined, name: string): string | undefin
   return undefined;
 }
 
+function getSessionSecret(): string {
+  const s = process.env.SESSION_SECRET;
+  if (!s) throw new Error('SESSION_SECRET environment variable is not set');
+  return s;
+}
+
 function signRole(role: string): string {
-  const secret = process.env.SESSION_SECRET || 'hlc-fallback-secret';
-  const hmac = crypto.createHmac('sha256', secret).update(role).digest('hex');
+  const hmac = crypto.createHmac('sha256', getSessionSecret()).update(role).digest('hex');
   return `${role}.${hmac}`;
 }
 
@@ -36,7 +41,8 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
   const role = val.slice(0, dot);
   const hmac = val.slice(dot + 1);
   if (role !== 'admin' && role !== 'manager') return null;
-  const secret = process.env.SESSION_SECRET || 'hlc-fallback-secret';
+  let secret: string;
+  try { secret = getSessionSecret(); } catch { return null; }
   const expected = crypto.createHmac('sha256', secret).update(role).digest('hex');
   if (hmac !== expected) return null;
   return role as 'admin' | 'manager';
