@@ -29,7 +29,7 @@ interface BOQItem { id: string; description: string; qty: number; unit: string; 
 interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
-interface Scenario { id: string; name: string; changes: Record<string, number>; }
+interface Scenario { id: string; name: string; changes: Record<string, number>; rates?: Record<string, number>; }
 interface HeightZone { id: string; label: string; height: number; length: number; }
 interface QtoState {
   clearSpan: number; wallThickness: number; invertSlabThick: number; topSlabThick: number;
@@ -361,6 +361,16 @@ function numInput(label: string, value: number, onChange: (v: number) => void, o
 function fmtR(v: number) { return "₹" + Math.round(v).toLocaleString("en-IN"); }
 function fmtPct(v: number) { return v.toFixed(1) + "%"; }
 function uid() { return Math.random().toString(36).slice(2, 8); }
+function aggUomLabel(uom: AggUoM | undefined): string {
+  if (uom === "per_cft") return "₹/CFT";
+  if (uom === "per_m3") return "₹/m³";
+  return "₹/MT";
+}
+function hireModeLabel(mode: string | undefined): string {
+  if (mode === "per_m3") return "₹/m³";
+  if (mode === "per_month") return "₹/month";
+  return "₹/day";
+}
 
 const BOQ_CAT_COLORS: Record<string, string> = {
   RCC: "bg-blue-100 text-blue-700 border-blue-300",
@@ -450,6 +460,7 @@ export default function ConcreteCalculator() {
     return lsId ? parseInt(lsId) : null;
   });
   const [priceImpactChanges, setPriceImpactChanges] = useState<Record<string, number>>({});
+  const [priceImpactRates, setPriceImpactRates] = useState<Record<string, number>>({});
 
   const isStandalonePWA = useMemo(() => {
     const nav: Navigator & { standalone?: boolean } = window.navigator;
@@ -615,7 +626,7 @@ export default function ConcreteCalculator() {
   }
 
   function saveAsScenario(name: string) {
-    const newScenario: Scenario = { id: uid(), name, changes: { ...priceImpactChanges } };
+    const newScenario: Scenario = { id: uid(), name, changes: { ...priceImpactChanges }, rates: { ...priceImpactRates } };
     update({ scenarios: [...(s.scenarios || []).slice(0, MAX_SCENARIOS - 1), newScenario] });
     toast({ title: `Scenario "${name}" saved` });
   }
@@ -649,13 +660,13 @@ export default function ConcreteCalculator() {
   const PRICE_VARIABLES = [
     { key: "cement", label: "Cement Rate", baseValue: s.cementBagPrice, unit: "₹/bag", impact: costs.cement },
     { key: "admix", label: "Admixture Rate", baseValue: s.admixRate, unit: "₹/L", impact: costs.admix },
-    { key: "ca0", label: "CA 20mm Rate", baseValue: s.caTabs[0]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * (s.caTabs[0]?.proportion || 60) / 100 },
-    { key: "ca1", label: "CA 10mm Rate", baseValue: s.caTabs[1]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * (s.caTabs[1]?.proportion || 30) / 100 },
-    { key: "ca2", label: "CA 6mm Rate", baseValue: s.caTabs[2]?.purchaseRate || 0, unit: "₹/MT", impact: costs.ca * (s.caTabs[2]?.proportion || 10) / 100 },
-    { key: "fa", label: "Fine Aggregate Rate", baseValue: s.faPurchaseRate, unit: "₹/CFT", impact: costs.fa },
+    { key: "ca0", label: "CA 20mm Rate", baseValue: s.caTabs[0]?.purchaseRate || 0, unit: aggUomLabel(s.caTabs[0]?.uom), impact: costs.ca * (s.caTabs[0]?.proportion || 60) / 100 },
+    { key: "ca1", label: "CA 10mm Rate", baseValue: s.caTabs[1]?.purchaseRate || 0, unit: aggUomLabel(s.caTabs[1]?.uom), impact: costs.ca * (s.caTabs[1]?.proportion || 30) / 100 },
+    { key: "ca2", label: "CA 6mm Rate", baseValue: s.caTabs[2]?.purchaseRate || 0, unit: aggUomLabel(s.caTabs[2]?.uom), impact: costs.ca * (s.caTabs[2]?.proportion || 10) / 100 },
+    { key: "fa", label: "Fine Aggregate Rate", baseValue: s.faPurchaseRate, unit: aggUomLabel(s.faUom), impact: costs.fa },
     { key: "steel8", label: "Steel 8mm Rate", baseValue: s.steelRates.r8, unit: "₹/MT", impact: steelCostPerM3 * (bbsSummary.byDia[8]?.kg || 0) / (bbsSummary.totalKg || 1) },
     { key: "steel12p", label: "Steel 12mm+ Rate", baseValue: s.steelRates.r12, unit: "₹/MT", impact: steelCostPerM3 * ([12, 16, 20, 25].reduce((s2, d) => s2 + (bbsSummary.byDia[d]?.kg || 0), 0)) / (bbsSummary.totalKg || 1) },
-    { key: "batching", label: "Batching Rate", baseValue: s.batchingRows[0]?.hireRate || 0, unit: "₹/day", impact: costs.batching },
+    { key: "batching", label: "Batching Rate", baseValue: s.batchingRows[0]?.hireRate || 0, unit: hireModeLabel(s.batchingRows[0]?.hireMode), impact: costs.batching },
     { key: "formwork", label: "Formwork+Staging", baseValue: s.shutteringCostPerM2, unit: "₹/m²/use", impact: costs.formwork },
     { key: "labour", label: "Labour Rate", baseValue: s.labourRatePerM3, unit: "₹/m³", impact: costs.labour },
     { key: "margin", label: "Contractor Margin", baseValue: s.marginPct, unit: "%", impact: costs.margin },
@@ -747,12 +758,11 @@ export default function ConcreteCalculator() {
     return applyChangesToState(s, scenario.changes, steelCostPerM3);
   }
 
-  const [piChange, setPiChange] = useState<Record<string, string>>({});
-
-  function handlePiChange(key: string, val: string) {
-    setPiChange((prev) => ({ ...prev, [key]: val }));
-    const num = parseFloat(val) || 0;
-    setPriceImpactChanges((prev) => ({ ...prev, [key]: num }));
+  function handlePiRateChange(key: string, newRate: number, baseValue: number, isMargin: boolean) {
+    setPriceImpactRates((prev) => ({ ...prev, [key]: newRate }));
+    if (baseValue === 0) return;
+    const pctChange = isMargin ? newRate - baseValue : ((newRate - baseValue) / baseValue) * 100;
+    setPriceImpactChanges((prev) => ({ ...prev, [key]: pctChange }));
   }
 
   return (
@@ -2344,7 +2354,7 @@ export default function ConcreteCalculator() {
             <TabsContent value="price-impact">
               <div className="space-y-4">
                 {/* Impact banner */}
-                <Card className={`border-2 ${Object.keys(priceImpactChanges).some(k => priceImpactChanges[k] !== 0) ? "border-blue-300 bg-blue-50" : "border-border"}`}>
+                <Card className={`border-2 ${Object.keys(priceImpactRates).length > 0 ? "border-blue-300 bg-blue-50" : "border-border"}`}>
                   <CardContent className="py-4 px-5">
                     <div className="flex items-center justify-between">
                       <div>
@@ -2389,27 +2399,25 @@ export default function ConcreteCalculator() {
                           <div key={v.key} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors">
                             <span className="text-xs text-muted-foreground w-4 text-right">{rank + 1}</span>
                             <div className="w-32 text-xs font-medium shrink-0">{v.label}</div>
-                            <div className="w-20 text-xs text-muted-foreground shrink-0">
-                              {v.key === "margin" ? `${v.baseValue.toFixed(1)}%` : fmtR(v.baseValue)}
+                            <div className="w-32 text-xs text-muted-foreground shrink-0">
+                              <span className="text-[10px] text-muted-foreground/70 block">Base</span>
+                              {v.key === "margin" ? `${v.baseValue.toFixed(1)}%` : `${fmtR(v.baseValue)} ${v.unit}`}
                             </div>
                             <div className="flex items-center gap-2 flex-1">
-                              <button
-                                className="w-6 h-6 rounded border text-xs flex items-center justify-center hover:bg-muted"
-                                onClick={() => handlePiChange(v.key, String((parseFloat(piChange[v.key] || "0") - 5)))}
-                              >−</button>
                               <Input
                                 type="number"
-                                value={piChange[v.key] ?? "0"}
-                                onChange={(e) => handlePiChange(v.key, e.target.value)}
-                                className="h-7 w-16 text-xs text-center"
-                                step={1}
+                                value={priceImpactRates[v.key] ?? ""}
+                                placeholder={String(v.baseValue)}
+                                onChange={(e) => {
+                                  const newRate = parseFloat(e.target.value);
+                                  if (!isNaN(newRate)) handlePiRateChange(v.key, newRate, v.baseValue, v.key === "margin");
+                                  else { setPriceImpactRates((p) => { const n = { ...p }; delete n[v.key]; return n; }); setPriceImpactChanges((p) => { const n = { ...p }; delete n[v.key]; return n; }); }
+                                }}
+                                className="h-7 w-28 text-xs text-right"
+                                step={v.key === "margin" ? 0.5 : 1}
                                 data-testid={`pi-input-${v.key}`}
                               />
-                              <button
-                                className="w-6 h-6 rounded border text-xs flex items-center justify-center hover:bg-muted"
-                                onClick={() => handlePiChange(v.key, String((parseFloat(piChange[v.key] || "0") + 5)))}
-                              >+</button>
-                              <span className="text-xs text-muted-foreground">%</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{v.unit}</span>
                             </div>
                             <div className={`w-24 text-right text-xs font-semibold ${deltaPerM3 > 0 ? "text-red-600" : deltaPerM3 < 0 ? "text-green-600" : "text-muted-foreground"}`}>
                               {deltaPerM3 !== 0 ? `${deltaPerM3 > 0 ? "+" : ""}${fmtR(deltaPerM3)}/m³` : "—"}
@@ -2458,7 +2466,7 @@ export default function ConcreteCalculator() {
                             <Button size="sm" variant="ghost" onClick={() => { setAddingScenario(false); setScenarioNameInput(""); }}>Cancel</Button>
                           </div>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => { setPriceImpactChanges({}); setPiChange({}); }}>Reset All</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setPriceImpactChanges({}); setPriceImpactRates({}); }}>Reset All</Button>
                       </div>
                     </div>
                   </CardContent>
@@ -2645,15 +2653,28 @@ export default function ConcreteCalculator() {
                           const savings = costs.totalWithEsc - scCosts.totalWithEsc;
                           const margin = ((s.contractRate - scCosts.totalWithEsc) / s.contractRate) * 100;
                           const isBetter = savings > 0;
+                          const rateChanges = sc.rates ? PRICE_VARIABLES.filter(v => {
+                            const r = sc.rates![v.key];
+                            return r !== undefined && r > 0 && Math.abs(r - v.baseValue) > 0.001;
+                          }) : [];
                           return (
                             <div key={sc.id} className={`p-4 rounded-xl border ${isBetter ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
                               <p className="text-xs font-semibold text-muted-foreground mb-1">{sc.name}</p>
                               <p className={`text-lg font-bold ${isBetter ? "text-green-700" : "text-red-700"}`}>
                                 {isBetter ? "Saves" : "Costs"} {fmtR(Math.abs(savings))}/m³
                               </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                BOQ Margin: {margin.toFixed(1)}%
-                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">BOQ Margin: {margin.toFixed(1)}%</p>
+                              {rateChanges.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-current/10 space-y-0.5">
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Rate Changes</p>
+                                  {rateChanges.map(v => (
+                                    <div key={v.key} className="flex justify-between text-[10px] text-muted-foreground gap-1">
+                                      <span className="truncate">{v.label.replace(" Rate", "")}</span>
+                                      <span className="shrink-0 font-medium">{fmtR(v.baseValue)} → {fmtR(sc.rates![v.key])} {v.unit}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
