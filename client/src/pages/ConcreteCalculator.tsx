@@ -1626,7 +1626,7 @@ export default function ConcreteCalculator() {
                       </button>
                     ))}
                   </div>
-                  <div className={s.pettyLabour.enabled ? "opacity-40 pointer-events-none" : ""}>
+                  <div className={pettyLabourRatePerM3 !== undefined ? "opacity-40 pointer-events-none" : ""}>
                   {s.placementMode === "transit_mixer" ? (
                     <div className="grid grid-cols-3 gap-3">
                       {numInput("Hire per Trip (₹)", s.tmHirePerTrip, (v) => update({ tmHirePerTrip: v }))}
@@ -1859,7 +1859,7 @@ export default function ConcreteCalculator() {
             <div className="lg:col-span-1">
               <div className="sticky top-4 space-y-4">
                 <Card>
-                  <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
+                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                     <CardTitle className="text-sm font-semibold">Rate Breakdown</CardTitle>
                     <HelpBtn id="rate-summary" />
                   </CardHeader>
