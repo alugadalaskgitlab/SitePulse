@@ -471,7 +471,7 @@ export default function ConcreteCalculator() {
       .then((est: ConcreteEstimate) => {
         try {
           const loaded = JSON.parse(est.state);
-          setS((prev) => ({ ...DEFAULT_STATE, ...loaded }));
+          setS((prev) => ({ ...DEFAULT_STATE, ...loaded, qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) } }));
           setSavedEstimateId(id);
           localStorage.setItem(LS_KEY + "_estId", String(id));
         } catch {}
@@ -679,8 +679,8 @@ export default function ConcreteCalculator() {
     if (r.totalInvert > 0) items.push({ id: uid(), description: `RCC ${s.grade} Invert Slab`, qty: parseFloat(r.totalInvert.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
     if (isBoxCulvert && r.totalTop > 0) items.push({ id: uid(), description: `RCC ${s.grade} Top/Roof Slab`, qty: parseFloat(r.totalTop.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
     if (r.backfillVol > 0) items.push({ id: uid(), description: "Backfilling with Excavated Earth (Compacted)", qty: parseFloat(r.backfillVol.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.backfillRate, contractorRate: 0 });
-    if (r.gratingsCount > 0) items.push({ id: uid(), description: `MS Gratings @ ${s.qto.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: 0, contractorRate: 0 });
-    if (r.weepholesCount > 0) items.push({ id: uid(), description: `Weepholes (75mm dia) @ ${s.qto.weepholesSpacing}m c/c`, qty: r.weepholesCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: 0, contractorRate: 0 });
+    if (r.gratingsCount > 0) items.push({ id: uid(), description: `MS Gratings @ ${s.qto.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.gratingRatePerNos, contractorRate: 0 });
+    if (r.weepholesCount > 0) items.push({ id: uid(), description: `Weepholes (75mm dia) @ ${s.qto.weepholesSpacing}m c/c`, qty: r.weepholesCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.weepholeRatePerNos, contractorRate: 0 });
     items.push({ id: uid(), description: "Curing of RCC Works", qty: parseFloat(r.totalRCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.curing, contractorRate: 0 });
     return items;
   }
