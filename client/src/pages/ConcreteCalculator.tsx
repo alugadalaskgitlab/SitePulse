@@ -755,6 +755,22 @@ export default function ConcreteCalculator() {
   }
 
   function computeScenarioCosts(scenario: Scenario) {
+    if (scenario.rates && Object.keys(scenario.rates).length > 0) {
+      // Re-derive % changes from absolute saved rates against the CURRENT base values.
+      // This prevents drift when base calculator rates are edited after scenario was saved.
+      const derivedChanges: Record<string, number> = {};
+      for (const v of PRICE_VARIABLES) {
+        const absRate = scenario.rates[v.key];
+        if (absRate !== undefined) {
+          if (v.key === "margin") {
+            derivedChanges[v.key] = absRate - v.baseValue;
+          } else if (v.baseValue > 0) {
+            derivedChanges[v.key] = ((absRate - v.baseValue) / v.baseValue) * 100;
+          }
+        }
+      }
+      return applyChangesToState(s, derivedChanges, steelCostPerM3);
+    }
     return applyChangesToState(s, scenario.changes, steelCostPerM3);
   }
 
@@ -2658,7 +2674,7 @@ export default function ConcreteCalculator() {
                           const isBetter = savings > 0;
                           const rateChanges = sc.rates ? PRICE_VARIABLES.filter(v => {
                             const r = sc.rates![v.key];
-                            return r !== undefined && r > 0 && Math.abs(r - v.baseValue) > 0.001;
+                            return r !== undefined && Math.abs(r - v.baseValue) > 0.001;
                           }) : [];
                           return (
                             <div key={sc.id} className={`p-4 rounded-xl border ${isBetter ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
