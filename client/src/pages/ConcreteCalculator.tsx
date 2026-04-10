@@ -1284,6 +1284,15 @@ export default function ConcreteCalculator() {
                     <Plus className="w-3 h-3 mr-1" /> Add Row
                   </Button>
                 </CardHeader>
+                <HelpPanel id="batching" title="④ Batching Equipment">
+                  <ul className="space-y-1.5 list-disc list-outside ml-3">
+                    <li><b>Own mode</b> — enter hourly costs (depreciation + fuel + operator) and output m³/hr → ₹/m³ = Total/hr ÷ Output</li>
+                    <li><b>Hired (per day)</b> — hire rate ₹/day ÷ output m³/day → ₹/m³</li>
+                    <li><b>Hired (per m³)</b> — rate is already ₹/m³; enter it directly</li>
+                    <li><b>Hired (per month)</b> — ₹/month ÷ m³/month output → ₹/m³</li>
+                    <li>Add multiple rows (e.g. drum mixer + transit mixer); all ₹/m³ values sum to give Section ④ total</li>
+                  </ul>
+                </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   {s.batchingRows.length === 0 ? (
                     <p className="text-xs text-muted-foreground">No equipment added. Click "Add Row" to add batching equipment.</p>
@@ -2711,6 +2720,16 @@ export default function ConcreteCalculator() {
                     )}
                   </div>
                 </CardHeader>
+                <HelpPanel id="compare" title="Compare Scenarios">
+                  <ul className="space-y-1.5 list-disc list-outside ml-3">
+                    <li>Base column always shows the current calculator values. Add up to 3 named scenarios for comparison</li>
+                    <li>"Save Current as Scenario" opens a name input — press Enter or click Save to store. Max 3 scenarios</li>
+                    <li><b>Grouped table</b> — Materials / Plant+Formwork / Overhead+Margin rows for easy cross-scenario reading</li>
+                    <li><b>BOQ Margin %</b> badge — ≥10% green, 5-10% amber, &lt;5% red. %-point delta is shown vs Base</li>
+                    <li>Savings cards show "Rate Changes" (what was different) and net cost delta vs Base</li>
+                    <li>Scenarios recalculate against current base rates — changing base values automatically updates all scenario comparisons</li>
+                  </ul>
+                </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   {(s.scenarios || []).length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
