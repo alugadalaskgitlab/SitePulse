@@ -1446,12 +1446,12 @@ export default function ConcreteCalculator() {
                               <table className="w-full border-collapse text-sm" style={{ minWidth: 580 }}>
                                 <thead>
                                   <tr className="bg-violet-100/60 text-slate-600">
-                                    <th className="text-left p-2 font-medium text-xs">Size</th>
-                                    <th className="text-left p-2 font-medium text-xs">Purchase Rate</th>
-                                    <th className="text-left p-2 font-medium text-xs">UoM</th>
-                                    <th className="text-left p-2 font-medium text-xs">Lead (km)</th>
-                                    <th className="text-left p-2 font-medium text-xs">Freight (₹/MT/km)</th>
-                                    <th className="text-left p-2 font-medium text-xs">Payload (MT)</th>
+                                    <th className="text-left p-2 font-medium text-sm">Size</th>
+                                    <th className="text-left p-2 font-medium text-sm">Purchase Rate</th>
+                                    <th className="text-left p-2 font-medium text-sm">UoM</th>
+                                    <th className="text-left p-2 font-medium text-sm">Lead (km)</th>
+                                    <th className="text-left p-2 font-medium text-sm">Freight (₹/MT/km)</th>
+                                    <th className="text-left p-2 font-medium text-sm">Payload (MT)</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1723,7 +1723,7 @@ export default function ConcreteCalculator() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="flex items-end pb-1 text-xs font-semibold">
+                          <div className="flex items-end pb-1 text-sm font-semibold">
                             {s.pettyLabour.rateUnit === "per_rm" && crossSectionM2 <= 0
                               ? <span className="text-red-600">⚠ Enter QTO data (Height Zones) for RM conversion</span>
                               : <span className="text-amber-700">= {fmtR(pettyLabourRatePerM3 ?? 0)}/m³</span>}
@@ -1736,7 +1736,7 @@ export default function ConcreteCalculator() {
                               { key: "contractorFormwork" as const, label: "Formwork & Staging (bypasses ⑥ cost)" },
                               { key: "contractorBBS" as const, label: "Bar Bending & Fixing (informational — steel material cost still applies)" },
                             ]).map(({ key, label }) => (
-                              <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
+                              <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
                                 <input type="checkbox" checked={s.pettyLabour[key] as boolean}
                                   onChange={(e) => update({ pettyLabour: { ...s.pettyLabour, [key]: e.target.checked } })}
                                   className="rounded" data-testid={`chk-petty-${key}`} />
@@ -2044,7 +2044,7 @@ export default function ConcreteCalculator() {
                             )}
                             <div className={`mt-2 text-center text-sm font-bold ${color}`}>
                               BOQ Margin: {margin.toFixed(1)}%
-                              {margin < 5 && <span className="block text-xs font-normal">⚠ Below 5% — review rates</span>}
+                              {margin < 5 && <span className="block text-sm font-normal">⚠ Below 5% — review rates</span>}
                             </div>
                           </>
                         );
@@ -3759,7 +3759,7 @@ export default function ConcreteCalculator() {
                         <CardContent className="py-4 px-4 text-center">
                           <p className="text-sm font-semibold text-slate-700 mb-1">Quoted Rate</p>
                           <p className="text-lg font-bold">{fmtR(quotedRate)}/m³</p>
-                          <p className={`text-xs mt-1 font-semibold ${marginColor(quotedMargin)}`}>Margin: {quotedMargin.toFixed(1)}%</p>
+                          <p className={`text-sm mt-1 font-semibold ${marginColor(quotedMargin)}`}>Margin: {quotedMargin.toFixed(1)}%</p>
                         </CardContent>
                       </Card>
                     </div>
