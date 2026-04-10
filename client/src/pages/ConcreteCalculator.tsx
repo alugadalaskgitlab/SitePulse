@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
@@ -30,6 +30,17 @@ interface BBSRow { id: string; mark: string; dia: number; shape: string; count: 
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; }
+interface HeightZone { id: string; label: string; height: number; length: number; }
+interface QtoState {
+  clearSpan: number; wallThickness: number; invertSlabThick: number; topSlabThick: number;
+  pccDepth: number; pccOffset: number; workingSpace: number;
+  heightZones: HeightZone[];
+  gratingsSpacing: number; weepholesSpacing: number;
+  pccRatePerM3: number; excavationRate: number; backfillRate: number;
+  bwBaseWidth: number; bwStemThick: number; bwHeight: number; bwFootingDepth: number;
+  zoneOfferedRates: Record<string, number>;
+  showFormulaRef: boolean;
+}
 
 interface LocationVariant {
   id: string;
@@ -71,6 +82,7 @@ interface CalcState {
   scenarios: Scenario[];
   locationVariants: LocationVariant[];
   blendedMarkupPct: number;
+  qto: QtoState;
 }
 
 // ─── Mix Design presets ────────────────────────────────────────────────────────
@@ -152,6 +164,18 @@ const DEFAULT_STATE: CalcState = {
   scenarios: [],
   locationVariants: [],
   blendedMarkupPct: 0,
+  qto: {
+    clearSpan: 800, wallThickness: 300, invertSlabThick: 300, topSlabThick: 300,
+    pccDepth: 100, pccOffset: 150, workingSpace: 300,
+    heightZones: [
+      { id: "z1", label: "Zone 1", height: 900, length: 200 },
+      { id: "z2", label: "Zone 2", height: 1200, length: 300 },
+    ],
+    gratingsSpacing: 3, weepholesSpacing: 1.5,
+    pccRatePerM3: 4500, excavationRate: 300, backfillRate: 200,
+    bwBaseWidth: 2000, bwStemThick: 400, bwHeight: 3000, bwFootingDepth: 500,
+    zoneOfferedRates: {}, showFormulaRef: false,
+  },
 };
 
 function loadState(): CalcState {
@@ -327,6 +351,54 @@ function fmtR(v: number) { return "₹" + Math.round(v).toLocaleString("en-IN");
 function fmtPct(v: number) { return v.toFixed(1) + "%"; }
 function uid() { return Math.random().toString(36).slice(2, 8); }
 
+// ─── QTO Calculations ─────────────────────────────────────────────────────────
+
+function calcDrainQTO(q: QtoState, isBoxCulvert: boolean) {
+  const span = q.clearSpan / 1000;
+  const t = q.wallThickness / 1000;
+  const is_t = q.invertSlabThick / 1000;
+  const ts = q.topSlabThick / 1000;
+  const pd = q.pccDepth / 1000;
+  const po = q.pccOffset / 1000;
+  const ws = q.workingSpace / 1000;
+  const overallWidth = span + 2 * t;
+  const pccWidth = overallWidth + 2 * po;
+  const invertPerM = overallWidth * is_t;
+  const topPerM = isBoxCulvert ? overallWidth * ts : 0;
+  const pccPerM = pccWidth * pd;
+  const excavWidth = pccWidth + 2 * ws;
+  const zones = q.heightZones.map(z => {
+    const h = z.height / 1000;
+    const wallsM3perM = 2 * t * h;
+    const rccPerM = wallsM3perM + invertPerM + topPerM;
+    return { ...z, h, wallsM3perM, rccPerM, wallsM3: wallsM3perM * z.length, invertM3: invertPerM * z.length, topM3: topPerM * z.length, pccM3: pccPerM * z.length, totalRCCm3: rccPerM * z.length };
+  });
+  const totalLength = q.heightZones.reduce((s, z) => s + z.length, 0);
+  const totalWalls = zones.reduce((s, z) => s + z.wallsM3, 0);
+  const totalInvert = invertPerM * totalLength;
+  const totalTop = topPerM * totalLength;
+  const totalRCC = totalWalls + totalInvert + totalTop;
+  const totalPCC = pccPerM * totalLength;
+  const avgWallH = totalLength > 0 ? q.heightZones.reduce((s, z) => s + z.height * z.length, 0) / totalLength / 1000 : 0;
+  const excavDepth = avgWallH + is_t + pd;
+  const excavVolume = excavWidth * excavDepth * totalLength;
+  const backfillVol = Math.max(0, excavVolume - totalRCC - totalPCC);
+  const gratingsCount = q.gratingsSpacing > 0 ? Math.ceil(totalLength / q.gratingsSpacing) : 0;
+  const weepholesCount = q.weepholesSpacing > 0 ? Math.ceil(totalLength / q.weepholesSpacing) : 0;
+  return { zones, totalLength, totalWalls, totalInvert, totalTop, totalRCC, totalPCC, invertPerM, topPerM, pccPerM, excavWidth, excavDepth, excavVolume, backfillVol, gratingsCount, weepholesCount, avgWallH, overallWidth, pccWidth };
+}
+
+function calcBridgeRWQTO(q: QtoState) {
+  const baseW = q.bwBaseWidth / 1000;
+  const stemT = q.bwStemThick / 1000;
+  const h = q.bwHeight / 1000;
+  const fd = q.bwFootingDepth / 1000;
+  const stemVol = stemT * h;
+  const baseVol = baseW * fd;
+  const totalRCCperM = stemVol + baseVol;
+  return { stemVol, baseVol, totalRCCperM, baseW, stemT, h, fd };
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ConcreteCalculator() {
@@ -392,12 +464,23 @@ export default function ConcreteCalculator() {
     setS((prev) => ({ ...prev, wastage: { ...prev.wastage, ...patch } }));
   }
 
+  function updateQto(patch: Partial<QtoState>) {
+    setS((prev) => ({ ...prev, qto: { ...prev.qto, ...patch } }));
+  }
+
   // BBS steel cost
   const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates), [s.bbsRows, s.steelRates]);
   const steelCostPerM3 = useMemo(() => s.totalVolume > 0 ? bbsSummary.totalCost / s.totalVolume : 0, [bbsSummary.totalCost, s.totalVolume]);
 
   // Main cost calculation
   const costs = useMemo(() => computeCosts(s, steelCostPerM3), [s, steelCostPerM3]);
+
+  // QTO calculations
+  const isBoxCulvert = s.structureType === "Box Culvert";
+  const isDrainType = s.structureType === "Drain" || s.structureType === "Box Culvert";
+  const isBridgeType = s.structureType === "Bridge" || s.structureType === "Retaining Wall";
+  const qtoResult = useMemo(() => isDrainType ? calcDrainQTO(s.qto, isBoxCulvert) : null, [s.qto, isBoxCulvert, isDrainType]);
+  const bridgeQtoResult = useMemo(() => isBridgeType ? calcBridgeRWQTO(s.qto) : null, [s.qto, isBridgeType]);
 
   // Price Impact revised costs — uses same applyChangesToState as scenarios (defined below)
   const revisedCosts = useMemo(() => {
@@ -548,6 +631,62 @@ export default function ConcreteCalculator() {
 
   const [scenarioNameInput, setScenarioNameInput] = useState("");
   const [addingScenario, setAddingScenario] = useState(false);
+  const [boqOverwriteConfirm, setBoqOverwriteConfirm] = useState(false);
+  const [xlsxPreview, setXlsxPreview] = useState<{ headers: string[]; rows: string[][]; colDesc: number; colUnit: number; colQty: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function buildStandardDrainBOQ(): BOQItem[] {
+    if (!qtoResult) return [];
+    const r = qtoResult;
+    const items: BOQItem[] = [];
+    if (r.excavVolume > 0) items.push({ id: uid(), description: "Earthwork Excavation in Foundation Trenches", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.excavationRate, contractorRate: 0 });
+    if (r.totalPCC > 0) items.push({ id: uid(), description: `PCC M10 Bed (${s.qto.pccDepth}mm thick, ${s.qto.pccOffset}mm offset)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.pccRatePerM3, contractorRate: 0 });
+    r.zones.forEach(z => {
+      items.push({ id: uid(), description: `RCC ${s.grade} Walls — ${z.label} (H=${z.height}mm)`, qty: parseFloat(z.wallsM3.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
+    });
+    if (r.totalInvert > 0) items.push({ id: uid(), description: `RCC ${s.grade} Invert Slab`, qty: parseFloat(r.totalInvert.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
+    if (isBoxCulvert && r.totalTop > 0) items.push({ id: uid(), description: `RCC ${s.grade} Top/Roof Slab`, qty: parseFloat(r.totalTop.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
+    if (r.backfillVol > 0) items.push({ id: uid(), description: "Backfilling with Excavated Earth (Compacted)", qty: parseFloat(r.backfillVol.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.backfillRate, contractorRate: 0 });
+    if (r.gratingsCount > 0) items.push({ id: uid(), description: `MS Gratings @ ${s.qto.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: 0, contractorRate: 0 });
+    if (r.weepholesCount > 0) items.push({ id: uid(), description: `Weepholes (75mm dia) @ ${s.qto.weepholesSpacing}m c/c`, qty: r.weepholesCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: 0, contractorRate: 0 });
+    items.push({ id: uid(), description: "Curing of RCC Works", qty: parseFloat(r.totalRCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.curing, contractorRate: 0 });
+    return items;
+  }
+
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const all = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+      if (all.length < 2) { toast({ title: "No data found in file", variant: "destructive" }); return; }
+      const headers = (all[0] as string[]).map(h => String(h || ""));
+      const rows = all.slice(1).map(r => (r as string[]).map(c => String(c ?? "")));
+      const descIdx = headers.findIndex(h => /desc|item|work|particular/i.test(h));
+      const unitIdx = headers.findIndex(h => /unit|uom/i.test(h));
+      const qtyIdx = headers.findIndex(h => /qty|quantity|nos|no\.|number/i.test(h));
+      setXlsxPreview({ headers, rows: rows.filter(r => r.some(c => c.trim())), colDesc: descIdx >= 0 ? descIdx : 0, colUnit: unitIdx >= 0 ? unitIdx : Math.min(1, headers.length - 1), colQty: qtyIdx >= 0 ? qtyIdx : Math.min(2, headers.length - 1) });
+    } catch {
+      toast({ title: "Failed to read Excel file", variant: "destructive" });
+    }
+    e.target.value = "";
+  }
+
+  function confirmExcelImport(p: { colDesc: number; colUnit: number; colQty: number; rows: string[][] }) {
+    const newItems: BOQItem[] = p.rows.filter(r => r[p.colDesc]?.trim()).map(r => ({
+      id: uid(),
+      description: String(r[p.colDesc] || ""),
+      unit: String(r[p.colUnit] || "m³"),
+      qty: parseFloat(String(r[p.colQty] || "0")) || 0,
+      dimL: 0, dimW: 0, dimD: 0, rate: 0, contractorRate: 0,
+    }));
+    update({ boqItems: [...s.boqItems, ...newItems] });
+    setXlsxPreview(null);
+    toast({ title: `${newItems.length} item${newItems.length !== 1 ? "s" : ""} imported from Excel` });
+  }
 
   function applyChangesToState(base: CalcState, changes: Record<string, number>, baseSteelPerM3: number) {
     const revised = {
@@ -655,7 +794,8 @@ export default function ConcreteCalculator() {
       <Tabs value={activeMainTab} onValueChange={setActiveMainTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="calculator" data-testid="tab-calculator">Calculator</TabsTrigger>
-          <TabsTrigger value="boq-bbs" data-testid="tab-boq-bbs">BOQ & BBS</TabsTrigger>
+          <TabsTrigger value="bbs" data-testid="tab-bbs">BBS & Wastage</TabsTrigger>
+          <TabsTrigger value="qto-boq" data-testid="tab-qto-boq"><Building2 className="w-3.5 h-3.5 mr-1" />QTO & BOQ</TabsTrigger>
           <TabsTrigger value="analysis" data-testid="tab-analysis">
             <TrendingUp className="w-3.5 h-3.5 mr-1" />Analysis
           </TabsTrigger>
@@ -1305,216 +1445,9 @@ export default function ConcreteCalculator() {
           </div>
         </TabsContent>
 
-        {/* ══════════════ TAB 2: BOQ & BBS ══════════════ */}
-        <TabsContent value="boq-bbs">
+        {/* ══════════════ TAB 2: BBS & Wastage ══════════════ */}
+        <TabsContent value="bbs">
           <div className="space-y-5">
-
-            {/* BOQ Estimator */}
-            <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">BOQ Estimator</CardTitle>
-                <Button size="sm" variant="outline" onClick={addBOQItem} className="h-7 text-xs" data-testid="btn-add-boq">
-                  <Plus className="w-3 h-3 mr-1" /> Add Item
-                </Button>
-              </CardHeader>
-              <CardContent className="px-5 pb-5">
-                {s.boqItems.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No BOQ items. Click "Add Item" — presets auto-fill based on structure type.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
-                          <th className="text-left p-2 font-semibold">Description</th>
-                          <th className="text-right p-2 font-semibold">Qty</th>
-                          <th className="text-right p-2 font-semibold">Unit</th>
-                          <th className="text-right p-2 font-semibold">L × W × D</th>
-                          <th className="text-right p-2 font-semibold">m³</th>
-                          <th className="text-right p-2 font-semibold">Rate (₹/m³)</th>
-                          <th className="text-right p-2 font-semibold">Contractor Rate</th>
-                          <th className="text-right p-2 font-semibold">Amount</th>
-                          <th className="p-2"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {s.boqItems.map((item) => {
-                          const vol = boqVol(item);
-                          const amount = vol * item.rate;
-                          const contractorAmt = vol * item.contractorRate;
-                          const margin = item.contractorRate > 0 ? ((item.contractorRate - item.rate) / item.contractorRate) * 100 : 0;
-                          const marginColor = margin >= 10 ? "text-green-600" : margin >= 5 ? "text-amber-600" : "text-red-600";
-                          return (
-                            <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
-                              <td className="p-2">
-                                <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value })} className="h-7 text-xs w-40" />
-                              </td>
-                              <td className="p-2 text-right">
-                                <Input type="number" value={item.qty} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-16 text-right" />
-                              </td>
-                              <td className="p-2">
-                                <Select value={item.unit} onValueChange={(v) => updateBOQItem(item.id, { unit: v })}>
-                                  <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="m³">m³</SelectItem>
-                                    <SelectItem value="m²">m²</SelectItem>
-                                    <SelectItem value="m">m</SelectItem>
-                                    <SelectItem value="nos">nos</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              <td className="p-2">
-                                <div className="flex items-center gap-1">
-                                  <Input type="number" value={item.dimL} onChange={(e) => updateBOQItem(item.id, { dimL: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-14" placeholder="L" />
-                                  <Input type="number" value={item.dimW} onChange={(e) => updateBOQItem(item.id, { dimW: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-14" placeholder="W" />
-                                  <Input type="number" value={item.dimD} onChange={(e) => updateBOQItem(item.id, { dimD: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-14" placeholder="D" />
-                                </div>
-                              </td>
-                              <td className="p-2 text-right font-medium">{vol.toFixed(2)}</td>
-                              <td className="p-2 text-right">
-                                <Input type="number" value={item.rate} onChange={(e) => updateBOQItem(item.id, { rate: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-20 text-right" />
-                              </td>
-                              <td className="p-2">
-                                <div className="flex items-center gap-1">
-                                  <Input type="number" value={item.contractorRate} onChange={(e) => updateBOQItem(item.id, { contractorRate: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-20 text-right" />
-                                  <span className={`text-xs font-semibold ${marginColor} whitespace-nowrap`}>{margin.toFixed(0)}%</span>
-                                </div>
-                              </td>
-                              <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
-                              <td className="p-2">
-                                <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-border bg-muted/20 font-semibold">
-                          <td className="p-2 text-xs" colSpan={4}>Total</td>
-                          <td className="p-2 text-right text-xs">{boqTotalCum.toFixed(2)} m³</td>
-                          <td className="p-2 text-right text-xs">
-                            {boqTotalCum > 0 ? fmtR(boqTotalAmt / boqTotalCum) + "/m³ avg" : "—"}
-                          </td>
-                          <td className="p-2 text-right text-xs">
-                            {boqTotalCum > 0 ? fmtR(s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0) / boqTotalCum) + "/m³" : "—"}
-                          </td>
-                          <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* ⑪ Contract Profitability */}
-            <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑪ Contract Profitability</CardTitle>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Mode:</span>
-                  {(["per_item", "lumpsum"] as const).map((m) => (
-                    <button key={m} onClick={() => update({ profitMode: m })}
-                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.profitMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>
-                      {m === "per_item" ? "Per Item (BOQ)" : "Lumpsum"}
-                    </button>
-                  ))}
-                </div>
-              </CardHeader>
-              <CardContent className="px-5 pb-5">
-                {s.profitMode === "lumpsum" ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {numInput("Total Contract Amount (₹)", s.lumpsumContractAmt, (v) => update({ lumpsumContractAmt: v }))}
-                    </div>
-                    {(() => {
-                      const totalCost = costs.totalWithEsc * s.totalVolume;
-                      const revenue = s.lumpsumContractAmt;
-                      const profit = revenue - totalCost;
-                      const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
-                      const cls = pct >= 10 ? "text-green-700 bg-green-50 border-green-200" : pct >= 5 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200";
-                      return (
-                        <div className={`rounded-xl border p-4 flex flex-wrap gap-6 ${cls}`}>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Contract Value</p><p className="text-lg font-bold">{fmtR(revenue)}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Estimated Cost</p><p className="text-lg font-bold">{fmtR(totalCost)}</p><p className="text-xs opacity-60">{fmtR(costs.totalWithEsc)}/m³ × {s.totalVolume} m³</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Gross Profit</p><p className="text-lg font-bold">{fmtR(profit)}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Margin %</p><p className="text-2xl font-bold">{pct.toFixed(1)}%</p></div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <div>
-                    {s.boqItems.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">Add BOQ items above to see profitability analysis.</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <p className="text-xs text-muted-foreground mb-2">
-                          Cost uses global calculator rate ({fmtR(costs.totalWithEsc)}/m³). Revenue uses contractor offered rate per item.
-                        </p>
-                        <table className="w-full text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide text-xs">
-                              <th className="text-left p-2 font-semibold">Item</th>
-                              <th className="text-right p-2 font-semibold">m³</th>
-                              <th className="text-right p-2 font-semibold">Contractor Rate</th>
-                              <th className="text-right p-2 font-semibold">Revenue (₹)</th>
-                              <th className="text-right p-2 font-semibold">Cost @ {fmtR(costs.totalWithEsc)}/m³</th>
-                              <th className="text-right p-2 font-semibold">Profit (₹)</th>
-                              <th className="text-right p-2 font-semibold">Margin %</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {s.boqItems.map((item) => {
-                              const vol = boqVol(item);
-                              const revenue = vol * item.contractorRate;
-                              const itemCost = vol * costs.totalWithEsc;
-                              const profit = revenue - itemCost;
-                              const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
-                              const badgeCls = pct >= 10 ? "bg-green-100 text-green-700 border-green-300" : pct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
-                              return (
-                                <tr key={item.id} className="border-t border-border/40 hover:bg-muted/10">
-                                  <td className="p-2 font-medium">{item.description || "—"}</td>
-                                  <td className="p-2 text-right">{vol.toFixed(2)}</td>
-                                  <td className="p-2 text-right">{fmtR(item.contractorRate)}</td>
-                                  <td className="p-2 text-right">{fmtR(revenue)}</td>
-                                  <td className="p-2 text-right">{fmtR(itemCost)}</td>
-                                  <td className={`p-2 text-right font-semibold ${profit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(profit)}</td>
-                                  <td className="p-2 text-right">
-                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{pct.toFixed(1)}%</Badge>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot>
-                            {(() => {
-                              const totalRev = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0);
-                              const totalCost = boqTotalCum * costs.totalWithEsc;
-                              const totalProfit = totalRev - totalCost;
-                              const totalPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
-                              const badgeCls = totalPct >= 10 ? "bg-green-100 text-green-700 border-green-300" : totalPct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
-                              return (
-                                <tr className="border-t-2 border-border bg-muted/20 font-bold">
-                                  <td className="p-2" colSpan={2}>Total</td>
-                                  <td className="p-2 text-right">{boqTotalCum.toFixed(2)} m³</td>
-                                  <td className="p-2 text-right">{fmtR(totalRev)}</td>
-                                  <td className="p-2 text-right">{fmtR(totalCost)}</td>
-                                  <td className={`p-2 text-right ${totalProfit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(totalProfit)}</td>
-                                  <td className="p-2 text-right">
-                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{totalPct.toFixed(1)}%</Badge>
-                                  </td>
-                                </tr>
-                              );
-                            })()}
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
 
             {/* BBS Table */}
             <Card>
@@ -1722,6 +1655,576 @@ export default function ConcreteCalculator() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </TabsContent>
+
+        {/* hidden file input for Excel BOQ import */}
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelImport} data-testid="input-excel-boq" />
+
+        {/* ══════════════ QTO & BOQ Tab ══════════════ */}
+        <TabsContent value="qto-boq">
+          <div className="space-y-5">
+
+            {/* Structure Dimensions */}
+            <Card>
+              <CardHeader className="pb-3 pt-4 px-5">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Structure Dimensions</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Dimensions drive volume calculations below. Structure type is set in ① Project Info (Calculator tab).</p>
+              </CardHeader>
+              <CardContent className="px-5 pb-5">
+                {isDrainType && (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {numInput("Clear Span (mm)", s.qto.clearSpan, v => updateQto({ clearSpan: v }))}
+                      {numInput("Wall Thickness (mm)", s.qto.wallThickness, v => updateQto({ wallThickness: v }))}
+                      {numInput("Invert Slab Thick (mm)", s.qto.invertSlabThick, v => updateQto({ invertSlabThick: v }))}
+                      {isBoxCulvert && numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
+                      {numInput("PCC Depth (mm)", s.qto.pccDepth, v => updateQto({ pccDepth: v }))}
+                      {numInput("PCC Side Offset (mm)", s.qto.pccOffset, v => updateQto({ pccOffset: v }))}
+                      {numInput("Working Space (mm)", s.qto.workingSpace, v => updateQto({ workingSpace: v }))}
+                      {numInput("Gratings Spacing (m)", s.qto.gratingsSpacing, v => updateQto({ gratingsSpacing: v }))}
+                      {numInput("Weepholes Spacing (m)", s.qto.weepholesSpacing, v => updateQto({ weepholesSpacing: v }))}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Height Zones (wall height per road-reach)</p>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="btn-add-height-zone"
+                          onClick={() => updateQto({ heightZones: [...s.qto.heightZones, { id: uid(), label: `Zone ${s.qto.heightZones.length + 1}`, height: 1000, length: 100 }] })}>
+                          <Plus className="w-3 h-3 mr-1" /> Add Zone
+                        </Button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
+                              <th className="text-left p-2 font-semibold">Zone Label</th>
+                              <th className="text-right p-2 font-semibold">Wall Height (mm)</th>
+                              <th className="text-right p-2 font-semibold">Road Length (m)</th>
+                              <th className="p-2"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {s.qto.heightZones.map((z, zi) => (
+                              <tr key={z.id} className="border-t border-border/50" data-testid={`qto-zone-row-${z.id}`}>
+                                <td className="p-2">
+                                  <Input value={z.label} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, label: e.target.value } : hz) })} className="h-7 text-xs w-28" />
+                                </td>
+                                <td className="p-2 text-right">
+                                  <Input type="number" value={z.height} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, height: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-xs w-24 text-right" />
+                                </td>
+                                <td className="p-2 text-right">
+                                  <Input type="number" value={z.length} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, length: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-xs w-24 text-right" />
+                                </td>
+                                <td className="p-2">
+                                  {s.qto.heightZones.length > 1 && (
+                                    <button onClick={() => updateQto({ heightZones: s.qto.heightZones.filter((_, i) => i !== zi) })} className="text-destructive hover:text-destructive/70" data-testid={`btn-remove-zone-${z.id}`}>
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-border bg-muted/20 font-semibold text-xs">
+                              <td className="p-2">Total</td>
+                              <td className="p-2 text-right text-muted-foreground">—</td>
+                              <td className="p-2 text-right">{s.qto.heightZones.reduce((sum, z) => sum + z.length, 0).toLocaleString()} m</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isBridgeType && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {numInput("Base Width (mm)", s.qto.bwBaseWidth, v => updateQto({ bwBaseWidth: v }))}
+                    {numInput("Stem Thickness (mm)", s.qto.bwStemThick, v => updateQto({ bwStemThick: v }))}
+                    {numInput("Wall / Stem Height (mm)", s.qto.bwHeight, v => updateQto({ bwHeight: v }))}
+                    {numInput("Footing Depth (mm)", s.qto.bwFootingDepth, v => updateQto({ bwFootingDepth: v }))}
+                  </div>
+                )}
+
+                {!isDrainType && !isBridgeType && (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Select a structure type in ① Project Info (Calculator tab) to enable QTO.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Volume Summary — Drain / Box Culvert */}
+            {isDrainType && qtoResult && (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Volume Summary</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Walls = 2·t·H·L | Invert/Top = (span+2t)·slab·L | PCC = (span+2t+2·offset)·d·L</p>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" data-testid="btn-apply-qto-volume"
+                    onClick={() => { update({ totalVolume: parseFloat(qtoResult.totalRCC.toFixed(2)) }); toast({ title: `Total volume set to ${qtoResult.totalRCC.toFixed(2)} m³ in Calculator` }); }}>
+                    Apply to Calculator
+                  </Button>
+                </CardHeader>
+                <CardContent className="px-5 pb-5">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
+                          <th className="text-left p-2 font-semibold">Zone</th>
+                          <th className="text-right p-2 font-semibold">H (mm)</th>
+                          <th className="text-right p-2 font-semibold">Length (m)</th>
+                          <th className="text-right p-2 font-semibold">RCC Walls m³</th>
+                          <th className="text-right p-2 font-semibold">Invert Slab m³</th>
+                          {isBoxCulvert && <th className="text-right p-2 font-semibold">Top Slab m³</th>}
+                          <th className="text-right p-2 font-semibold">PCC m³</th>
+                          <th className="text-right p-2 font-semibold">Total RCC m³</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {qtoResult.zones.map(z => (
+                          <tr key={z.id} className="border-t border-border/50">
+                            <td className="p-2 font-medium">{z.label}</td>
+                            <td className="p-2 text-right">{z.height}</td>
+                            <td className="p-2 text-right">{z.length}</td>
+                            <td className="p-2 text-right">{z.wallsM3.toFixed(2)}</td>
+                            <td className="p-2 text-right">{z.invertM3.toFixed(2)}</td>
+                            {isBoxCulvert && <td className="p-2 text-right">{z.topM3.toFixed(2)}</td>}
+                            <td className="p-2 text-right">{z.pccM3.toFixed(2)}</td>
+                            <td className="p-2 text-right font-medium">{z.totalRCCm3.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border bg-muted/20 font-semibold">
+                          <td className="p-2 text-xs" colSpan={3}>Total</td>
+                          <td className="p-2 text-right text-xs">{qtoResult.totalWalls.toFixed(2)}</td>
+                          <td className="p-2 text-right text-xs">{qtoResult.totalInvert.toFixed(2)}</td>
+                          {isBoxCulvert && <td className="p-2 text-right text-xs">{qtoResult.totalTop.toFixed(2)}</td>}
+                          <td className="p-2 text-right text-xs">{qtoResult.totalPCC.toFixed(2)}</td>
+                          <td className="p-2 text-right text-xs font-bold text-blue-700">{qtoResult.totalRCC.toFixed(2)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3 text-xs">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+                      <p className="text-muted-foreground">Total RCC</p>
+                      <p className="text-lg font-bold text-blue-700">{qtoResult.totalRCC.toFixed(2)} m³</p>
+                    </div>
+                    <div className="bg-stone-50 border border-stone-200 rounded-lg px-4 py-2">
+                      <p className="text-muted-foreground">Total PCC</p>
+                      <p className="text-lg font-bold">{qtoResult.totalPCC.toFixed(2)} m³</p>
+                    </div>
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2">
+                      <p className="text-muted-foreground">Excavation (approx)</p>
+                      <p className="text-lg font-bold text-orange-700">{qtoResult.excavVolume.toFixed(2)} m³</p>
+                      <p className="text-muted-foreground">{qtoResult.excavWidth.toFixed(2)}m wide × avg {qtoResult.excavDepth.toFixed(2)}m deep</p>
+                    </div>
+                    <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                      <p className="text-muted-foreground">Backfill (approx)</p>
+                      <p className="text-lg font-bold text-green-700">{qtoResult.backfillVol.toFixed(2)} m³</p>
+                    </div>
+                    {qtoResult.gratingsCount > 0 && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+                        <p className="text-muted-foreground">Gratings</p>
+                        <p className="text-lg font-bold">{qtoResult.gratingsCount} nos</p>
+                      </div>
+                    )}
+                    {qtoResult.weepholesCount > 0 && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+                        <p className="text-muted-foreground">Weepholes</p>
+                        <p className="text-lg font-bold">{qtoResult.weepholesCount} nos</p>
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => updateQto({ showFormulaRef: !s.qto.showFormulaRef })} className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    {s.qto.showFormulaRef ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    How volumes are calculated
+                  </button>
+                  {s.qto.showFormulaRef && (
+                    <div className="mt-2 p-3 bg-muted/30 rounded-lg text-xs space-y-0.5 text-muted-foreground font-mono">
+                      <p>RCC Walls  = 2 × t × H × L  (per zone)</p>
+                      <p>Invert Slab = (span + 2t) × is × L</p>
+                      {isBoxCulvert && <p>Top Slab   = (span + 2t) × ts × L</p>}
+                      <p>PCC Bed    = (span + 2t + 2×offset) × pd × L</p>
+                      <p>Excavation = (pccWidth + 2×ws) × (avgH + is + pd) × totalL</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Volume Summary — Bridge / Retaining Wall */}
+            {isBridgeType && bridgeQtoResult && (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3">
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Volume Summary (per metre run)</CardTitle>
+                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
+                    onClick={() => { update({ totalVolume: parseFloat(bridgeQtoResult.totalRCCperM.toFixed(2)) }); toast({ title: "Volume updated (per m run)" }); }}>
+                    Apply to Calculator
+                  </Button>
+                </CardHeader>
+                <CardContent className="px-5 pb-5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                    <div className="bg-muted/30 rounded-lg p-3"><p className="text-muted-foreground">Stem (per m run)</p><p className="text-base font-bold">{bridgeQtoResult.stemVol.toFixed(3)} m³/m</p></div>
+                    <div className="bg-muted/30 rounded-lg p-3"><p className="text-muted-foreground">Base/Footing (per m)</p><p className="text-base font-bold">{bridgeQtoResult.baseVol.toFixed(3)} m³/m</p></div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3"><p className="text-muted-foreground">Total RCC (per m)</p><p className="text-base font-bold text-blue-700">{bridgeQtoResult.totalRCCperM.toFixed(3)} m³/m</p></div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Per-Metre Rate Card (Drain / Box Culvert) */}
+            {isDrainType && qtoResult && qtoResult.zones.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Cost per linear metre of road for each height zone. Enter offered rate to see margin.</p>
+                  </div>
+                  <div className="shrink-0">
+                    {numInput("PCC M10 Rate (₹/m³)", s.qto.pccRatePerM3, v => updateQto({ pccRatePerM3: v }))}
+                  </div>
+                </CardHeader>
+                <CardContent className="px-5 pb-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {qtoResult.zones.map(z => {
+                      const rccPerM = (z.wallsM3perM + qtoResult.invertPerM + qtoResult.topPerM) * costs.totalWithEsc;
+                      const pccPerM = qtoResult.pccPerM * s.qto.pccRatePerM3;
+                      const totalPerM = rccPerM + pccPerM;
+                      const offeredRate = s.qto.zoneOfferedRates[z.id] || 0;
+                      const margin = offeredRate > 0 ? ((offeredRate - totalPerM) / offeredRate) * 100 : null;
+                      const marginBadge = margin !== null ? (margin >= 10 ? "bg-green-100 text-green-700 border-green-300" : margin >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300") : "";
+                      return (
+                        <div key={z.id} className="border rounded-xl p-4 space-y-3 hover:shadow-sm transition-shadow">
+                          <div>
+                            <p className="font-semibold text-sm">{z.label}</p>
+                            <p className="text-xs text-muted-foreground">H = {z.height} mm · L = {z.length} m</p>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">RCC {s.grade} cost</span>
+                              <span className="font-medium">{fmtR(rccPerM)}/m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">PCC M10 Bed</span>
+                              <span className="font-medium">{fmtR(pccPerM)}/m</span>
+                            </div>
+                            <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
+                              <span>Cost ₹/m run</span>
+                              <span className="text-blue-700">{fmtR(totalPerM)}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Offered Rate (₹/m run)</Label>
+                            <Input
+                              type="number"
+                              value={offeredRate || ""}
+                              placeholder="Enter offered rate"
+                              onChange={e => updateQto({ zoneOfferedRates: { ...s.qto.zoneOfferedRates, [z.id]: parseFloat(e.target.value) || 0 } })}
+                              className="h-7 text-xs mt-1"
+                              data-testid={`input-offered-rate-${z.id}`}
+                            />
+                            {margin !== null && (
+                              <Badge variant="outline" className={`mt-1 text-xs font-bold ${marginBadge}`}>
+                                Margin: {margin.toFixed(1)}%
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Earthwork & PCC Rates for BOQ */}
+            {isDrainType && (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5">
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Earthwork & Ancillary Rates</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Used when generating the Standard Drain BOQ below.</p>
+                </CardHeader>
+                <CardContent className="px-5 pb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {numInput("Excavation Rate (₹/m³)", s.qto.excavationRate, v => updateQto({ excavationRate: v }))}
+                    {numInput("Backfill Rate (₹/m³)", s.qto.backfillRate, v => updateQto({ backfillRate: v }))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* BOQ Estimator */}
+            <Card>
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between gap-2 flex-wrap">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">BOQ Estimator</CardTitle>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isDrainType && qtoResult && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="btn-load-standard-boq"
+                      onClick={() => { if (s.boqItems.length > 0) setBoqOverwriteConfirm(true); else update({ boqItems: buildStandardDrainBOQ() }); }}>
+                      Load Standard BOQ
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="btn-import-excel-boq"
+                    onClick={() => fileInputRef.current?.click()}>
+                    <FileUp className="w-3 h-3 mr-1" /> Import Excel
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={addBOQItem} className="h-7 text-xs" data-testid="btn-add-boq">
+                    <Plus className="w-3 h-3 mr-1" /> Add Item
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-5">
+                {boqOverwriteConfirm && (
+                  <div className="mb-3 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between gap-3">
+                    <p className="text-sm text-amber-800 font-medium">Replace {s.boqItems.length} existing item(s) with standard drain BOQ?</p>
+                    <div className="flex gap-2 shrink-0">
+                      <Button size="sm" className="h-7 text-xs" onClick={() => { update({ boqItems: buildStandardDrainBOQ() }); setBoqOverwriteConfirm(false); }}>Replace</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setBoqOverwriteConfirm(false)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+                {xlsxPreview && (
+                  <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                    <p className="text-xs font-semibold text-blue-800">Excel Import — Map Columns ({xlsxPreview.rows.length} rows detected)</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["colDesc", "colUnit", "colQty"] as const).map((key, li) => (
+                        <div key={key}>
+                          <Label className="text-xs text-muted-foreground">{["Description", "Unit", "Qty"][li]} Column</Label>
+                          <Select
+                            value={String(xlsxPreview[key])}
+                            onValueChange={v => setXlsxPreview(prev => prev ? { ...prev, [key]: parseInt(v) } : prev)}>
+                            <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {xlsxPreview.headers.map((h, i) => <SelectItem key={i} value={String(i)}>{h || `Col ${i + 1}`}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="max-h-36 overflow-y-auto rounded border bg-white text-xs">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-muted/30">
+                            {xlsxPreview.headers.map((h, i) => <th key={i} className="p-1 text-left font-medium border-b">{h || `Col ${i + 1}`}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {xlsxPreview.rows.slice(0, 6).map((r, i) => (
+                            <tr key={i} className="border-b border-border/40">
+                              {xlsxPreview.headers.map((_, ci) => <td key={ci} className="p-1">{r[ci] || ""}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-7 text-xs" onClick={() => confirmExcelImport(xlsxPreview)}>Import {xlsxPreview.rows.length} Rows</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setXlsxPreview(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+                {s.boqItems.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{isDrainType && qtoResult ? 'Use "Load Standard BOQ" to auto-generate from QTO dimensions above, or click "Add Item" to add manually.' : 'Click "Add Item" to add BOQ items.'}</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
+                          <th className="text-left p-2 font-semibold">Description</th>
+                          <th className="text-right p-2 font-semibold">Qty</th>
+                          <th className="text-right p-2 font-semibold">Unit</th>
+                          <th className="text-right p-2 font-semibold">L × W × D</th>
+                          <th className="text-right p-2 font-semibold">m³</th>
+                          <th className="text-right p-2 font-semibold">Rate (₹/m³)</th>
+                          <th className="text-right p-2 font-semibold">Contractor Rate</th>
+                          <th className="text-right p-2 font-semibold">Amount</th>
+                          <th className="p-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.boqItems.map((item) => {
+                          const vol = boqVol(item);
+                          const amount = vol * item.rate;
+                          const margin = item.contractorRate > 0 ? ((item.contractorRate - item.rate) / item.contractorRate) * 100 : 0;
+                          const marginColor = margin >= 10 ? "text-green-600" : margin >= 5 ? "text-amber-600" : "text-red-600";
+                          return (
+                            <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
+                              <td className="p-2">
+                                <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value })} className="h-7 text-xs w-40" />
+                              </td>
+                              <td className="p-2 text-right">
+                                <Input type="number" value={item.qty} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-16 text-right" />
+                              </td>
+                              <td className="p-2">
+                                <Select value={item.unit} onValueChange={(v) => updateBOQItem(item.id, { unit: v })}>
+                                  <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="m³">m³</SelectItem>
+                                    <SelectItem value="m²">m²</SelectItem>
+                                    <SelectItem value="m">m</SelectItem>
+                                    <SelectItem value="nos">nos</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-1">
+                                  <Input type="number" value={item.dimL} onChange={(e) => updateBOQItem(item.id, { dimL: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-14" placeholder="L" />
+                                  <Input type="number" value={item.dimW} onChange={(e) => updateBOQItem(item.id, { dimW: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-14" placeholder="W" />
+                                  <Input type="number" value={item.dimD} onChange={(e) => updateBOQItem(item.id, { dimD: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-14" placeholder="D" />
+                                </div>
+                              </td>
+                              <td className="p-2 text-right font-medium">{vol.toFixed(2)}</td>
+                              <td className="p-2 text-right">
+                                <Input type="number" value={item.rate} onChange={(e) => updateBOQItem(item.id, { rate: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-20 text-right" />
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-1">
+                                  <Input type="number" value={item.contractorRate} onChange={(e) => updateBOQItem(item.id, { contractorRate: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-20 text-right" />
+                                  <span className={`text-xs font-semibold ${marginColor} whitespace-nowrap`}>{margin.toFixed(0)}%</span>
+                                </div>
+                              </td>
+                              <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
+                              <td className="p-2">
+                                <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border bg-muted/20 font-semibold">
+                          <td className="p-2 text-xs" colSpan={4}>Total</td>
+                          <td className="p-2 text-right text-xs">{boqTotalCum.toFixed(2)} m³</td>
+                          <td className="p-2 text-right text-xs">
+                            {boqTotalCum > 0 ? fmtR(boqTotalAmt / boqTotalCum) + "/m³ avg" : "—"}
+                          </td>
+                          <td className="p-2 text-right text-xs">
+                            {boqTotalCum > 0 ? fmtR(s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0) / boqTotalCum) + "/m³" : "—"}
+                          </td>
+                          <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ⑪ Contract Profitability */}
+            <Card>
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑪ Contract Profitability</CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Mode:</span>
+                  {(["per_item", "lumpsum"] as const).map((m) => (
+                    <button key={m} onClick={() => update({ profitMode: m })}
+                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.profitMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>
+                      {m === "per_item" ? "Per Item (BOQ)" : "Lumpsum"}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-5">
+                {s.profitMode === "lumpsum" ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {numInput("Total Contract Amount (₹)", s.lumpsumContractAmt, (v) => update({ lumpsumContractAmt: v }))}
+                    </div>
+                    {(() => {
+                      const totalCost = costs.totalWithEsc * s.totalVolume;
+                      const revenue = s.lumpsumContractAmt;
+                      const profit = revenue - totalCost;
+                      const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
+                      const cls = pct >= 10 ? "text-green-700 bg-green-50 border-green-200" : pct >= 5 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200";
+                      return (
+                        <div className={`rounded-xl border p-4 flex flex-wrap gap-6 ${cls}`}>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Contract Value</p><p className="text-lg font-bold">{fmtR(revenue)}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Estimated Cost</p><p className="text-lg font-bold">{fmtR(totalCost)}</p><p className="text-xs opacity-60">{fmtR(costs.totalWithEsc)}/m³ × {s.totalVolume} m³</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Gross Profit</p><p className="text-lg font-bold">{fmtR(profit)}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Margin %</p><p className="text-2xl font-bold">{pct.toFixed(1)}%</p></div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div>
+                    {s.boqItems.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Add BOQ items above to see profitability analysis.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Cost uses global calculator rate ({fmtR(costs.totalWithEsc)}/m³). Revenue uses contractor offered rate per item.
+                        </p>
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide text-xs">
+                              <th className="text-left p-2 font-semibold">Item</th>
+                              <th className="text-right p-2 font-semibold">m³</th>
+                              <th className="text-right p-2 font-semibold">Contractor Rate</th>
+                              <th className="text-right p-2 font-semibold">Revenue (₹)</th>
+                              <th className="text-right p-2 font-semibold">Cost @ {fmtR(costs.totalWithEsc)}/m³</th>
+                              <th className="text-right p-2 font-semibold">Profit (₹)</th>
+                              <th className="text-right p-2 font-semibold">Margin %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {s.boqItems.map((item) => {
+                              const vol = boqVol(item);
+                              const revenue = vol * item.contractorRate;
+                              const itemCost = vol * costs.totalWithEsc;
+                              const profit = revenue - itemCost;
+                              const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
+                              const badgeCls = pct >= 10 ? "bg-green-100 text-green-700 border-green-300" : pct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
+                              return (
+                                <tr key={item.id} className="border-t border-border/40 hover:bg-muted/10">
+                                  <td className="p-2 font-medium">{item.description || "—"}</td>
+                                  <td className="p-2 text-right">{vol.toFixed(2)}</td>
+                                  <td className="p-2 text-right">{fmtR(item.contractorRate)}</td>
+                                  <td className="p-2 text-right">{fmtR(revenue)}</td>
+                                  <td className="p-2 text-right">{fmtR(itemCost)}</td>
+                                  <td className={`p-2 text-right font-semibold ${profit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(profit)}</td>
+                                  <td className="p-2 text-right">
+                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{pct.toFixed(1)}%</Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            {(() => {
+                              const totalRev = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0);
+                              const totalCost = boqTotalCum * costs.totalWithEsc;
+                              const totalProfit = totalRev - totalCost;
+                              const totalPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
+                              const badgeCls = totalPct >= 10 ? "bg-green-100 text-green-700 border-green-300" : totalPct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
+                              return (
+                                <tr className="border-t-2 border-border bg-muted/20 font-bold">
+                                  <td className="p-2" colSpan={2}>Total</td>
+                                  <td className="p-2 text-right">{boqTotalCum.toFixed(2)} m³</td>
+                                  <td className="p-2 text-right">{fmtR(totalRev)}</td>
+                                  <td className="p-2 text-right">{fmtR(totalCost)}</td>
+                                  <td className={`p-2 text-right ${totalProfit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(totalProfit)}</td>
+                                  <td className="p-2 text-right">
+                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{totalPct.toFixed(1)}%</Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })()}
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
           </div>
         </TabsContent>
 
