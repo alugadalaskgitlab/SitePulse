@@ -2151,7 +2151,7 @@ export default function ConcreteCalculator() {
                 <div className="flex items-center gap-1">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Bar Bending Schedule (BBS)</CardTitle>
-                    <p className="text-sm text-slate-600">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape using editable Hook ×d multiplier</p>
+                    <p className="text-sm text-slate-600">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape (default 4d per hook end)</p>
                   </div>
                   <HelpBtn id="bbs" />
                 </div>
@@ -2161,7 +2161,7 @@ export default function ConcreteCalculator() {
               </CardHeader>
               <HelpPanel id="bbs" title="Bar Bending Schedule">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
-                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → hook formula: Straight=0, U-bar=2×(Hook ×d), L-bar=1×(Hook ×d), Ring/Stirrup=2×(Hook ×d)+10d; <b>Hook ×d</b> — user-editable multiplier per row, default 4 (disabled for Straight)</li>
+                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → hook formula: Straight=0, U-bar=2×4d, L-bar=1×4d, Ring/Stirrup=2×4d+10d (default 4d per hook end)</li>
                 <li><b>Element</b> — structural element this bar belongs to (Invert/Wall/TopSlab etc.); <b>Zone</b> — height zone or All</li>
                 <li><b>Count Basis</b> — <b>@Spacing</b>: enter bar spacing (mm) → count/m is auto-derived from element dimension ÷ spacing; <b>Manual</b>: enter absolute count</li>
                 <li><b>Wt/m run (kg/m)</b> — weight of this bar row per metre of drain. For spacing mode: countPerM × unitLen × Dia²/162. For manual mode: total kg ÷ drain length</li>
@@ -2187,7 +2187,6 @@ export default function ConcreteCalculator() {
                             <th className="text-right p-2">Spacing/Count</th>
                             <th className="text-right p-2">Count/m</th>
                             <th className="text-right p-2">Cut (m)</th>
-                            <th className="text-right p-2">Hook ×d</th>
                             <th className="text-right p-2">Hook (m)</th>
                             <th className="text-right p-2">Overlap N</th>
                             <th className="text-right p-2">Wt/m (kg/m)</th>
@@ -2314,20 +2313,6 @@ export default function ConcreteCalculator() {
                                 <td className="p-1.5 text-right text-slate-700 font-medium">{countPerM.toFixed(2)}/m</td>
                                 <td className="p-1.5">
                                   <Input type="number" step="0.1" value={row.cutLength} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { cutLength: parseFloat(e.target.value) || 0 })} className="h-7 text-sm w-24 text-right" />
-                                </td>
-                                <td className="p-1.5">
-                                  <Input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={row.shape === "Straight" ? 0 : (row.hookMult ?? DEFAULT_HOOK_MULT)}
-                                    disabled={row.shape === "Straight"}
-                                    onFocus={(e) => e.target.select()}
-                                    onChange={(e) => updateBBSRow(row.id, { hookMult: parseFloat(e.target.value) || 0 })}
-                                    className="h-7 text-sm w-14 text-right disabled:opacity-50"
-                                    title="Hook multiplier (×d per hook end)"
-                                    data-testid={`input-hook-mult-${row.id}`}
-                                  />
                                 </td>
                                 <td className="p-1.5 text-right text-slate-700 font-medium">{hook.toFixed(3)}</td>
                                 <td className="p-1.5">
