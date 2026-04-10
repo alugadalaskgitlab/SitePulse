@@ -1247,7 +1247,7 @@ export default function ConcreteCalculator() {
                 <CardContent className="px-5 pb-5 space-y-5">
                   {/* Cement */}
                   <div>
-                    <p className="text-xs font-semibold mb-2">Cement</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Cement</p>
                     <div className="flex items-end gap-4">
                       {numInput("Price per 50-kg bag", s.cementBagPrice, (v) => update({ cementBagPrice: v }), { unit: "₹/bag", testId: "input-cement-price" })}
                       <div className="pb-1 text-sm font-semibold text-slate-700 whitespace-nowrap">
@@ -1258,7 +1258,7 @@ export default function ConcreteCalculator() {
 
                   {/* Coarse Aggregate — tabbed */}
                   <div>
-                    <p className="text-xs font-semibold mb-2">Coarse Aggregate</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Coarse Aggregate</p>
                     <Tabs defaultValue="0">
                       <TabsList className="h-7">
                         {["20mm", "10mm", "6mm (Grit)"].map((lbl, i) => (
@@ -1321,7 +1321,7 @@ export default function ConcreteCalculator() {
                   {/* Fine Aggregate */}
                   <div>
                     <div className="flex items-center gap-3 mb-3">
-                      <p className="text-xs font-semibold">Fine Aggregate</p>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Fine Aggregate</p>
                       <div className="flex items-center gap-2">
                         <button
                           className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.faType === "natural" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}
@@ -1367,7 +1367,7 @@ export default function ConcreteCalculator() {
 
                   {/* Admixture */}
                   <div>
-                    <p className="text-xs font-semibold mb-2">Admixture</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Admixture</p>
                     <div className="grid grid-cols-3 gap-3">
                       {numInput("Dosage (L/m³)", s.admixDosage, (v) => update({ admixDosage: v }), { step: 0.05 })}
                       {numInput("Rate (₹/L)", s.admixRate, (v) => update({ admixRate: v }))}
@@ -1772,7 +1772,7 @@ export default function ConcreteCalculator() {
                   )}
                   <div className={s.pettyLabour.enabled && s.pettyLabour.contractorFormwork ? "opacity-40 pointer-events-none" : ""}>
                   <div>
-                    <p className="text-xs font-semibold mb-2">Shuttering System</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Shuttering System</p>
                     <div className="flex flex-wrap gap-2 mb-3">
                       {["Steel Plates + Angles", "Steel Frame + Timber Ply", "Modular Aluminium Formwork", "I-beam + Plywood"].map((opt) => (
                         <button key={opt}
@@ -1789,7 +1789,7 @@ export default function ConcreteCalculator() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold mb-2">Staging System</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Staging System</p>
                     <div className="flex flex-wrap gap-2 mb-3">
                       {["Cuplock Scaffolding", "Prop & Beam", "Timber Cribs", "I-beam Spans"].map((opt) => (
                         <button key={opt}
@@ -1828,7 +1828,7 @@ export default function ConcreteCalculator() {
               </HelpPanel>
                 <CardContent className="px-5 pb-5 space-y-5">
                   <div>
-                    <p className="text-xs font-semibold mb-2">Water Curing Mode</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Water Curing Mode</p>
                     <div className="flex gap-2 mb-3">
                       {[["tanker", "Mobile Tanker"], ["static", "Static Tank"]].map(([val, lbl]) => (
                         <button key={val}
@@ -1861,7 +1861,7 @@ export default function ConcreteCalculator() {
                         onCheckedChange={(v) => update({ curingCompoundEnabled: v })}
                         data-testid="switch-curing-compound"
                       />
-                      <Label className="text-xs font-semibold">Curing Compound</Label>
+                      <Label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Curing Compound</Label>
                     </div>
                     {s.curingCompoundEnabled && (
                       <div className="grid grid-cols-3 gap-3">
@@ -2007,7 +2007,7 @@ export default function ConcreteCalculator() {
                     {/* Client's Offered Rate */}
                     <div className="mt-4 pt-4 border-t">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold">Client's Offered Rate</span>
+                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Client's Offered Rate</span>
                         <div className="flex items-center gap-1 text-[10px]">
                           <button onClick={() => update({ contractRateMode: "per_m3" })} className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_m3" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>₹/m³</button>
                           <button
@@ -2236,7 +2236,7 @@ export default function ConcreteCalculator() {
 
                     {/* Steel rates per dia */}
                     <div className="mt-5">
-                      <p className="text-xs font-semibold mb-3">Steel Rates per Diameter</p>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Steel Rates per Diameter</p>
                       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                         {DIA_SIZES.map((d) => {
                           const key = `r${d}` as keyof SteelRates;
@@ -2979,7 +2979,7 @@ export default function ConcreteCalculator() {
                 )}
                 {xlsxPreview && (
                   <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                    <p className="text-xs font-semibold text-blue-800">Excel Import — Map Columns ({xlsxPreview.rows.length} rows detected)</p>
+                    <p className="text-sm font-semibold text-blue-800">Excel Import — Map Columns ({xlsxPreview.rows.length} rows detected)</p>
                     <div className="grid grid-cols-3 gap-2">
                       {(["colDesc", "colUnit", "colQty"] as const).map((key, li) => (
                         <div key={key}>
