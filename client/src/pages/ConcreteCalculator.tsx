@@ -760,9 +760,12 @@ export default function ConcreteCalculator() {
 
   function handlePiRateChange(key: string, newRate: number, baseValue: number, isMargin: boolean) {
     setPriceImpactRates((prev) => ({ ...prev, [key]: newRate }));
+    if (isMargin) {
+      setPriceImpactChanges((prev) => ({ ...prev, [key]: newRate - baseValue }));
+      return;
+    }
     if (baseValue === 0) return;
-    const pctChange = isMargin ? newRate - baseValue : ((newRate - baseValue) / baseValue) * 100;
-    setPriceImpactChanges((prev) => ({ ...prev, [key]: pctChange }));
+    setPriceImpactChanges((prev) => ({ ...prev, [key]: ((newRate - baseValue) / baseValue) * 100 }));
   }
 
   return (
@@ -2670,7 +2673,7 @@ export default function ConcreteCalculator() {
                                   {rateChanges.map(v => (
                                     <div key={v.key} className="flex justify-between text-[10px] text-muted-foreground gap-1">
                                       <span className="truncate">{v.label.replace(" Rate", "")}</span>
-                                      <span className="shrink-0 font-medium">{fmtR(v.baseValue)} → {fmtR(sc.rates![v.key])} {v.unit}</span>
+                                      <span className="shrink-0 font-medium">{v.key === "margin" ? `${v.baseValue.toFixed(1)}% → ${sc.rates![v.key].toFixed(1)}%` : `${fmtR(v.baseValue)} → ${fmtR(sc.rates![v.key])} ${v.unit}`}</span>
                                     </div>
                                   ))}
                                 </div>
