@@ -208,7 +208,7 @@ function loadState(): CalcState {
           ...(loaded.qto || {}),
           elementGrades: { ...DEFAULT_STATE.qto.elementGrades, ...(loaded.qto?.elementGrades || {}) },
         },
-        bbsRows: (loaded.bbsRows || []).map((r: BBSRow) => ({ element: "", zoneId: "all", countBasis: "manual", spacingMm: 200, ...r })),
+        bbsRows: (loaded.bbsRows || []).map((r: BBSRow) => ({ element: "Invert-Bottom", zoneId: "all", countBasis: "spacing", spacingMm: 200, ...r })),
       };
     }
   } catch {}
@@ -519,10 +519,10 @@ function calcDrainQTO(q: QtoState, showTopSlab: boolean) {
   const totalInvert = invertPerM * totalLength;
   const totalTop = topPerM * totalLength;
   const totalPCC = pccPerM * totalLength;
-  // Weephole void deduction (both walls combined — weepholes penetrate both walls in paired arrangement)
+  // Weephole void deduction — π/4×d²×wallThick×count; subtracted from combined wall volume (both walls)
   const weepholeDiamM = (q.weepholeDiaMm ?? 100) / 1000;
   const weepholesCount = q.weepholesSpacing > 0 ? Math.ceil(totalLength / q.weepholesSpacing) : 0;
-  const deductWeephole = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t * weepholesCount * 2;
+  const deductWeephole = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t * weepholesCount;
   // Grating opening deduction (from top slab)
   const gratingsCount = q.gratingsSpacing > 0 ? Math.ceil(totalLength / q.gratingsSpacing) : 0;
   const grOW = (q.gratingOpeningW ?? 200) / 1000;
@@ -747,7 +747,7 @@ export default function ConcreteCalculator() {
   }
 
   function addBBSRow() {
-    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50, element: "Manual", zoneId: "all", countBasis: "manual" as const, spacingMm: 200 }] });
+    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50, element: "Invert-Bottom", zoneId: "all", countBasis: "spacing" as const, spacingMm: 200 }] });
   }
 
   function updateBBSRow(id: string, patch: Partial<BBSRow>) {
@@ -857,24 +857,25 @@ export default function ConcreteCalculator() {
       : costs.totalWithEsc;
 
     const rccLabel = [eq.invert !== eq.wall ? `${eq.invert}/${eq.wall}` : eq.wall, "RCC"].join(" ");
-    const items: BOQItem[] = [];
-    // 1. Earthwork
-    items.push({ id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, contractorRate: 0 });
-    // 2. PCC bed
-    if (r.totalPCC > 0) items.push({ id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), contractorRate: 0 });
-    // 3. RCC — combined (raft + walls + slab) at blended element-grade rate
-    if (r.totalRCC > 0) items.push({ id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), contractorRate: s.contractRate });
-    // 4. HYSD reinforcement — weighted avg steel rate from BBS
     const steelMT = parseFloat((bbsSummary.totalKg / 1000).toFixed(3));
     const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-    if (steelMT > 0) items.push({ id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(steelRateAvg), contractorRate: 0 });
-    // 5. Gratings
-    if (r.gratingsCount > 0) items.push({ id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, contractorRate: 0 });
-    // 6. Weepholes
-    if (r.weepholesCount > 0) items.push({ id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: r.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, contractorRate: 0 });
-    // 7. Lifting Hooks
-    if (r.liftingHooksCount > 0) items.push({ id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: r.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, contractorRate: 0 });
-    return items;
+    // Always produce exactly 7 items in the standard client BOQ order
+    return [
+      // 1. Earthwork
+      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, contractorRate: 0 },
+      // 2. PCC bed
+      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), contractorRate: 0 },
+      // 3. RCC — combined at blended element-grade rate
+      { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), contractorRate: s.contractRate },
+      // 4. HYSD reinforcement — weighted avg steel rate from BBS
+      { id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(steelRateAvg), contractorRate: 0 },
+      // 5. Gratings
+      { id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, contractorRate: 0 },
+      // 6. Weepholes
+      { id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: r.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, contractorRate: 0 },
+      // 7. Lifting Hooks
+      { id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: r.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, contractorRate: 0 },
+    ];
   }
 
   async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -2467,7 +2468,7 @@ export default function ConcreteCalculator() {
                       </div>
                       {showTopSlab && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
                         <p className="text-muted-foreground">Top Slab ({s.qto.topSlabType === "Precast" ? "Precast ₹/m²" : eq.topSlab})</p>
-                        <p className="font-bold text-sm">{fmtR(qtoResult.topPerM * topSlabCostPerM3)}/RM</p>
+                        <p className="font-bold text-sm">{fmtR(qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0)}/RM</p>
                       </div>}
                       {gratingPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
                         <p className="text-muted-foreground">MS Gratings</p>
@@ -2502,10 +2503,14 @@ export default function ConcreteCalculator() {
                   {/* Per-zone cards (walls vary by zone height) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {qtoResult.zones.map(z => {
-                      const wallsPerM = z.wallsM3perM * wallCostPerM3;
+                      // Use net volumes: deduct weephole void distributed evenly per metre
+                      const deductWallPerM = qtoResult.totalLength > 0 ? qtoResult.deductWeephole / qtoResult.totalLength : 0;
+                      const netWallPerM = Math.max(0, z.wallsM3perM - deductWallPerM);
+                      const wallsPerM = netWallPerM * wallCostPerM3;
                       const pccPerM_ = qtoResult.pccPerM * pccMatPerM3;
                       const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
-                      const topSlabPerM_ = qtoResult.topPerM * topSlabCostPerM3;
+                      // Net top slab per metre (after grating opening deduction)
+                      const topSlabPerM_ = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
                       const totalPerM = wallsPerM + pccPerM_ + invertPerM_ + topSlabPerM_ + gratingPerM + weepholePerM + steelPerM + bwPerM + lhPerM + excavPerM + backfillPerM;
                       const offeredRate = s.qto.zoneOfferedRates[z.id] || 0;
                       const margin = offeredRate > 0 ? ((offeredRate - totalPerM) / offeredRate) * 100 : null;
