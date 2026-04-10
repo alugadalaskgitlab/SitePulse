@@ -200,16 +200,18 @@ const DEFAULT_STATE: CalcState = {
   },
 };
 
+type LegacyCalcState = Partial<CalcState> & { contractRate?: number; contractRateMode?: "per_m3" | "per_rm" };
+
 function loadState(): CalcState {
   try {
     const saved = localStorage.getItem(LS_KEY);
     if (saved) {
-      const loaded = JSON.parse(saved) as Partial<CalcState>;
+      const loaded = JSON.parse(saved) as LegacyCalcState;
       return {
         ...DEFAULT_STATE,
         ...loaded,
-        clientOfferedRate: (loaded as any).clientOfferedRate ?? (loaded as any).contractRate ?? 0,
-        clientOfferedRateMode: (loaded as any).clientOfferedRateMode ?? (loaded as any).contractRateMode ?? "per_m3",
+        clientOfferedRate: loaded.clientOfferedRate ?? loaded.contractRate ?? 0,
+        clientOfferedRateMode: loaded.clientOfferedRateMode ?? loaded.contractRateMode ?? "per_m3",
         pettyLabour: { ...DEFAULT_STATE.pettyLabour, ...(loaded.pettyLabour || {}) },
         qto: {
           ...DEFAULT_STATE.qto,
@@ -1001,9 +1003,9 @@ export default function ConcreteCalculator() {
     // Always produce exactly 7 items in the standard client BOQ order
     return [
       // 1. Earthwork — L×W×D populated from QTO geometry
-      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.excavWidth.toFixed(3)), dimD: parseFloat(r.excavDepth.toFixed(3)), rate: q.excavationRate },
-      // 2. PCC bed — L×W×D populated from QTO geometry
-      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.pccWidth.toFixed(3)), dimD: parseFloat((q.pccDepth / 1000).toFixed(3)), rate: Math.round(pccRatePerM3) },
+      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat((r.excavVolume).toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate },
+      // 2. PCC bed — pre-computed volume
+      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat((r.totalLength * r.pccWidth * (q.pccDepth / 1000)).toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3) },
       // 3. RCC — combined at blended element-grade rate
       { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate) },
       // 4. HYSD reinforcement — weighted avg steel rate from BBS
@@ -3155,30 +3157,30 @@ export default function ConcreteCalculator() {
                     <table className="w-full text-xs border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-slate-600 uppercase tracking-wide">
+                          <th className="text-left p-2 font-semibold w-6">#</th>
                           <th className="text-left p-2 font-semibold">Description</th>
                           <th className="text-right p-2 font-semibold">Qty</th>
                           <th className="text-right p-2 font-semibold">Unit</th>
-                          <th className="text-right p-2 font-semibold">L × W × D</th>
-                          <th className="text-right p-2 font-semibold">Vol</th>
-                          <th className="text-right p-2 font-semibold">Rate (₹/unit)</th>
+                          <th className="text-right p-2 font-semibold">Rate (₹)</th>
                           <th className="text-right p-2 font-semibold">Amount</th>
                           <th className="p-2"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {s.boqItems.map((item) => {
-                          const vol = boqVol(item);
-                          const amount = vol * item.rate;
+                        {s.boqItems.map((item, idx) => {
+                          const qty = boqVol(item);
+                          const amount = qty * item.rate;
                           return (
                             <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
+                              <td className="p-2 text-slate-500 tabular-nums">{idx + 1}</td>
                               <td className="p-2">
                                 <div className="space-y-0.5">
-                                  <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value.toUpperCase() })} className="h-8 text-xs w-56 uppercase" />
+                                  <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value.toUpperCase() })} className="h-8 text-xs w-64 uppercase" />
                                   {(() => { const cat = getBOQCategory(item.description); return cat ? <Badge variant="outline" className={`text-[10px] px-1 py-0 ${BOQ_CAT_COLORS[cat]}`}>{cat}</Badge> : null; })()}
                                 </div>
                               </td>
                               <td className="p-2 text-right">
-                                <Input type="number" value={item.qty} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-24 text-right" />
+                                <Input type="number" value={qty} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0, dimL: 0, dimW: 0, dimD: 0 })} className="h-8 text-sm w-24 text-right" />
                               </td>
                               <td className="p-2">
                                 <Select value={item.unit} onValueChange={(v) => updateBOQItem(item.id, { unit: v })}>
@@ -3195,14 +3197,6 @@ export default function ConcreteCalculator() {
                                   </SelectContent>
                                 </Select>
                               </td>
-                              <td className="p-2">
-                                <div className="flex items-center gap-1">
-                                  <Input type="number" value={item.dimL} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { dimL: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-20" placeholder="L" />
-                                  <Input type="number" value={item.dimW} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { dimW: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-20" placeholder="W" />
-                                  <Input type="number" value={item.dimD} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { dimD: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-20" placeholder="D" />
-                                </div>
-                              </td>
-                              <td className="p-2 text-right font-medium">{vol.toFixed(2)}</td>
                               <td className="p-2 text-right">
                                 <Input type="number" value={item.rate} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { rate: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-28 text-right" />
                               </td>
@@ -3216,11 +3210,7 @@ export default function ConcreteCalculator() {
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-border bg-muted/20 font-semibold">
-                          <td className="p-2 text-xs" colSpan={4}>Total</td>
-                          <td className="p-2 text-right text-xs">{boqTotalCum.toFixed(2)} m³</td>
-                          <td className="p-2 text-right text-xs">
-                            {boqTotalCum > 0 ? fmtR(boqTotalAmt / boqTotalCum) + "/m³ avg" : "—"}
-                          </td>
+                          <td className="p-2 text-xs" colSpan={5}>Grand Total</td>
                           <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
                           <td></td>
                         </tr>
