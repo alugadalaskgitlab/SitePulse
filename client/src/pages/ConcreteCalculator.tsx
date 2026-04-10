@@ -1890,8 +1890,7 @@ export default function ConcreteCalculator() {
                             label: "Raw Materials", color: "bg-amber-100 border-amber-200", textColor: "text-amber-800",
                             items: [
                               { label: "Cement", val: costs.cement, color: "bg-amber-500" },
-                              { label: "Coarse Agg", val: costs.ca, color: "bg-orange-400" },
-                              { label: "Fine Agg", val: costs.fa, color: "bg-yellow-400" },
+                              { label: "Aggregates (CA+FA)", val: costs.ca + costs.fa, color: "bg-orange-400" },
                               { label: "Admixture", val: costs.admix, color: "bg-purple-400" },
                             ],
                             subtotal: costs.cement + costs.ca + costs.fa + costs.admix,
@@ -1903,13 +1902,20 @@ export default function ConcreteCalculator() {
                           },
                           {
                             label: "Plant, Labour & Formwork", color: "bg-blue-50 border-blue-200", textColor: "text-blue-800",
-                            items: [
-                              { label: "Batching", val: costs.batching, color: "bg-blue-400" },
-                              { label: s.pettyLabour.enabled ? "Petty Labour" : "Placement", val: costs.placement, color: "bg-sky-400" },
-                              { label: "Formwork", val: costs.formwork, color: "bg-teal-400" },
-                              { label: "Labour", val: costs.labour, color: "bg-green-500" },
-                              { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
-                            ],
+                            items: pettyLabourRatePerM3 !== undefined
+                              ? [
+                                  { label: "Batching", val: costs.batching, color: "bg-blue-400" },
+                                  { label: "Petty Labour Contract", val: costs.placement + costs.formwork, color: "bg-sky-400" },
+                                  { label: "Labour", val: costs.labour, color: "bg-green-500" },
+                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
+                                ]
+                              : [
+                                  { label: "Batching", val: costs.batching, color: "bg-blue-400" },
+                                  { label: "Placement", val: costs.placement, color: "bg-sky-400" },
+                                  { label: "Formwork", val: costs.formwork, color: "bg-teal-400" },
+                                  { label: "Labour", val: costs.labour, color: "bg-green-500" },
+                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
+                                ],
                             subtotal: costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing,
                           },
                           {
