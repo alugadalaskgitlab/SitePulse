@@ -681,7 +681,7 @@ export default function ConcreteCalculator() {
     if (r.backfillVol > 0) items.push({ id: uid(), description: "Backfilling with Excavated Earth (Compacted)", qty: parseFloat(r.backfillVol.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.backfillRate, contractorRate: 0 });
     if (r.gratingsCount > 0) items.push({ id: uid(), description: `MS Gratings @ ${s.qto.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.gratingRatePerNos, contractorRate: 0 });
     if (r.weepholesCount > 0) items.push({ id: uid(), description: `Weepholes (75mm dia) @ ${s.qto.weepholesSpacing}m c/c`, qty: r.weepholesCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.weepholeRatePerNos, contractorRate: 0 });
-    items.push({ id: uid(), description: "Curing of RCC Works", qty: parseFloat(r.totalRCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.curing, contractorRate: 0 });
+    items.push({ id: uid(), description: "Curing of RCC Works (qty = total RCC m³; rate from Calculator curing cost)", qty: parseFloat(r.totalRCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.curing, contractorRate: 0 });
     return items;
   }
 
