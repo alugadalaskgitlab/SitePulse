@@ -938,10 +938,10 @@ export default function ConcreteCalculator() {
     const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
     // Always produce exactly 7 items in the standard client BOQ order
     return [
-      // 1. Earthwork
-      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, contractorRate: 0 },
-      // 2. PCC bed
-      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), contractorRate: 0 },
+      // 1. Earthwork — L×W×D populated from QTO geometry
+      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.excavWidth.toFixed(3)), dimD: parseFloat(r.excavDepth.toFixed(3)), rate: q.excavationRate, contractorRate: 0 },
+      // 2. PCC bed — L×W×D populated from QTO geometry
+      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.pccWidth.toFixed(3)), dimD: parseFloat((q.pccDepth / 1000).toFixed(3)), rate: Math.round(pccRatePerM3), contractorRate: 0 },
       // 3. RCC — combined at blended element-grade rate
       { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), contractorRate: s.contractRate },
       // 4. HYSD reinforcement — weighted avg steel rate from BBS
@@ -1866,10 +1866,30 @@ export default function ConcreteCalculator() {
                       <Label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Curing Compound</Label>
                     </div>
                     {s.curingCompoundEnabled && (
-                      <div className="grid grid-cols-3 gap-3">
-                        {numInput("Rate (₹/L)", s.curingCompoundRate, (v) => update({ curingCompoundRate: v }))}
-                        {numInput("Coverage (m²/L)", s.curingCompoundCoverage, (v) => update({ curingCompoundCoverage: v }))}
-                        {numInput("Surface Area (m²/m³)", s.curingCompoundSurfaceArea, (v) => update({ curingCompoundSurfaceArea: v }), { step: 0.1 })}
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-3">
+                          {numInput("Rate (₹/L)", s.curingCompoundRate, (v) => update({ curingCompoundRate: v }))}
+                          {numInput("Coverage (m²/L)", s.curingCompoundCoverage, (v) => update({ curingCompoundCoverage: v }))}
+                          {numInput("Surface Area (m²/m³)", s.curingCompoundSurfaceArea, (v) => update({ curingCompoundSurfaceArea: v }), { step: 0.1 })}
+                        </div>
+                        {(() => {
+                          if (!isDrainType || !qtoResult || qtoResult.totalLength <= 0) return null;
+                          const span = s.qto.clearSpan / 1000;
+                          const t = s.qto.wallThickness / 1000;
+                          const overallW = span + 2 * t;
+                          const rccPerM = qtoResult.totalRCC / qtoResult.totalLength;
+                          const surfacePerM = span + 2 * qtoResult.avgWallH + 2 * t + (showTopSlab ? overallW : 0);
+                          const autoVal = rccPerM > 0 ? parseFloat((surfacePerM / rccPerM).toFixed(2)) : 0;
+                          if (autoVal <= 0) return null;
+                          return (
+                            <div className="flex items-center gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                              <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <span>Auto from QTO cross-section: <b>{autoVal} m²/m³</b> (invert + walls + top of walls{showTopSlab ? " + top slab soffit" : ""})</span>
+                              <button className="ml-auto text-blue-600 font-semibold hover:underline whitespace-nowrap"
+                                onClick={() => update({ curingCompoundSurfaceArea: autoVal })}>Use this</button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -1925,27 +1945,25 @@ export default function ConcreteCalculator() {
                     <div className="space-y-3 text-xs">
                       {(() => {
                         const rm = (v: number) => crossSectionM2 > 0 ? ` · ${fmtR(v * crossSectionM2)}/RM` : "";
+                        const rawMatTotal = costs.cement + costs.ca + costs.fa + costs.admix;
+                        const plantTotal = costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing;
+                        const directTotal = rawMatTotal + plantTotal + costs.steel;
                         const groups = [
                           {
                             label: "Raw Materials", color: "bg-amber-100 border-amber-200", textColor: "text-amber-800",
                             items: [
                               { label: "Cement", val: costs.cement, color: "bg-amber-500" },
-                              { label: "Aggregates (CA+FA)", val: costs.ca + costs.fa, color: "bg-orange-400" },
+                              { label: "CA + FA", val: costs.ca + costs.fa, color: "bg-orange-400" },
                               { label: "Admixture", val: costs.admix, color: "bg-purple-400" },
                             ],
-                            subtotal: costs.cement + costs.ca + costs.fa + costs.admix,
+                            subtotal: rawMatTotal,
                           },
                           {
-                            label: "Steel", color: "bg-slate-100 border-slate-200", textColor: "text-slate-700",
-                            items: [{ label: "Reinforcement", val: costs.steel, color: "bg-slate-500" }],
-                            subtotal: costs.steel,
-                          },
-                          {
-                            label: "Plant, Labour & Formwork", color: "bg-blue-50 border-blue-200", textColor: "text-blue-800",
+                            label: "Mixing, Placing & Curing", color: "bg-blue-50 border-blue-200", textColor: "text-blue-800",
                             items: pettyLabourRatePerM3 !== undefined
                               ? [
                                   { label: "Batching", val: costs.batching, color: "bg-blue-400" },
-                                  { label: "Petty Labour Contract", val: costs.placement, color: "bg-sky-400" },
+                                  { label: "Petty Labour", val: costs.placement, color: "bg-sky-400" },
                                   ...(s.pettyLabour.contractorFormwork
                                     ? []
                                     : [{ label: "Formwork", val: costs.formwork, color: "bg-teal-400" }]),
@@ -1959,7 +1977,12 @@ export default function ConcreteCalculator() {
                                   { label: "Labour", val: costs.labour, color: "bg-green-500" },
                                   { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
                                 ],
-                            subtotal: costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing,
+                            subtotal: plantTotal,
+                          },
+                          {
+                            label: "Steel", color: "bg-slate-100 border-slate-200", textColor: "text-slate-700",
+                            items: [{ label: "Reinforcement", val: costs.steel, color: "bg-slate-500" }],
+                            subtotal: costs.steel,
                           },
                           {
                             label: "Wastage + Overhead + Margin", color: "bg-emerald-50 border-emerald-200", textColor: "text-emerald-800",
@@ -1971,25 +1994,52 @@ export default function ConcreteCalculator() {
                             subtotal: costs.wastage + costs.overhead + costs.margin,
                           },
                         ];
-                        return groups.map(g => (
-                          <div key={g.label} className={`rounded-lg border p-2 ${g.color}`}>
-                            <div className={`flex justify-between items-center mb-1.5 font-semibold ${g.textColor}`}>
-                              <span>{g.label}</span>
-                              <span>{fmtR(g.subtotal)}/m³{rm(g.subtotal)}</span>
-                            </div>
-                            <div className="space-y-1">
-                              {g.items.filter(i => i.val > 0 || g.items.length === 1).map(item => (
-                                <div key={item.label} className="flex items-center gap-1.5">
-                                  <div className="w-16 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
-                                  <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
-                                    <div className={`h-full rounded ${item.color}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
-                                  </div>
-                                  <div className="w-14 text-right text-[11px] font-medium">{fmtR(item.val)}</div>
+                        return (
+                          <>
+                            {groups.slice(0, 3).map(g => (
+                              <div key={g.label} className={`rounded-lg border p-2 ${g.color}`}>
+                                <div className={`flex justify-between items-center mb-1.5 font-semibold ${g.textColor}`}>
+                                  <span>{g.label}</span>
+                                  <span>{fmtR(g.subtotal)}/m³{rm(g.subtotal)}</span>
                                 </div>
-                              ))}
+                                <div className="space-y-1">
+                                  {g.items.filter(i => i.val > 0 || g.items.length === 1).map(item => (
+                                    <div key={item.label} className="flex items-center gap-1.5">
+                                      <div className="w-16 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
+                                      <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
+                                        <div className={`h-full rounded ${item.color}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
+                                      </div>
+                                      <div className="w-14 text-right text-[11px] font-medium">{fmtR(item.val)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                            <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 flex justify-between items-center">
+                              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Direct Cost Sub-total</span>
+                              <span className="text-sm font-bold text-slate-800">{fmtR(directTotal)}/m³{rm(directTotal)}</span>
                             </div>
-                          </div>
-                        ));
+                            {groups.slice(3).map(g => (
+                              <div key={g.label} className={`rounded-lg border p-2 ${g.color}`}>
+                                <div className={`flex justify-between items-center mb-1.5 font-semibold ${g.textColor}`}>
+                                  <span>{g.label}</span>
+                                  <span>{fmtR(g.subtotal)}/m³{rm(g.subtotal)}</span>
+                                </div>
+                                <div className="space-y-1">
+                                  {g.items.filter(i => i.val > 0 || g.items.length === 1).map(item => (
+                                    <div key={item.label} className="flex items-center gap-1.5">
+                                      <div className="w-16 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
+                                      <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
+                                        <div className={`h-full rounded ${item.color}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
+                                      </div>
+                                      <div className="w-14 text-right text-[11px] font-medium">{fmtR(item.val)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        );
                       })()}
                       <div className="border-t border-border pt-2 mt-1">
                         <div className="flex justify-between items-center font-bold">
@@ -2723,6 +2773,10 @@ export default function ConcreteCalculator() {
                         <p className="text-xs text-slate-600 dark:text-slate-400">Invert Slab ({eq.invert})</p>
                         <p className="font-bold text-sm">{fmtR(qtoResult.invertPerM * invertCostPerM3)}/RM</p>
                       </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-xs text-slate-600 dark:text-slate-400">Walls ({eq.wall}) avg</p>
+                        <p className="font-bold text-sm">{fmtR(avgNetWallPerM)}/RM</p>
+                      </div>
                       {showTopSlab && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
                         <p className="text-xs text-slate-600 dark:text-slate-400">Top Slab ({s.qto.topSlabType === "Precast" ? "Precast ₹/m²" : eq.topSlab})</p>
                         <p className="font-bold text-sm">{fmtR(qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0)}/RM</p>
@@ -2812,10 +2866,30 @@ export default function ConcreteCalculator() {
                               <span className="text-slate-600">Weepholes</span>
                               <span className="font-medium">{fmtR(weepholePerM)}/m</span>
                             </div>}
+                            {bwPerM > 0 && <div className="flex justify-between">
+                              <span className="text-slate-600">Binding Wire</span>
+                              <span className="font-medium">{fmtR(bwPerM)}/m</span>
+                            </div>}
+                            {lhPerM > 0 && <div className="flex justify-between">
+                              <span className="text-slate-600">Lifting Hooks</span>
+                              <span className="font-medium">{fmtR(lhPerM)}/m</span>
+                            </div>}
+                            {excavPerM > 0 && <div className="flex justify-between text-orange-700">
+                              <span>Earthwork Excav.</span>
+                              <span className="font-medium">{fmtR(excavPerM)}/m</span>
+                            </div>}
+                            {backfillPerM > 0 && <div className="flex justify-between text-green-700">
+                              <span>Backfilling</span>
+                              <span className="font-medium">{fmtR(backfillPerM)}/m</span>
+                            </div>}
                             <div className="flex justify-between font-bold border-t pt-1.5 mt-1 text-sm">
-                              <span>Total Cost ₹/m</span>
+                              <span>Total Cost ₹/RM</span>
                               <span className="text-blue-700">{fmtR(totalPerM)}</span>
                             </div>
+                            {z.rccPerM > 0 && <div className="flex justify-between text-slate-600 text-[11px]">
+                              <span>Effective ₹/m³ concrete</span>
+                              <span className="font-medium">{fmtR(totalPerM / z.rccPerM)}</span>
+                            </div>}
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-slate-700">Offered Rate (₹/m run)</Label>
@@ -2971,11 +3045,19 @@ export default function ConcreteCalculator() {
                   <p><b>Rate (₹/unit):</b> Your estimated cost rate. <b>Client's Rate:</b> The client's offered rate per BOQ item — used to compute margin in Contract Profitability below.</p>
                 </div>
                 {boqOverwriteConfirm && (
-                  <div className="mb-3 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between gap-3">
-                    <p className="text-sm text-amber-800 font-medium">Replace {s.boqItems.length} existing item(s) with standard drain BOQ?</p>
-                    <div className="flex gap-2 shrink-0">
-                      <Button size="sm" className="h-7 text-xs" onClick={() => { update({ boqItems: buildStandardDrainBOQ() }); setBoqOverwriteConfirm(false); }}>Replace</Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setBoqOverwriteConfirm(false)}>Cancel</Button>
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setBoqOverwriteConfirm(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-slate-800 dark:text-slate-100">Replace existing BOQ?</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">This will replace {s.boqItems.length} existing item(s) with the standard drain BOQ generated from your QTO dimensions. This cannot be undone.</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 justify-end">
+                        <Button size="sm" variant="ghost" onClick={() => setBoqOverwriteConfirm(false)}>Cancel</Button>
+                        <Button size="sm" onClick={() => { update({ boqItems: buildStandardDrainBOQ() }); setBoqOverwriteConfirm(false); }}>Replace</Button>
+                      </div>
                     </div>
                   </div>
                 )}
