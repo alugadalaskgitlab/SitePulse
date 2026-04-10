@@ -36,8 +36,10 @@ interface QtoState {
   pccDepth: number; pccOffset: number; workingSpace: number;
   heightZones: HeightZone[];
   gratingsSpacing: number; weepholesSpacing: number;
+  gratingRatePerNos: number; weepholeRatePerNos: number;
   pccRatePerM3: number; excavationRate: number; backfillRate: number;
   bwBaseWidth: number; bwStemThick: number; bwHeight: number; bwFootingDepth: number;
+  bwOfferedRatePerM: number;
   zoneOfferedRates: Record<string, number>;
   showFormulaRef: boolean;
 }
@@ -172,8 +174,10 @@ const DEFAULT_STATE: CalcState = {
       { id: "z2", label: "Zone 2", height: 1200, length: 300 },
     ],
     gratingsSpacing: 3, weepholesSpacing: 1.5,
+    gratingRatePerNos: 0, weepholeRatePerNos: 0,
     pccRatePerM3: 4500, excavationRate: 300, backfillRate: 200,
     bwBaseWidth: 2000, bwStemThick: 400, bwHeight: 3000, bwFootingDepth: 500,
+    bwOfferedRatePerM: 0,
     zoneOfferedRates: {}, showFormulaRef: false,
   },
 };
@@ -181,7 +185,14 @@ const DEFAULT_STATE: CalcState = {
 function loadState(): CalcState {
   try {
     const saved = localStorage.getItem(LS_KEY);
-    if (saved) return { ...DEFAULT_STATE, ...JSON.parse(saved) };
+    if (saved) {
+      const loaded = JSON.parse(saved) as Partial<CalcState>;
+      return {
+        ...DEFAULT_STATE,
+        ...loaded,
+        qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) },
+      };
+    }
   } catch {}
   return { ...DEFAULT_STATE };
 }
@@ -350,6 +361,27 @@ function numInput(label: string, value: number, onChange: (v: number) => void, o
 function fmtR(v: number) { return "₹" + Math.round(v).toLocaleString("en-IN"); }
 function fmtPct(v: number) { return v.toFixed(1) + "%"; }
 function uid() { return Math.random().toString(36).slice(2, 8); }
+
+const BOQ_CAT_COLORS: Record<string, string> = {
+  RCC: "bg-blue-100 text-blue-700 border-blue-300",
+  PCC: "bg-stone-100 text-stone-700 border-stone-300",
+  Excavation: "bg-orange-100 text-orange-700 border-orange-300",
+  Backfill: "bg-green-100 text-green-700 border-green-300",
+  Grating: "bg-slate-100 text-slate-700 border-slate-300",
+  Weephole: "bg-slate-100 text-slate-700 border-slate-300",
+  Curing: "bg-purple-100 text-purple-700 border-purple-300",
+};
+function getBOQCategory(desc: string): string | null {
+  const d = desc.toLowerCase();
+  if (/\brcc\b|reinforced cement/i.test(d)) return "RCC";
+  if (/\bpcc\b|plain cement/i.test(d)) return "PCC";
+  if (/excavat/.test(d)) return "Excavation";
+  if (/backfill|earthfill/.test(d)) return "Backfill";
+  if (/\bgrat/.test(d)) return "Grating";
+  if (/weep/.test(d)) return "Weephole";
+  if (/\bcur/.test(d)) return "Curing";
+  return null;
+}
 
 // ─── QTO Calculations ─────────────────────────────────────────────────────────
 
@@ -1894,7 +1926,9 @@ export default function ConcreteCalculator() {
                     {qtoResult.zones.map(z => {
                       const rccPerM = (z.wallsM3perM + qtoResult.invertPerM + qtoResult.topPerM) * costs.totalWithEsc;
                       const pccPerM = qtoResult.pccPerM * s.qto.pccRatePerM3;
-                      const totalPerM = rccPerM + pccPerM;
+                      const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
+                      const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
+                      const totalPerM = rccPerM + pccPerM + gratingPerM + weepholePerM;
                       const offeredRate = s.qto.zoneOfferedRates[z.id] || 0;
                       const margin = offeredRate > 0 ? ((offeredRate - totalPerM) / offeredRate) * 100 : null;
                       const marginBadge = margin !== null ? (margin >= 10 ? "bg-green-100 text-green-700 border-green-300" : margin >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300") : "";
@@ -1913,6 +1947,18 @@ export default function ConcreteCalculator() {
                               <span className="text-muted-foreground">PCC M10 Bed</span>
                               <span className="font-medium">{fmtR(pccPerM)}/m</span>
                             </div>
+                            {gratingPerM > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">MS Gratings ({s.qto.gratingsSpacing}m c/c)</span>
+                                <span className="font-medium">{fmtR(gratingPerM)}/m</span>
+                              </div>
+                            )}
+                            {weepholePerM > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Weepholes ({s.qto.weepholesSpacing}m c/c)</span>
+                                <span className="font-medium">{fmtR(weepholePerM)}/m</span>
+                              </div>
+                            )}
                             <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
                               <span>Cost ₹/m run</span>
                               <span className="text-blue-700">{fmtR(totalPerM)}</span>
@@ -1942,6 +1988,58 @@ export default function ConcreteCalculator() {
               </Card>
             )}
 
+            {/* Bridge / RW Per-Metre Rate Card */}
+            {isBridgeType && bridgeQtoResult && (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5">
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
+                </CardHeader>
+                <CardContent className="px-5 pb-5">
+                  {(() => {
+                    const bwCostPerM = bridgeQtoResult.totalRCCperM * costs.totalWithEsc;
+                    const offeredRate = s.qto.bwOfferedRatePerM;
+                    const margin = offeredRate > 0 ? ((offeredRate - bwCostPerM) / offeredRate) * 100 : null;
+                    const marginBadge = margin !== null ? (margin >= 10 ? "bg-green-100 text-green-700 border-green-300" : margin >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300") : "";
+                    return (
+                      <div className="border rounded-xl p-4 space-y-3 max-w-sm">
+                        <div>
+                          <p className="font-semibold text-sm">{s.structureType}</p>
+                          <p className="text-xs text-muted-foreground">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">RCC {s.grade} cost</span>
+                            <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}/m</span>
+                          </div>
+                          <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
+                            <span>Cost ₹/m run</span>
+                            <span className="text-blue-700">{fmtR(bwCostPerM)}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Offered Rate (₹/m run)</Label>
+                          <Input
+                            type="number"
+                            value={offeredRate || ""}
+                            placeholder="Enter offered rate"
+                            onChange={e => updateQto({ bwOfferedRatePerM: parseFloat(e.target.value) || 0 })}
+                            className="h-7 text-xs mt-1"
+                            data-testid="input-bw-offered-rate"
+                          />
+                          {margin !== null && (
+                            <Badge variant="outline" className={`mt-1 text-xs font-bold ${marginBadge}`}>
+                              Margin: {margin.toFixed(1)}%
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Earthwork & PCC Rates for BOQ */}
             {isDrainType && (
               <Card>
@@ -1953,6 +2051,8 @@ export default function ConcreteCalculator() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {numInput("Excavation Rate (₹/m³)", s.qto.excavationRate, v => updateQto({ excavationRate: v }))}
                     {numInput("Backfill Rate (₹/m³)", s.qto.backfillRate, v => updateQto({ backfillRate: v }))}
+                    {numInput("Grating Rate (₹/nos)", s.qto.gratingRatePerNos, v => updateQto({ gratingRatePerNos: v }))}
+                    {numInput("Weephole Rate (₹/nos)", s.qto.weepholeRatePerNos, v => updateQto({ weepholeRatePerNos: v }))}
                   </div>
                 </CardContent>
               </Card>
@@ -2055,7 +2155,10 @@ export default function ConcreteCalculator() {
                           return (
                             <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
                               <td className="p-2">
-                                <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value })} className="h-7 text-xs w-40" />
+                                <div className="space-y-0.5">
+                                  <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value })} className="h-7 text-xs w-40" />
+                                  {(() => { const cat = getBOQCategory(item.description); return cat ? <Badge variant="outline" className={`text-[10px] px-1 py-0 ${BOQ_CAT_COLORS[cat]}`}>{cat}</Badge> : null; })()}
+                                </div>
                               </td>
                               <td className="p-2 text-right">
                                 <Input type="number" value={item.qty} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-16 text-right" />
