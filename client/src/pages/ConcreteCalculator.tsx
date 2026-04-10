@@ -2066,7 +2066,7 @@ export default function ConcreteCalculator() {
                   {isDrainType && qtoResult && (
                     <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="btn-load-standard-boq"
                       onClick={() => { if (s.boqItems.length > 0) setBoqOverwriteConfirm(true); else update({ boqItems: buildStandardDrainBOQ() }); }}>
-                      Load Standard BOQ
+                      Load Standard Drain BOQ
                     </Button>
                   )}
                   <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="btn-import-excel-boq"
@@ -2129,7 +2129,7 @@ export default function ConcreteCalculator() {
                   </div>
                 )}
                 {s.boqItems.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">{isDrainType && qtoResult ? 'Use "Load Standard BOQ" to auto-generate from QTO dimensions above, or click "Add Item" to add manually.' : 'Click "Add Item" to add BOQ items.'}</p>
+                  <p className="text-xs text-muted-foreground">{isDrainType && qtoResult ? 'Use "Load Standard Drain BOQ" to auto-generate from QTO dimensions above, or click "Add Item" to add manually.' : 'Click "Add Item" to add BOQ items.'}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
