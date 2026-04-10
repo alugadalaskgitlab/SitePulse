@@ -26,14 +26,21 @@ interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm:
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
 interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; contractorRate: number; }
-interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; }
+interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; rates?: Record<string, number>; }
 interface HeightZone { id: string; label: string; height: number; length: number; }
+interface ElementGrades { pcc: string; invert: string; wall: string; topSlab: string; }
 interface QtoState {
   clearSpan: number; wallThickness: number; invertSlabThick: number; topSlabThick: number;
   pccDepth: number; pccOffset: number; workingSpace: number;
+  isCovered: boolean; topSlabType: "CIS" | "Precast"; precastRatePerM2: number;
+  elementGrades: ElementGrades;
+  weepholeDiaMm: number;
+  gratingOpeningW: number; gratingOpeningD: number;
+  bindingWireKgPerMT: number; bindingWireRatePerKg: number;
+  liftingHookDia: number; liftingHookSpacingM: number; liftingHookRatePerNos: number;
   heightZones: HeightZone[];
   gratingsSpacing: number; weepholesSpacing: number;
   gratingRatePerNos: number; weepholeRatePerNos: number;
@@ -169,6 +176,12 @@ const DEFAULT_STATE: CalcState = {
   qto: {
     clearSpan: 800, wallThickness: 300, invertSlabThick: 300, topSlabThick: 300,
     pccDepth: 100, pccOffset: 150, workingSpace: 300,
+    isCovered: false, topSlabType: "CIS", precastRatePerM2: 0,
+    elementGrades: { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" },
+    weepholeDiaMm: 100,
+    gratingOpeningW: 200, gratingOpeningD: 100,
+    bindingWireKgPerMT: 10, bindingWireRatePerKg: 85,
+    liftingHookDia: 12, liftingHookSpacingM: 2, liftingHookRatePerNos: 150,
     heightZones: [
       { id: "z1", label: "Zone 1", height: 900, length: 200 },
       { id: "z2", label: "Zone 2", height: 1200, length: 300 },
@@ -190,7 +203,12 @@ function loadState(): CalcState {
       return {
         ...DEFAULT_STATE,
         ...loaded,
-        qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) },
+        qto: {
+          ...DEFAULT_STATE.qto,
+          ...(loaded.qto || {}),
+          elementGrades: { ...DEFAULT_STATE.qto.elementGrades, ...(loaded.qto?.elementGrades || {}) },
+        },
+        bbsRows: (loaded.bbsRows || []).map((r: BBSRow) => ({ element: "", zoneId: "all", countBasis: "manual", spacingMm: 200, ...r })),
       };
     }
   } catch {}
@@ -310,30 +328,88 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0, locCASources?: CASourceO
 
 // ─── BBS Calculations ──────────────────────────────────────────────────────────
 
-function computeBBSSummary(rows: BBSRow[], rates: SteelRates) {
+// Element → dimension type mapping for spacing-based count calculation
+const ELEMENT_DIM_TYPE: Record<string, "wall" | "span" | "manual"> = {
+  "Invert-Bottom": "span", "Invert-Top": "span",
+  "Wall-Earth": "wall", "Wall-Inner": "wall",
+  "TopSlab-Bottom": "span", "TopSlab-Top": "span",
+  "Dist/Tie": "manual", "Lifting Hook": "manual", "Manual": "manual",
+};
+
+interface BBSQtoCtx {
+  clearSpanMm: number; wallThickMm: number;
+  heightZones: HeightZone[]; totalDrainLength: number;
+}
+
+function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx) {
   const diaRateMap: Record<number, number> = {
     8: rates.r8, 10: rates.r10, 12: rates.r12, 16: rates.r16, 20: rates.r20, 25: rates.r25,
   };
   let totalKg = 0;
   let totalCost = 0;
+  let totalKgPerM = 0;
   const byDia: Record<number, { kg: number; cost: number }> = {};
+
+  const totalLength = qtoCtx?.totalDrainLength ?? 0;
+  const spanMm = qtoCtx ? qtoCtx.clearSpanMm + 2 * qtoCtx.wallThickMm : 0;
+  const avgWallHMm = qtoCtx && qtoCtx.heightZones.length > 0
+    ? qtoCtx.heightZones.reduce((s, z) => s + z.height * z.length, 0) / Math.max(1, qtoCtx.heightZones.reduce((s, z) => s + z.length, 0))
+    : 0;
 
   rows.forEach((row) => {
     const hookAll = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia) : 0;
     const overlapLen = (row.overlapN * row.dia) / 1000;
-    const totalLen = (row.cutLength + hookAll + overlapLen) * row.count;
-    const kgPerM = (row.dia * row.dia) / 162;
-    const kg = totalLen * kgPerM;
+    const unitLen = row.cutLength + hookAll + overlapLen; // m per bar
+    const kgPerMBar = (row.dia * row.dia) / 162;
     const rate = diaRateMap[row.dia] || 56000;
-    const cost = (kg / 1000) * rate;
-    totalKg += kg;
+
+    let rowKg = 0;
+    let rowKgPerM = 0;
+
+    const basis = row.countBasis ?? "manual";
+    const dimType = ELEMENT_DIM_TYPE[row.element ?? "Manual"] ?? "manual";
+
+    if (basis === "spacing" && dimType !== "manual" && (row.spacingMm ?? 200) > 0) {
+      const refDimMm = dimType === "span" ? spanMm : avgWallHMm;
+      const countPerM = refDimMm / (row.spacingMm ?? 200); // bars per metre run
+      rowKgPerM = unitLen * countPerM * kgPerMBar;
+      rowKg = rowKgPerM * totalLength;
+    } else {
+      // manual mode
+      const totalLen = unitLen * row.count;
+      rowKg = totalLen * kgPerMBar;
+      rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
+    }
+
+    const cost = (rowKg / 1000) * rate;
+    totalKg += rowKg;
+    totalKgPerM += rowKgPerM;
     totalCost += cost;
     if (!byDia[row.dia]) byDia[row.dia] = { kg: 0, cost: 0 };
-    byDia[row.dia].kg += kg;
+    byDia[row.dia].kg += rowKg;
     byDia[row.dia].cost += cost;
   });
 
-  return { totalKg, totalCost, byDia };
+  return { totalKg, totalCost, byDia, totalKgPerM };
+}
+
+// Material-only cost (cement+CA+FA+admix) for a given grade, using current rates from state
+function computeMaterialCostOnly(grade: string, s: CalcState): number {
+  const mix = MIX_PRESETS[grade];
+  if (!mix) return 0;
+  const cement = (mix.cementKg / 50) * s.cementBagPrice;
+  const totalProp = s.caTabs.reduce((sum, t) => sum + t.proportion, 0) || 100;
+  const ca = s.caTabs.reduce((sum, t) => {
+    const ratePerMT = aggRateToPerMT(t.purchaseRate, t.uom ?? "per_mt");
+    const landed = ratePerMT + (t.leadKm * 2 * t.freightRate / Math.max(1, t.payload));
+    return sum + (t.proportion / totalProp) * (mix.caKg / 1000) * landed;
+  }, 0);
+  const faRatePerMT = aggRateToPerMT(s.faPurchaseRate, s.faUom ?? "per_cft");
+  const faLanded = faRatePerMT + (s.faLeadKm * 2 * s.faFreightRate / Math.max(1, s.faPayload));
+  const faBulkageFactor = s.faType === "natural" ? (1 + s.faBulkagePct / 100) : 1;
+  const fa = (mix.faKg / 1000) * faLanded * faBulkageFactor;
+  const admix = s.admixDosage * s.admixRate;
+  return cement + ca + fa + admix;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -379,6 +455,8 @@ const BOQ_CAT_COLORS: Record<string, string> = {
   Backfill: "bg-green-100 text-green-700 border-green-300",
   Grating: "bg-slate-100 text-slate-700 border-slate-300",
   Weephole: "bg-slate-100 text-slate-700 border-slate-300",
+  Steel: "bg-yellow-100 text-yellow-700 border-yellow-300",
+  LiftingHook: "bg-slate-100 text-slate-700 border-slate-300",
   Curing: "bg-purple-100 text-purple-700 border-purple-300",
 };
 function getBOQCategory(desc: string): string | null {
@@ -389,13 +467,15 @@ function getBOQCategory(desc: string): string | null {
   if (/backfill|earthfill/.test(d)) return "Backfill";
   if (/\bgrat/.test(d)) return "Grating";
   if (/weep/.test(d)) return "Weephole";
+  if (/hysd|steel.*bar|reinforcement/i.test(d)) return "Steel";
+  if (/lifting hook/i.test(d)) return "LiftingHook";
   if (/\bcur/.test(d)) return "Curing";
   return null;
 }
 
 // ─── QTO Calculations ─────────────────────────────────────────────────────────
 
-function calcDrainQTO(q: QtoState, isBoxCulvert: boolean) {
+function calcDrainQTO(q: QtoState, showTopSlab: boolean) {
   const span = q.clearSpan / 1000;
   const t = q.wallThickness / 1000;
   const is_t = q.invertSlabThick / 1000;
@@ -406,7 +486,7 @@ function calcDrainQTO(q: QtoState, isBoxCulvert: boolean) {
   const overallWidth = span + 2 * t;
   const pccWidth = overallWidth + 2 * po;
   const invertPerM = overallWidth * is_t;
-  const topPerM = isBoxCulvert ? overallWidth * ts : 0;
+  const topPerM = showTopSlab ? overallWidth * ts : 0;
   const pccPerM = pccWidth * pd;
   const excavWidth = pccWidth + 2 * ws;
   const zones = q.heightZones.map(z => {
@@ -419,15 +499,27 @@ function calcDrainQTO(q: QtoState, isBoxCulvert: boolean) {
   const totalWalls = zones.reduce((s, z) => s + z.wallsM3, 0);
   const totalInvert = invertPerM * totalLength;
   const totalTop = topPerM * totalLength;
-  const totalRCC = totalWalls + totalInvert + totalTop;
   const totalPCC = pccPerM * totalLength;
+  // Weephole void deduction (one wall — earth face, per IS drawing)
+  const weepholeDiamM = (q.weepholeDiaMm ?? 100) / 1000;
+  const weepholesCount = q.weepholesSpacing > 0 ? Math.ceil(totalLength / q.weepholesSpacing) : 0;
+  const deductWeephole = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t * weepholesCount;
+  // Grating opening deduction (from top slab)
+  const gratingsCount = q.gratingsSpacing > 0 ? Math.ceil(totalLength / q.gratingsSpacing) : 0;
+  const grOW = (q.gratingOpeningW ?? 200) / 1000;
+  const grOD = (q.gratingOpeningD ?? 100) / 1000;
+  const deductGrating = showTopSlab ? grOW * grOD * ts * gratingsCount : 0;
+  // Lifting hooks count
+  const liftingHooksCount = (q.liftingHookSpacingM ?? 0) > 0 ? Math.ceil(totalLength / (q.liftingHookSpacingM ?? 2)) : 0;
+  // Net volumes (gross – deductions)
+  const totalWallsNet = Math.max(0, totalWalls - deductWeephole);
+  const totalTopNet = Math.max(0, totalTop - deductGrating);
+  const totalRCC = totalWallsNet + totalInvert + totalTopNet;
   const avgWallH = totalLength > 0 ? q.heightZones.reduce((s, z) => s + z.height * z.length, 0) / totalLength / 1000 : 0;
   const excavDepth = avgWallH + is_t + pd;
   const excavVolume = excavWidth * excavDepth * totalLength;
   const backfillVol = Math.max(0, excavVolume - totalRCC - totalPCC);
-  const gratingsCount = q.gratingsSpacing > 0 ? Math.ceil(totalLength / q.gratingsSpacing) : 0;
-  const weepholesCount = q.weepholesSpacing > 0 ? Math.ceil(totalLength / q.weepholesSpacing) : 0;
-  return { zones, totalLength, totalWalls, totalInvert, totalTop, totalRCC, totalPCC, invertPerM, topPerM, pccPerM, excavWidth, excavDepth, excavVolume, backfillVol, gratingsCount, weepholesCount, avgWallH, overallWidth, pccWidth };
+  return { zones, totalLength, totalWalls, totalWallsNet, totalInvert, totalTop, totalTopNet, totalRCC, totalPCC, invertPerM, topPerM, pccPerM, excavWidth, excavDepth, excavVolume, backfillVol, gratingsCount, weepholesCount, liftingHooksCount, deductWeephole, deductGrating, avgWallH, overallWidth, pccWidth };
 }
 
 function calcBridgeRWQTO(q: QtoState) {
@@ -539,19 +631,24 @@ export default function ConcreteCalculator() {
     setS((prev) => ({ ...prev, qto: { ...prev.qto, ...patch } }));
   }
 
-  // BBS steel cost
-  const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates), [s.bbsRows, s.steelRates]);
+  // QTO calculations — must come before BBS (BBS spacing mode needs drain length)
+  const isBoxCulvert = s.structureType === "Box Culvert";
+  const isDrainType = s.structureType === "Drain" || s.structureType === "Box Culvert";
+  const isBridgeType = s.structureType === "Bridge" || s.structureType === "Retaining Wall";
+  const showTopSlab = isBoxCulvert || s.qto.isCovered;
+  const qtoResult = useMemo(() => isDrainType ? calcDrainQTO(s.qto, showTopSlab) : null, [s.qto, showTopSlab, isDrainType]);
+  const bridgeQtoResult = useMemo(() => isBridgeType ? calcBridgeRWQTO(s.qto) : null, [s.qto, isBridgeType]);
+
+  // BBS steel cost (qtoCtx provides drain geometry for spacing-based count calculation)
+  const qtoCtxForBBS = useMemo<BBSQtoCtx | undefined>(() => isDrainType && qtoResult ? {
+    clearSpanMm: s.qto.clearSpan, wallThickMm: s.qto.wallThickness,
+    heightZones: s.qto.heightZones, totalDrainLength: qtoResult.totalLength,
+  } : undefined, [isDrainType, qtoResult, s.qto.clearSpan, s.qto.wallThickness, s.qto.heightZones]);
+  const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates, qtoCtxForBBS), [s.bbsRows, s.steelRates, qtoCtxForBBS]);
   const steelCostPerM3 = useMemo(() => s.totalVolume > 0 ? bbsSummary.totalCost / s.totalVolume : 0, [bbsSummary.totalCost, s.totalVolume]);
 
   // Main cost calculation
   const costs = useMemo(() => computeCosts(s, steelCostPerM3), [s, steelCostPerM3]);
-
-  // QTO calculations
-  const isBoxCulvert = s.structureType === "Box Culvert";
-  const isDrainType = s.structureType === "Drain" || s.structureType === "Box Culvert";
-  const isBridgeType = s.structureType === "Bridge" || s.structureType === "Retaining Wall";
-  const qtoResult = useMemo(() => isDrainType ? calcDrainQTO(s.qto, isBoxCulvert) : null, [s.qto, isBoxCulvert, isDrainType]);
-  const bridgeQtoResult = useMemo(() => isBridgeType ? calcBridgeRWQTO(s.qto) : null, [s.qto, isBridgeType]);
 
   // Price Impact revised costs — directly apply absolute rates from priceImpactRates
   const revisedCosts = useMemo(() => {
@@ -631,7 +728,7 @@ export default function ConcreteCalculator() {
   }
 
   function addBBSRow() {
-    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50 }] });
+    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50, element: "Manual", zoneId: "all", countBasis: "manual" as const, spacingMm: 200 }] });
   }
 
   function updateBBSRow(id: string, patch: Partial<BBSRow>) {
@@ -716,18 +813,25 @@ export default function ConcreteCalculator() {
   function buildStandardDrainBOQ(): BOQItem[] {
     if (!qtoResult) return [];
     const r = qtoResult;
+    const q = s.qto;
+    const pccGrade = q.elementGrades?.pcc ?? "M15";
+    const rccGrade = q.elementGrades?.wall ?? s.grade;
     const items: BOQItem[] = [];
-    if (r.excavVolume > 0) items.push({ id: uid(), description: "Earthwork Excavation in Foundation Trenches", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.excavationRate, contractorRate: 0 });
-    if (r.totalPCC > 0) items.push({ id: uid(), description: `PCC M10 Bed (${s.qto.pccDepth}mm thick, ${s.qto.pccOffset}mm offset)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.pccRatePerM3, contractorRate: 0 });
-    r.zones.forEach(z => {
-      items.push({ id: uid(), description: `RCC ${s.grade} Walls — ${z.label} (H=${z.height}mm)`, qty: parseFloat(z.wallsM3.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
-    });
-    if (r.totalInvert > 0) items.push({ id: uid(), description: `RCC ${s.grade} Invert Slab`, qty: parseFloat(r.totalInvert.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
-    if (isBoxCulvert && r.totalTop > 0) items.push({ id: uid(), description: `RCC ${s.grade} Top/Roof Slab`, qty: parseFloat(r.totalTop.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
-    if (r.backfillVol > 0) items.push({ id: uid(), description: "Backfilling with Excavated Earth (Compacted)", qty: parseFloat(r.backfillVol.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.backfillRate, contractorRate: 0 });
-    if (r.gratingsCount > 0) items.push({ id: uid(), description: `MS Gratings @ ${s.qto.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.gratingRatePerNos, contractorRate: 0 });
-    if (r.weepholesCount > 0) items.push({ id: uid(), description: `Weepholes (75mm dia) @ ${s.qto.weepholesSpacing}m c/c`, qty: r.weepholesCount, unit: "nos", dimL: 0, dimW: 0, dimD: 0, rate: s.qto.weepholeRatePerNos, contractorRate: 0 });
-    items.push({ id: uid(), description: "Curing of RCC Works (qty = total RCC m³; rate from Calculator curing cost)", qty: parseFloat(r.totalRCC.toFixed(2)), unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.curing, contractorRate: 0 });
+    // 1. Earthwork
+    items.push({ id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, contractorRate: 0 });
+    // 2. PCC bed
+    if (r.totalPCC > 0) items.push({ id: uid(), description: `${pccGrade} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.pccRatePerM3, contractorRate: 0 });
+    // 3. RCC — combined (raft + walls + slab) per client BOQ format
+    if (r.totalRCC > 0) items.push({ id: uid(), description: `${rccGrade} RCC in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
+    // 4. HYSD reinforcement
+    const steelMT = parseFloat((bbsSummary.totalKg / 1000).toFixed(3));
+    if (steelMT > 0) items.push({ id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: (s.steelRates.r12 || 56000), contractorRate: 0 });
+    // 5. Gratings
+    if (r.gratingsCount > 0) items.push({ id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, contractorRate: 0 });
+    // 6. Weepholes
+    if (r.weepholesCount > 0) items.push({ id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: r.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, contractorRate: 0 });
+    // 7. Lifting Hooks
+    if (r.liftingHooksCount > 0) items.push({ id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: r.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, contractorRate: 0 });
     return items;
   }
 
@@ -1685,12 +1789,12 @@ export default function ConcreteCalculator() {
               </CardHeader>
               <HelpPanel id="bbs" title="Bar Bending Schedule">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
-                <li><b>Bar Mark</b> — your label (e.g. M1, S1); <b>Dia</b> — nominal diameter in mm</li>
-                <li><b>Shape</b> — determines hook allowance: Straight=0, U-bar=2×9d, L-bar=1×9d, Ring/Stirrup=2×9d+10d</li>
-                <li><b>Count</b> — number of bars; <b>Cut Length (m)</b> — drawn/measured length before bends (hooks auto-added)</li>
-                <li><b>Overlap N</b> — splice = N × dia. Default 50 per IS:456. Enter 0 if no splice is needed</li>
-                <li><b>Weight (kg)</b> = (Dia² ÷ 162) × Total length × Count — IS standard formula</li>
-                <li>Steel rates ₹/MT are editable per diameter. Total steel cost feeds back to Rate Summary as steel ₹/m³ = Total cost ÷ Volume m³</li>
+                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → hook allowance: Straight=0, U-bar=2×9d, L-bar=9d, Ring/Stirrup=2×9d+10d</li>
+                <li><b>Element</b> — structural element this bar belongs to (Invert/Wall/TopSlab etc.); <b>Zone</b> — height zone or All</li>
+                <li><b>Count Basis</b> — <b>@Spacing</b>: enter bar spacing (mm) → count/m is auto-derived from element dimension ÷ spacing; <b>Manual</b>: enter absolute count</li>
+                <li><b>Wt/m run (kg/m)</b> — weight of this bar row per metre of drain. For spacing mode: countPerM × unitLen × Dia²/162. For manual mode: total kg ÷ drain length</li>
+                <li><b>Overlap N</b> — splice = N × dia. Default 50 per IS:456. Enter 0 if no splice needed</li>
+                <li>Steel rates ₹/MT editable per dia below the table. Total steel cost feeds into Rate Summary (steel ₹/m³ = total cost ÷ volume)</li>
                 </ul>
               </HelpPanel>
               <CardContent className="px-5 pb-5">
@@ -1699,18 +1803,22 @@ export default function ConcreteCalculator() {
                 ) : (
                   <>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs border-collapse">
+                      <table className="w-full text-xs border-collapse min-w-[900px]">
                         <thead>
                           <tr className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
                             <th className="text-left p-2">Mark</th>
-                            <th className="p-2">Dia (mm)</th>
+                            <th className="p-2">Dia</th>
                             <th className="p-2">Shape</th>
-                            <th className="text-right p-2">Count</th>
-                            <th className="text-right p-2">Cut Length (m)</th>
-                            <th className="text-right p-2">Overlap N</th>
+                            <th className="p-2">Element</th>
+                            <th className="p-2">Zone</th>
+                            <th className="p-2 text-center">Basis</th>
+                            <th className="text-right p-2">Spacing/Count</th>
+                            <th className="text-right p-2">Count/m</th>
+                            <th className="text-right p-2">Cut (m)</th>
                             <th className="text-right p-2">Hook (m)</th>
-                            <th className="text-right p-2">Total Length</th>
-                            <th className="text-right p-2">Weight (kg)</th>
+                            <th className="text-right p-2">Overlap N</th>
+                            <th className="text-right p-2">Wt/m (kg/m)</th>
+                            <th className="text-right p-2">Total kg</th>
                             <th className="p-2"></th>
                           </tr>
                         </thead>
@@ -1718,13 +1826,28 @@ export default function ConcreteCalculator() {
                           {s.bbsRows.map((row) => {
                             const hook = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia) : 0;
                             const overlapLen = (row.overlapN * row.dia) / 1000;
-                            const totalLen = (row.cutLength + hook + overlapLen) * row.count;
-                            const kgPerM = (row.dia * row.dia) / 162;
-                            const kg = totalLen * kgPerM;
+                            const unitLen = row.cutLength + hook + overlapLen;
+                            const kgPerMBar = (row.dia * row.dia) / 162;
+                            const basis = row.countBasis ?? "manual";
+                            const dimType = ELEMENT_DIM_TYPE[row.element ?? "Manual"] ?? "manual";
+                            const totalLength = qtoResult?.totalLength ?? 0;
+                            const spanMm = s.qto.clearSpan + 2 * s.qto.wallThickness;
+                            const avgWallHMm = s.qto.heightZones.length > 0 ? s.qto.heightZones.reduce((sum, z) => sum + z.height * z.length, 0) / Math.max(1, s.qto.heightZones.reduce((sum, z) => sum + z.length, 0)) : 0;
+                            let countPerM = 0;
+                            let rowKg = 0;
+                            if (basis === "spacing" && dimType !== "manual" && (row.spacingMm ?? 200) > 0) {
+                              const refDimMm = dimType === "span" ? spanMm : avgWallHMm;
+                              countPerM = refDimMm / (row.spacingMm ?? 200);
+                              rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                            } else {
+                              rowKg = unitLen * row.count * kgPerMBar;
+                              countPerM = totalLength > 0 ? row.count / totalLength : 0;
+                            }
+                            const kgPerM = totalLength > 0 ? rowKg / totalLength : 0;
                             return (
                               <tr key={row.id} className="border-t border-border/50" data-testid={`bbs-row-${row.id}`}>
                                 <td className="p-1.5">
-                                  <Input value={row.mark} onChange={(e) => updateBBSRow(row.id, { mark: e.target.value.toUpperCase() })} className="h-7 text-xs w-16 uppercase" />
+                                  <Input value={row.mark} onChange={(e) => updateBBSRow(row.id, { mark: e.target.value.toUpperCase() })} className="h-7 text-xs w-14 uppercase" />
                                 </td>
                                 <td className="p-1.5">
                                   <Select value={String(row.dia)} onValueChange={(v) => updateBBSRow(row.id, { dia: parseInt(v) })}>
@@ -1736,24 +1859,55 @@ export default function ConcreteCalculator() {
                                 </td>
                                 <td className="p-1.5">
                                   <Select value={row.shape} onValueChange={(v) => updateBBSRow(row.id, { shape: v })}>
-                                    <SelectTrigger className="h-7 text-xs w-24"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="h-7 text-xs w-22"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       {["Straight", "U-bar", "L-bar", "Ring", "Stirrup"].map((sh) => <SelectItem key={sh} value={sh}>{sh}</SelectItem>)}
                                     </SelectContent>
                                   </Select>
                                 </td>
                                 <td className="p-1.5">
-                                  <Input type="number" value={row.count} onChange={(e) => updateBBSRow(row.id, { count: parseInt(e.target.value) || 0 })} className="h-7 text-xs w-16 text-right" />
+                                  <Select value={row.element ?? "Manual"} onValueChange={(v) => updateBBSRow(row.id, { element: v })}>
+                                    <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {["Invert-Bottom","Invert-Top","Wall-Earth","Wall-Inner","TopSlab-Bottom","TopSlab-Top","Dist/Tie","Lifting Hook","Manual"].map(el => <SelectItem key={el} value={el}>{el}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
                                 </td>
+                                <td className="p-1.5">
+                                  <Select value={row.zoneId ?? "all"} onValueChange={(v) => updateBBSRow(row.id, { zoneId: v })}>
+                                    <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      {s.qto.heightZones.map(z => <SelectItem key={z.id} value={z.id}>{z.label}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                                <td className="p-1.5 text-center">
+                                  <button
+                                    onClick={() => updateBBSRow(row.id, { countBasis: basis === "spacing" ? "manual" : "spacing" })}
+                                    className={`text-xs px-2 py-1 rounded border transition-colors ${basis === "spacing" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary"}`}
+                                    title={basis === "spacing" ? "Spacing mode — click to switch to Manual" : "Manual count — click to switch to Spacing"}
+                                  >
+                                    {basis === "spacing" ? "@Spac" : "Mnl"}
+                                  </button>
+                                </td>
+                                <td className="p-1.5">
+                                  {basis === "spacing" ? (
+                                    <Input type="number" value={row.spacingMm ?? 200} onChange={(e) => updateBBSRow(row.id, { spacingMm: parseFloat(e.target.value) || 200 })} className="h-7 text-xs w-20 text-right" title="Bar spacing in mm" />
+                                  ) : (
+                                    <Input type="number" value={row.count} onChange={(e) => updateBBSRow(row.id, { count: parseInt(e.target.value) || 0 })} className="h-7 text-xs w-16 text-right" />
+                                  )}
+                                </td>
+                                <td className="p-1.5 text-right text-muted-foreground">{countPerM.toFixed(2)}/m</td>
                                 <td className="p-1.5">
                                   <Input type="number" step="0.1" value={row.cutLength} onChange={(e) => updateBBSRow(row.id, { cutLength: parseFloat(e.target.value) || 0 })} className="h-7 text-xs w-20 text-right" />
                                 </td>
-                                <td className="p-1.5">
-                                  <Input type="number" value={row.overlapN} onChange={(e) => updateBBSRow(row.id, { overlapN: parseInt(e.target.value) || 50 })} className="h-7 text-xs w-16 text-right" title="N×dia overlap splice" />
-                                </td>
                                 <td className="p-1.5 text-right text-muted-foreground">{hook.toFixed(3)}</td>
-                                <td className="p-1.5 text-right font-medium">{totalLen.toFixed(2)} m</td>
-                                <td className="p-1.5 text-right font-medium">{kg.toFixed(1)} kg</td>
+                                <td className="p-1.5">
+                                  <Input type="number" value={row.overlapN} onChange={(e) => updateBBSRow(row.id, { overlapN: parseInt(e.target.value) || 50 })} className="h-7 text-xs w-14 text-right" title="N×dia overlap splice" />
+                                </td>
+                                <td className="p-1.5 text-right font-medium text-yellow-700">{kgPerM.toFixed(3)}</td>
+                                <td className="p-1.5 text-right font-medium">{rowKg.toFixed(1)}</td>
                                 <td className="p-1.5">
                                   <button onClick={() => removeBBSRow(row.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
                                 </td>
@@ -1763,7 +1917,8 @@ export default function ConcreteCalculator() {
                         </tbody>
                         <tfoot>
                           <tr className="border-t-2 border-border bg-muted/20 font-semibold">
-                            <td colSpan={8} className="p-2 text-xs">Total Steel</td>
+                            <td colSpan={11} className="p-2 text-xs">Total Steel</td>
+                            <td className="p-2 text-right text-xs text-yellow-700">{bbsSummary.totalKgPerM.toFixed(3)} kg/m</td>
                             <td className="p-2 text-right text-xs">{bbsSummary.totalKg.toFixed(1)} kg</td>
                             <td></td>
                           </tr>
@@ -1935,12 +2090,73 @@ export default function ConcreteCalculator() {
                       {numInput("Clear Span (mm)", s.qto.clearSpan, v => updateQto({ clearSpan: v }))}
                       {numInput("Wall Thickness (mm)", s.qto.wallThickness, v => updateQto({ wallThickness: v }))}
                       {numInput("Invert Slab Thick (mm)", s.qto.invertSlabThick, v => updateQto({ invertSlabThick: v }))}
-                      {isBoxCulvert && numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
                       {numInput("PCC Depth (mm)", s.qto.pccDepth, v => updateQto({ pccDepth: v }))}
                       {numInput("PCC Side Offset (mm)", s.qto.pccOffset, v => updateQto({ pccOffset: v }))}
                       {numInput("Working Space (mm)", s.qto.workingSpace, v => updateQto({ workingSpace: v }))}
                       {numInput("Gratings Spacing (m)", s.qto.gratingsSpacing, v => updateQto({ gratingsSpacing: v }))}
                       {numInput("Weepholes Spacing (m)", s.qto.weepholesSpacing, v => updateQto({ weepholesSpacing: v }))}
+                    </div>
+
+                    {/* Covered Drain toggle (only for open Drain, Box Culvert always has top slab) */}
+                    {!isBoxCulvert && (
+                      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border/60 bg-muted/30 p-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={s.qto.isCovered}
+                            onClick={() => updateQto({ isCovered: !s.qto.isCovered })}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${s.qto.isCovered ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
+                            data-testid="toggle-covered-drain"
+                          >
+                            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${s.qto.isCovered ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                          </button>
+                          <span className="text-sm font-medium">Covered Drain (Top Slab)</span>
+                        </div>
+                        {s.qto.isCovered && (
+                          <>
+                            {numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
+                            <div className="space-y-1">
+                              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Slab Type</Label>
+                              <Select value={s.qto.topSlabType ?? "CIS"} onValueChange={(v) => updateQto({ topSlabType: v as "CIS" | "Precast" })}>
+                                <SelectTrigger className="h-9 text-sm w-32"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CIS">CIS (Cast In Situ)</SelectItem>
+                                  <SelectItem value="Precast">Precast</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {s.qto.topSlabType === "Precast" && numInput("Precast Rate (₹/m²)", s.qto.precastRatePerM2, v => updateQto({ precastRatePerM2: v }))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {isBoxCulvert && numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
+
+                    {/* Element Grades row */}
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Element Grades <span className="normal-case font-normal text-slate-400">(IS 456 — min. cover 40mm for exposure B2)</span></p>
+                      <div className="flex flex-wrap gap-3">
+                        {(["pcc","invert","wall","topSlab"] as const).filter(k => k !== "topSlab" || showTopSlab).map(key => {
+                          const labels: Record<string, string> = { pcc: "PCC Bed", invert: "Invert Slab", wall: "Walls", topSlab: "Top Slab" };
+                          const matCost = computeMaterialCostOnly(s.qto.elementGrades?.[key] ?? (key === "pcc" ? "M15" : "M25"), s);
+                          return (
+                            <div key={key} className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded border border-border/50 px-2 py-1.5">
+                              <span className="text-xs text-muted-foreground w-16">{labels[key]}</span>
+                              <Select
+                                value={s.qto.elementGrades?.[key] ?? (key === "pcc" ? "M15" : "M25")}
+                                onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), [key]: v } })}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-20 border-0 shadow-none p-0"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                              <span className="text-xs text-slate-500">{fmtR(matCost)}/m³</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div>
@@ -2035,7 +2251,7 @@ export default function ConcreteCalculator() {
                           <th className="text-right p-2 font-semibold">Length (m)</th>
                           <th className="text-right p-2 font-semibold">RCC Walls m³</th>
                           <th className="text-right p-2 font-semibold">Invert Slab m³</th>
-                          {isBoxCulvert && <th className="text-right p-2 font-semibold">Top Slab m³</th>}
+                          {showTopSlab && <th className="text-right p-2 font-semibold">Top Slab m³</th>}
                           <th className="text-right p-2 font-semibold">PCC m³</th>
                           <th className="text-right p-2 font-semibold">Total RCC m³</th>
                         </tr>
@@ -2048,7 +2264,7 @@ export default function ConcreteCalculator() {
                             <td className="p-2 text-right">{z.length}</td>
                             <td className="p-2 text-right">{z.wallsM3.toFixed(2)}</td>
                             <td className="p-2 text-right">{z.invertM3.toFixed(2)}</td>
-                            {isBoxCulvert && <td className="p-2 text-right">{z.topM3.toFixed(2)}</td>}
+                            {showTopSlab && <td className="p-2 text-right">{z.topM3.toFixed(2)}</td>}
                             <td className="p-2 text-right">{z.pccM3.toFixed(2)}</td>
                             <td className="p-2 text-right font-medium">{z.totalRCCm3.toFixed(2)}</td>
                           </tr>
@@ -2056,10 +2272,28 @@ export default function ConcreteCalculator() {
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-border bg-muted/20 font-semibold">
-                          <td className="p-2 text-xs" colSpan={3}>Total</td>
+                          <td className="p-2 text-xs" colSpan={3}>Total (gross)</td>
                           <td className="p-2 text-right text-xs">{qtoResult.totalWalls.toFixed(2)}</td>
                           <td className="p-2 text-right text-xs">{qtoResult.totalInvert.toFixed(2)}</td>
-                          {isBoxCulvert && <td className="p-2 text-right text-xs">{qtoResult.totalTop.toFixed(2)}</td>}
+                          {showTopSlab && <td className="p-2 text-right text-xs">{qtoResult.totalTop.toFixed(2)}</td>}
+                          <td className="p-2 text-right text-xs">{qtoResult.totalPCC.toFixed(2)}</td>
+                          <td className="p-2 text-right text-xs">{(qtoResult.totalWalls + qtoResult.totalInvert + qtoResult.totalTop).toFixed(2)}</td>
+                        </tr>
+                        {(qtoResult.deductWeephole > 0 || qtoResult.deductGrating > 0) && (
+                          <tr className="border-t border-border/30 text-orange-700 text-xs">
+                            <td className="p-2 italic" colSpan={3}>Deductions</td>
+                            <td className="p-2 text-right italic">−{qtoResult.deductWeephole.toFixed(3)} (weepholes)</td>
+                            <td className="p-2 text-right text-muted-foreground">—</td>
+                            {showTopSlab && <td className="p-2 text-right italic">−{qtoResult.deductGrating.toFixed(3)} (gratings)</td>}
+                            <td className="p-2 text-right text-muted-foreground">—</td>
+                            <td className="p-2 text-right italic">−{(qtoResult.deductWeephole + qtoResult.deductGrating).toFixed(3)}</td>
+                          </tr>
+                        )}
+                        <tr className="border-t border-border bg-blue-50 font-bold">
+                          <td className="p-2 text-xs text-blue-700" colSpan={3}>Net Total (used in BOQ)</td>
+                          <td className="p-2 text-right text-xs text-blue-700">{qtoResult.totalWallsNet.toFixed(2)}</td>
+                          <td className="p-2 text-right text-xs text-blue-700">{qtoResult.totalInvert.toFixed(2)}</td>
+                          {showTopSlab && <td className="p-2 text-right text-xs text-blue-700">{qtoResult.totalTopNet.toFixed(2)}</td>}
                           <td className="p-2 text-right text-xs">{qtoResult.totalPCC.toFixed(2)}</td>
                           <td className="p-2 text-right text-xs font-bold text-blue-700">{qtoResult.totalRCC.toFixed(2)}</td>
                         </tr>
@@ -2105,7 +2339,7 @@ export default function ConcreteCalculator() {
                     <div className="mt-2 p-3 bg-muted/30 rounded-lg text-xs space-y-0.5 text-muted-foreground font-mono">
                       <p>RCC Walls  = 2 × t × H × L  (per zone)</p>
                       <p>Invert Slab = (span + 2t) × is × L</p>
-                      {isBoxCulvert && <p>Top Slab   = (span + 2t) × ts × L</p>}
+                      {showTopSlab && <p>Top Slab   = (span + 2t) × ts × L</p>}
                       <p>PCC Bed    = (span + 2t + 2×offset) × pd × L</p>
                       <p>Excavation = (pccWidth + 2×ws) × (avgH + is + pd) × totalL</p>
                     </div>
@@ -2135,20 +2369,82 @@ export default function ConcreteCalculator() {
             )}
 
             {/* Per-Metre Rate Card (Drain / Box Culvert) */}
-            {isDrainType && qtoResult && qtoResult.zones.length > 0 && (
+            {isDrainType && qtoResult && qtoResult.zones.length > 0 && (() => {
+              const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+              const baseMat = computeMaterialCostOnly(s.grade, s);
+              const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
+              const wallCostPerM3  = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
+              const topSlabCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+              const pccMatPerM3 = computeMaterialCostOnly(eq.pcc, s);
+              const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
+              const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
+              const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+              const steelPerM = bbsSummary.totalKgPerM * (steelRateAvg / 1000);
+              const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
+              const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
+              const excavPerM = qtoResult.totalLength > 0 ? qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength : 0;
+              const backfillPerM = qtoResult.totalLength > 0 ? qtoResult.backfillVol * s.qto.backfillRate / qtoResult.totalLength : 0;
+              return (
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Cost per linear metre of drain for each height zone. Enter the client's offered rate to see margin.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Cost per linear metre by element and zone. Enter the client's offered rate to see margin.</p>
                 </CardHeader>
-                <CardContent className="px-5 pb-5">
+                <CardContent className="px-5 pb-5 space-y-5">
+                  {/* Global ₹/RM breakdown (Steel, Binding Wire, Earthwork, etc.) */}
+                  <div className="rounded-lg border bg-muted/20 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Global Cost Components (₹/Running Metre)</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">PCC {eq.pcc} Bed</p>
+                        <p className="font-bold text-sm">{fmtR(qtoResult.pccPerM * pccMatPerM3)}/RM</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">Invert Slab ({eq.invert})</p>
+                        <p className="font-bold text-sm">{fmtR(qtoResult.invertPerM * invertCostPerM3)}/RM</p>
+                      </div>
+                      {showTopSlab && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">Top Slab ({eq.topSlab})</p>
+                        <p className="font-bold text-sm">{fmtR(qtoResult.topPerM * topSlabCostPerM3)}/RM</p>
+                      </div>}
+                      {gratingPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">MS Gratings</p>
+                        <p className="font-bold text-sm">{fmtR(gratingPerM)}/RM</p>
+                      </div>}
+                      {weepholePerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">Weepholes</p>
+                        <p className="font-bold text-sm">{fmtR(weepholePerM)}/RM</p>
+                      </div>}
+                      {steelPerM > 0 && <div className="bg-yellow-50 border-yellow-200 border rounded-lg p-2.5">
+                        <p className="text-muted-foreground">HYSD Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</p>
+                        <p className="font-bold text-sm text-yellow-700">{fmtR(steelPerM)}/RM</p>
+                      </div>}
+                      {bwPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">Binding Wire</p>
+                        <p className="font-bold text-sm">{fmtR(bwPerM)}/RM</p>
+                      </div>}
+                      {excavPerM > 0 && <div className="bg-orange-50 border-orange-200 border rounded-lg p-2.5">
+                        <p className="text-muted-foreground">Earthwork</p>
+                        <p className="font-bold text-sm text-orange-700">{fmtR(excavPerM)}/RM</p>
+                      </div>}
+                      {backfillPerM > 0 && <div className="bg-green-50 border-green-200 border rounded-lg p-2.5">
+                        <p className="text-muted-foreground">Backfill</p>
+                        <p className="font-bold text-sm text-green-700">{fmtR(backfillPerM)}/RM</p>
+                      </div>}
+                      {lhPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground">Lifting Hooks</p>
+                        <p className="font-bold text-sm">{fmtR(lhPerM)}/RM</p>
+                      </div>}
+                    </div>
+                  </div>
+                  {/* Per-zone cards (walls vary by zone height) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {qtoResult.zones.map(z => {
-                      const rccPerM = (z.wallsM3perM + qtoResult.invertPerM + qtoResult.topPerM) * costs.totalWithEsc;
-                      const pccPerM = qtoResult.pccPerM * s.qto.pccRatePerM3;
-                      const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
-                      const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
-                      const totalPerM = rccPerM + pccPerM + gratingPerM + weepholePerM;
+                      const wallsPerM = z.wallsM3perM * wallCostPerM3;
+                      const pccPerM_ = qtoResult.pccPerM * pccMatPerM3;
+                      const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
+                      const topSlabPerM_ = qtoResult.topPerM * topSlabCostPerM3;
+                      const totalPerM = wallsPerM + pccPerM_ + invertPerM_ + topSlabPerM_ + gratingPerM + weepholePerM + steelPerM + bwPerM + lhPerM + excavPerM + backfillPerM;
                       const offeredRate = s.qto.zoneOfferedRates[z.id] || 0;
                       const margin = offeredRate > 0 ? ((offeredRate - totalPerM) / offeredRate) * 100 : null;
                       const marginBadge = margin !== null ? (margin >= 10 ? "bg-green-100 text-green-700 border-green-300" : margin >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300") : "";
@@ -2158,30 +2454,38 @@ export default function ConcreteCalculator() {
                             <p className="font-semibold text-sm">{z.label}</p>
                             <p className="text-xs text-muted-foreground">H = {z.height} mm · L = {z.length} m</p>
                           </div>
-                          <div className="space-y-1.5 text-sm">
+                          <div className="space-y-1 text-xs">
                             <div className="flex justify-between">
-                              <span className="text-slate-600">RCC {s.grade} cost</span>
-                              <span className="font-medium">{fmtR(rccPerM)}/m</span>
+                              <span className="text-slate-600">PCC {eq.pcc} Bed</span>
+                              <span className="font-medium">{fmtR(pccPerM_)}/m</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-slate-600">PCC M10 Bed</span>
-                              <span className="font-medium">{fmtR(pccPerM)}/m</span>
+                              <span className="text-slate-600">Invert ({eq.invert})</span>
+                              <span className="font-medium">{fmtR(invertPerM_)}/m</span>
                             </div>
-                            {gratingPerM > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-600">MS Gratings ({s.qto.gratingsSpacing}m c/c)</span>
-                                <span className="font-medium">{fmtR(gratingPerM)}/m</span>
-                              </div>
-                            )}
-                            {weepholePerM > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-600">Weepholes ({s.qto.weepholesSpacing}m c/c)</span>
-                                <span className="font-medium">{fmtR(weepholePerM)}/m</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between font-bold border-t pt-2 mt-1">
-                              <span className="text-sm">Cost ₹/m run</span>
-                              <span className="text-base text-blue-700">{fmtR(totalPerM)}</span>
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">Walls ({eq.wall}) H={z.height}mm</span>
+                              <span className="font-medium">{fmtR(wallsPerM)}/m</span>
+                            </div>
+                            {showTopSlab && <div className="flex justify-between">
+                              <span className="text-slate-600">Top Slab ({eq.topSlab})</span>
+                              <span className="font-medium">{fmtR(topSlabPerM_)}/m</span>
+                            </div>}
+                            {steelPerM > 0 && <div className="flex justify-between text-yellow-700">
+                              <span>Steel HYSD</span>
+                              <span className="font-medium">{fmtR(steelPerM)}/m</span>
+                            </div>}
+                            {gratingPerM > 0 && <div className="flex justify-between">
+                              <span className="text-slate-600">Gratings</span>
+                              <span className="font-medium">{fmtR(gratingPerM)}/m</span>
+                            </div>}
+                            {weepholePerM > 0 && <div className="flex justify-between">
+                              <span className="text-slate-600">Weepholes</span>
+                              <span className="font-medium">{fmtR(weepholePerM)}/m</span>
+                            </div>}
+                            <div className="flex justify-between font-bold border-t pt-1.5 mt-1 text-sm">
+                              <span>Total Cost ₹/m</span>
+                              <span className="text-blue-700">{fmtR(totalPerM)}</span>
                             </div>
                           </div>
                           <div>
@@ -2206,7 +2510,8 @@ export default function ConcreteCalculator() {
                   </div>
                 </CardContent>
               </Card>
-            )}
+              );
+            })()}
 
             {/* Bridge / RW Per-Metre Rate Card */}
             {isBridgeType && bridgeQtoResult && (
@@ -2265,15 +2570,33 @@ export default function ConcreteCalculator() {
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Earthwork & Ancillary Rates</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Used when generating the Standard Drain BOQ and Per-Metre Rate Card below.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Used when generating the Standard Drain BOQ and Per-Metre Rate Card.</p>
                 </CardHeader>
-                <CardContent className="px-5 pb-4">
+                <CardContent className="px-5 pb-4 space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {numInput("PCC M10 Rate (₹/m³)", s.qto.pccRatePerM3, v => updateQto({ pccRatePerM3: v }))}
+                    {numInput("PCC Rate (₹/m³)", s.qto.pccRatePerM3, v => updateQto({ pccRatePerM3: v }))}
                     {numInput("Excavation Rate (₹/m³)", s.qto.excavationRate, v => updateQto({ excavationRate: v }))}
                     {numInput("Backfill Rate (₹/m³)", s.qto.backfillRate, v => updateQto({ backfillRate: v }))}
                     {numInput("Grating Rate (₹/nos)", s.qto.gratingRatePerNos, v => updateQto({ gratingRatePerNos: v }))}
                     {numInput("Weephole Rate (₹/nos)", s.qto.weepholeRatePerNos, v => updateQto({ weepholeRatePerNos: v }))}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Opening Sizes (for void deductions & BOQ descriptions)</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {numInput("Weephole Dia (mm)", s.qto.weepholeDiaMm ?? 100, v => updateQto({ weepholeDiaMm: v }))}
+                      {numInput("Grating Opening W (mm)", s.qto.gratingOpeningW ?? 200, v => updateQto({ gratingOpeningW: v }))}
+                      {numInput("Grating Opening D (mm)", s.qto.gratingOpeningD ?? 100, v => updateQto({ gratingOpeningD: v }))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Binding Wire & Lifting Hooks</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {numInput("Binding Wire (kg/MT steel)", s.qto.bindingWireKgPerMT ?? 10, v => updateQto({ bindingWireKgPerMT: v }))}
+                      {numInput("Binding Wire Rate (₹/kg)", s.qto.bindingWireRatePerKg ?? 85, v => updateQto({ bindingWireRatePerKg: v }))}
+                      {numInput("Lifting Hook Dia (mm)", s.qto.liftingHookDia ?? 12, v => updateQto({ liftingHookDia: v }))}
+                      {numInput("Lifting Hook Spacing (m)", s.qto.liftingHookSpacingM ?? 2, v => updateQto({ liftingHookSpacingM: v }))}
+                      {numInput("Lifting Hook Rate (₹/nos)", s.qto.liftingHookRatePerNos ?? 150, v => updateQto({ liftingHookRatePerNos: v }))}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -2393,9 +2716,13 @@ export default function ConcreteCalculator() {
                                   <SelectTrigger className="h-8 text-xs w-16"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="m³">m³</SelectItem>
+                                    <SelectItem value="Cum">Cum</SelectItem>
                                     <SelectItem value="m²">m²</SelectItem>
                                     <SelectItem value="m">m</SelectItem>
                                     <SelectItem value="nos">nos</SelectItem>
+                                    <SelectItem value="No's">No's</SelectItem>
+                                    <SelectItem value="MT">MT</SelectItem>
+                                    <SelectItem value="kg">kg</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </td>
@@ -2578,13 +2905,46 @@ export default function ConcreteCalculator() {
                   const rmPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
                   const cls = rmPct >= 10 ? "border-green-200 bg-green-50" : rmPct >= 5 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50";
                   const textCls = rmPct >= 10 ? "text-green-700" : rmPct >= 5 ? "text-amber-700" : "text-red-700";
+                  // Component breakdown
+                  const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+                  const baseMat = computeMaterialCostOnly(s.grade, s);
+                  const pccMatPerM3 = computeMaterialCostOnly(eq.pcc, s);
+                  const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
+                  const wallCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
+                  const topSlabCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+                  const pccPerM_ = qtoResult.pccPerM * pccMatPerM3;
+                  const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
+                  const topPerM_ = qtoResult.topPerM * topSlabCostPerM3;
+                  const avgWallM3perM = qtoResult.totalWallsNet / totalDrainLength;
+                  const wallsPerM_ = avgWallM3perM * wallCostPerM3;
+                  const gratingPerM_ = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
+                  const weepholePerM_ = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
+                  const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+                  const steelPerM_ = bbsSummary.totalKgPerM * (steelRateAvg / 1000);
+                  const bwPerM_ = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
+                  const excavPerM_ = qtoResult.excavVolume * s.qto.excavationRate / totalDrainLength;
+                  const backfillPerM_ = qtoResult.backfillVol * s.qto.backfillRate / totalDrainLength;
+                  const lhPerM_ = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
+                  const componentRows = [
+                    { label: `PCC ${eq.pcc} Bed`, val: pccPerM_, color: "text-stone-600" },
+                    { label: `Invert Slab (${eq.invert})`, val: invertPerM_, color: "" },
+                    { label: `Walls (${eq.wall})`, val: wallsPerM_, color: "" },
+                    showTopSlab ? { label: `Top Slab (${eq.topSlab})`, val: topPerM_, color: "" } : null,
+                    steelPerM_ > 0 ? { label: `HYSD Steel (${bbsSummary.totalKgPerM.toFixed(2)} kg/m)`, val: steelPerM_, color: "text-yellow-700" } : null,
+                    bwPerM_ > 0 ? { label: "Binding Wire", val: bwPerM_, color: "" } : null,
+                    gratingPerM_ > 0 ? { label: "MS Gratings", val: gratingPerM_, color: "" } : null,
+                    weepholePerM_ > 0 ? { label: "Weepholes", val: weepholePerM_, color: "" } : null,
+                    lhPerM_ > 0 ? { label: "Lifting Hooks", val: lhPerM_, color: "" } : null,
+                    excavPerM_ > 0 ? { label: "Earthwork", val: excavPerM_, color: "text-orange-600" } : null,
+                    backfillPerM_ > 0 ? { label: "Backfill", val: backfillPerM_, color: "text-green-600" } : null,
+                  ].filter(Boolean) as { label: string; val: number; color: string }[];
                   return (
                     <div className={`mt-4 rounded-xl border p-4 ${totalRev > 0 ? cls : "border-slate-200 bg-slate-50"}`}>
                       <p className={`text-sm font-semibold mb-3 ${textCls}`}>
                         ₹ / Running Metre Summary
                         <span className="ml-2 text-xs font-normal text-slate-500">Total drain length: {totalDrainLength.toFixed(0)} m (from QTO zones)</span>
                       </p>
-                      <div className="flex flex-wrap gap-6">
+                      <div className="flex flex-wrap gap-6 mb-4">
                         <div>
                           <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Client's Rate</p>
                           <p className={`text-xl font-bold ${textCls}`}>{fmtR(rmRev)}<span className="text-sm font-normal">/RM</span></p>
@@ -2602,6 +2962,19 @@ export default function ConcreteCalculator() {
                           <p className={`text-2xl font-bold ${textCls}`}>{rmPct.toFixed(1)}%</p>
                         </div>
                       </div>
+                      {componentRows.length > 0 && (
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Cost Breakdown (₹/RM)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                            {componentRows.map((row, i) => (
+                              <div key={i} className="flex justify-between items-center bg-white/70 dark:bg-slate-800/50 rounded-lg px-2.5 py-1.5 border border-white/60 text-xs">
+                                <span className={`text-muted-foreground ${row.color}`}>{row.label}</span>
+                                <span className={`font-semibold ml-1 ${row.color}`}>{fmtR(row.val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
