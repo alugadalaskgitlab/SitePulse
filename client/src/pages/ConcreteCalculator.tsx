@@ -834,22 +834,23 @@ export default function ConcreteCalculator() {
     const r = qtoResult;
     const q = s.qto;
     const eq = q.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+    // Base rate for concrete elements (exclude steel — tracked as separate BOQ item)
+    const rccBaseRate = costs.totalWithEsc - costs.steel;
     const baseMat = computeMaterialCostOnly(s.grade, s);
 
-    // PCC rate: material cost at PCC grade + all non-formwork, non-steel components
-    // Remove formwork (PCC has no shuttering) and replace material component
+    // PCC rate: RCC base − steel already removed above; also remove formwork (PCC has no shuttering)
     const pccMatCost = computeMaterialCostOnly(eq.pcc, s);
-    const pccRatePerM3 = Math.max(0, costs.totalWithEsc - baseMat - costs.formwork + pccMatCost);
+    const pccRatePerM3 = Math.max(0, rccBaseRate - costs.formwork - baseMat + pccMatCost);
 
-    // Per-element RCC cost (swap material component, keep all other costs including formwork)
-    const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
-    const wallCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
+    // Per-element RCC cost (swap material component, keep all costs including formwork, excluding steel)
+    const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
+    const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
     // Top slab: if precast, use precastRatePerM2 ÷ thickness (m) → ₹/m³
     const isPrecast = q.topSlabType === "Precast";
     const tsM = q.topSlabThick / 1000;
     const topSlabCostPerM3 = isPrecast && tsM > 0
       ? q.precastRatePerM2 / tsM
-      : costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+      : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
 
     // Blended RCC rate weighted by net volumes
     const blendedRCCRate = r.totalRCC > 0
@@ -1921,7 +1922,12 @@ export default function ConcreteCalculator() {
                                   </Select>
                                 </td>
                                 <td className="p-1.5">
-                                  <Select value={row.element ?? "Manual"} onValueChange={(v) => updateBBSRow(row.id, { element: v })}>
+                                  <Select value={row.element ?? "Manual"} onValueChange={(v) => {
+                                    const patch: Partial<BBSRow> = { element: v };
+                                    // Auto-set shape and dia for lifting hooks per IS drawing standard
+                                    if (v === "Lifting Hook") { patch.shape = "U-bar"; patch.dia = 12; }
+                                    updateBBSRow(row.id, patch);
+                                  }}>
                                     <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       {["Invert-Bottom","Invert-Top","Wall-Earth","Wall-Inner","TopSlab-Bottom","TopSlab-Top","Dist/Tie","Lifting Hook","Manual"].map(el => <SelectItem key={el} value={el}>{el}</SelectItem>)}
@@ -2431,14 +2437,17 @@ export default function ConcreteCalculator() {
             {/* Per-Metre Rate Card (Drain / Box Culvert) */}
             {isDrainType && qtoResult && qtoResult.zones.length > 0 && (() => {
               const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+              // Exclude steel from concrete element rates — steel is tracked separately as BBS kg/m
+              const rccBaseRate = costs.totalWithEsc - costs.steel;
               const baseMat = computeMaterialCostOnly(s.grade, s);
-              const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
-              const wallCostPerM3  = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
+              const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
+              const wallCostPerM3  = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
               const tsM = s.qto.topSlabThick / 1000;
               const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
                 ? s.qto.precastRatePerM2 / tsM
-                : costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-              const pccMatPerM3 = computeMaterialCostOnly(eq.pcc, s);
+                : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+              // PCC: no shuttering, no steel — use rccBaseRate minus formwork
+              const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - baseMat + computeMaterialCostOnly(eq.pcc, s));
               const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
               const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
               const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
@@ -2460,7 +2469,7 @@ export default function ConcreteCalculator() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
                       <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
                         <p className="text-muted-foreground">PCC {eq.pcc} Bed</p>
-                        <p className="font-bold text-sm">{fmtR(qtoResult.pccPerM * pccMatPerM3)}/RM</p>
+                        <p className="font-bold text-sm">{fmtR(qtoResult.pccPerM * pccCostPerM3)}/RM</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
                         <p className="text-muted-foreground">Invert Slab ({eq.invert})</p>
@@ -2507,7 +2516,7 @@ export default function ConcreteCalculator() {
                       const deductWallPerM = qtoResult.totalLength > 0 ? qtoResult.deductWeephole / qtoResult.totalLength : 0;
                       const netWallPerM = Math.max(0, z.wallsM3perM - deductWallPerM);
                       const wallsPerM = netWallPerM * wallCostPerM3;
-                      const pccPerM_ = qtoResult.pccPerM * pccMatPerM3;
+                      const pccPerM_ = qtoResult.pccPerM * pccCostPerM3;
                       const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
                       // Net top slab per metre (after grating opening deduction)
                       const topSlabPerM_ = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
@@ -2972,19 +2981,21 @@ export default function ConcreteCalculator() {
                   const rmPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
                   const cls = rmPct >= 10 ? "border-green-200 bg-green-50" : rmPct >= 5 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50";
                   const textCls = rmPct >= 10 ? "text-green-700" : rmPct >= 5 ? "text-amber-700" : "text-red-700";
-                  // Component breakdown
+                  // Component breakdown — exclude steel from concrete element rates
                   const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+                  const rccBaseRate_ = costs.totalWithEsc - costs.steel;
                   const baseMat = computeMaterialCostOnly(s.grade, s);
-                  const pccMatPerM3 = computeMaterialCostOnly(eq.pcc, s);
-                  const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
-                  const wallCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
+                  const pccCostPerM3_ = Math.max(0, rccBaseRate_ - costs.formwork - baseMat + computeMaterialCostOnly(eq.pcc, s));
+                  const invertCostPerM3 = rccBaseRate_ - baseMat + computeMaterialCostOnly(eq.invert, s);
+                  const wallCostPerM3 = rccBaseRate_ - baseMat + computeMaterialCostOnly(eq.wall, s);
                   const tsM_ = s.qto.topSlabThick / 1000;
                   const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM_ > 0)
                     ? s.qto.precastRatePerM2 / tsM_
-                    : costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-                  const pccPerM_ = qtoResult.pccPerM * pccMatPerM3;
+                    : rccBaseRate_ - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+                  const pccPerM_ = qtoResult.pccPerM * pccCostPerM3_;
                   const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
-                  const topPerM_ = qtoResult.topPerM * topSlabCostPerM3;
+                  // Use net top slab volume (after grating deduction) for costing
+                  const topPerM_ = totalDrainLength > 0 ? qtoResult.totalTopNet / totalDrainLength * topSlabCostPerM3 : 0;
                   const avgWallM3perM = qtoResult.totalWallsNet / totalDrainLength;
                   const wallsPerM_ = avgWallM3perM * wallCostPerM3;
                   const gratingPerM_ = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
