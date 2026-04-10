@@ -26,7 +26,7 @@ interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm:
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
 interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; }
-interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; }
+interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; rates?: Record<string, number>; }
@@ -127,13 +127,14 @@ const STRUCTURE_PRESETS: Record<string, string[]> = {
 };
 
 const DIA_SIZES = [8, 10, 12, 16, 20, 25];
-const HOOK_ALLOWANCE: Record<string, (dia: number) => number> = {
+const HOOK_ALLOWANCE: Record<string, (dia: number, mult?: number) => number> = {
   "Straight": () => 0,
-  "U-bar":    (d) => 2 * 9 * d / 1000,
-  "L-bar":    (d) => 1 * 9 * d / 1000,
-  "Ring":     (d) => 2 * 9 * d / 1000 + 10 * d / 1000,
-  "Stirrup":  (d) => 2 * 9 * d / 1000 + 10 * d / 1000,
+  "U-bar":    (d, m = 4) => 2 * m * d / 1000,
+  "L-bar":    (d, m = 4) => 1 * m * d / 1000,
+  "Ring":     (d, m = 4) => 2 * m * d / 1000 + 10 * d / 1000,
+  "Stirrup":  (d, m = 4) => 2 * m * d / 1000 + 10 * d / 1000,
 };
+const DEFAULT_HOOK_MULT = 4;
 
 const MAX_SCENARIOS = 3;
 
@@ -381,7 +382,8 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
     : 0;
 
   rows.forEach((row) => {
-    const hookAll = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia) : 0;
+    const hookMult = row.shape === "Straight" ? 0 : (row.hookMult ?? DEFAULT_HOOK_MULT);
+    const hookAll = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, hookMult) : 0;
     const overlapLen = (row.overlapN * row.dia) / 1000;
     const unitLen = row.cutLength + hookAll + overlapLen; // m per bar
     const kgPerMBar = (row.dia * row.dia) / 162;
@@ -887,7 +889,7 @@ export default function ConcreteCalculator() {
   }
 
   function addBBSRow() {
-    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50, element: "Invert-Bottom", zoneId: "all", countBasis: "spacing" as const, spacingMm: 200 }] });
+    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50, element: "Invert-Bottom", zoneId: "all", countBasis: "spacing" as const, spacingMm: 200, hookMult: DEFAULT_HOOK_MULT }] });
   }
 
   function updateBBSRow(id: string, patch: Partial<BBSRow>) {
@@ -2137,7 +2139,7 @@ export default function ConcreteCalculator() {
                 <div className="flex items-center gap-1">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Bar Bending Schedule (BBS)</CardTitle>
-                    <p className="text-sm text-slate-600">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape</p>
+                    <p className="text-sm text-slate-600">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape using editable Hook ×d multiplier</p>
                   </div>
                   <HelpBtn id="bbs" />
                 </div>
@@ -2147,7 +2149,7 @@ export default function ConcreteCalculator() {
               </CardHeader>
               <HelpPanel id="bbs" title="Bar Bending Schedule">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
-                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → hook allowance: Straight=0, U-bar=2×9d, L-bar=9d, Ring/Stirrup=2×9d+10d</li>
+                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → hook formula: Straight=0, U-bar=2×(Hook ×d), L-bar=1×(Hook ×d), Ring/Stirrup=2×(Hook ×d)+10d; <b>Hook ×d</b> — user-editable multiplier per row, default 4 (disabled for Straight)</li>
                 <li><b>Element</b> — structural element this bar belongs to (Invert/Wall/TopSlab etc.); <b>Zone</b> — height zone or All</li>
                 <li><b>Count Basis</b> — <b>@Spacing</b>: enter bar spacing (mm) → count/m is auto-derived from element dimension ÷ spacing; <b>Manual</b>: enter absolute count</li>
                 <li><b>Wt/m run (kg/m)</b> — weight of this bar row per metre of drain. For spacing mode: countPerM × unitLen × Dia²/162. For manual mode: total kg ÷ drain length</li>
@@ -2173,6 +2175,7 @@ export default function ConcreteCalculator() {
                             <th className="text-right p-2">Spacing/Count</th>
                             <th className="text-right p-2">Count/m</th>
                             <th className="text-right p-2">Cut (m)</th>
+                            <th className="text-right p-2">Hook ×d</th>
                             <th className="text-right p-2">Hook (m)</th>
                             <th className="text-right p-2">Overlap N</th>
                             <th className="text-right p-2">Wt/m (kg/m)</th>
@@ -2182,7 +2185,8 @@ export default function ConcreteCalculator() {
                         </thead>
                         <tbody>
                           {s.bbsRows.map((row) => {
-                            const hook = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia) : 0;
+                            const hookMult = row.shape === "Straight" ? 0 : (row.hookMult ?? DEFAULT_HOOK_MULT);
+                            const hook = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, hookMult) : 0;
                             const overlapLen = (row.overlapN * row.dia) / 1000;
                             const unitLen = row.cutLength + hook + overlapLen;
                             const kgPerMBar = (row.dia * row.dia) / 162;
@@ -2299,6 +2303,20 @@ export default function ConcreteCalculator() {
                                 <td className="p-1.5">
                                   <Input type="number" step="0.1" value={row.cutLength} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { cutLength: parseFloat(e.target.value) || 0 })} className="h-7 text-sm w-24 text-right" />
                                 </td>
+                                <td className="p-1.5">
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={row.shape === "Straight" ? 0 : (row.hookMult ?? DEFAULT_HOOK_MULT)}
+                                    disabled={row.shape === "Straight"}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => updateBBSRow(row.id, { hookMult: parseFloat(e.target.value) || 0 })}
+                                    className="h-7 text-sm w-14 text-right disabled:opacity-50"
+                                    title="Hook multiplier (×d per hook end)"
+                                    data-testid={`input-hook-mult-${row.id}`}
+                                  />
+                                </td>
                                 <td className="p-1.5 text-right text-slate-700 font-medium">{hook.toFixed(3)}</td>
                                 <td className="p-1.5">
                                   <Input type="number" value={row.overlapN} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { overlapN: isNaN(parseInt(e.target.value)) ? row.overlapN : parseInt(e.target.value) })} className="h-7 text-sm w-16 text-right" title="N×dia overlap splice" />
@@ -2315,7 +2333,7 @@ export default function ConcreteCalculator() {
                         </tbody>
                         <tfoot>
                           <tr className="border-t-2 border-border bg-muted/20 font-semibold">
-                            <td colSpan={11} className="p-2 text-xs">Total Steel</td>
+                            <td colSpan={12} className="p-2 text-xs">Total Steel</td>
                             <td className="p-2 text-right text-xs text-yellow-700">{bbsSummary.totalKgPerM.toFixed(3)} kg/m</td>
                             <td className="p-2 text-right text-xs font-semibold">
                               {bbsSummary.totalKg.toFixed(1)} kg
