@@ -731,8 +731,8 @@ export default function ConcreteCalculator() {
     const steel8Factor = rates.steel8 !== undefined && s.steelRates.r8 > 0 ? rates.steel8 / s.steelRates.r8 : 1;
     const steel12Factor = rates.steel12p !== undefined && s.steelRates.r12 > 0 ? rates.steel12p / s.steelRates.r12 : 1;
     const steelFactor = 1 + (steel8Factor - 1) * 0.1 + (steel12Factor - 1) * 0.7;
-    return computeCosts(revised, steelCostPerM3 * steelFactor);
-  }, [s, priceImpactRates, steelCostPerM3]);
+    return computeCosts(revised, steelCostPerM3 * steelFactor, undefined, undefined, pettyLabourRatePerM3);
+  }, [s, priceImpactRates, steelCostPerM3, pettyLabourRatePerM3]);
 
   // Save mutation
   const saveMutation = useMutation<ConcreteEstimate, Error, void>({
@@ -974,7 +974,7 @@ export default function ConcreteCalculator() {
     const steelFactor = 1 +
       (changes.steel8 || 0) / 100 * 0.1 +
       (changes.steel12p || 0) / 100 * 0.7;
-    return computeCosts(revised, baseSteelPerM3 * steelFactor);
+    return computeCosts(revised, baseSteelPerM3 * steelFactor, undefined, undefined, pettyLabourRatePerM3);
   }
 
   function computeScenarioCosts(scenario: Scenario) {
@@ -1687,7 +1687,7 @@ export default function ConcreteCalculator() {
                           <div className="flex flex-col gap-1.5">
                             {([
                               { key: "contractorFormwork" as const, label: "Formwork & Staging (bypasses ⑥ cost)" },
-                              { key: "contractorBBS" as const, label: "Reinforcement Steel (bypasses BBS steel cost)" },
+                              { key: "contractorBBS" as const, label: "Bar Bending & Fixing (informational — steel material cost still applies)" },
                             ]).map(({ key, label }) => (
                               <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
                                 <input type="checkbox" checked={s.pettyLabour[key] as boolean}
