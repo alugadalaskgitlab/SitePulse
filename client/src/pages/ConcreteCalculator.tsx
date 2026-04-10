@@ -3486,9 +3486,9 @@ export default function ConcreteCalculator() {
                   ].map((card) => (
                     <Card key={card.label} className={`border ${card.color}`}>
                       <CardContent className="py-4 px-5 text-center">
-                        <p className="text-xs font-semibold mb-1">{card.label}</p>
+                        <p className="text-sm font-semibold text-slate-700 mb-1">{card.label}</p>
                         <p className="text-xl font-bold">{card.value}</p>
-                        <p className="text-xs mt-1">{card.sub}</p>
+                        <p className="text-xs text-slate-600 mt-1">{card.sub}</p>
                       </CardContent>
                     </Card>
                   ))}
@@ -3549,7 +3549,7 @@ export default function ConcreteCalculator() {
                     <div className="text-center py-12 text-slate-600 dark:text-slate-400">
                       <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-40" />
                       <p className="text-sm font-medium">No scenarios yet</p>
-                      <p className="text-xs mt-1">Go to Price Impact tab, adjust variables, then save as a scenario.</p>
+                      <p className="text-sm text-slate-600 mt-1">Go to Price Impact tab, adjust variables, then save as a scenario.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -3710,7 +3710,7 @@ export default function ConcreteCalculator() {
                   <CardContent className="py-16 text-center text-slate-600 dark:text-slate-400">
                     <MapPin className="w-10 h-10 mx-auto mb-3 opacity-40" />
                     <p className="text-sm font-medium">No location variants yet</p>
-                    <p className="text-xs mt-1">Go to Calculator tab → Location Variants card and add locations with different sourcing rates.</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Go to Calculator tab → Location Variants card and add locations with different sourcing rates.</p>
                   </CardContent>
                 </Card>
               ) : (() => {
