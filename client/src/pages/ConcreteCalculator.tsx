@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp, HelpCircle, X, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp, HelpCircle, X, AlertTriangle, Target } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
@@ -25,7 +25,7 @@ interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: num
 interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
-interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; contractorRate: number; }
+interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; }
 interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
@@ -46,8 +46,6 @@ interface QtoState {
   gratingRatePerNos: number; weepholeRatePerNos: number;
   pccRatePerM3: number; excavationRate: number; backfillRate: number;
   bwBaseWidth: number; bwStemThick: number; bwHeight: number; bwFootingDepth: number;
-  bwOfferedRatePerM: number;
-  zoneOfferedRates: Record<string, number>;
   showFormulaRef: boolean;
 }
 
@@ -93,10 +91,8 @@ interface CalcState {
   boqItems: BOQItem[];
   bbsRows: BBSRow[];
   steelRates: SteelRates;
-  contractRate: number;
-  contractRateMode: "per_m3" | "per_rm";
-  profitMode: "per_item" | "lumpsum";
-  lumpsumContractAmt: number;
+  clientOfferedRate: number;
+  clientOfferedRateMode: "per_m3" | "per_rm";
   scenarios: Scenario[];
   locationVariants: LocationVariant[];
   blendedMarkupPct: number;
@@ -177,10 +173,8 @@ const DEFAULT_STATE: CalcState = {
   boqItems: [],
   bbsRows: [],
   steelRates: { r8: 58000, r10: 57000, r12: 56500, r16: 56000, r20: 55500, r25: 55000 },
-  contractRate: 0,
-  contractRateMode: "per_m3",
-  profitMode: "per_item",
-  lumpsumContractAmt: 0,
+  clientOfferedRate: 0,
+  clientOfferedRateMode: "per_m3",
   scenarios: [],
   locationVariants: [],
   blendedMarkupPct: 0,
@@ -202,8 +196,7 @@ const DEFAULT_STATE: CalcState = {
     gratingRatePerNos: 0, weepholeRatePerNos: 0,
     pccRatePerM3: 0, excavationRate: 0, backfillRate: 0,
     bwBaseWidth: 2000, bwStemThick: 400, bwHeight: 3000, bwFootingDepth: 500,
-    bwOfferedRatePerM: 0,
-    zoneOfferedRates: {}, showFormulaRef: false,
+    showFormulaRef: false,
   },
 };
 
@@ -215,7 +208,8 @@ function loadState(): CalcState {
       return {
         ...DEFAULT_STATE,
         ...loaded,
-        contractRateMode: loaded.contractRateMode ?? "per_m3",
+        clientOfferedRate: (loaded as any).clientOfferedRate ?? (loaded as any).contractRate ?? 0,
+        clientOfferedRateMode: (loaded as any).clientOfferedRateMode ?? (loaded as any).contractRateMode ?? "per_m3",
         pettyLabour: { ...DEFAULT_STATE.pettyLabour, ...(loaded.pettyLabour || {}) },
         qto: {
           ...DEFAULT_STATE.qto,
@@ -733,11 +727,11 @@ export default function ConcreteCalculator() {
   }, [s.pettyLabour, crossSectionM2]);
 
   // Normalize client rate to ₹/m³ regardless of per_m3 / per_rm mode
-  // Used by ALL margin computations so they stay consistent with contractRateMode
+  // Used by ALL margin computations so they stay consistent with clientOfferedRateMode
   const effectiveClientRatePerM3 = useMemo(() => {
-    if (s.contractRateMode === "per_rm" && crossSectionM2 > 0) return s.contractRate / crossSectionM2;
-    return s.contractRate;
-  }, [s.contractRate, s.contractRateMode, crossSectionM2]);
+    if (s.clientOfferedRateMode === "per_rm" && crossSectionM2 > 0) return s.clientOfferedRate / crossSectionM2;
+    return s.clientOfferedRate;
+  }, [s.clientOfferedRate, s.clientOfferedRateMode, crossSectionM2]);
 
   // Main cost calculation
   const costs = useMemo(() => computeCosts(s, steelCostPerM3, undefined, undefined, pettyLabourRatePerM3), [s, steelCostPerM3, pettyLabourRatePerM3]);
@@ -756,7 +750,8 @@ export default function ConcreteCalculator() {
     const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
       ? s.qto.precastRatePerM2 / tsM
       : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-    const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - baseMat + computeMaterialCostOnly(eq.pcc, s));
+    // PCC: no shuttering and no petty labour/placement — strip both from RCC base rate
+    const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
     const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
     const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
     const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
@@ -770,6 +765,47 @@ export default function ConcreteCalculator() {
     return (qtoResult.pccPerM * pccCostPerM3) + (qtoResult.invertPerM * invertCostPerM3) +
       avgNetWallPerM + netTopSlabPerM + gratingPerM + weepholePerM + steelPerM + bwPerM + excavPerM + backfillPerM + lhPerM;
   }, [isDrainType, qtoResult, costs, s, bbsSummary]);
+
+  // Element-level cost breakdown for Element Summary table
+  const elementCostBreakdown = useMemo(() => {
+    if (!isDrainType || !qtoResult || qtoResult.totalLength <= 0) return null;
+    const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+    const rccBaseRate = costs.totalWithEsc - costs.steel;
+    const baseMat = computeMaterialCostOnly(s.grade, s);
+    const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
+    const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
+    const tsM = s.qto.topSlabThick / 1000;
+    const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
+      ? s.qto.precastRatePerM2 / tsM
+      : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+    const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
+    const matBase = (grade: string) => computeMaterialCostOnly(grade, s);
+    const batchPct = costs.batching / (rccBaseRate || 1);
+    const placePct = costs.placement / (rccBaseRate || 1);
+    const curingPct = costs.curing / (rccBaseRate || 1);
+    return {
+      pcc: {
+        grade: eq.pcc, m3perRm: qtoResult.pccPerM, totalM3: qtoResult.totalPCC,
+        mat: computeMaterialCostOnly(eq.pcc, s), batching: pccCostPerM3 * batchPct, placing: 0,
+        curing: pccCostPerM3 * curingPct, total: pccCostPerM3,
+      },
+      invert: {
+        grade: eq.invert, m3perRm: qtoResult.invertPerM, totalM3: qtoResult.totalInvert,
+        mat: matBase(eq.invert), batching: invertCostPerM3 * batchPct, placing: invertCostPerM3 * placePct,
+        curing: invertCostPerM3 * curingPct, total: invertCostPerM3,
+      },
+      wall: {
+        grade: eq.wall, m3perRm: qtoResult.totalWallsNet / qtoResult.totalLength, totalM3: qtoResult.totalWallsNet,
+        mat: matBase(eq.wall), batching: wallCostPerM3 * batchPct, placing: wallCostPerM3 * placePct,
+        curing: wallCostPerM3 * curingPct, total: wallCostPerM3,
+      },
+      topSlab: showTopSlab ? {
+        grade: eq.topSlab, m3perRm: qtoResult.totalTopNet / qtoResult.totalLength, totalM3: qtoResult.totalTopNet,
+        mat: matBase(eq.topSlab), batching: topSlabCostPerM3 * batchPct, placing: topSlabCostPerM3 * placePct,
+        curing: topSlabCostPerM3 * curingPct, total: topSlabCostPerM3,
+      } : null,
+    };
+  }, [isDrainType, qtoResult, costs, s, showTopSlab]);
 
   // Price Impact revised costs — directly apply absolute rates from priceImpactRates
   const revisedCosts = useMemo(() => {
@@ -837,7 +873,7 @@ export default function ConcreteCalculator() {
   function addBOQItem() {
     const presets = STRUCTURE_PRESETS[s.structureType] || [];
     const nextDesc = presets[s.boqItems.length] || `Item ${s.boqItems.length + 1}`;
-    update({ boqItems: [...s.boqItems, { id: uid(), description: nextDesc, qty: 1, unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate }] });
+    update({ boqItems: [...s.boqItems, { id: uid(), description: nextDesc, qty: 1, unit: "m³", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc }] });
   }
 
   function updateBOQItem(id: string, patch: Partial<BOQItem>) {
@@ -940,9 +976,9 @@ export default function ConcreteCalculator() {
     const rccBaseRate = costs.totalWithEsc - costs.steel;
     const baseMat = computeMaterialCostOnly(s.grade, s);
 
-    // PCC rate: RCC base − steel already removed above; also remove formwork (PCC has no shuttering)
+    // PCC rate: RCC base − steel already removed above; also remove formwork + placement (PCC has no shuttering and no contractor placing)
     const pccMatCost = computeMaterialCostOnly(eq.pcc, s);
-    const pccRatePerM3 = Math.max(0, rccBaseRate - costs.formwork - baseMat + pccMatCost);
+    const pccRatePerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + pccMatCost);
 
     // Per-element RCC cost (swap material component, keep all costs including formwork, excluding steel)
     const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
@@ -965,19 +1001,19 @@ export default function ConcreteCalculator() {
     // Always produce exactly 7 items in the standard client BOQ order
     return [
       // 1. Earthwork — L×W×D populated from QTO geometry
-      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.excavWidth.toFixed(3)), dimD: parseFloat(r.excavDepth.toFixed(3)), rate: q.excavationRate, contractorRate: 0 },
+      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.excavWidth.toFixed(3)), dimD: parseFloat(r.excavDepth.toFixed(3)), rate: q.excavationRate },
       // 2. PCC bed — L×W×D populated from QTO geometry
-      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.pccWidth.toFixed(3)), dimD: parseFloat((q.pccDepth / 1000).toFixed(3)), rate: Math.round(pccRatePerM3), contractorRate: 0 },
+      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: 1, unit: "Cum", dimL: parseFloat(r.totalLength.toFixed(1)), dimW: parseFloat(r.pccWidth.toFixed(3)), dimD: parseFloat((q.pccDepth / 1000).toFixed(3)), rate: Math.round(pccRatePerM3) },
       // 3. RCC — combined at blended element-grade rate
-      { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), contractorRate: s.contractRate },
+      { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate) },
       // 4. HYSD reinforcement — weighted avg steel rate from BBS
-      { id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(steelRateAvg), contractorRate: 0 },
+      { id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(steelRateAvg) },
       // 5. Gratings
-      { id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, contractorRate: 0 },
+      { id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos },
       // 6. Weepholes
-      { id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: r.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, contractorRate: 0 },
+      { id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: r.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos },
       // 7. Lifting Hooks
-      { id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: r.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, contractorRate: 0 },
+      { id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: r.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150 },
     ];
   }
 
@@ -1009,7 +1045,7 @@ export default function ConcreteCalculator() {
       description: String(r[p.colDesc] || ""),
       unit: String(r[p.colUnit] || "m³"),
       qty: parseFloat(String(r[p.colQty] || "0")) || 0,
-      dimL: 0, dimW: 0, dimD: 0, rate: 0, contractorRate: 0,
+      dimL: 0, dimW: 0, dimD: 0, rate: 0,
     }));
     update({ boqItems: [...s.boqItems, ...newItems] });
     setXlsxPreview(null);
@@ -1163,7 +1199,7 @@ export default function ConcreteCalculator() {
                 <HelpPanel id="proj-info" title="① Project Info">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
                 <li><b>Estimate Name</b> — label that appears in the saved estimates list</li>
-                <li><b>Contractor</b> — name used in the Contract Profitability section</li>
+                <li><b>Contractor</b> — name used for identification in the estimate</li>
                 <li><b>Structure Type</b> — drives QTO formulas and shuttering m²/m³ defaults (set this first)</li>
                 <li><b>Concrete Grade</b> — auto-fills Mix Design kg/m³ per IS:456/IS:10262; all values stay editable</li>
                 <li><b>Total Volume (m³)</b> — total concrete for this estimate; used to spread BBS steel cost and curing cost per m³</li>
@@ -2082,50 +2118,6 @@ export default function ConcreteCalculator() {
                       </div>
                     </div>
 
-                    {/* Client's Offered Rate */}
-                    <div className="mt-4 pt-4 border-t">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Client's Offered Rate</span>
-                        <div className="flex items-center gap-1 text-[10px]">
-                          <button onClick={() => update({ contractRateMode: "per_m3" })} className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_m3" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>₹/m³</button>
-                          <button
-                            onClick={() => crossSectionM2 > 0 ? update({ contractRateMode: "per_rm" }) : undefined}
-                            title={crossSectionM2 <= 0 ? "Enter QTO height zones to enable ₹/RM mode" : ""}
-                            className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_rm" ? "bg-blue-600 text-white border-blue-600" : crossSectionM2 <= 0 ? "opacity-40 cursor-not-allowed text-muted-foreground border-border" : "text-muted-foreground border-border"}`}
-                          >₹/RM</button>
-                        </div>
-                      </div>
-                      {(() => {
-                        const unit = s.contractRateMode === "per_rm" ? "₹/RM" : "₹/m³";
-                        // In ₹/RM mode: use QTO all-in per-metre as our cost baseline (includes PCC, earthwork, steel)
-                        // Fall back to RCC cross-section conversion when QTO zones are not yet populated
-                        const rmMode = s.contractRateMode === "per_rm";
-                        const ourCostRM = rmMode ? (qtoAllInPerM ?? (crossSectionM2 > 0 ? costs.totalWithEsc * crossSectionM2 : undefined)) : undefined;
-                        const contractRatePerM3 = rmMode && crossSectionM2 > 0 ? s.contractRate / crossSectionM2 : s.contractRate;
-                        const margin = rmMode
-                          ? (ourCostRM !== undefined && s.contractRate > 0 ? (s.contractRate - ourCostRM) / s.contractRate * 100 : 0)
-                          : (contractRatePerM3 > 0 ? (contractRatePerM3 - costs.totalWithEsc) / contractRatePerM3 * 100 : 0);
-                        const color = margin >= 10 ? "text-green-600" : margin >= 5 ? "text-amber-600" : "text-red-600";
-                        return (
-                          <>
-                            {numInput(`Client's rate (${unit})`, s.contractRate, (v) => update({ contractRate: v }), { unit })}
-                            {rmMode && (
-                              <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 space-y-0.5">
-                                {ourCostRM !== undefined
-                                  ? <>
-                                      <div className="text-blue-700 font-medium">Our all-in: {fmtR(ourCostRM)}/RM{qtoAllInPerM ? " (QTO incl. PCC+earthwork)" : " (RCC only)"}</div>
-                                    </>
-                                  : <div className="text-orange-600">Enter QTO zones for ₹/RM comparison</div>}
-                              </div>
-                            )}
-                            <div className={`mt-2 text-center text-sm font-bold ${color}`}>
-                              BOQ Margin: {margin.toFixed(1)}%
-                              {margin < 5 && <span className="block text-sm font-normal">⚠ Below 5% — review rates</span>}
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -2491,7 +2483,8 @@ export default function ConcreteCalculator() {
                 <li><b>Volume Summary</b> — shows walls/invert/top slab/PCC per zone. "Apply to Calculator" sets Section ① total volume</li>
                 <li><b>Per-Metre Rate Card</b> — RCC cost ÷ road length. Enter offered rates per zone to see margin per linear metre</li>
                 <li><b>BOQ Estimator</b> — "Load Standard Drain BOQ" auto-generates 9-item BOQ from QTO volumes. Import Excel or Add Item manually</li>
-                <li><b>Contract Profitability</b> — compares your cost vs contractor offered rate per item. Green ≥10%, Amber 5-10%, Red &lt;5%</li>
+                <li><b>Element Summary</b> — shows cost breakdown per element (PCC/Invert/Walls/Top Slab) with grade and m³ volumes; PCC excludes shuttering and placement</li>
+                <li><b>Rate vs Client Offer</b> — enter client's offered rate in Analysis tab to compute BOQ margin</li>
                 </ul>
               </HelpPanel>
               <CardContent className="px-5 pb-5">
@@ -2789,8 +2782,8 @@ export default function ConcreteCalculator() {
               const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
                 ? s.qto.precastRatePerM2 / tsM
                 : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-              // PCC: no shuttering, no steel — use rccBaseRate minus formwork
-              const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - baseMat + computeMaterialCostOnly(eq.pcc, s));
+              // PCC: no shuttering, no petty labour/placement, no steel — strip formwork + placement from RCC base rate
+              const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
               const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
               const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
               const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
@@ -2807,7 +2800,7 @@ export default function ConcreteCalculator() {
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                  <p className="text-sm text-slate-600 mt-0.5">Cost per linear metre by element and zone. Enter the client's offered rate to see margin.</p>
+                  <p className="text-sm text-slate-600 mt-0.5">Cost per linear metre by element and zone. For margin analysis enter the client's rate in Analysis → Rate vs Client Offer.</p>
                 </CardHeader>
                 <CardContent className="px-5 pb-5 space-y-5">
                   {/* Global ₹/RM breakdown (Steel, Binding Wire, Earthwork, etc.) */}
@@ -2877,9 +2870,6 @@ export default function ConcreteCalculator() {
                       // Net top slab per metre (after grating opening deduction)
                       const topSlabPerM_ = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
                       const totalPerM = wallsPerM + pccPerM_ + invertPerM_ + topSlabPerM_ + gratingPerM + weepholePerM + steelPerM + bwPerM + lhPerM + excavPerM + backfillPerM;
-                      const offeredRate = s.qto.zoneOfferedRates[z.id] || 0;
-                      const margin = offeredRate > 0 ? ((offeredRate - totalPerM) / offeredRate) * 100 : null;
-                      const marginBadge = margin !== null ? (margin >= 10 ? "bg-green-100 text-green-700 border-green-300" : margin >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300") : "";
                       return (
                         <div key={z.id} className="border rounded-xl p-4 space-y-3 hover:shadow-sm transition-shadow">
                           <div>
@@ -2940,23 +2930,6 @@ export default function ConcreteCalculator() {
                               <span className="font-medium">{fmtR(totalPerM / z.rccPerM)}</span>
                             </div>}
                           </div>
-                          <div>
-                            <Label className="text-sm font-medium text-slate-700">Offered Rate (₹/m run)</Label>
-                            <Input
-                              type="number"
-                              value={offeredRate || ""}
-                              placeholder="Enter offered rate"
-                              onFocus={(e) => e.target.select()}
-                              onChange={e => updateQto({ zoneOfferedRates: { ...s.qto.zoneOfferedRates, [z.id]: parseFloat(e.target.value) || 0 } })}
-                              className="h-7 text-sm mt-1"
-                              data-testid={`input-offered-rate-${z.id}`}
-                            />
-                            {margin !== null && (
-                              <Badge variant="outline" className={`mt-1 text-xs font-bold ${marginBadge}`}>
-                                Margin: {margin.toFixed(1)}%
-                              </Badge>
-                            )}
-                          </div>
                         </div>
                       );
                     })}
@@ -2974,47 +2947,23 @@ export default function ConcreteCalculator() {
                   <p className="text-sm text-slate-600 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
                 </CardHeader>
                 <CardContent className="px-5 pb-5">
-                  {(() => {
-                    const bwCostPerM = bridgeQtoResult.totalRCCperM * costs.totalWithEsc;
-                    const offeredRate = s.qto.bwOfferedRatePerM;
-                    const margin = offeredRate > 0 ? ((offeredRate - bwCostPerM) / offeredRate) * 100 : null;
-                    const marginBadge = margin !== null ? (margin >= 10 ? "bg-green-100 text-green-700 border-green-300" : margin >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300") : "";
-                    return (
-                      <div className="border rounded-xl p-4 space-y-3 max-w-sm">
-                        <div>
-                          <p className="font-semibold text-sm">{s.structureType}</p>
-                          <p className="text-sm text-slate-700 font-medium">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
-                        </div>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-slate-600 dark:text-slate-400">RCC {s.grade} cost</span>
-                            <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}/m</span>
-                          </div>
-                          <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
-                            <span>Cost ₹/m run</span>
-                            <span className="text-blue-700">{fmtR(bwCostPerM)}</span>
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-slate-700">Offered Rate (₹/m run)</Label>
-                          <Input
-                            type="number"
-                            value={offeredRate || ""}
-                            placeholder="Enter offered rate"
-                            onFocus={(e) => e.target.select()}
-                            onChange={e => updateQto({ bwOfferedRatePerM: parseFloat(e.target.value) || 0 })}
-                            className="h-7 text-sm mt-1"
-                            data-testid="input-bw-offered-rate"
-                          />
-                          {margin !== null && (
-                            <Badge variant="outline" className={`mt-1 text-xs font-bold ${marginBadge}`}>
-                              Margin: {margin.toFixed(1)}%
-                            </Badge>
-                          )}
-                        </div>
+                  <div className="border rounded-xl p-4 space-y-3 max-w-sm">
+                    <div>
+                      <p className="font-semibold text-sm">{s.structureType}</p>
+                      <p className="text-sm text-slate-700 font-medium">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">RCC {s.grade} cost</span>
+                        <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}/m</span>
                       </div>
-                    );
-                  })()}
+                      <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
+                        <span>Cost ₹/m run</span>
+                        <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600">For margin analysis, enter client's rate in Analysis → Rate vs Client Offer.</p>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -3068,6 +3017,55 @@ export default function ConcreteCalculator() {
               </Card>
             )}
 
+            {/* Element Summary Table */}
+            {elementCostBreakdown && (() => {
+              const eb = elementCostBreakdown;
+              const rows = [
+                { key: "pcc", label: "PCC", data: eb.pcc, note: "No shuttering/placement" },
+                { key: "invert", label: "Invert", data: eb.invert, note: "" },
+                { key: "wall", label: "Walls", data: eb.wall, note: "" },
+                ...(eb.topSlab ? [{ key: "topSlab", label: "Top Slab", data: eb.topSlab, note: "" }] : []),
+              ];
+              return (
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                    <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Element Cost Summary</CardTitle>
+                    <p className="text-xs text-slate-600 mt-1">Cost breakdown per element/m³ (incl. OH &amp; margin) using per-element grades. PCC excludes shuttering and placement.</p>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 overflow-x-auto">
+                    <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/50">
+                          {["Element", "Grade", "m³/RM", "Total m³", "Mat ₹/m³", "Batching ₹/m³", "Placing ₹/m³", "Curing ₹/m³", "Total ₹/m³"].map(h => (
+                            <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row, i) => (
+                          <tr key={row.key} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
+                            <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
+                              {row.label}
+                              {row.note && <span className="ml-1 text-[10px] text-amber-600">({row.note})</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-slate-700">{row.data.grade}</td>
+                            <td className="px-3 py-2 text-right">{row.data.m3perRm.toFixed(3)}</td>
+                            <td className="px-3 py-2 text-right">{row.data.totalM3.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(row.data.mat)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(row.data.batching)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(row.data.placing)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(row.data.curing)}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-slate-800">{fmtR(row.data.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="text-[11px] text-slate-500 mt-2 pl-1">* Total ₹/m³ includes all cost categories (raw materials, batching, placement, curing, formwork, OH &amp; margin). Columns show only the sub-components listed.</p>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {/* BOQ Estimator */}
             <Card>
               <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between gap-2 flex-wrap sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
@@ -3090,8 +3088,8 @@ export default function ConcreteCalculator() {
               </CardHeader>
               <CardContent className="px-5 pb-5">
                 <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
-                  <p><b>Quantities:</b> For Standard Drain BOQ, RCC and earthwork quantities come from QTO dimensions above. For Excel import, Description / Unit / Qty are read — rates and contractor rates must be entered manually.</p>
-                  <p><b>Rate (₹/unit):</b> Your estimated cost rate. <b>Client's Rate:</b> The client's offered rate per BOQ item — used to compute margin in Contract Profitability below.</p>
+                  <p><b>Quantities:</b> For Standard Drain BOQ, RCC and earthwork quantities come from QTO dimensions above. For Excel import, Description / Unit / Qty are read — rates must be entered manually.</p>
+                  <p><b>Rate (₹/unit):</b> Your estimated cost rate. For margin analysis against client's offered rate, go to the Analysis → Rate vs Client Offer tab.</p>
                 </div>
                 {boqOverwriteConfirm && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setBoqOverwriteConfirm(false)}>
@@ -3163,7 +3161,6 @@ export default function ConcreteCalculator() {
                           <th className="text-right p-2 font-semibold">L × W × D</th>
                           <th className="text-right p-2 font-semibold">Vol</th>
                           <th className="text-right p-2 font-semibold">Rate (₹/unit)</th>
-                          <th className="text-right p-2 font-semibold">Client's Rate (₹)</th>
                           <th className="text-right p-2 font-semibold">Amount</th>
                           <th className="p-2"></th>
                         </tr>
@@ -3172,8 +3169,6 @@ export default function ConcreteCalculator() {
                         {s.boqItems.map((item) => {
                           const vol = boqVol(item);
                           const amount = vol * item.rate;
-                          const margin = item.contractorRate > 0 ? ((item.contractorRate - item.rate) / item.contractorRate) * 100 : 0;
-                          const marginColor = margin >= 10 ? "text-green-600" : margin >= 5 ? "text-amber-600" : "text-red-600";
                           return (
                             <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
                               <td className="p-2">
@@ -3211,12 +3206,6 @@ export default function ConcreteCalculator() {
                               <td className="p-2 text-right">
                                 <Input type="number" value={item.rate} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { rate: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-28 text-right" />
                               </td>
-                              <td className="p-2">
-                                <div className="flex items-center gap-1">
-                                  <Input type="number" value={item.contractorRate} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { contractorRate: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-28 text-right" />
-                                  <span className={`text-xs font-semibold ${marginColor} whitespace-nowrap`}>{margin.toFixed(0)}%</span>
-                                </div>
-                              </td>
                               <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
                               <td className="p-2">
                                 <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -3232,9 +3221,6 @@ export default function ConcreteCalculator() {
                           <td className="p-2 text-right text-xs">
                             {boqTotalCum > 0 ? fmtR(boqTotalAmt / boqTotalCum) + "/m³ avg" : "—"}
                           </td>
-                          <td className="p-2 text-right text-xs">
-                            {boqTotalCum > 0 ? fmtR(s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0) / boqTotalCum) + "/m³" : "—"}
-                          </td>
                           <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
                           <td></td>
                         </tr>
@@ -3245,220 +3231,6 @@ export default function ConcreteCalculator() {
               </CardContent>
             </Card>
 
-            {/* ⑪ Contract Profitability */}
-            <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between flex-wrap gap-2 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">⑪ Contract Profitability</CardTitle>
-                  <HelpBtn id="contract-profit" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Mode:</span>
-                  {(["per_item", "lumpsum"] as const).map((m) => (
-                    <button key={m} onClick={() => update({ profitMode: m })}
-                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.profitMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>
-                      {m === "per_item" ? "Per Item (BOQ)" : "Lumpsum (Total Contract)"}
-                    </button>
-                  ))}
-                </div>
-              </CardHeader>
-              <HelpPanel id="contract-profit" title="⑪ Contract Profitability">
-                <ul className="space-y-1.5 list-disc list-outside ml-3">
-                  <li><b>Per Item (BOQ)</b> — calculates margin per BOQ item. <em>Volume</em> = L×W×D when dimensions are provided, otherwise the Qty field is used directly. <em>Cost rate</em> = global calculator ₹/m³. <em>Revenue</em> = the Client Rate column you enter in the BOQ Estimator above.</li>
-                  <li><b>Lumpsum (Total Contract)</b> — enter the total contract sum. Compared against (calculator ₹/m³ × total volume from Section ①).</li>
-                  <li><b>Client Rate (Contractor Rate)</b> — this is the client's offered rate per BOQ item. Load the client's BOQ via "Import Excel" in the BOQ Estimator above (imports Description, Unit, Qty), then type in the client's offered rates in the Client Rate column.</li>
-                  <li><b>Margin colour</b> — Green ≥ 10%, Amber 5–10%, Red below 5%.</li>
-                  {isDrainType && qtoResult && <li><b>₹/Running Metre</b> — for drain structures, a per-linear-metre summary appears below the table, derived from total drain length in the QTO Height Zones above.</li>}
-                </ul>
-              </HelpPanel>
-              <CardContent className="px-5 pb-5">
-                {s.profitMode === "lumpsum" ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {numInput("Total Contract Amount (₹)", s.lumpsumContractAmt, (v) => update({ lumpsumContractAmt: v }))}
-                    </div>
-                    {(() => {
-                      const totalCost = costs.totalWithEsc * s.totalVolume;
-                      const revenue = s.lumpsumContractAmt;
-                      const profit = revenue - totalCost;
-                      const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
-                      const cls = pct >= 10 ? "text-green-700 bg-green-50 border-green-200" : pct >= 5 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200";
-                      return (
-                        <div className={`rounded-xl border p-4 flex flex-wrap gap-6 ${cls}`}>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Contract Value</p><p className="text-lg font-bold">{fmtR(revenue)}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Estimated Cost</p><p className="text-lg font-bold">{fmtR(totalCost)}</p><p className="text-xs opacity-60">{fmtR(costs.totalWithEsc)}/m³ × {s.totalVolume} m³</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Gross Profit</p><p className="text-lg font-bold">{fmtR(profit)}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-wide opacity-70">Margin %</p><p className="text-2xl font-bold">{pct.toFixed(1)}%</p></div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <div>
-                    {s.boqItems.length === 0 ? (
-                      <p className="text-sm text-slate-600">Add BOQ items above to see profitability analysis.</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <p className="text-sm text-slate-700 mb-2">
-                          Cost uses global calculator rate ({fmtR(costs.totalWithEsc)}/m³). Revenue uses contractor offered rate per item.
-                        </p>
-                        <table className="w-full text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-muted/40 text-slate-600 uppercase tracking-wide text-xs">
-                              <th className="text-left p-2 font-semibold">Item</th>
-                              <th className="text-right p-2 font-semibold">m³</th>
-                              <th className="text-right p-2 font-semibold">Client's Rate</th>
-                              <th className="text-right p-2 font-semibold">Revenue (₹)</th>
-                              <th className="text-right p-2 font-semibold">Cost @ {fmtR(costs.totalWithEsc)}/m³</th>
-                              <th className="text-right p-2 font-semibold">Profit (₹)</th>
-                              <th className="text-right p-2 font-semibold">Margin %</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {s.boqItems.map((item) => {
-                              const vol = boqVol(item);
-                              const revenue = vol * item.contractorRate;
-                              const itemCost = vol * costs.totalWithEsc;
-                              const profit = revenue - itemCost;
-                              const pct = revenue > 0 ? (profit / revenue) * 100 : 0;
-                              const badgeCls = pct >= 10 ? "bg-green-100 text-green-700 border-green-300" : pct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
-                              return (
-                                <tr key={item.id} className="border-t border-border/40 hover:bg-muted/10">
-                                  <td className="p-2 font-medium">{item.description || "—"}</td>
-                                  <td className="p-2 text-right">{vol.toFixed(2)}</td>
-                                  <td className="p-2 text-right">{fmtR(item.contractorRate)}</td>
-                                  <td className="p-2 text-right">{fmtR(revenue)}</td>
-                                  <td className="p-2 text-right">{fmtR(itemCost)}</td>
-                                  <td className={`p-2 text-right font-semibold ${profit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(profit)}</td>
-                                  <td className="p-2 text-right">
-                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{pct.toFixed(1)}%</Badge>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot>
-                            {(() => {
-                              const totalRev = s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0);
-                              const totalCost = boqTotalCum * costs.totalWithEsc;
-                              const totalProfit = totalRev - totalCost;
-                              const totalPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
-                              const badgeCls = totalPct >= 10 ? "bg-green-100 text-green-700 border-green-300" : totalPct >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
-                              return (
-                                <tr className="border-t-2 border-border bg-muted/20 font-bold">
-                                  <td className="p-2" colSpan={2}>Total</td>
-                                  <td className="p-2 text-right">{boqTotalCum.toFixed(2)} m³</td>
-                                  <td className="p-2 text-right">{fmtR(totalRev)}</td>
-                                  <td className="p-2 text-right">{fmtR(totalCost)}</td>
-                                  <td className={`p-2 text-right ${totalProfit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(totalProfit)}</td>
-                                  <td className="p-2 text-right">
-                                    <Badge variant="outline" className={`text-xs font-bold ${badgeCls}`}>{totalPct.toFixed(1)}%</Badge>
-                                  </td>
-                                </tr>
-                              );
-                            })()}
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* ₹/Running Metre Summary — Drain / Box Culvert only */}
-                {isDrainType && qtoResult && qtoResult.totalLength > 0 && (() => {
-                  const totalDrainLength = qtoResult.totalLength;
-                  const totalRev = s.profitMode === "lumpsum"
-                    ? s.lumpsumContractAmt
-                    : s.boqItems.reduce((sum, item) => sum + boqVol(item) * item.contractorRate, 0);
-                  const totalCostRs = s.profitMode === "lumpsum"
-                    ? costs.totalWithEsc * s.totalVolume
-                    : boqTotalCum * costs.totalWithEsc;
-                  const totalProfit = totalRev - totalCostRs;
-                  const rmRev = totalRev / totalDrainLength;
-                  const rmCost = totalCostRs / totalDrainLength;
-                  const rmProfit = totalProfit / totalDrainLength;
-                  const rmPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
-                  const cls = rmPct >= 10 ? "border-green-200 bg-green-50" : rmPct >= 5 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50";
-                  const textCls = rmPct >= 10 ? "text-green-700" : rmPct >= 5 ? "text-amber-700" : "text-red-700";
-                  // Component breakdown — exclude steel from concrete element rates
-                  const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
-                  const rccBaseRate_ = costs.totalWithEsc - costs.steel;
-                  const baseMat = computeMaterialCostOnly(s.grade, s);
-                  const pccCostPerM3_ = Math.max(0, rccBaseRate_ - costs.formwork - baseMat + computeMaterialCostOnly(eq.pcc, s));
-                  const invertCostPerM3 = rccBaseRate_ - baseMat + computeMaterialCostOnly(eq.invert, s);
-                  const wallCostPerM3 = rccBaseRate_ - baseMat + computeMaterialCostOnly(eq.wall, s);
-                  const tsM_ = s.qto.topSlabThick / 1000;
-                  const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM_ > 0)
-                    ? s.qto.precastRatePerM2 / tsM_
-                    : rccBaseRate_ - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-                  const pccPerM_ = qtoResult.pccPerM * pccCostPerM3_;
-                  const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
-                  // Use net top slab volume (after grating deduction) for costing
-                  const topPerM_ = totalDrainLength > 0 ? qtoResult.totalTopNet / totalDrainLength * topSlabCostPerM3 : 0;
-                  const avgWallM3perM = qtoResult.totalWallsNet / totalDrainLength;
-                  const wallsPerM_ = avgWallM3perM * wallCostPerM3;
-                  const gratingPerM_ = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
-                  const weepholePerM_ = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
-                  const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-                  const steelPerM_ = bbsSummary.totalKgPerM * (steelRateAvg / 1000);
-                  const bwPerM_ = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
-                  const excavPerM_ = qtoResult.excavVolume * s.qto.excavationRate / totalDrainLength;
-                  const backfillPerM_ = qtoResult.backfillVol * s.qto.backfillRate / totalDrainLength;
-                  const lhPerM_ = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
-                  const componentRows = [
-                    { label: `PCC ${eq.pcc} Bed`, val: pccPerM_, color: "text-stone-600" },
-                    { label: `Invert Slab (${eq.invert})`, val: invertPerM_, color: "" },
-                    { label: `Walls (${eq.wall})`, val: wallsPerM_, color: "" },
-                    showTopSlab ? { label: `Top Slab (${s.qto.topSlabType === "Precast" ? "Precast" : eq.topSlab})`, val: topPerM_, color: "" } : null,
-                    steelPerM_ > 0 ? { label: `HYSD Steel (${bbsSummary.totalKgPerM.toFixed(2)} kg/m)`, val: steelPerM_, color: "text-yellow-700" } : null,
-                    bwPerM_ > 0 ? { label: "Binding Wire", val: bwPerM_, color: "" } : null,
-                    gratingPerM_ > 0 ? { label: "MS Gratings", val: gratingPerM_, color: "" } : null,
-                    weepholePerM_ > 0 ? { label: "Weepholes", val: weepholePerM_, color: "" } : null,
-                    lhPerM_ > 0 ? { label: "Lifting Hooks", val: lhPerM_, color: "" } : null,
-                    excavPerM_ > 0 ? { label: "Earthwork", val: excavPerM_, color: "text-orange-600" } : null,
-                    backfillPerM_ > 0 ? { label: "Backfill", val: backfillPerM_, color: "text-green-600" } : null,
-                  ].filter(Boolean) as { label: string; val: number; color: string }[];
-                  return (
-                    <div className={`mt-4 rounded-xl border p-4 ${totalRev > 0 ? cls : "border-slate-200 bg-slate-50"}`}>
-                      <p className={`text-sm font-semibold mb-3 ${textCls}`}>
-                        ₹ / Running Metre Summary
-                        <span className="ml-2 text-xs font-normal text-slate-600 dark:text-slate-400">Total drain length: {totalDrainLength.toFixed(0)} m (from QTO zones)</span>
-                      </p>
-                      <div className="flex flex-wrap gap-6 mb-4">
-                        <div>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Client's Rate</p>
-                          <p className={`text-xl font-bold ${textCls}`}>{fmtR(rmRev)}<span className="text-sm font-normal">/RM</span></p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Our Cost</p>
-                          <p className="text-xl font-bold">{fmtR(rmCost)}<span className="text-sm font-normal">/RM</span></p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Profit</p>
-                          <p className={`text-xl font-bold ${rmProfit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(rmProfit)}<span className="text-sm font-normal">/RM</span></p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Margin</p>
-                          <p className={`text-2xl font-bold ${textCls}`}>{rmPct.toFixed(1)}%</p>
-                        </div>
-                      </div>
-                      {componentRows.length > 0 && (
-                        <div>
-                          <p className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-2">Cost Breakdown (₹/RM)</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                            {componentRows.map((row, i) => (
-                              <div key={i} className="flex justify-between items-center bg-white/70 dark:bg-slate-800/50 rounded-lg px-2.5 py-1.5 border border-white/60 text-xs">
-                                <span className={row.color || "text-slate-700"}>{row.label}</span>
-                                <span className={`font-semibold ml-1 ${row.color || "text-slate-700"}`}>{fmtR(row.val)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </CardContent>
-            </Card>
 
           </div>
         </TabsContent>
@@ -3469,6 +3241,7 @@ export default function ConcreteCalculator() {
             <TabsList className="mb-4">
               <TabsTrigger value="price-impact"><TrendingUp className="w-3.5 h-3.5 mr-1" />Price Impact</TabsTrigger>
               <TabsTrigger value="compare"><BarChart3 className="w-3.5 h-3.5 mr-1" />Compare Scenarios</TabsTrigger>
+              <TabsTrigger value="rate-client-offer"><Target className="w-3.5 h-3.5 mr-1" />Rate vs Client Offer</TabsTrigger>
               <TabsTrigger value="rate-blender"><MapPin className="w-3.5 h-3.5 mr-1" />Rate Blender</TabsTrigger>
             </TabsList>
 
@@ -3610,22 +3383,6 @@ export default function ConcreteCalculator() {
                   </CardContent>
                 </Card>
 
-                {/* BOQ Margin Impact cards */}
-                <div className="grid grid-cols-3 gap-4">
-                  {[
-                    { label: "Client's Rate", value: fmtR(effectiveClientRatePerM3) + "/m³", sub: "Normalized to ₹/m³", color: "bg-blue-50 border-blue-200 text-blue-800" },
-                    { label: "Base BOQ Margin", value: `${((effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3 * 100).toFixed(1)}%`, sub: `Base cost: ${fmtR(costs.totalWithEsc)}/m³`, color: (() => { const m = (effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3 * 100; return m >= 10 ? "bg-green-50 border-green-200 text-green-800" : m >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"; })() },
-                    { label: "Revised BOQ Margin", value: `${((effectiveClientRatePerM3 - revisedCosts.totalWithEsc) / effectiveClientRatePerM3 * 100).toFixed(1)}%`, sub: `Revised cost: ${fmtR(revisedCosts.totalWithEsc)}/m³`, color: (() => { const m = (effectiveClientRatePerM3 - revisedCosts.totalWithEsc) / effectiveClientRatePerM3 * 100; return m >= 10 ? "bg-green-50 border-green-200 text-green-800" : m >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"; })() },
-                  ].map((card) => (
-                    <Card key={card.label} className={`border ${card.color}`}>
-                      <CardContent className="py-4 px-5 text-center">
-                        <p className="text-sm font-semibold text-slate-700 mb-1">{card.label}</p>
-                        <p className="text-xl font-bold">{card.value}</p>
-                        <p className="text-xs text-slate-600 mt-1">{card.sub}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
               </div>
             </TabsContent>
 
@@ -3836,6 +3593,101 @@ export default function ConcreteCalculator() {
               </Card>
             </TabsContent>
 
+            {/* ── Rate vs Client Offer ── */}
+            <TabsContent value="rate-client-offer">
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                    <CardTitle className="text-sm font-semibold">Rate vs Client Offer</CardTitle>
+                    <p className="text-sm text-slate-600 mt-0.5">Enter the client's offered rate to compute margin against your cost estimate.</p>
+                  </CardHeader>
+                  <CardContent className="px-5 pb-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 text-[11px]">
+                        <button onClick={() => update({ clientOfferedRateMode: "per_m3" })} className={`px-2.5 py-1 rounded-lg border font-medium transition-colors ${s.clientOfferedRateMode === "per_m3" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border hover:bg-muted/40"}`}>₹/m³</button>
+                        <button
+                          onClick={() => crossSectionM2 > 0 ? update({ clientOfferedRateMode: "per_rm" }) : undefined}
+                          title={crossSectionM2 <= 0 ? "Enter QTO height zones to enable ₹/RM mode" : ""}
+                          className={`px-2.5 py-1 rounded-lg border font-medium transition-colors ${s.clientOfferedRateMode === "per_rm" ? "bg-blue-600 text-white border-blue-600" : crossSectionM2 <= 0 ? "opacity-40 cursor-not-allowed text-muted-foreground border-border" : "text-muted-foreground border-border hover:bg-muted/40"}`}
+                        >₹/RM</button>
+                      </div>
+                      <div className="flex-1 max-w-xs">
+                        {numInput(`Client's Offered Rate (${s.clientOfferedRateMode === "per_rm" ? "₹/RM" : "₹/m³"})`, s.clientOfferedRate, (v) => update({ clientOfferedRate: v }), { unit: s.clientOfferedRateMode === "per_rm" ? "₹/RM" : "₹/m³" })}
+                      </div>
+                    </div>
+                    {(() => {
+                      const rate = effectiveClientRatePerM3;
+                      if (rate <= 0) return <p className="text-sm text-slate-600">Enter the client's offered rate above to see margin analysis.</p>;
+                      const baseCost = costs.totalWithEsc;
+                      const revisedCostVal = revisedCosts.totalWithEsc;
+                      const baseMargin = ((rate - baseCost) / rate) * 100;
+                      const revisedMargin = ((rate - revisedCostVal) / rate) * 100;
+                      const qtoMargin = qtoAllInPerM && crossSectionM2 > 0
+                        ? ((s.clientOfferedRateMode === "per_rm" ? s.clientOfferedRate : s.clientOfferedRate * crossSectionM2) - qtoAllInPerM) / (s.clientOfferedRateMode === "per_rm" ? s.clientOfferedRate : s.clientOfferedRate * crossSectionM2) * 100
+                        : null;
+                      const clr = (m: number) => m >= 10 ? "text-green-700" : m >= 5 ? "text-amber-600" : "text-red-600";
+                      const bg = (m: number) => m >= 10 ? "bg-green-50 border-green-200" : m >= 5 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200";
+                      return (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <Card className={`border ${bg(baseMargin)}`}>
+                              <CardContent className="py-4 px-5 text-center">
+                                <p className="text-sm font-semibold text-slate-700 mb-1">Client's Rate</p>
+                                <p className="text-xl font-bold text-blue-700">{fmtR(rate)}/m³</p>
+                                {crossSectionM2 > 0 && <p className="text-xs text-slate-600 mt-1">{fmtR(rate * crossSectionM2)}/RM</p>}
+                              </CardContent>
+                            </Card>
+                            <Card className={`border ${bg(baseMargin)}`}>
+                              <CardContent className="py-4 px-5 text-center">
+                                <p className="text-sm font-semibold text-slate-700 mb-1">Base BOQ Margin</p>
+                                <p className={`text-2xl font-bold ${clr(baseMargin)}`}>{baseMargin.toFixed(1)}%</p>
+                                <p className="text-xs text-slate-600 mt-1">Cost: {fmtR(baseCost)}/m³ · Profit: {fmtR(rate - baseCost)}/m³</p>
+                              </CardContent>
+                            </Card>
+                            {Object.keys(priceImpactRates).length > 0 && (
+                              <Card className={`border ${bg(revisedMargin)}`}>
+                                <CardContent className="py-4 px-5 text-center">
+                                  <p className="text-sm font-semibold text-slate-700 mb-1">Revised Margin (Price Impact)</p>
+                                  <p className={`text-2xl font-bold ${clr(revisedMargin)}`}>{revisedMargin.toFixed(1)}%</p>
+                                  <p className="text-xs text-slate-600 mt-1">Revised cost: {fmtR(revisedCostVal)}/m³</p>
+                                </CardContent>
+                              </Card>
+                            )}
+                          </div>
+                          {qtoAllInPerM !== undefined && (
+                            <div className={`rounded-xl border p-4 ${bg(qtoMargin ?? 0)}`}>
+                              <p className="text-sm font-semibold text-slate-700 mb-2">All-in ₹/RM Margin (QTO incl. PCC, Steel, Earthwork)</p>
+                              <div className="flex flex-wrap gap-6">
+                                <div>
+                                  <p className="text-xs text-slate-600 uppercase tracking-wide font-medium">Our All-in Cost</p>
+                                  <p className="text-xl font-bold">{fmtR(qtoAllInPerM)}/RM</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-600 uppercase tracking-wide font-medium">Client's Rate</p>
+                                  <p className="text-xl font-bold text-blue-700">{fmtR(s.clientOfferedRateMode === "per_rm" ? s.clientOfferedRate : s.clientOfferedRate * crossSectionM2)}/RM</p>
+                                </div>
+                                {qtoMargin !== null && (
+                                  <div>
+                                    <p className="text-xs text-slate-600 uppercase tracking-wide font-medium">Margin %</p>
+                                    <p className={`text-2xl font-bold ${clr(qtoMargin)}`}>{qtoMargin.toFixed(1)}%</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          <div className="p-3 bg-slate-50 rounded-lg border text-xs text-slate-600 space-y-1">
+                            <p><b>BOQ Margin %</b> = (Client Rate − Our Cost) ÷ Client Rate × 100</p>
+                            <p>Green ≥ 10% · Amber 5–10% · Red below 5%</p>
+                            {crossSectionM2 > 0 && <p>Cross-section: {crossSectionM2.toFixed(4)} m² · Use ₹/RM mode when client quotes per running metre.</p>}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
             {/* ── Rate Blender ── */}
             <TabsContent value="rate-blender">
               {(s.locationVariants ?? []).length === 0 ? (
@@ -3883,7 +3735,7 @@ export default function ConcreteCalculator() {
                         <CardContent className="py-4 px-4 text-center">
                           <p className="text-sm font-semibold text-slate-700 mb-1">Blended BOQ Margin</p>
                           <p className={`text-xl font-bold ${marginColor(blendedMargin)}`}>{blendedMargin.toFixed(1)}%</p>
-                          <p className="text-sm text-slate-600 mt-1">Contract: {fmtR(s.contractRate)}/m³</p>
+                          <p className="text-sm text-slate-600 mt-1">Client rate: {fmtR(s.clientOfferedRate)}/m³</p>
                         </CardContent>
                       </Card>
                       <Card className="border-slate-200">
@@ -3894,6 +3746,7 @@ export default function ConcreteCalculator() {
                         </CardContent>
                       </Card>
                     </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 text-center">Client rate from <b>Rate vs Client Offer</b> tab. Set it there to see margin here.</p>
 
                     {/* Location table */}
                     <Card>
