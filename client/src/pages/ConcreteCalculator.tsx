@@ -1691,7 +1691,7 @@ export default function ConcreteCalculator() {
         </TabsContent>
 
         {/* hidden file input for Excel BOQ import */}
-        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelImport} data-testid="input-excel-boq" />
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelImport} data-testid="input-excel-boq" />
 
         {/* ══════════════ QTO & BOQ Tab ══════════════ */}
         <TabsContent value="qto-boq">
