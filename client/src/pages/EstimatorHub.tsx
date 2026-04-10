@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Flame, Building2, LogOut, ChevronRight, BarChart3, Plus, GitCompare } from "lucide-react";
+import { Flame, Building2, LogOut, Home, ChevronRight, BarChart3, Plus, GitCompare } from "lucide-react";
 import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -17,6 +17,11 @@ export default function EstimatorHub() {
   async function handleLogout() {
     await signOutEstimator();
     setLocation("/estimator-login");
+  }
+
+  async function handleBackToDashboard() {
+    await signOutEstimator();
+    setLocation("/");
   }
 
   if (!role) return null;
@@ -105,7 +110,17 @@ export default function EstimatorHub() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-4">
+          <Button
+            variant="ghost"
+            size="lg"
+            className="gap-2 text-base text-muted-foreground hover:text-foreground"
+            onClick={handleBackToDashboard}
+            data-testid="button-back-to-dashboard"
+          >
+            <Home className="w-5 h-5" />
+            Back to HLC Dashboard
+          </Button>
           <Button
             variant="ghost"
             size="lg"
