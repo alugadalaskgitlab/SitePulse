@@ -716,6 +716,35 @@ export default function ConcreteCalculator() {
   // Main cost calculation
   const costs = useMemo(() => computeCosts(s, steelCostPerM3, undefined, undefined, pettyLabourRatePerM3), [s, steelCostPerM3, pettyLabourRatePerM3]);
 
+  // QTO Per-Metre Rate Card all-in ₹/RM — mirrors the Per-Metre Rate Card in the QTO tab.
+  // Includes PCC, all zone RCC, steel from BBS, earthwork, ancillaries.
+  // Returns undefined when QTO zones are not yet entered.
+  const qtoAllInPerM = useMemo(() => {
+    if (!isDrainType || !qtoResult || qtoResult.totalLength <= 0 || qtoResult.zones.length === 0) return undefined;
+    const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+    const rccBaseRate = costs.totalWithEsc - costs.steel;
+    const baseMat = computeMaterialCostOnly(s.grade, s);
+    const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
+    const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
+    const tsM = s.qto.topSlabThick / 1000;
+    const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
+      ? s.qto.precastRatePerM2 / tsM
+      : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+    const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - baseMat + computeMaterialCostOnly(eq.pcc, s));
+    const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
+    const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
+    const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+    const steelPerM = bbsSummary.totalKgPerM * (steelRateAvg / 1000);
+    const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
+    const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
+    const excavPerM = qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength;
+    const backfillPerM = qtoResult.backfillVol * s.qto.backfillRate / qtoResult.totalLength;
+    const avgNetWallPerM = qtoResult.totalWallsNet / qtoResult.totalLength * wallCostPerM3;
+    const netTopSlabPerM = qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3;
+    return (qtoResult.pccPerM * pccCostPerM3) + (qtoResult.invertPerM * invertCostPerM3) +
+      avgNetWallPerM + netTopSlabPerM + gratingPerM + weepholePerM + steelPerM + bwPerM + excavPerM + backfillPerM + lhPerM;
+  }, [isDrainType, qtoResult, costs, s, bbsSummary]);
+
   // Price Impact revised costs — directly apply absolute rates from priceImpactRates
   const revisedCosts = useMemo(() => {
     const rates = priceImpactRates;
@@ -1905,7 +1934,10 @@ export default function ConcreteCalculator() {
                             items: pettyLabourRatePerM3 !== undefined
                               ? [
                                   { label: "Batching", val: costs.batching, color: "bg-blue-400" },
-                                  { label: "Petty Labour Contract", val: costs.placement + costs.formwork, color: "bg-sky-400" },
+                                  { label: "Petty Labour Contract", val: costs.placement, color: "bg-sky-400" },
+                                  ...(s.pettyLabour.contractorFormwork
+                                    ? []
+                                    : [{ label: "Formwork", val: costs.formwork, color: "bg-teal-400" }]),
                                   { label: "Labour", val: costs.labour, color: "bg-green-500" },
                                   { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
                                 ]
@@ -1967,27 +1999,36 @@ export default function ConcreteCalculator() {
                     <div className="mt-4 pt-4 border-t">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-semibold">Client's Offered Rate</span>
-                        {crossSectionM2 > 0 && (
-                          <div className="flex items-center gap-1 text-[10px]">
-                            <button onClick={() => update({ contractRateMode: "per_m3" })} className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_m3" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>₹/m³</button>
-                            <button onClick={() => update({ contractRateMode: "per_rm" })} className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_rm" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>₹/RM</button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 text-[10px]">
+                          <button onClick={() => update({ contractRateMode: "per_m3" })} className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_m3" ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>₹/m³</button>
+                          <button
+                            onClick={() => crossSectionM2 > 0 ? update({ contractRateMode: "per_rm" }) : undefined}
+                            title={crossSectionM2 <= 0 ? "Enter QTO height zones to enable ₹/RM mode" : ""}
+                            className={`px-2 py-0.5 rounded border ${s.contractRateMode === "per_rm" ? "bg-blue-600 text-white border-blue-600" : crossSectionM2 <= 0 ? "opacity-40 cursor-not-allowed text-muted-foreground border-border" : "text-muted-foreground border-border"}`}
+                          >₹/RM</button>
+                        </div>
                       </div>
                       {(() => {
-                        const contractRatePerM3 = s.contractRateMode === "per_rm" && crossSectionM2 > 0
-                          ? s.contractRate / crossSectionM2
-                          : s.contractRate;
                         const unit = s.contractRateMode === "per_rm" ? "₹/RM" : "₹/m³";
-                        const margin = contractRatePerM3 > 0 ? ((contractRatePerM3 - costs.totalWithEsc) / contractRatePerM3) * 100 : 0;
+                        // In ₹/RM mode: use QTO all-in per-metre as our cost baseline (includes PCC, earthwork, steel)
+                        // Fall back to RCC cross-section conversion when QTO zones are not yet populated
+                        const rmMode = s.contractRateMode === "per_rm";
+                        const ourCostRM = rmMode ? (qtoAllInPerM ?? (crossSectionM2 > 0 ? costs.totalWithEsc * crossSectionM2 : undefined)) : undefined;
+                        const contractRatePerM3 = rmMode && crossSectionM2 > 0 ? s.contractRate / crossSectionM2 : s.contractRate;
+                        const margin = rmMode
+                          ? (ourCostRM !== undefined && s.contractRate > 0 ? (s.contractRate - ourCostRM) / s.contractRate * 100 : 0)
+                          : (contractRatePerM3 > 0 ? (contractRatePerM3 - costs.totalWithEsc) / contractRatePerM3 * 100 : 0);
                         const color = margin >= 10 ? "text-green-600" : margin >= 5 ? "text-amber-600" : "text-red-600";
                         return (
                           <>
                             {numInput(`Client's rate (${unit})`, s.contractRate, (v) => update({ contractRate: v }), { unit })}
-                            {s.contractRateMode === "per_rm" && crossSectionM2 > 0 && (
+                            {rmMode && (
                               <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
-                                <div>= {fmtR(contractRatePerM3)}/m³</div>
-                                <div className="text-blue-700 font-medium">Our all-in: {fmtR(costs.totalWithEsc * crossSectionM2)}/RM</div>
+                                {ourCostRM !== undefined
+                                  ? <>
+                                      <div className="text-blue-700 font-medium">Our all-in: {fmtR(ourCostRM)}/RM{qtoAllInPerM ? " (QTO incl. PCC+earthwork)" : " (RCC only)"}</div>
+                                    </>
+                                  : <div className="text-orange-600">Enter QTO zones for ₹/RM comparison</div>}
                               </div>
                             )}
                             <div className={`mt-2 text-center text-sm font-bold ${color}`}>
