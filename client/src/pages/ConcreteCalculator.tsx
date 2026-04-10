@@ -2456,6 +2456,10 @@ export default function ConcreteCalculator() {
               const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
               const excavPerM = qtoResult.totalLength > 0 ? qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength : 0;
               const backfillPerM = qtoResult.totalLength > 0 ? qtoResult.backfillVol * s.qto.backfillRate / qtoResult.totalLength : 0;
+              // All-in ₹/RM total (using net wall and net top slab volumes)
+              const avgNetWallPerM = qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength * wallCostPerM3 : 0;
+              const netTopSlabPerM = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
+              const allInPerM = (qtoResult.pccPerM * pccCostPerM3) + (qtoResult.invertPerM * invertCostPerM3) + avgNetWallPerM + netTopSlabPerM + gratingPerM + weepholePerM + steelPerM + bwPerM + excavPerM + backfillPerM + lhPerM;
               return (
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5">
@@ -2507,6 +2511,11 @@ export default function ConcreteCalculator() {
                         <p className="text-muted-foreground">Lifting Hooks</p>
                         <p className="font-bold text-sm">{fmtR(lhPerM)}/RM</p>
                       </div>}
+                    </div>
+                    {/* All-in total row */}
+                    <div className="mt-3 flex items-center justify-between border-t pt-3">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">All-in Cost</p>
+                      <p className="text-xl font-bold text-primary">{fmtR(allInPerM)} <span className="text-sm font-normal text-muted-foreground">/ Running Metre</span></p>
                     </div>
                   </div>
                   {/* Per-zone cards (walls vary by zone height) */}
@@ -2672,6 +2681,18 @@ export default function ConcreteCalculator() {
                       {numInput("Lifting Hook Dia (mm)", s.qto.liftingHookDia ?? 12, v => updateQto({ liftingHookDia: v }))}
                       {numInput("Lifting Hook Spacing (m)", s.qto.liftingHookSpacingM ?? 2, v => updateQto({ liftingHookSpacingM: v }))}
                       {numInput("Lifting Hook Rate (₹/nos)", s.qto.liftingHookRatePerNos ?? 150, v => updateQto({ liftingHookRatePerNos: v }))}
+                      {(() => {
+                        const lhSp = s.qto.liftingHookSpacingM ?? 2;
+                        const lhCount = lhSp > 0 && qtoResult ? Math.ceil(qtoResult.totalLength / lhSp) : 0;
+                        const lhRm = lhSp > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / lhSp : 0;
+                        return lhCount > 0 ? (
+                          <div className="flex flex-col justify-center bg-slate-50 dark:bg-slate-800 rounded-lg border px-3 py-2">
+                            <p className="text-xs text-muted-foreground">Computed Count</p>
+                            <p className="font-bold text-sm">{lhCount} nos</p>
+                            <p className="text-xs text-muted-foreground">{fmtR(lhRm)}/RM</p>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 </CardContent>
