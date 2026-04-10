@@ -459,7 +459,6 @@ export default function ConcreteCalculator() {
     const lsId = localStorage.getItem(LS_KEY + "_estId");
     return lsId ? parseInt(lsId) : null;
   });
-  const [priceImpactChanges, setPriceImpactChanges] = useState<Record<string, number>>({});
   const [priceImpactRates, setPriceImpactRates] = useState<Record<string, number>>({});
 
   const isStandalonePWA = useMemo(() => {
@@ -525,30 +524,30 @@ export default function ConcreteCalculator() {
   const qtoResult = useMemo(() => isDrainType ? calcDrainQTO(s.qto, isBoxCulvert) : null, [s.qto, isBoxCulvert, isDrainType]);
   const bridgeQtoResult = useMemo(() => isBridgeType ? calcBridgeRWQTO(s.qto) : null, [s.qto, isBridgeType]);
 
-  // Price Impact revised costs — uses same applyChangesToState as scenarios (defined below)
+  // Price Impact revised costs — directly apply absolute rates from priceImpactRates
   const revisedCosts = useMemo(() => {
-    const changes = priceImpactChanges;
+    const rates = priceImpactRates;
     const revised = {
       ...s,
-      cementBagPrice: s.cementBagPrice * (1 + (changes.cement || 0) / 100),
-      admixRate: s.admixRate * (1 + (changes.admix || 0) / 100),
-      faPurchaseRate: s.faPurchaseRate * (1 + (changes.fa || 0) / 100),
-      labourRatePerM3: s.labourRatePerM3 * (1 + (changes.labour || 0) / 100),
-      marginPct: s.marginPct + (changes.margin || 0),
-      shutteringCostPerM2: s.shutteringCostPerM2 * (1 + (changes.formwork || 0) / 100),
-      caTabs: s.caTabs.map((t, i) => ({ ...t, purchaseRate: t.purchaseRate * (1 + (changes[`ca${i}`] || 0) / 100) })),
+      cementBagPrice: rates.cement !== undefined ? rates.cement : s.cementBagPrice,
+      admixRate: rates.admix !== undefined ? rates.admix : s.admixRate,
+      faPurchaseRate: rates.fa !== undefined ? rates.fa : s.faPurchaseRate,
+      labourRatePerM3: rates.labour !== undefined ? rates.labour : s.labourRatePerM3,
+      marginPct: rates.margin !== undefined ? rates.margin : s.marginPct,
+      shutteringCostPerM2: rates.formwork !== undefined ? rates.formwork : s.shutteringCostPerM2,
+      caTabs: s.caTabs.map((t, i) => ({ ...t, purchaseRate: rates[`ca${i}`] !== undefined ? rates[`ca${i}`] : t.purchaseRate })),
       batchingRows: s.batchingRows.map((row) => ({
         ...row,
-        hireRate: row.hireRate * (1 + (changes.batching || 0) / 100),
-        depreciation: row.depreciation * (1 + (changes.batching || 0) / 100),
-        fuel: row.fuel * (1 + (changes.batching || 0) / 100),
+        hireRate: rates.batching !== undefined ? rates.batching : row.hireRate,
+        depreciation: rates.batching !== undefined && row.hireRate > 0 ? row.depreciation * (rates.batching / row.hireRate) : row.depreciation,
+        fuel: rates.batching !== undefined && row.hireRate > 0 ? row.fuel * (rates.batching / row.hireRate) : row.fuel,
       })),
     };
-    const steelFactor = 1 +
-      (changes.steel8 || 0) / 100 * 0.1 +
-      (changes.steel12p || 0) / 100 * 0.7;
+    const steel8Factor = rates.steel8 !== undefined && s.steelRates.r8 > 0 ? rates.steel8 / s.steelRates.r8 : 1;
+    const steel12Factor = rates.steel12p !== undefined && s.steelRates.r12 > 0 ? rates.steel12p / s.steelRates.r12 : 1;
+    const steelFactor = 1 + (steel8Factor - 1) * 0.1 + (steel12Factor - 1) * 0.7;
     return computeCosts(revised, steelCostPerM3 * steelFactor);
-  }, [s, priceImpactChanges, steelCostPerM3]);
+  }, [s, priceImpactRates, steelCostPerM3]);
 
   // Save mutation
   const saveMutation = useMutation<ConcreteEstimate, Error, void>({
@@ -626,7 +625,14 @@ export default function ConcreteCalculator() {
   }
 
   function saveAsScenario(name: string) {
-    const newScenario: Scenario = { id: uid(), name, changes: { ...priceImpactChanges }, rates: { ...priceImpactRates } };
+    const derivedChanges: Record<string, number> = {};
+    for (const v of PRICE_VARIABLES) {
+      const r = priceImpactRates[v.key];
+      if (r !== undefined) {
+        derivedChanges[v.key] = v.key === "margin" ? r - v.baseValue : v.baseValue > 0 ? ((r - v.baseValue) / v.baseValue) * 100 : 0;
+      }
+    }
+    const newScenario: Scenario = { id: uid(), name, changes: derivedChanges, rates: { ...priceImpactRates } };
     update({ scenarios: [...(s.scenarios || []).slice(0, MAX_SCENARIOS - 1), newScenario] });
     toast({ title: `Scenario "${name}" saved` });
   }
@@ -774,14 +780,8 @@ export default function ConcreteCalculator() {
     return applyChangesToState(s, scenario.changes, steelCostPerM3);
   }
 
-  function handlePiRateChange(key: string, newRate: number, baseValue: number, isMargin: boolean) {
+  function handlePiRateChange(key: string, newRate: number) {
     setPriceImpactRates((prev) => ({ ...prev, [key]: newRate }));
-    if (isMargin) {
-      setPriceImpactChanges((prev) => ({ ...prev, [key]: newRate - baseValue }));
-      return;
-    }
-    if (baseValue === 0) return;
-    setPriceImpactChanges((prev) => ({ ...prev, [key]: ((newRate - baseValue) / baseValue) * 100 }));
   }
 
   return (
@@ -2373,7 +2373,7 @@ export default function ConcreteCalculator() {
             <TabsContent value="price-impact">
               <div className="space-y-4">
                 {/* Impact banner */}
-                <Card className={`border-2 ${Object.keys(priceImpactRates).length > 0 ? "border-blue-300 bg-blue-50" : "border-border"}`}>
+                <Card className={`border-2 ${revisedCosts.totalWithEsc !== costs.totalWithEsc ? "border-blue-300 bg-blue-50" : "border-border"}`}>
                   <CardContent className="py-4 px-5">
                     <div className="flex items-center justify-between">
                       <div>
@@ -2412,7 +2412,10 @@ export default function ConcreteCalculator() {
                   <CardContent className="px-5 pb-5">
                     <div className="space-y-2">
                       {PRICE_VARIABLES.map((v, rank) => {
-                        const pctChange = priceImpactChanges[v.key] || 0;
+                        const newRate = priceImpactRates[v.key];
+                        const pctChange = newRate !== undefined
+                          ? (v.key === "margin" ? newRate - v.baseValue : v.baseValue > 0 ? ((newRate - v.baseValue) / v.baseValue) * 100 : 0)
+                          : 0;
                         const deltaPerM3 = (v.impact * pctChange) / 100;
                         return (
                           <div key={v.key} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors">
@@ -2429,8 +2432,8 @@ export default function ConcreteCalculator() {
                                 placeholder={String(v.baseValue)}
                                 onChange={(e) => {
                                   const newRate = parseFloat(e.target.value);
-                                  if (!isNaN(newRate)) handlePiRateChange(v.key, newRate, v.baseValue, v.key === "margin");
-                                  else { setPriceImpactRates((p) => { const n = { ...p }; delete n[v.key]; return n; }); setPriceImpactChanges((p) => { const n = { ...p }; delete n[v.key]; return n; }); }
+                                  if (!isNaN(newRate)) handlePiRateChange(v.key, newRate);
+                                  else { setPriceImpactRates((p) => { const n = { ...p }; delete n[v.key]; return n; }); }
                                 }}
                                 className="h-7 w-28 text-xs text-right"
                                 step={v.key === "margin" ? 0.5 : 1}
@@ -2485,7 +2488,7 @@ export default function ConcreteCalculator() {
                             <Button size="sm" variant="ghost" onClick={() => { setAddingScenario(false); setScenarioNameInput(""); }}>Cancel</Button>
                           </div>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => { setPriceImpactChanges({}); setPriceImpactRates({}); }}>Reset All</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setPriceImpactRates({})}>Reset All</Button>
                       </div>
                     </div>
                   </CardContent>
