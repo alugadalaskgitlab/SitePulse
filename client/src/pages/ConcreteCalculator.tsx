@@ -248,8 +248,7 @@ function aggRateToPerMT(rate: number, uom: AggUoM): number {
 }
 
 function computeCosts(s: CalcState, steelCostPerM3 = 0, locCASources?: CASourceOverride[], faOverride?: { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number }, pettyLabourPerM3?: number): CostBreakdown {
-  // bypass steel if petty labour contractor covers BBS
-  if (pettyLabourPerM3 !== undefined && s.pettyLabour.contractorBBS) steelCostPerM3 = 0;
+  // NOTE: contractorBBS is informational only — steel material cost always applies
   // Merge location CA sourcing overrides with base mix proportions (proportions always come from base)
   const tabs: CATab[] = locCASources
     ? s.caTabs.map((t, i) => locCASources[i] ? { ...locCASources[i], proportion: t.proportion } : t)
@@ -698,10 +697,13 @@ export default function ConcreteCalculator() {
   }, [qtoResult]);
 
   // Petty labour: convert ₹/RM → ₹/m³ using drain cross-section area
+  // Returns undefined (disable petty labour) when ₹/RM selected but QTO cross-section unavailable
   const pettyLabourRatePerM3 = useMemo(() => {
     if (!s.pettyLabour.enabled) return undefined;
     if (s.pettyLabour.rateUnit === "per_m3") return s.pettyLabour.rateValue;
-    return crossSectionM2 > 0 ? s.pettyLabour.rateValue / crossSectionM2 : s.pettyLabour.rateValue;
+    // per_rm mode: ONLY apply when QTO cross-section is available; otherwise gate to disable
+    if (crossSectionM2 <= 0) return undefined;
+    return s.pettyLabour.rateValue / crossSectionM2;
   }, [s.pettyLabour, crossSectionM2]);
 
   // Main cost calculation
@@ -1060,8 +1062,8 @@ export default function ConcreteCalculator() {
             {[
               { label: "Raw Materials", val: costs.cement + costs.ca + costs.fa + costs.admix },
               { label: "Steel", val: costs.steel },
-              { label: "Plant, Labour & Formwork", val: costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing + costs.wastage },
-              { label: "Overhead + Margin", val: costs.overhead + costs.margin },
+              { label: "Plant, Labour & Formwork", val: costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing },
+              { label: "Overhead + Margin", val: costs.wastage + costs.overhead + costs.margin },
             ].map((item) => (
               <div key={item.label} className="bg-white/10 rounded-lg px-3 py-2">
                 <div className="text-blue-300 mb-1">{item.label}</div>
@@ -1674,8 +1676,10 @@ export default function ConcreteCalculator() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="flex items-end pb-1 text-xs text-amber-700 font-semibold">
-                            = {fmtR(pettyLabourRatePerM3 ?? 0)}/m³
+                          <div className="flex items-end pb-1 text-xs font-semibold">
+                            {s.pettyLabour.rateUnit === "per_rm" && crossSectionM2 <= 0
+                              ? <span className="text-red-600">⚠ Enter QTO data (Height Zones) for RM conversion</span>
+                              : <span className="text-amber-700">= {fmtR(pettyLabourRatePerM3 ?? 0)}/m³</span>}
                           </div>
                         </div>
                         <div>
@@ -1898,17 +1902,17 @@ export default function ConcreteCalculator() {
                               { label: "Formwork", val: costs.formwork, color: "bg-teal-400" },
                               { label: "Labour", val: costs.labour, color: "bg-green-500" },
                               { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
-                              { label: "Wastage", val: costs.wastage, color: "bg-red-300" },
                             ],
-                            subtotal: costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing + costs.wastage,
+                            subtotal: costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing,
                           },
                           {
-                            label: "Overhead + Margin", color: "bg-emerald-50 border-emerald-200", textColor: "text-emerald-800",
+                            label: "Wastage + Overhead + Margin", color: "bg-emerald-50 border-emerald-200", textColor: "text-emerald-800",
                             items: [
+                              { label: "Wastage", val: costs.wastage, color: "bg-red-300" },
                               { label: "Overhead", val: costs.overhead, color: "bg-gray-400" },
                               { label: "Margin", val: costs.margin, color: "bg-emerald-500" },
                             ],
-                            subtotal: costs.overhead + costs.margin,
+                            subtotal: costs.wastage + costs.overhead + costs.margin,
                           },
                         ];
                         return groups.map(g => (
@@ -1968,7 +1972,10 @@ export default function ConcreteCalculator() {
                           <>
                             {numInput(`Client's rate (${unit})`, s.contractRate, (v) => update({ contractRate: v }), { unit })}
                             {s.contractRateMode === "per_rm" && crossSectionM2 > 0 && (
-                              <div className="text-[11px] text-muted-foreground mt-1">= {fmtR(contractRatePerM3)}/m³</div>
+                              <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+                                <div>= {fmtR(contractRatePerM3)}/m³</div>
+                                <div className="text-blue-700 font-medium">Our all-in: {fmtR(costs.totalWithEsc * crossSectionM2)}/RM</div>
+                              </div>
                             )}
                             <div className={`mt-2 text-center text-sm font-bold ${color}`}>
                               BOQ Margin: {margin.toFixed(1)}%
@@ -2958,7 +2965,7 @@ export default function ConcreteCalculator() {
                           <th className="text-right p-2 font-semibold">L × W × D</th>
                           <th className="text-right p-2 font-semibold">Vol</th>
                           <th className="text-right p-2 font-semibold">Rate (₹/unit)</th>
-                          <th className="text-right p-2 font-semibold">Client Rate</th>
+                          <th className="text-right p-2 font-semibold">Client's Rate (₹)</th>
                           <th className="text-right p-2 font-semibold">Amount</th>
                           <th className="p-2"></th>
                         </tr>
@@ -3304,7 +3311,7 @@ export default function ConcreteCalculator() {
 
                 {/* Variables table */}
                 <Card>
-                  <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
+                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                     <CardTitle className="text-sm font-semibold">Sensitivity Variables (ranked by 10% impact)</CardTitle>
                     <HelpBtn id="price-impact" />
                   </CardHeader>
@@ -3691,7 +3698,7 @@ export default function ConcreteCalculator() {
 
                     {/* Location table */}
                     <Card>
-                      <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
+                      <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                         <CardTitle className="text-sm font-semibold">Location Cost Breakdown</CardTitle>
                         <HelpBtn id="rate-blender" />
                       </CardHeader>
@@ -3759,7 +3766,7 @@ export default function ConcreteCalculator() {
 
                     {/* Markup & quoted rate */}
                     <Card>
-                      <CardHeader className="pb-2 pt-4 px-5">
+                      <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                         <CardTitle className="text-sm font-semibold">Quote Rate Builder</CardTitle>
                       </CardHeader>
                       <CardContent className="px-5 pb-5">
