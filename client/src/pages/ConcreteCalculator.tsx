@@ -369,11 +369,30 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
     const basis = row.countBasis ?? "manual";
     const dimType = ELEMENT_DIM_TYPE[row.element ?? "Manual"] ?? "manual";
 
-    if (basis === "spacing" && dimType !== "manual" && (row.spacingMm ?? 200) > 0) {
-      const refDimMm = dimType === "span" ? spanMm : avgWallHMm;
-      const countPerM = refDimMm / (row.spacingMm ?? 200); // bars per metre run
-      rowKgPerM = unitLen * countPerM * kgPerMBar;
-      rowKg = rowKgPerM * totalLength;
+    if (basis === "spacing" && (row.spacingMm ?? 200) > 0) {
+      if (dimType === "span") {
+        const countPerM = spanMm / (row.spacingMm ?? 200);
+        rowKgPerM = unitLen * countPerM * kgPerMBar;
+        rowKg = rowKgPerM * totalLength;
+      } else if (dimType === "wall") {
+        // Use zone-specific height when zoneId is set; otherwise weighted average
+        const zoneH = row.zoneId && row.zoneId !== "all" && qtoCtx
+          ? (qtoCtx.heightZones.find(z => z.id === row.zoneId)?.height ?? avgWallHMm)
+          : avgWallHMm;
+        const zoneLen = row.zoneId && row.zoneId !== "all" && qtoCtx
+          ? (qtoCtx.heightZones.find(z => z.id === row.zoneId)?.length ?? totalLength)
+          : totalLength;
+        const countPerM = zoneH / (row.spacingMm ?? 200);
+        rowKgPerM = unitLen * countPerM * kgPerMBar;
+        // Zone-specific rows: kg = kgPerM × zoneLen; global kgPerM = kg / totalLength
+        rowKg = rowKgPerM * (row.zoneId && row.zoneId !== "all" && qtoCtx ? zoneLen : totalLength);
+        rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
+      } else {
+        // Dist/Tie/Lifting Hook in spacing mode → 1 bar per metre run (longitudinal)
+        const countPerM = 1;
+        rowKgPerM = unitLen * countPerM * kgPerMBar;
+        rowKg = rowKgPerM * totalLength;
+      }
     } else {
       // manual mode
       const totalLen = unitLen * row.count;
@@ -500,10 +519,10 @@ function calcDrainQTO(q: QtoState, showTopSlab: boolean) {
   const totalInvert = invertPerM * totalLength;
   const totalTop = topPerM * totalLength;
   const totalPCC = pccPerM * totalLength;
-  // Weephole void deduction (one wall — earth face, per IS drawing)
+  // Weephole void deduction (both walls combined — weepholes penetrate both walls in paired arrangement)
   const weepholeDiamM = (q.weepholeDiaMm ?? 100) / 1000;
   const weepholesCount = q.weepholesSpacing > 0 ? Math.ceil(totalLength / q.weepholesSpacing) : 0;
-  const deductWeephole = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t * weepholesCount;
+  const deductWeephole = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t * weepholesCount * 2;
   // Grating opening deduction (from top slab)
   const gratingsCount = q.gratingsSpacing > 0 ? Math.ceil(totalLength / q.gratingsSpacing) : 0;
   const grOW = (q.gratingOpeningW ?? 200) / 1000;
@@ -814,18 +833,41 @@ export default function ConcreteCalculator() {
     if (!qtoResult) return [];
     const r = qtoResult;
     const q = s.qto;
-    const pccGrade = q.elementGrades?.pcc ?? "M15";
-    const rccGrade = q.elementGrades?.wall ?? s.grade;
+    const eq = q.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+    const baseMat = computeMaterialCostOnly(s.grade, s);
+
+    // PCC rate: material cost at PCC grade + all non-formwork, non-steel components
+    // Remove formwork (PCC has no shuttering) and replace material component
+    const pccMatCost = computeMaterialCostOnly(eq.pcc, s);
+    const pccRatePerM3 = Math.max(0, costs.totalWithEsc - baseMat - costs.formwork + pccMatCost);
+
+    // Per-element RCC cost (swap material component, keep all other costs including formwork)
+    const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
+    const wallCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
+    // Top slab: if precast, use precastRatePerM2 ÷ thickness (m) → ₹/m³
+    const isPrecast = q.topSlabType === "Precast";
+    const tsM = q.topSlabThick / 1000;
+    const topSlabCostPerM3 = isPrecast && tsM > 0
+      ? q.precastRatePerM2 / tsM
+      : costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+
+    // Blended RCC rate weighted by net volumes
+    const blendedRCCRate = r.totalRCC > 0
+      ? (wallCostPerM3 * r.totalWallsNet + invertCostPerM3 * r.totalInvert + topSlabCostPerM3 * r.totalTopNet) / r.totalRCC
+      : costs.totalWithEsc;
+
+    const rccLabel = [eq.invert !== eq.wall ? `${eq.invert}/${eq.wall}` : eq.wall, "RCC"].join(" ");
     const items: BOQItem[] = [];
     // 1. Earthwork
     items.push({ id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat(r.excavVolume.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, contractorRate: 0 });
     // 2. PCC bed
-    if (r.totalPCC > 0) items.push({ id: uid(), description: `${pccGrade} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.pccRatePerM3, contractorRate: 0 });
-    // 3. RCC — combined (raft + walls + slab) per client BOQ format
-    if (r.totalRCC > 0) items.push({ id: uid(), description: `${rccGrade} RCC in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: costs.totalWithEsc, contractorRate: s.contractRate });
-    // 4. HYSD reinforcement
+    if (r.totalPCC > 0) items.push({ id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(r.totalPCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), contractorRate: 0 });
+    // 3. RCC — combined (raft + walls + slab) at blended element-grade rate
+    if (r.totalRCC > 0) items.push({ id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), contractorRate: s.contractRate });
+    // 4. HYSD reinforcement — weighted avg steel rate from BBS
     const steelMT = parseFloat((bbsSummary.totalKg / 1000).toFixed(3));
-    if (steelMT > 0) items.push({ id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: (s.steelRates.r12 || 56000), contractorRate: 0 });
+    const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+    if (steelMT > 0) items.push({ id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(steelRateAvg), contractorRate: 0 });
     // 5. Gratings
     if (r.gratingsCount > 0) items.push({ id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, contractorRate: 0 });
     // 6. Weepholes
@@ -1835,10 +1877,22 @@ export default function ConcreteCalculator() {
                             const avgWallHMm = s.qto.heightZones.length > 0 ? s.qto.heightZones.reduce((sum, z) => sum + z.height * z.length, 0) / Math.max(1, s.qto.heightZones.reduce((sum, z) => sum + z.length, 0)) : 0;
                             let countPerM = 0;
                             let rowKg = 0;
-                            if (basis === "spacing" && dimType !== "manual" && (row.spacingMm ?? 200) > 0) {
-                              const refDimMm = dimType === "span" ? spanMm : avgWallHMm;
-                              countPerM = refDimMm / (row.spacingMm ?? 200);
-                              rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                            if (basis === "spacing" && (row.spacingMm ?? 200) > 0) {
+                              if (dimType === "span") {
+                                countPerM = spanMm / (row.spacingMm ?? 200);
+                                rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                              } else if (dimType === "wall") {
+                                const selectedZone = row.zoneId && row.zoneId !== "all" ? s.qto.heightZones.find(z => z.id === row.zoneId) : null;
+                                const wallH = selectedZone ? selectedZone.height : avgWallHMm;
+                                const zoneLen = selectedZone ? selectedZone.length : totalLength;
+                                countPerM = wallH / (row.spacingMm ?? 200);
+                                rowKg = unitLen * countPerM * kgPerMBar * zoneLen;
+                                countPerM = totalLength > 0 ? rowKg / (unitLen * kgPerMBar * totalLength) : countPerM;
+                              } else {
+                                // Dist/Tie/Lifting Hook — 1 bar per metre run
+                                countPerM = 1;
+                                rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                              }
                             } else {
                               rowKg = unitLen * row.count * kgPerMBar;
                               countPerM = totalLength > 0 ? row.count / totalLength : 0;
@@ -1919,7 +1973,12 @@ export default function ConcreteCalculator() {
                           <tr className="border-t-2 border-border bg-muted/20 font-semibold">
                             <td colSpan={11} className="p-2 text-xs">Total Steel</td>
                             <td className="p-2 text-right text-xs text-yellow-700">{bbsSummary.totalKgPerM.toFixed(3)} kg/m</td>
-                            <td className="p-2 text-right text-xs">{bbsSummary.totalKg.toFixed(1)} kg</td>
+                            <td className="p-2 text-right text-xs font-semibold">
+                              {bbsSummary.totalKg.toFixed(1)} kg
+                              {bbsSummary.totalKg >= 100 && (
+                                <span className="ml-1 text-muted-foreground">({(bbsSummary.totalKg / 1000).toFixed(3)} MT)</span>
+                              )}
+                            </td>
                             <td></td>
                           </tr>
                         </tfoot>
@@ -2374,7 +2433,10 @@ export default function ConcreteCalculator() {
               const baseMat = computeMaterialCostOnly(s.grade, s);
               const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
               const wallCostPerM3  = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
-              const topSlabCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+              const tsM = s.qto.topSlabThick / 1000;
+              const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
+                ? s.qto.precastRatePerM2 / tsM
+                : costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
               const pccMatPerM3 = computeMaterialCostOnly(eq.pcc, s);
               const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
               const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
@@ -2404,7 +2466,7 @@ export default function ConcreteCalculator() {
                         <p className="font-bold text-sm">{fmtR(qtoResult.invertPerM * invertCostPerM3)}/RM</p>
                       </div>
                       {showTopSlab && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">Top Slab ({eq.topSlab})</p>
+                        <p className="text-muted-foreground">Top Slab ({s.qto.topSlabType === "Precast" ? "Precast ₹/m²" : eq.topSlab})</p>
                         <p className="font-bold text-sm">{fmtR(qtoResult.topPerM * topSlabCostPerM3)}/RM</p>
                       </div>}
                       {gratingPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
@@ -2911,7 +2973,10 @@ export default function ConcreteCalculator() {
                   const pccMatPerM3 = computeMaterialCostOnly(eq.pcc, s);
                   const invertCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.invert, s);
                   const wallCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.wall, s);
-                  const topSlabCostPerM3 = costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+                  const tsM_ = s.qto.topSlabThick / 1000;
+                  const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM_ > 0)
+                    ? s.qto.precastRatePerM2 / tsM_
+                    : costs.totalWithEsc - baseMat + computeMaterialCostOnly(eq.topSlab, s);
                   const pccPerM_ = qtoResult.pccPerM * pccMatPerM3;
                   const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
                   const topPerM_ = qtoResult.topPerM * topSlabCostPerM3;
@@ -2929,7 +2994,7 @@ export default function ConcreteCalculator() {
                     { label: `PCC ${eq.pcc} Bed`, val: pccPerM_, color: "text-stone-600" },
                     { label: `Invert Slab (${eq.invert})`, val: invertPerM_, color: "" },
                     { label: `Walls (${eq.wall})`, val: wallsPerM_, color: "" },
-                    showTopSlab ? { label: `Top Slab (${eq.topSlab})`, val: topPerM_, color: "" } : null,
+                    showTopSlab ? { label: `Top Slab (${s.qto.topSlabType === "Precast" ? "Precast" : eq.topSlab})`, val: topPerM_, color: "" } : null,
                     steelPerM_ > 0 ? { label: `HYSD Steel (${bbsSummary.totalKgPerM.toFixed(2)} kg/m)`, val: steelPerM_, color: "text-yellow-700" } : null,
                     bwPerM_ > 0 ? { label: "Binding Wire", val: bwPerM_, color: "" } : null,
                     gratingPerM_ > 0 ? { label: "MS Gratings", val: gratingPerM_, color: "" } : null,
