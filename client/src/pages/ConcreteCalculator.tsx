@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp, HelpCircle, X } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
@@ -460,6 +460,35 @@ export default function ConcreteCalculator() {
     return lsId ? parseInt(lsId) : null;
   });
   const [priceImpactRates, setPriceImpactRates] = useState<Record<string, number>>({});
+  const [helpOpen, setHelpOpen] = useState<string | null>(null);
+  function toggleHelp(id: string) { setHelpOpen(prev => prev === id ? null : id); }
+
+  // ── Inline help sub-components (closure over helpOpen + toggleHelp) ─────────
+  function HelpBtn({ id }: { id: string }) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggleHelp(id); }}
+        className={`ml-2 p-1 rounded-full transition-colors ${helpOpen === id ? "bg-blue-100 text-blue-600" : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted"}`}
+        title="Help"
+        data-testid={`help-btn-${id}`}
+      >
+        {helpOpen === id ? <X className="w-3.5 h-3.5" /> : <HelpCircle className="w-3.5 h-3.5" />}
+      </button>
+    );
+  }
+
+  function HelpPanel({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+    if (helpOpen !== id) return null;
+    return (
+      <div className="help-panel mx-4 mb-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-slate-700 overflow-hidden" data-testid={`help-panel-${id}`}>
+        <div className="px-4 py-2 bg-blue-100 border-b border-blue-200">
+          <span className="font-semibold text-blue-800 text-[11px] uppercase tracking-wide">{title} — Guide</span>
+        </div>
+        <div className="px-4 py-3 space-y-1">{children}</div>
+      </div>
+    );
+  }
 
   const isStandalonePWA = useMemo(() => {
     const nav: Navigator & { standalone?: boolean } = window.navigator;
@@ -870,9 +899,19 @@ export default function ConcreteCalculator() {
 
               {/* Section ①: Project Info */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">① Project Info</CardTitle>
+                  <HelpBtn id="proj-info" />
                 </CardHeader>
+                <HelpPanel id="proj-info" title="① Project Info">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Estimate Name</b> — label that appears in the saved estimates list</li>
+                <li><b>Contractor</b> — name used in the Contract Profitability section</li>
+                <li><b>Structure Type</b> — drives QTO formulas and shuttering m²/m³ defaults (set this first)</li>
+                <li><b>Concrete Grade</b> — auto-fills Mix Design kg/m³ per IS:456/IS:10262; all values stay editable</li>
+                <li><b>Total Volume (m³)</b> — total concrete for this estimate; used to spread BBS steel cost and curing cost per m³</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
@@ -932,9 +971,21 @@ export default function ConcreteCalculator() {
 
               {/* Section ②: Mix Design */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">② Concrete Mix Design (IS:456)</CardTitle>
+                  <HelpBtn id="mix-design" />
                 </CardHeader>
+                <HelpPanel id="mix-design" title="② Mix Design">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li>Auto-filled from Grade selection using IS:456/IS:10262 codal quantities — all values are editable</li>
+                <li><b>Cement kg/m³</b> — drives the ₹/m³ cement cost (quantity × price per 50 kg bag)</li>
+                <li><b>Coarse Agg kg/m³</b> — total CA weight; split across 20mm/10mm/6mm tabs by proportion</li>
+                <li><b>Fine Agg kg/m³</b> — for natural sand, volume is increased by bulkage factor (set in Section ③)</li>
+                <li><b>W/C Ratio</b> — informational only (not used in cost calculation)</li>
+                <li><b>Admix %</b> — admixture dosage as % of cement weight; multiplied by rate ₹/L from Section ③</li>
+                <li>Re-selecting Grade re-fills all values from the preset; you can then override individually</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                     {numInput("Cement (kg/m³)", s.mix.cementKg, (v) => updateMix({ cementKg: v }), { testId: "input-cement-kg" })}
@@ -951,9 +1002,19 @@ export default function ConcreteCalculator() {
 
               {/* Section ③: Raw Materials */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">③ Raw Materials</CardTitle>
+                  <HelpBtn id="raw-materials" />
                 </CardHeader>
+                <HelpPanel id="raw-materials" title="③ Raw Materials">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Cement</b> — enter ₹/bag (50 kg bag). Auto-converted to ₹/m³ using mix kg/m³</li>
+                <li><b>CA tabs (20mm / 10mm / 6mm)</b> — proportions must total 100%. Landed rate = Purchase rate + (Lead km × 2 × Freight ÷ Payload MT)</li>
+                <li><b>UoM selector</b> — per_MT (default), per_CFT, or per_m³. Rates are normalised to ₹/MT internally for blending</li>
+                <li><b>Fine Aggregate</b> — Natural Sand includes bulkage (slider 0–30%, default 12%). Robosand has no bulkage. Same landed-rate formula as CA</li>
+                <li><b>Admixture</b> — enter rate ₹/L and dosage L/m³ → ₹/m³ = Rate × Dosage</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5 space-y-5">
                   {/* Cement */}
                   <div>
@@ -1215,7 +1276,10 @@ export default function ConcreteCalculator() {
               {/* Section ④: Batching Equipment */}
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">④ Batching Equipment</CardTitle>
+                  <div className="flex items-center">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">④ Batching Equipment</CardTitle>
+                    <HelpBtn id="batching" />
+                  </div>
                   <Button size="sm" variant="outline" onClick={addBatchingRow} className="h-7 text-xs" data-testid="btn-add-batching">
                     <Plus className="w-3 h-3 mr-1" /> Add Row
                   </Button>
@@ -1298,9 +1362,18 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑤: Placement */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑤ Concrete Placement</CardTitle>
+                  <HelpBtn id="placement" />
                 </CardHeader>
+                <HelpPanel id="placement" title="⑤ Concrete Placement">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Own Pump</b> — operating cost ₹/day ÷ output m³/day → ₹/m³</li>
+                <li><b>Hired Pump</b> — hire rate ₹/day ÷ output m³/day → ₹/m³</li>
+                <li><b>Transit Mixer</b> — (hire ₹/trip × trips/day) ÷ output m³/day → ₹/m³</li>
+                <li><b>Labour Only</b> — enter ₹/m³ directly for manual placement without pump equipment</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   <div className="flex items-center gap-2 flex-wrap mb-3">
                     {(["own", "hired", "transit_mixer", "labour"] as const).map((m) => (
@@ -1336,9 +1409,18 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑥: Formwork & Staging */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑥ Formwork & Staging</CardTitle>
+                  <HelpBtn id="formwork" />
                 </CardHeader>
+                <HelpPanel id="formwork" title="⑥ Formwork & Staging">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Shuttering ₹/m³</b> = (m²/m³ × Cost/m²/use) ÷ Reuse cycles. Structure type sets m²/m³ default (Drain=3.0, Bridge=6.0)</li>
+                <li><b>Reuse cycles</b> — more reuses = lower cost per pour. Factor in breakage/loss; Wastage toggle reduces cycles by 10%</li>
+                <li><b>Staging ₹/m³</b> = Soffit area m²/m³ × Hire rate ₹/m²/month × Months in use</li>
+                <li>Staging applies only to horizontal (soffit) surfaces; vertical walls have no staging component</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5 space-y-5">
                   <div>
                     <p className="text-xs font-semibold mb-2">Shuttering System</p>
@@ -1382,9 +1464,18 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑦: Curing */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑦ Curing</CardTitle>
+                  <HelpBtn id="curing" />
                 </CardHeader>
+                <HelpPanel id="curing" title="⑦ Curing">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Mobile Tanker</b> — ₹/m³ = (Trips/day × Hire rate ₹/trip × Curing days) ÷ Total volume m³</li>
+                <li><b>Static Tank</b> — ₹/m³ = (Pump electricity cost + Daily water KL × water ₹/KL × days) ÷ Volume. Uses separate "Daily water KL" field</li>
+                <li>Tanker and Static Tank are mutually exclusive — choose one radio button</li>
+                <li><b>Curing Compound</b> — can be used alongside water curing; ₹/m³ = (Surface area m²/m³ ÷ Coverage m²/L) × Rate ₹/L</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5 space-y-5">
                   <div>
                     <p className="text-xs font-semibold mb-2">Water Curing Mode</p>
@@ -1436,9 +1527,18 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑧: Labour + Overhead & Margin */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">⑧ Labour, Overhead & Margin</CardTitle>
+                  <HelpBtn id="overhead" />
                 </CardHeader>
+                <HelpPanel id="overhead" title="⑧ Overhead & Margin">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Labour ₹/m³</b> — direct cost for concrete crew (screeding, vibration, curing labour)</li>
+                <li><b>Overhead %</b> — applied to total direct costs (materials + plant + formwork + labour + curing + wastage)</li>
+                <li><b>Margin %</b> — contractor markup applied to (direct + overhead). This is your profit</li>
+                <li><b>Escalation %</b> — price-rise provision applied after margin. Shown as "Total w/ Esc" in Rate Summary</li>
+                </ul>
+              </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {numInput("Labour Rate (₹/m³)", s.labourRatePerM3, (v) => update({ labourRatePerM3: v }), { testId: "input-labour" })}
@@ -1454,9 +1554,20 @@ export default function ConcreteCalculator() {
             <div className="lg:col-span-1">
               <div className="sticky top-4 space-y-4">
                 <Card>
-                  <CardHeader className="pb-2 pt-4 px-5">
+                  <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
                     <CardTitle className="text-sm font-semibold">Rate Breakdown</CardTitle>
+                    <HelpBtn id="rate-summary" />
                   </CardHeader>
+                  <HelpPanel id="rate-summary" title="Rate Breakdown">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Materials</b> = Cement + CA + FA + Admix + Steel ₹/m³ (from BBS)</li>
+                <li><b>Plant</b> = Batching + Placement; <b>Formwork</b> = Shuttering + Staging; <b>Curing</b> = water + compound</li>
+                <li><b>Wastage</b> = sand bulkage + cement waste + steel cutting + formwork damage (from BBS & Wastage tab toggles)</li>
+                <li>Overhead applied to sum of all direct costs; Margin applied to (Direct + Overhead)</li>
+                <li><b>Total ₹/m³</b> is your base cost; "Total w/ Esc" adds escalation provision</li>
+                <li><b>BOQ Margin</b> = (Contract rate − Total w/ Esc) ÷ Contract rate × 100. Green ≥10%, Amber 5-10%, Red &lt;5%</li>
+                </ul>
+              </HelpPanel>
                   <CardContent className="px-5 pb-5">
                     <div className="space-y-2">
                       {totalRow.map((item) => (
@@ -1513,14 +1624,27 @@ export default function ConcreteCalculator() {
             {/* BBS Table */}
             <Card>
               <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Bar Bending Schedule (BBS)</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape</p>
+                <div className="flex items-center gap-1">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Bar Bending Schedule (BBS)</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape</p>
+                  </div>
+                  <HelpBtn id="bbs" />
                 </div>
                 <Button size="sm" variant="outline" onClick={addBBSRow} className="h-7 text-xs" data-testid="btn-add-bbs">
                   <Plus className="w-3 h-3 mr-1" /> Add Bar
                 </Button>
               </CardHeader>
+              <HelpPanel id="bbs" title="Bar Bending Schedule">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Bar Mark</b> — your label (e.g. M1, S1); <b>Dia</b> — nominal diameter in mm</li>
+                <li><b>Shape</b> — determines hook allowance: Straight=0, U-bar=2×9d, L-bar=1×9d, Ring/Stirrup=2×9d+10d</li>
+                <li><b>Count</b> — number of bars; <b>Cut Length (m)</b> — drawn/measured length before bends (hooks auto-added)</li>
+                <li><b>Overlap N</b> — splice = N × dia. Default 50 per IS:456. Enter 0 if no splice is needed</li>
+                <li><b>Weight (kg)</b> = (Dia² ÷ 162) × Total length × Count — IS standard formula</li>
+                <li>Steel rates ₹/MT are editable per diameter. Total steel cost feeds back to Rate Summary as steel ₹/m³ = Total cost ÷ Volume m³</li>
+                </ul>
+              </HelpPanel>
               <CardContent className="px-5 pb-5">
                 {s.bbsRows.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No bars added yet. Click "Add Bar".</p>
@@ -1637,9 +1761,20 @@ export default function ConcreteCalculator() {
 
             {/* Wastage & Risk */}
             <Card>
-              <CardHeader className="pb-3 pt-4 px-5">
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
                 <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Wastage & Risk Allowances</CardTitle>
+                <HelpBtn id="wastage" />
               </CardHeader>
+              <HelpPanel id="wastage" title="Wastage & Risk Allowances">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Sand Bulkage</b> — auto-derived from Section ③ bulkage %; only applies to natural sand (no separate input needed)</li>
+                <li><b>Cement Wastage %</b> — extra cost for site spillage/over-ordering. Default 2%. Applied to cement ₹/m³</li>
+                <li><b>Steel Cutting Waste %</b> — off-cut losses. Default 4%. Applied to BBS steel ₹/m³</li>
+                <li><b>Formwork Early Damage</b> — reduces effective reuse cycles by 10%, increasing shuttering ₹/m³</li>
+                <li><b>Curing Water Loss</b> — evaporation adjustment. Applied as % of water curing ₹/m³</li>
+                <li>Toggle each risk on or off. All wastage amounts are summed into the Wastage row of Rate Summary</li>
+                </ul>
+              </HelpPanel>
               <CardContent className="px-5 pb-5">
                 <div className="space-y-3">
                   {[
@@ -1728,10 +1863,23 @@ export default function ConcreteCalculator() {
 
             {/* Structure Dimensions */}
             <Card>
-              <CardHeader className="pb-3 pt-4 px-5">
-                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Structure Dimensions</CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">Dimensions drive volume calculations below. Structure type is set in ① Project Info (Calculator tab).</p>
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Structure Dimensions</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Dimensions drive volume calculations below. Structure type is set in ① Project Info (Calculator tab).</p>
+                </div>
+                <HelpBtn id="qto-boq" />
               </CardHeader>
+              <HelpPanel id="qto-boq" title="QTO & BOQ">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li><b>Structure Dimensions</b> — wall thickness, slab thickness, clear span (all in mm); drives all QTO formulas</li>
+                <li><b>Height Zones</b> — each zone has a wall height and road length. Total drain length = Σ zone lengths</li>
+                <li><b>Volume Summary</b> — shows walls/invert/top slab/PCC per zone. "Apply to Calculator" sets Section ① total volume</li>
+                <li><b>Per-Metre Rate Card</b> — RCC cost ÷ road length. Enter offered rates per zone to see margin per linear metre</li>
+                <li><b>BOQ Estimator</b> — "Load Standard Drain BOQ" auto-generates 9-item BOQ from QTO volumes. Import Excel or Add Item manually</li>
+                <li><b>Contract Profitability</b> — compares your cost vs contractor offered rate per item. Green ≥10%, Amber 5-10%, Red &lt;5%</li>
+                </ul>
+              </HelpPanel>
               <CardContent className="px-5 pb-5">
                 {isDrainType && (
                   <div className="space-y-5">
@@ -2406,9 +2554,21 @@ export default function ConcreteCalculator() {
 
                 {/* Variables table */}
                 <Card>
-                  <CardHeader className="pb-2 pt-4 px-5">
+                  <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
                     <CardTitle className="text-sm font-semibold">Sensitivity Variables (ranked by 10% impact)</CardTitle>
+                    <HelpBtn id="price-impact" />
                   </CardHeader>
+                  <HelpPanel id="price-impact" title="Price Impact">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li>Variables are ranked by their ₹/m³ impact if each rate changes by 10% — highest impact at the top</li>
+                <li><b>New Rate</b> — enter a new absolute rate in the shown unit (₹/bag, ₹/MT, ₹/day, etc.). Leave blank for no change</li>
+                <li><b>Base column</b> — current rate from the calculator for reference</li>
+                <li><b>Delta ₹/m³</b> — how much the total cost changes if you set that rate. Positive = cost increases</li>
+                <li>Impact banner updates live showing revised total ₹/m³ and BOQ margin at the entered rates</li>
+                <li>"Save as Scenario" captures the current rate set as a named scenario for the Compare tab</li>
+                <li>"Reset All" clears all entered rates back to the base values from the calculator</li>
+                </ul>
+              </HelpPanel>
                   <CardContent className="px-5 pb-5">
                     <div className="space-y-2">
                       {PRICE_VARIABLES.map((v, rank) => {
@@ -2517,7 +2677,10 @@ export default function ConcreteCalculator() {
             <TabsContent value="compare">
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">Scenario Comparison</CardTitle>
+                  <div className="flex items-center">
+                    <CardTitle className="text-sm font-semibold">Scenario Comparison</CardTitle>
+                    <HelpBtn id="compare" />
+                  </div>
                   <div className="flex items-center gap-2">
                     {!addingScenario && (s.scenarios || []).length < MAX_SCENARIOS ? (
                       <Button size="sm" variant="outline" onClick={() => setAddingScenario(true)} data-testid="btn-compare-add-scenario">
@@ -2768,9 +2931,20 @@ export default function ConcreteCalculator() {
 
                     {/* Location table */}
                     <Card>
-                      <CardHeader className="pb-2 pt-4 px-5">
+                      <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
                         <CardTitle className="text-sm font-semibold">Location Cost Breakdown</CardTitle>
+                        <HelpBtn id="rate-blender" />
                       </CardHeader>
+                      <HelpPanel id="rate-blender" title="Rate Blender">
+                <ul className="space-y-1.5 list-disc list-outside ml-3">
+                <li>Add location variants via <b>Calculator tab → Location Variants card</b> (between Raw Materials and Batching)</li>
+                <li>Each variant overrides CA and FA sourcing rates + lead km for that stretch of road</li>
+                <li><b>Length (m)</b> is the weight: Blended cost = Σ(Location cost × Length) ÷ Total length</li>
+                <li>Min/Max range shows best and worst-case sourcing scenarios across all locations</li>
+                <li><b>Quote Rate Builder</b> — enter a markup % to compute a quoted rate. BOQ Margin shows vs your contract rate</li>
+                <li>Tip: Use this when the same structure runs through zones with different quarry distances</li>
+                </ul>
+              </HelpPanel>
                       <CardContent className="px-5 pb-5">
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm border-collapse">

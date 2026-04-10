@@ -202,3 +202,10 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* ── Help panels: hidden in print/PDF output ── */
+@media print {
+  .help-panel {
+    display: none !important;
+  }
+}
