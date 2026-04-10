@@ -706,6 +706,13 @@ export default function ConcreteCalculator() {
     return s.pettyLabour.rateValue / crossSectionM2;
   }, [s.pettyLabour, crossSectionM2]);
 
+  // Normalize client rate to ₹/m³ regardless of per_m3 / per_rm mode
+  // Used by ALL margin computations so they stay consistent with contractRateMode
+  const effectiveClientRatePerM3 = useMemo(() => {
+    if (s.contractRateMode === "per_rm" && crossSectionM2 > 0) return s.contractRate / crossSectionM2;
+    return s.contractRate;
+  }, [s.contractRate, s.contractRateMode, crossSectionM2]);
+
   // Main cost calculation
   const costs = useMemo(() => computeCosts(s, steelCostPerM3, undefined, undefined, pettyLabourRatePerM3), [s, steelCostPerM3, pettyLabourRatePerM3]);
 
@@ -1379,7 +1386,7 @@ export default function ConcreteCalculator() {
                 {(s.locationVariants ?? []).length > 0 && (
                   <CardContent className="px-5 pb-5 space-y-4">
                     {(s.locationVariants ?? []).map((loc) => {
-                      const locCosts = computeCosts(s, steelCostPerM3, loc.caSources, loc.faOverride);
+                      const locCosts = computeCosts(s, steelCostPerM3, loc.caSources, loc.faOverride, pettyLabourRatePerM3);
                       const totalLen = (s.locationVariants ?? []).reduce((sum, l) => sum + l.lengthM, 0);
                       const wt = totalLen > 0 ? (loc.lengthM / totalLen * 100).toFixed(1) : "0.0";
                       return (
@@ -3293,8 +3300,8 @@ export default function ConcreteCalculator() {
                       <div className="text-right">
                         {/* BOQ Margin impact */}
                         {(() => {
-                          const baseMargin = ((s.contractRate - costs.totalWithEsc) / s.contractRate) * 100;
-                          const revisedMargin = ((s.contractRate - revisedCosts.totalWithEsc) / s.contractRate) * 100;
+                          const baseMargin = ((effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3) * 100;
+                          const revisedMargin = ((effectiveClientRatePerM3 - revisedCosts.totalWithEsc) / effectiveClientRatePerM3) * 100;
                           const color = revisedMargin >= 10 ? "text-green-600" : revisedMargin >= 5 ? "text-amber-600" : "text-red-600";
                           return (
                             <div>
@@ -3414,9 +3421,9 @@ export default function ConcreteCalculator() {
                 {/* BOQ Margin Impact cards */}
                 <div className="grid grid-cols-3 gap-4">
                   {[
-                    { label: "Contract Rate", value: fmtR(s.contractRate) + "/m³", sub: "Contractor's offered rate", color: "bg-blue-50 border-blue-200 text-blue-800" },
-                    { label: "Base BOQ Margin", value: `${((s.contractRate - costs.totalWithEsc) / s.contractRate * 100).toFixed(1)}%`, sub: `Base cost: ${fmtR(costs.totalWithEsc)}/m³`, color: (() => { const m = (s.contractRate - costs.totalWithEsc) / s.contractRate * 100; return m >= 10 ? "bg-green-50 border-green-200 text-green-800" : m >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"; })() },
-                    { label: "Revised BOQ Margin", value: `${((s.contractRate - revisedCosts.totalWithEsc) / s.contractRate * 100).toFixed(1)}%`, sub: `Revised cost: ${fmtR(revisedCosts.totalWithEsc)}/m³`, color: (() => { const m = (s.contractRate - revisedCosts.totalWithEsc) / s.contractRate * 100; return m >= 10 ? "bg-green-50 border-green-200 text-green-800" : m >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"; })() },
+                    { label: "Client's Rate", value: fmtR(effectiveClientRatePerM3) + "/m³", sub: "Normalized to ₹/m³", color: "bg-blue-50 border-blue-200 text-blue-800" },
+                    { label: "Base BOQ Margin", value: `${((effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3 * 100).toFixed(1)}%`, sub: `Base cost: ${fmtR(costs.totalWithEsc)}/m³`, color: (() => { const m = (effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3 * 100; return m >= 10 ? "bg-green-50 border-green-200 text-green-800" : m >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"; })() },
+                    { label: "Revised BOQ Margin", value: `${((effectiveClientRatePerM3 - revisedCosts.totalWithEsc) / effectiveClientRatePerM3 * 100).toFixed(1)}%`, sub: `Revised cost: ${fmtR(revisedCosts.totalWithEsc)}/m³`, color: (() => { const m = (effectiveClientRatePerM3 - revisedCosts.totalWithEsc) / effectiveClientRatePerM3 * 100; return m >= 10 ? "bg-green-50 border-green-200 text-green-800" : m >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"; })() },
                   ].map((card) => (
                     <Card key={card.label} className={`border ${card.color}`}>
                       <CardContent className="py-4 px-5 text-center">
@@ -3574,15 +3581,15 @@ export default function ConcreteCalculator() {
                             <td className="px-3 py-2.5 text-sm font-semibold">BOQ Margin %</td>
                             <td className="px-3 py-2.5 text-right">
                               {(() => {
-                                const m = ((s.contractRate - costs.totalWithEsc) / s.contractRate) * 100;
+                                const m = ((effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3) * 100;
                                 const cls = m >= 10 ? "bg-green-100 text-green-700 border-green-300" : m >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
                                 return <Badge variant="outline" className={`text-xs font-bold ${cls}`}>{m.toFixed(1)}%</Badge>;
                               })()}
                             </td>
                             {(s.scenarios || []).map((sc) => {
                               const scCosts = computeScenarioCosts(sc);
-                              const m = ((s.contractRate - scCosts.totalWithEsc) / s.contractRate) * 100;
-                              const baseM = ((s.contractRate - costs.totalWithEsc) / s.contractRate) * 100;
+                              const m = ((effectiveClientRatePerM3 - scCosts.totalWithEsc) / effectiveClientRatePerM3) * 100;
+                              const baseM = ((effectiveClientRatePerM3 - costs.totalWithEsc) / effectiveClientRatePerM3) * 100;
                               const pp = m - baseM;
                               const cls = m >= 10 ? "bg-green-100 text-green-700 border-green-300" : m >= 5 ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-red-100 text-red-700 border-red-300";
                               return (
@@ -3603,7 +3610,7 @@ export default function ConcreteCalculator() {
                         {(s.scenarios || []).map((sc) => {
                           const scCosts = computeScenarioCosts(sc);
                           const savings = costs.totalWithEsc - scCosts.totalWithEsc;
-                          const margin = ((s.contractRate - scCosts.totalWithEsc) / s.contractRate) * 100;
+                          const margin = ((effectiveClientRatePerM3 - scCosts.totalWithEsc) / effectiveClientRatePerM3) * 100;
                           const isBetter = savings > 0;
                           const rateChanges = sc.rates ? PRICE_VARIABLES.filter(v => {
                             const r = sc.rates![v.key];
@@ -3652,15 +3659,15 @@ export default function ConcreteCalculator() {
                 const totalLen = locs.reduce((sum, l) => sum + l.lengthM, 0);
                 const locCalcs = locs.map(loc => ({
                   loc,
-                  costs: computeCosts(s, steelCostPerM3, loc.caSources, loc.faOverride),
+                  costs: computeCosts(s, steelCostPerM3, loc.caSources, loc.faOverride, pettyLabourRatePerM3),
                   weight: totalLen > 0 ? loc.lengthM / totalLen : 0,
                 }));
                 const blendedCost = locCalcs.reduce((sum, lc) => sum + lc.costs.totalWithEsc * lc.weight, 0);
                 const minCost = Math.min(...locCalcs.map(lc => lc.costs.totalWithEsc));
                 const maxCost = Math.max(...locCalcs.map(lc => lc.costs.totalWithEsc));
                 const quotedRate = blendedCost * (1 + (s.blendedMarkupPct ?? 0) / 100);
-                const blendedMargin = s.contractRate > 0 ? ((s.contractRate - blendedCost) / s.contractRate) * 100 : 0;
-                const quotedMargin = s.contractRate > 0 ? ((s.contractRate - quotedRate) / s.contractRate) * 100 : 0;
+                const blendedMargin = effectiveClientRatePerM3 > 0 ? ((effectiveClientRatePerM3 - blendedCost) / effectiveClientRatePerM3) * 100 : 0;
+                const quotedMargin = effectiveClientRatePerM3 > 0 ? ((effectiveClientRatePerM3 - quotedRate) / effectiveClientRatePerM3) * 100 : 0;
                 const marginColor = (m: number) => m >= 10 ? "text-green-600" : m >= 5 ? "text-amber-600" : "text-red-600";
                 return (
                   <div className="space-y-4">
@@ -3728,7 +3735,7 @@ export default function ConcreteCalculator() {
                             </thead>
                             <tbody>
                               {locCalcs.map(({ loc, costs: lc, weight }) => {
-                                const margin = s.contractRate > 0 ? ((s.contractRate - lc.totalWithEsc) / s.contractRate) * 100 : 0;
+                                const margin = effectiveClientRatePerM3 > 0 ? ((effectiveClientRatePerM3 - lc.totalWithEsc) / effectiveClientRatePerM3) * 100 : 0;
                                 const contribution = lc.totalWithEsc * weight;
                                 return (
                                   <tr key={loc.id} className="border-t border-border/30 hover:bg-muted/10">
