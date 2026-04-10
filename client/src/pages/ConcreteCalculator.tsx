@@ -581,7 +581,9 @@ export default function ConcreteCalculator() {
   const canEdit = role === "admin";
 
   const [s, setS] = useState<CalcState>(loadState);
-  const [activeMainTab, setActiveMainTab] = useState(() => localStorage.getItem("cc_active_tab") ?? "calculator");
+  const [activeMainTab, setActiveMainTab] = useState(() => {
+    try { return localStorage.getItem("cc_active_tab") ?? "calculator"; } catch { return "calculator"; }
+  });
   const [activeAnalysisTab, setActiveAnalysisTab] = useState("price-impact");
   const [savedEstimateId, setSavedEstimateId] = useState<number | null>(() => {
     // Support ?estimateId= query param
@@ -1110,7 +1112,7 @@ export default function ConcreteCalculator() {
       </Card>
 
       {/* ── Main tabs ── */}
-      <Tabs value={activeMainTab} onValueChange={(v) => { setActiveMainTab(v); localStorage.setItem("cc_active_tab", v); }}>
+      <Tabs value={activeMainTab} onValueChange={(v) => { setActiveMainTab(v); try { localStorage.setItem("cc_active_tab", v); } catch {} }}>
         <TabsList className="mb-4">
           <TabsTrigger value="calculator" data-testid="tab-calculator">Calculator</TabsTrigger>
           <TabsTrigger value="bbs" data-testid="tab-bbs">BBS & Wastage</TabsTrigger>
