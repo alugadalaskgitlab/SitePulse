@@ -1284,6 +1284,7 @@ export default function ConcreteCalculator() {
                                     step="any"
                                     min={0}
                                     value={tab.purchaseRate}
+                                    onFocus={(e) => e.target.select()}
                                     onChange={(e) => { const tabs = [...s.caTabs]; tabs[i] = { ...tab, purchaseRate: parseFloat(e.target.value) || 0 }; update({ caTabs: tabs }); }}
                                     className="h-9 text-sm flex-1 min-w-0"
                                     data-testid={`input-ca-rate-${i}`}
@@ -1426,6 +1427,7 @@ export default function ConcreteCalculator() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <Label className="text-sm font-medium text-slate-700 whitespace-nowrap">Length (m)</Label>
                               <Input type="number" step="100" min={1} value={loc.lengthM}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, lengthM: parseFloat(e.target.value) || 1 } : l) })}
                                 className="h-8 w-28 text-sm" data-testid={`input-loc-length-${loc.id}`} />
                             </div>
@@ -2245,6 +2247,7 @@ export default function ConcreteCalculator() {
                               <Input
                                 type="number"
                                 value={s.steelRates[key]}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => update({ steelRates: { ...s.steelRates, [key]: parseFloat(e.target.value) || 0 } })}
                                 className="h-8 text-xs"
                                 data-testid={`input-steel-rate-${d}`}
@@ -2336,6 +2339,7 @@ export default function ConcreteCalculator() {
                             <Input
                               type="number"
                               value={item.pctField.val}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => item.pctField!.set(parseFloat(e.target.value) || 0)}
                               className="h-6 w-16 text-xs"
                               min={0}
@@ -2448,7 +2452,7 @@ export default function ConcreteCalculator() {
                           const matCost = computeMaterialCostOnly(s.qto.elementGrades?.[key] ?? (key === "pcc" ? "M15" : "M25"), s);
                           return (
                             <div key={key} className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded border border-border/50 px-2 py-1.5">
-                              <span className="text-xs text-muted-foreground w-16">{labels[key]}</span>
+                              <span className="text-sm text-slate-700 font-medium w-16">{labels[key]}</span>
                               <Select
                                 value={s.qto.elementGrades?.[key] ?? (key === "pcc" ? "M15" : "M25")}
                                 onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), [key]: v } })}
@@ -2775,7 +2779,7 @@ export default function ConcreteCalculator() {
                         <div key={z.id} className="border rounded-xl p-4 space-y-3 hover:shadow-sm transition-shadow">
                           <div>
                             <p className="font-semibold text-sm">{z.label}</p>
-                            <p className="text-xs text-muted-foreground">H = {z.height} mm · L = {z.length} m</p>
+                            <p className="text-sm text-slate-700 font-medium">H = {z.height} mm · L = {z.length} m</p>
                           </div>
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between">
@@ -2812,13 +2816,14 @@ export default function ConcreteCalculator() {
                             </div>
                           </div>
                           <div>
-                            <Label className="text-xs text-muted-foreground">Offered Rate (₹/m run)</Label>
+                            <Label className="text-sm font-medium text-slate-700">Offered Rate (₹/m run)</Label>
                             <Input
                               type="number"
                               value={offeredRate || ""}
                               placeholder="Enter offered rate"
+                              onFocus={(e) => e.target.select()}
                               onChange={e => updateQto({ zoneOfferedRates: { ...s.qto.zoneOfferedRates, [z.id]: parseFloat(e.target.value) || 0 } })}
-                              className="h-7 text-xs mt-1"
+                              className="h-7 text-sm mt-1"
                               data-testid={`input-offered-rate-${z.id}`}
                             />
                             {margin !== null && (
@@ -2853,7 +2858,7 @@ export default function ConcreteCalculator() {
                       <div className="border rounded-xl p-4 space-y-3 max-w-sm">
                         <div>
                           <p className="font-semibold text-sm">{s.structureType}</p>
-                          <p className="text-xs text-muted-foreground">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
+                          <p className="text-sm text-slate-700 font-medium">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
                         </div>
                         <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
@@ -2866,13 +2871,14 @@ export default function ConcreteCalculator() {
                           </div>
                         </div>
                         <div>
-                          <Label className="text-xs text-muted-foreground">Offered Rate (₹/m run)</Label>
+                          <Label className="text-sm font-medium text-slate-700">Offered Rate (₹/m run)</Label>
                           <Input
                             type="number"
                             value={offeredRate || ""}
                             placeholder="Enter offered rate"
+                            onFocus={(e) => e.target.select()}
                             onChange={e => updateQto({ bwOfferedRatePerM: parseFloat(e.target.value) || 0 })}
-                            className="h-7 text-xs mt-1"
+                            className="h-7 text-sm mt-1"
                             data-testid="input-bw-offered-rate"
                           />
                           {margin !== null && (
@@ -2925,9 +2931,9 @@ export default function ConcreteCalculator() {
                         const lhRm = lhSp > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / lhSp : 0;
                         return lhCount > 0 ? (
                           <div className="flex flex-col justify-center bg-slate-50 dark:bg-slate-800 rounded-lg border px-3 py-2">
-                            <p className="text-xs text-muted-foreground">Computed Count</p>
+                            <p className="text-sm text-slate-600">Computed Count</p>
                             <p className="font-bold text-sm">{lhCount} nos</p>
-                            <p className="text-xs text-muted-foreground">{fmtR(lhRm)}/RM</p>
+                            <p className="text-sm font-semibold text-slate-700">{fmtR(lhRm)}/RM</p>
                           </div>
                         ) : null;
                       })()}
@@ -3343,7 +3349,7 @@ export default function ConcreteCalculator() {
                       <div>
                         <p className="text-sm font-semibold text-slate-700 mb-1">Combined Impact</p>
                         <p className="text-2xl font-bold">{fmtR(revisedCosts.totalWithEsc)}/m³</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-sm text-slate-700">
                           Base: {fmtR(costs.totalWithEsc)}/m³ ·
                           Delta: {revisedCosts.totalWithEsc > costs.totalWithEsc ? "+" : ""}
                           {fmtR(revisedCosts.totalWithEsc - costs.totalWithEsc)}/m³
@@ -3357,9 +3363,9 @@ export default function ConcreteCalculator() {
                           const color = revisedMargin >= 10 ? "text-green-600" : revisedMargin >= 5 ? "text-amber-600" : "text-red-600";
                           return (
                             <div>
-                              <p className="text-xs text-muted-foreground">BOQ Margin</p>
+                              <p className="text-sm font-semibold text-slate-700">BOQ Margin</p>
                               <p className={`text-lg font-bold ${color}`}>{revisedMargin.toFixed(1)}%</p>
-                              <p className="text-xs text-muted-foreground">Base: {baseMargin.toFixed(1)}%</p>
+                              <p className="text-sm text-slate-600">Base: {baseMargin.toFixed(1)}%</p>
                             </div>
                           );
                         })()}
@@ -3406,6 +3412,7 @@ export default function ConcreteCalculator() {
                                 type="number"
                                 value={priceImpactRates[v.key] ?? ""}
                                 placeholder={String(v.baseValue)}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => {
                                   const newRate = parseFloat(e.target.value);
                                   if (!isNaN(newRate)) handlePiRateChange(v.key, newRate);
@@ -3670,11 +3677,11 @@ export default function ConcreteCalculator() {
                           }) : [];
                           return (
                             <div key={sc.id} className={`p-4 rounded-xl border ${isBetter ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
-                              <p className="text-xs font-semibold text-muted-foreground mb-1">{sc.name}</p>
+                              <p className="text-sm font-semibold text-slate-700 mb-1">{sc.name}</p>
                               <p className={`text-lg font-bold ${isBetter ? "text-green-700" : "text-red-700"}`}>
                                 {isBetter ? "Saves" : "Costs"} {fmtR(Math.abs(savings))}/m³
                               </p>
-                              <p className="text-xs text-muted-foreground mt-1">BOQ Margin: {margin.toFixed(1)}%</p>
+                              <p className="text-sm text-slate-700 font-medium mt-1">BOQ Margin: {margin.toFixed(1)}%</p>
                               {rateChanges.length > 0 && (
                                 <div className="mt-2 pt-2 border-t border-current/10 space-y-0.5">
                                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Rate Changes</p>
@@ -3727,28 +3734,28 @@ export default function ConcreteCalculator() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <Card className="border-violet-200 bg-violet-50">
                         <CardContent className="py-4 px-4 text-center">
-                          <p className="text-xs text-muted-foreground font-semibold mb-1">Blended Cost</p>
+                          <p className="text-sm font-semibold text-slate-700 mb-1">Blended Cost</p>
                           <p className="text-xl font-bold text-violet-800">{fmtR(blendedCost)}/m³</p>
-                          <p className="text-xs text-muted-foreground mt-1">{locs.length} locations · {(totalLen / 1000).toFixed(1)} km total</p>
+                          <p className="text-sm text-slate-600 mt-1">{locs.length} locations · {(totalLen / 1000).toFixed(1)} km total</p>
                         </CardContent>
                       </Card>
                       <Card className="border-slate-200">
                         <CardContent className="py-4 px-4 text-center">
-                          <p className="text-xs text-muted-foreground font-semibold mb-1">Range</p>
+                          <p className="text-sm font-semibold text-slate-700 mb-1">Range</p>
                           <p className="text-sm font-bold">{fmtR(minCost)} – {fmtR(maxCost)}/m³</p>
-                          <p className="text-xs text-muted-foreground mt-1">Spread: {fmtR(maxCost - minCost)}/m³</p>
+                          <p className="text-sm text-slate-600 mt-1">Spread: {fmtR(maxCost - minCost)}/m³</p>
                         </CardContent>
                       </Card>
                       <Card className={`border-2 ${blendedMargin >= 10 ? "border-green-200 bg-green-50" : blendedMargin >= 5 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}>
                         <CardContent className="py-4 px-4 text-center">
-                          <p className="text-xs text-muted-foreground font-semibold mb-1">Blended BOQ Margin</p>
+                          <p className="text-sm font-semibold text-slate-700 mb-1">Blended BOQ Margin</p>
                           <p className={`text-xl font-bold ${marginColor(blendedMargin)}`}>{blendedMargin.toFixed(1)}%</p>
-                          <p className="text-xs text-muted-foreground mt-1">Contract: {fmtR(s.contractRate)}/m³</p>
+                          <p className="text-sm text-slate-600 mt-1">Contract: {fmtR(s.contractRate)}/m³</p>
                         </CardContent>
                       </Card>
                       <Card className="border-slate-200">
                         <CardContent className="py-4 px-4 text-center">
-                          <p className="text-xs text-muted-foreground font-semibold mb-1">Quoted Rate</p>
+                          <p className="text-sm font-semibold text-slate-700 mb-1">Quoted Rate</p>
                           <p className="text-lg font-bold">{fmtR(quotedRate)}/m³</p>
                           <p className={`text-xs mt-1 font-semibold ${marginColor(quotedMargin)}`}>Margin: {quotedMargin.toFixed(1)}%</p>
                         </CardContent>
@@ -3775,7 +3782,7 @@ export default function ConcreteCalculator() {
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm border-collapse">
                             <thead>
-                              <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                              <tr className="bg-muted/40 text-slate-600 text-xs uppercase tracking-wide">
                                 <th className="text-left px-3 py-2.5 font-semibold">Location</th>
                                 <th className="text-right px-3 py-2.5">Length (m)</th>
                                 <th className="text-right px-3 py-2.5">Weight %</th>
@@ -3831,16 +3838,16 @@ export default function ConcreteCalculator() {
                       <CardContent className="px-5 pb-5">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 items-end">
                           <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Blended Cost /m³</Label>
-                            <div className="h-8 px-3 flex items-center text-sm font-semibold text-muted-foreground bg-muted/40 rounded-md border">{fmtR(blendedCost)}</div>
+                            <Label className="text-sm font-medium text-slate-700">Blended Cost /m³</Label>
+                            <div className="h-8 px-3 flex items-center text-sm font-semibold text-slate-700 bg-muted/40 rounded-md border">{fmtR(blendedCost)}</div>
                           </div>
                           {numInput("Markup %", s.blendedMarkupPct ?? 0, (v) => update({ blendedMarkupPct: v }), { unit: "%", step: 0.5, testId: "input-blended-markup" })}
                           <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Quoted Rate /m³</Label>
+                            <Label className="text-sm font-medium text-slate-700">Quoted Rate /m³</Label>
                             <div className={`h-8 px-3 flex items-center text-sm font-bold rounded-md border ${quotedMargin >= 10 ? "bg-green-50 border-green-200 text-green-800" : quotedMargin >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"}`}>{fmtR(quotedRate)}</div>
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">BOQ Margin at Quote</Label>
+                            <Label className="text-sm font-medium text-slate-700">BOQ Margin at Quote</Label>
                             <div className={`h-8 px-3 flex items-center text-sm font-bold rounded-md border ${quotedMargin >= 10 ? "bg-green-50 border-green-200 text-green-800" : quotedMargin >= 5 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"}`}>{quotedMargin.toFixed(1)}%</div>
                           </div>
                         </div>
