@@ -1350,7 +1350,7 @@ export default function ConcreteCalculator() {
                                 ))}
                               </SelectContent>
                             </Select>
-                            <Input placeholder="Model" value={row.model} onChange={(e) => updateBatchingRow(row.id, { model: e.target.value })} className="h-7 text-xs w-32" />
+                            <Input placeholder="Model" value={row.model} onChange={(e) => updateBatchingRow(row.id, { model: e.target.value.toUpperCase() })} className="h-7 text-xs w-32 uppercase" />
                             <div className="flex items-center gap-2">
                               <button
                                 className={`text-xs px-2 py-1 rounded border transition-colors ${row.mode === "own" ? "bg-blue-100 text-blue-700 border-blue-300" : "text-muted-foreground border-border"}`}
@@ -1965,7 +1965,7 @@ export default function ConcreteCalculator() {
                             {s.qto.heightZones.map((z, zi) => (
                               <tr key={z.id} className="border-t border-border/50" data-testid={`qto-zone-row-${z.id}`}>
                                 <td className="p-2">
-                                  <Input value={z.label} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, label: e.target.value } : hz) })} className="h-7 text-xs w-28" />
+                                  <Input value={z.label} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, label: e.target.value.toUpperCase() } : hz) })} className="h-7 text-xs w-28 uppercase" />
                                 </td>
                                 <td className="p-2 text-right">
                                   <Input type="number" value={z.height} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, height: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-xs w-24 text-right" />
@@ -2158,30 +2158,30 @@ export default function ConcreteCalculator() {
                             <p className="font-semibold text-sm">{z.label}</p>
                             <p className="text-xs text-muted-foreground">H = {z.height} mm · L = {z.length} m</p>
                           </div>
-                          <div className="space-y-1 text-xs">
+                          <div className="space-y-1.5 text-sm">
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">RCC {s.grade} cost</span>
+                              <span className="text-slate-600">RCC {s.grade} cost</span>
                               <span className="font-medium">{fmtR(rccPerM)}/m</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">PCC M10 Bed</span>
+                              <span className="text-slate-600">PCC M10 Bed</span>
                               <span className="font-medium">{fmtR(pccPerM)}/m</span>
                             </div>
                             {gratingPerM > 0 && (
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">MS Gratings ({s.qto.gratingsSpacing}m c/c)</span>
+                                <span className="text-slate-600">MS Gratings ({s.qto.gratingsSpacing}m c/c)</span>
                                 <span className="font-medium">{fmtR(gratingPerM)}/m</span>
                               </div>
                             )}
                             {weepholePerM > 0 && (
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">Weepholes ({s.qto.weepholesSpacing}m c/c)</span>
+                                <span className="text-slate-600">Weepholes ({s.qto.weepholesSpacing}m c/c)</span>
                                 <span className="font-medium">{fmtR(weepholePerM)}/m</span>
                               </div>
                             )}
-                            <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
-                              <span>Cost ₹/m run</span>
-                              <span className="text-blue-700">{fmtR(totalPerM)}</span>
+                            <div className="flex justify-between font-bold border-t pt-2 mt-1">
+                              <span className="text-sm">Cost ₹/m run</span>
+                              <span className="text-base text-blue-700">{fmtR(totalPerM)}</span>
                             </div>
                           </div>
                           <div>
@@ -2578,8 +2578,8 @@ export default function ConcreteCalculator() {
                   const rmPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
                   const cls = rmPct >= 10 ? "border-green-200 bg-green-50" : rmPct >= 5 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50";
                   const textCls = rmPct >= 10 ? "text-green-700" : rmPct >= 5 ? "text-amber-700" : "text-red-700";
-                  return totalRev > 0 ? (
-                    <div className={`mt-4 rounded-xl border p-4 ${cls}`}>
+                  return (
+                    <div className={`mt-4 rounded-xl border p-4 ${totalRev > 0 ? cls : "border-slate-200 bg-slate-50"}`}>
                       <p className={`text-sm font-semibold mb-3 ${textCls}`}>
                         ₹ / Running Metre Summary
                         <span className="ml-2 text-xs font-normal text-slate-500">Total drain length: {totalDrainLength.toFixed(0)} m (from QTO zones)</span>
@@ -2603,7 +2603,7 @@ export default function ConcreteCalculator() {
                         </div>
                       </div>
                     </div>
-                  ) : null;
+                  );
                 })()}
               </CardContent>
             </Card>
