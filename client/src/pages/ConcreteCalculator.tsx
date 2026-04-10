@@ -1439,7 +1439,7 @@ export default function ConcreteCalculator() {
                           </div>
                           {/* CA overrides — scrollable table */}
                           <div>
-                            <p className="text-sm font-semibold text-slate-700 mb-2">CA Rates Override <span className="font-normal text-slate-500 text-xs">(proportions fixed from base mix design)</span></p>
+                            <p className="text-sm font-semibold text-slate-700 mb-2">CA Rates Override <span className="font-normal text-slate-600 dark:text-slate-400 text-xs">(proportions fixed from base mix design)</span></p>
                             <div className="overflow-x-auto">
                               <table className="w-full border-collapse text-sm" style={{ minWidth: 580 }}>
                                 <thead>
@@ -1459,7 +1459,7 @@ export default function ConcreteCalculator() {
                                     const upd = (patch: Partial<CASourceOverride>) => update({ locationVariants: (s.locationVariants ?? []).map(l => l.id === loc.id ? { ...l, caSources: l.caSources.map((c, j) => j === i ? { ...c, ...patch } : c) } : l) });
                                     return (
                                       <tr key={i} className="border-t border-violet-100">
-                                        <td className="p-2 font-semibold text-slate-700 whitespace-nowrap">{labels[i]} <span className="font-normal text-slate-500 text-xs">({s.caTabs[i]?.proportion ?? 0}%)</span></td>
+                                        <td className="p-2 font-semibold text-slate-700 whitespace-nowrap">{labels[i]} <span className="font-normal text-slate-600 dark:text-slate-400 text-xs">({s.caTabs[i]?.proportion ?? 0}%)</span></td>
                                         <td className="p-2"><Input type="number" step="any" min={0} value={src.purchaseRate}
                                           onFocus={(e) => e.target.select()}
                                           onChange={(e) => upd({ purchaseRate: parseFloat(e.target.value) || 0 })}
@@ -1728,7 +1728,7 @@ export default function ConcreteCalculator() {
                           </div>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-muted-foreground mb-1.5">Contractor's scope includes:</p>
+                          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Contractor's scope includes:</p>
                           <div className="flex flex-col gap-1.5">
                             {([
                               { key: "contractorFormwork" as const, label: "Formwork & Staging (bypasses ⑥ cost)" },
@@ -2032,7 +2032,7 @@ export default function ConcreteCalculator() {
                           <>
                             {numInput(`Client's rate (${unit})`, s.contractRate, (v) => update({ contractRate: v }), { unit })}
                             {rmMode && (
-                              <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+                              <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 space-y-0.5">
                                 {ourCostRM !== undefined
                                   ? <>
                                       <div className="text-blue-700 font-medium">Our all-in: {fmtR(ourCostRM)}/RM{qtoAllInPerM ? " (QTO incl. PCC+earthwork)" : " (RCC only)"}</div>
@@ -2225,7 +2225,7 @@ export default function ConcreteCalculator() {
                             <td className="p-2 text-right text-xs font-semibold">
                               {bbsSummary.totalKg.toFixed(1)} kg
                               {bbsSummary.totalKg >= 100 && (
-                                <span className="ml-1 text-muted-foreground">({(bbsSummary.totalKg / 1000).toFixed(3)} MT)</span>
+                                <span className="ml-1 text-slate-600 dark:text-slate-400">({(bbsSummary.totalKg / 1000).toFixed(3)} MT)</span>
                               )}
                             </td>
                             <td></td>
@@ -2346,7 +2346,7 @@ export default function ConcreteCalculator() {
                               max={100}
                             />
                           )}
-                          {item.pctField && item.enabled && <span className="text-xs text-muted-foreground">%</span>}
+                          {item.pctField && item.enabled && <span className="text-xs text-slate-600 dark:text-slate-400">%</span>}
                         </div>
                         <p className="text-sm text-slate-600 mt-0.5">{item.desc}</p>
                       </div>
@@ -2510,7 +2510,7 @@ export default function ConcreteCalculator() {
                           <tfoot>
                             <tr className="border-t-2 border-border bg-muted/20 font-semibold text-xs">
                               <td className="p-2">Total</td>
-                              <td className="p-2 text-right text-muted-foreground">—</td>
+                              <td className="p-2 text-right text-slate-500">—</td>
                               <td className="p-2 text-right">{s.qto.heightZones.reduce((sum, z) => sum + z.length, 0).toLocaleString()} m</td>
                               <td></td>
                             </tr>
@@ -2591,9 +2591,9 @@ export default function ConcreteCalculator() {
                           <tr className="border-t border-border/30 text-orange-700 text-xs">
                             <td className="p-2 italic" colSpan={3}>Deductions</td>
                             <td className="p-2 text-right italic">−{qtoResult.deductWeephole.toFixed(3)} (weepholes)</td>
-                            <td className="p-2 text-right text-muted-foreground">—</td>
+                            <td className="p-2 text-right text-slate-500">—</td>
                             {showTopSlab && <td className="p-2 text-right italic">−{qtoResult.deductGrating.toFixed(3)} (gratings)</td>}
-                            <td className="p-2 text-right text-muted-foreground">—</td>
+                            <td className="p-2 text-right text-slate-500">—</td>
                             <td className="p-2 text-right italic">−{(qtoResult.deductWeephole + qtoResult.deductGrating).toFixed(3)}</td>
                           </tr>
                         )}
@@ -2610,31 +2610,31 @@ export default function ConcreteCalculator() {
                   </div>
                   <div className="mt-4 flex flex-wrap gap-3 text-xs">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
-                      <p className="text-muted-foreground">Total RCC</p>
+                      <p className="text-xs text-slate-600">Total RCC</p>
                       <p className="text-lg font-bold text-blue-700">{qtoResult.totalRCC.toFixed(2)} m³</p>
                     </div>
                     <div className="bg-stone-50 border border-stone-200 rounded-lg px-4 py-2">
-                      <p className="text-muted-foreground">Total PCC</p>
+                      <p className="text-xs text-slate-600">Total PCC</p>
                       <p className="text-lg font-bold">{qtoResult.totalPCC.toFixed(2)} m³</p>
                     </div>
                     <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2">
-                      <p className="text-muted-foreground">Excavation (approx)</p>
+                      <p className="text-xs text-slate-600">Excavation (approx)</p>
                       <p className="text-lg font-bold text-orange-700">{qtoResult.excavVolume.toFixed(2)} m³</p>
-                      <p className="text-muted-foreground">{qtoResult.excavWidth.toFixed(2)}m wide × avg {qtoResult.excavDepth.toFixed(2)}m deep</p>
+                      <p className="text-xs text-slate-600">{qtoResult.excavWidth.toFixed(2)}m wide × avg {qtoResult.excavDepth.toFixed(2)}m deep</p>
                     </div>
                     <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
-                      <p className="text-muted-foreground">Backfill (approx)</p>
+                      <p className="text-xs text-slate-600">Backfill (approx)</p>
                       <p className="text-lg font-bold text-green-700">{qtoResult.backfillVol.toFixed(2)} m³</p>
                     </div>
                     {qtoResult.gratingsCount > 0 && (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
-                        <p className="text-muted-foreground">Gratings</p>
+                        <p className="text-xs text-slate-600">Gratings</p>
                         <p className="text-lg font-bold">{qtoResult.gratingsCount} nos</p>
                       </div>
                     )}
                     {qtoResult.weepholesCount > 0 && (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
-                        <p className="text-muted-foreground">Weepholes</p>
+                        <p className="text-xs text-slate-600">Weepholes</p>
                         <p className="text-lg font-bold">{qtoResult.weepholesCount} nos</p>
                       </div>
                     )}
@@ -2644,7 +2644,7 @@ export default function ConcreteCalculator() {
                     How volumes are calculated
                   </button>
                   {s.qto.showFormulaRef && (
-                    <div className="mt-2 p-3 bg-muted/30 rounded-lg text-xs space-y-0.5 text-muted-foreground font-mono">
+                    <div className="mt-2 p-3 bg-muted/30 rounded-lg text-xs space-y-0.5 text-slate-600 dark:text-slate-400 font-mono">
                       <p>RCC Walls  = 2 × t × H × L  (per zone)</p>
                       <p>Invert Slab = (span + 2t) × is × L</p>
                       {showTopSlab && <p>Top Slab   = (span + 2t) × ts × L</p>}
@@ -2668,9 +2668,9 @@ export default function ConcreteCalculator() {
                 </CardHeader>
                 <CardContent className="px-5 pb-5">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                    <div className="bg-muted/30 rounded-lg p-3"><p className="text-muted-foreground">Stem (per m run)</p><p className="text-base font-bold">{bridgeQtoResult.stemVol.toFixed(3)} m³/m</p></div>
-                    <div className="bg-muted/30 rounded-lg p-3"><p className="text-muted-foreground">Base/Footing (per m)</p><p className="text-base font-bold">{bridgeQtoResult.baseVol.toFixed(3)} m³/m</p></div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3"><p className="text-muted-foreground">Total RCC (per m)</p><p className="text-base font-bold text-blue-700">{bridgeQtoResult.totalRCCperM.toFixed(3)} m³/m</p></div>
+                    <div className="bg-muted/30 rounded-lg p-3"><p className="text-xs text-slate-600">Stem (per m run)</p><p className="text-base font-bold">{bridgeQtoResult.stemVol.toFixed(3)} m³/m</p></div>
+                    <div className="bg-muted/30 rounded-lg p-3"><p className="text-xs text-slate-600">Base/Footing (per m)</p><p className="text-base font-bold">{bridgeQtoResult.baseVol.toFixed(3)} m³/m</p></div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3"><p className="text-xs text-slate-600">Total RCC (per m)</p><p className="text-base font-bold text-blue-700">{bridgeQtoResult.totalRCCperM.toFixed(3)} m³/m</p></div>
                   </div>
                 </CardContent>
               </Card>
@@ -2714,50 +2714,50 @@ export default function ConcreteCalculator() {
                     <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-3">Global Cost Components (₹/Running Metre)</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
                       <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">PCC {eq.pcc} Bed</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">PCC {eq.pcc} Bed</p>
                         <p className="font-bold text-sm">{fmtR(qtoResult.pccPerM * pccCostPerM3)}/RM</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">Invert Slab ({eq.invert})</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">Invert Slab ({eq.invert})</p>
                         <p className="font-bold text-sm">{fmtR(qtoResult.invertPerM * invertCostPerM3)}/RM</p>
                       </div>
                       {showTopSlab && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">Top Slab ({s.qto.topSlabType === "Precast" ? "Precast ₹/m²" : eq.topSlab})</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">Top Slab ({s.qto.topSlabType === "Precast" ? "Precast ₹/m²" : eq.topSlab})</p>
                         <p className="font-bold text-sm">{fmtR(qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0)}/RM</p>
                       </div>}
                       {gratingPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">MS Gratings</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">MS Gratings</p>
                         <p className="font-bold text-sm">{fmtR(gratingPerM)}/RM</p>
                       </div>}
                       {weepholePerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">Weepholes</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">Weepholes</p>
                         <p className="font-bold text-sm">{fmtR(weepholePerM)}/RM</p>
                       </div>}
                       {steelPerM > 0 && <div className="bg-yellow-50 border-yellow-200 border rounded-lg p-2.5">
-                        <p className="text-muted-foreground">HYSD Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</p>
+                        <p className="text-xs text-slate-600">HYSD Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</p>
                         <p className="font-bold text-sm text-yellow-700">{fmtR(steelPerM)}/RM</p>
                       </div>}
                       {bwPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">Binding Wire</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">Binding Wire</p>
                         <p className="font-bold text-sm">{fmtR(bwPerM)}/RM</p>
                       </div>}
                       {excavPerM > 0 && <div className="bg-orange-50 border-orange-200 border rounded-lg p-2.5">
-                        <p className="text-muted-foreground">Earthwork</p>
+                        <p className="text-xs text-slate-600">Earthwork</p>
                         <p className="font-bold text-sm text-orange-700">{fmtR(excavPerM)}/RM</p>
                       </div>}
                       {backfillPerM > 0 && <div className="bg-green-50 border-green-200 border rounded-lg p-2.5">
-                        <p className="text-muted-foreground">Backfill</p>
+                        <p className="text-xs text-slate-600">Backfill</p>
                         <p className="font-bold text-sm text-green-700">{fmtR(backfillPerM)}/RM</p>
                       </div>}
                       {lhPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground">Lifting Hooks</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">Lifting Hooks</p>
                         <p className="font-bold text-sm">{fmtR(lhPerM)}/RM</p>
                       </div>}
                     </div>
                     {/* All-in total row */}
                     <div className="mt-3 flex items-center justify-between border-t pt-3">
                       <p className="text-sm font-bold text-slate-700 dark:text-slate-300">All-in Cost</p>
-                      <p className="text-xl font-bold text-primary">{fmtR(allInPerM)} <span className="text-sm font-normal text-muted-foreground">/ Running Metre</span></p>
+                      <p className="text-xl font-bold text-primary">{fmtR(allInPerM)} <span className="text-sm font-normal text-slate-600 dark:text-slate-400">/ Running Metre</span></p>
                     </div>
                   </div>
                   {/* Per-zone cards (walls vary by zone height) */}
@@ -2862,7 +2862,7 @@ export default function ConcreteCalculator() {
                         </div>
                         <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">RCC {s.grade} cost</span>
+                            <span className="text-slate-600 dark:text-slate-400">RCC {s.grade} cost</span>
                             <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}/m</span>
                           </div>
                           <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
@@ -2983,7 +2983,7 @@ export default function ConcreteCalculator() {
                     <div className="grid grid-cols-3 gap-2">
                       {(["colDesc", "colUnit", "colQty"] as const).map((key, li) => (
                         <div key={key}>
-                          <Label className="text-xs text-muted-foreground">{["Description", "Unit", "Qty"][li]} Column</Label>
+                          <Label className="text-xs text-slate-600 dark:text-slate-400">{["Description", "Unit", "Qty"][li]} Column</Label>
                           <Select
                             value={String(xlsxPreview[key])}
                             onValueChange={v => setXlsxPreview(prev => prev ? { ...prev, [key]: parseInt(v) } : prev)}>
@@ -3120,7 +3120,7 @@ export default function ConcreteCalculator() {
                   <HelpBtn id="contract-profit" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Mode:</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Mode:</span>
                   {(["per_item", "lumpsum"] as const).map((m) => (
                     <button key={m} onClick={() => update({ profitMode: m })}
                       className={`text-xs px-3 py-1 rounded-full border transition-colors ${s.profitMode === m ? "bg-blue-600 text-white border-blue-600" : "text-muted-foreground border-border"}`}>
@@ -3288,23 +3288,23 @@ export default function ConcreteCalculator() {
                     <div className={`mt-4 rounded-xl border p-4 ${totalRev > 0 ? cls : "border-slate-200 bg-slate-50"}`}>
                       <p className={`text-sm font-semibold mb-3 ${textCls}`}>
                         ₹ / Running Metre Summary
-                        <span className="ml-2 text-xs font-normal text-slate-500">Total drain length: {totalDrainLength.toFixed(0)} m (from QTO zones)</span>
+                        <span className="ml-2 text-xs font-normal text-slate-600 dark:text-slate-400">Total drain length: {totalDrainLength.toFixed(0)} m (from QTO zones)</span>
                       </p>
                       <div className="flex flex-wrap gap-6 mb-4">
                         <div>
-                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Client's Rate</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Client's Rate</p>
                           <p className={`text-xl font-bold ${textCls}`}>{fmtR(rmRev)}<span className="text-sm font-normal">/RM</span></p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Our Cost</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Our Cost</p>
                           <p className="text-xl font-bold">{fmtR(rmCost)}<span className="text-sm font-normal">/RM</span></p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Profit</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Profit</p>
                           <p className={`text-xl font-bold ${rmProfit >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtR(rmProfit)}<span className="text-sm font-normal">/RM</span></p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Margin</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">Margin</p>
                           <p className={`text-2xl font-bold ${textCls}`}>{rmPct.toFixed(1)}%</p>
                         </div>
                       </div>
@@ -3314,8 +3314,8 @@ export default function ConcreteCalculator() {
                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                             {componentRows.map((row, i) => (
                               <div key={i} className="flex justify-between items-center bg-white/70 dark:bg-slate-800/50 rounded-lg px-2.5 py-1.5 border border-white/60 text-xs">
-                                <span className={`text-muted-foreground ${row.color}`}>{row.label}</span>
-                                <span className={`font-semibold ml-1 ${row.color}`}>{fmtR(row.val)}</span>
+                                <span className={row.color || "text-slate-700"}>{row.label}</span>
+                                <span className={`font-semibold ml-1 ${row.color || "text-slate-700"}`}>{fmtR(row.val)}</span>
                               </div>
                             ))}
                           </div>
@@ -3401,10 +3401,10 @@ export default function ConcreteCalculator() {
                         const deltaPerM3 = (v.impact * pctChange) / 100;
                         return (
                           <div key={v.key} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors">
-                            <span className="text-xs text-muted-foreground w-4 text-right">{rank + 1}</span>
+                            <span className="text-xs text-slate-500 w-4 text-right">{rank + 1}</span>
                             <div className="w-32 text-xs font-medium shrink-0">{v.label}</div>
-                            <div className="w-32 text-xs text-muted-foreground shrink-0">
-                              <span className="text-[10px] text-muted-foreground/70 block">Base</span>
+                            <div className="w-32 text-xs text-slate-600 dark:text-slate-400 shrink-0">
+                              <span className="text-[10px] text-slate-500 block">Base</span>
                               {v.key === "margin" ? `${v.baseValue.toFixed(1)}%` : `${fmtR(v.baseValue)} ${v.unit}`}
                             </div>
                             <div className="flex items-center gap-2 flex-1">
@@ -3422,12 +3422,12 @@ export default function ConcreteCalculator() {
                                 step={v.key === "margin" ? 0.5 : 1}
                                 data-testid={`pi-input-${v.key}`}
                               />
-                              <span className="text-xs text-muted-foreground shrink-0">{v.unit}</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400 shrink-0">{v.unit}</span>
                             </div>
-                            <div className={`w-24 text-right text-xs font-semibold ${deltaPerM3 > 0 ? "text-red-600" : deltaPerM3 < 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                            <div className={`w-24 text-right text-xs font-semibold ${deltaPerM3 > 0 ? "text-red-600" : deltaPerM3 < 0 ? "text-green-600" : "text-slate-500"}`}>
                               {deltaPerM3 !== 0 ? `${deltaPerM3 > 0 ? "+" : ""}${fmtR(deltaPerM3)}/m³` : "—"}
                             </div>
-                            <div className="w-20 text-right text-xs text-muted-foreground">
+                            <div className="w-20 text-right text-xs text-slate-600 dark:text-slate-400">
                               10% → {fmtR(v.impact * 0.1)}/m³
                             </div>
                           </div>
@@ -3510,7 +3510,7 @@ export default function ConcreteCalculator() {
                         <Plus className="w-3.5 h-3.5 mr-1" /> Save Current as Scenario
                       </Button>
                     ) : !addingScenario ? (
-                      <span className="text-xs text-muted-foreground border border-dashed border-muted rounded-lg px-3 py-1.5">Max 3 Scenarios</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-400 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5">Max 3 Scenarios</span>
                     ) : (
                       <div className="flex items-center gap-2">
                         <Input
@@ -3546,7 +3546,7 @@ export default function ConcreteCalculator() {
                 </HelpPanel>
                 <CardContent className="px-5 pb-5">
                   {(s.scenarios || []).length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
+                    <div className="text-center py-12 text-slate-600 dark:text-slate-400">
                       <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-40" />
                       <p className="text-sm font-medium">No scenarios yet</p>
                       <p className="text-xs mt-1">Go to Price Impact tab, adjust variables, then save as a scenario.</p>
@@ -3555,7 +3555,7 @@ export default function ConcreteCalculator() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
                         <thead>
-                          <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                          <tr className="bg-muted/40 text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wide">
                             <th className="text-left px-3 py-2.5 font-semibold">Component</th>
                             <th className="text-right px-3 py-2.5 font-semibold">Base</th>
                             {(s.scenarios || []).map((sc) => (
@@ -3654,7 +3654,7 @@ export default function ConcreteCalculator() {
                               return (
                                 <td key={sc.id} className="px-3 py-2.5 text-right">
                                   <Badge variant="outline" className={`text-xs font-bold ${cls}`}>{m.toFixed(1)}%</Badge>
-                                  <span className={`text-xs ml-1 ${pp > 0 ? "text-green-600" : pp < 0 ? "text-red-600" : "text-muted-foreground"}`}>
+                                  <span className={`text-xs ml-1 ${pp > 0 ? "text-green-600" : pp < 0 ? "text-red-600" : "text-slate-500"}`}>
                                     {pp > 0 ? "+" : ""}{pp.toFixed(1)} pp
                                   </span>
                                 </td>
@@ -3684,9 +3684,9 @@ export default function ConcreteCalculator() {
                               <p className="text-sm text-slate-700 font-medium mt-1">BOQ Margin: {margin.toFixed(1)}%</p>
                               {rateChanges.length > 0 && (
                                 <div className="mt-2 pt-2 border-t border-current/10 space-y-0.5">
-                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Rate Changes</p>
+                                  <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Rate Changes</p>
                                   {rateChanges.map(v => (
-                                    <div key={v.key} className="flex justify-between text-[10px] text-muted-foreground gap-1">
+                                    <div key={v.key} className="flex justify-between text-[10px] text-slate-600 dark:text-slate-400 gap-1">
                                       <span className="truncate">{v.label.replace(" Rate", "")}</span>
                                       <span className="shrink-0 font-medium">{v.key === "margin" ? `${v.baseValue.toFixed(1)}% → ${sc.rates![v.key].toFixed(1)}%` : `${fmtR(v.baseValue)} → ${fmtR(sc.rates![v.key])} ${v.unit}`}</span>
                                     </div>
@@ -3707,7 +3707,7 @@ export default function ConcreteCalculator() {
             <TabsContent value="rate-blender">
               {(s.locationVariants ?? []).length === 0 ? (
                 <Card>
-                  <CardContent className="py-16 text-center text-muted-foreground">
+                  <CardContent className="py-16 text-center text-slate-600 dark:text-slate-400">
                     <MapPin className="w-10 h-10 mx-auto mb-3 opacity-40" />
                     <p className="text-sm font-medium">No location variants yet</p>
                     <p className="text-xs mt-1">Go to Calculator tab → Location Variants card and add locations with different sourcing rates.</p>
@@ -3808,10 +3808,10 @@ export default function ConcreteCalculator() {
                                         {(weight * 100).toFixed(1)}%
                                       </div>
                                     </td>
-                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{fmtR(lc.ca + lc.fa)}</td>
+                                    <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-400">{fmtR(lc.ca + lc.fa)}</td>
                                     <td className="px-3 py-2.5 text-right font-semibold">{fmtR(lc.totalWithEsc)}</td>
                                     <td className={`px-3 py-2.5 text-right font-semibold ${marginColor(margin)}`}>{margin.toFixed(1)}%</td>
-                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{fmtR(contribution)}</td>
+                                    <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-400">{fmtR(contribution)}</td>
                                   </tr>
                                 );
                               })}
@@ -3819,7 +3819,7 @@ export default function ConcreteCalculator() {
                                 <td className="px-3 py-2.5">Weighted Blend</td>
                                 <td className="px-3 py-2.5 text-right">{totalLen.toLocaleString()}</td>
                                 <td className="px-3 py-2.5 text-right">100%</td>
-                                <td className="px-3 py-2.5 text-right text-muted-foreground">—</td>
+                                <td className="px-3 py-2.5 text-right text-slate-500">—</td>
                                 <td className="px-3 py-2.5 text-right text-violet-700">{fmtR(blendedCost)}</td>
                                 <td className={`px-3 py-2.5 text-right ${marginColor(blendedMargin)}`}>{blendedMargin.toFixed(1)}%</td>
                                 <td className="px-3 py-2.5 text-right">{fmtR(blendedCost)}</td>
