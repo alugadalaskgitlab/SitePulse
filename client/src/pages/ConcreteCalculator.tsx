@@ -2315,40 +2315,6 @@ export default function ConcreteCalculator() {
                                   <button onClick={() => removeBBSRow(row.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
                                 </td>
                               </tr>
-                              {/* ── Tip row for new along-drain element types ── */}
-                              {basis === "spacing" && dimType === "drain_len" && (
-                                <tr className="bg-blue-50 dark:bg-blue-950/30">
-                                  <td colSpan={14} className="px-3 pb-1.5 pt-0.5 text-xs text-blue-700 dark:text-blue-300">
-                                    ⓘ <b>Wall-Vertical:</b> {(1000 / (row.spacingMm ?? 200)).toFixed(2)} vertical bars/m of drain (1000 ÷ {row.spacingMm ?? 200} mm spacing).
-                                    Each bar: cut {row.cutLength} m + {hook > 0 ? `hook ${hook.toFixed(3)} m + ` : ""}overlap {((row.overlapN * row.dia) / 1000).toFixed(3)} m ({row.overlapN}×{row.dia}mm) = {unitLen.toFixed(3)} m/bar.
-                                    &nbsp;→&nbsp;<b>Wt/m = {countPerM.toFixed(2)} × {unitLen.toFixed(3)} × {row.dia}²/162 = {kgPerM.toFixed(3)} kg/m</b>
-                                  </td>
-                                </tr>
-                              )}
-                              {basis === "spacing" && dimType === "along_drain" && (
-                                <tr className="bg-green-50 dark:bg-green-950/30">
-                                  <td colSpan={14} className="px-3 pb-1.5 pt-0.5">
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-green-700 dark:text-green-300">
-                                      <span>ⓘ <b>Along-drain:</b> {countPerM.toFixed(2)} bars across section ({spanMm} ÷ {row.spacingMm ?? 200} mm).</span>
-                                      <span>Cut = {row.cutLength} m/m run.</span>
-                                      <span>Overlap {row.overlapN}×{row.dia} = {((row.overlapN * row.dia) / 1000).toFixed(3)} m per bar ÷ supply</span>
-                                      <span className="flex items-center gap-1">
-                                        <Input
-                                          type="number"
-                                          value={row.supplyLenM ?? 12}
-                                          onFocus={(e) => e.target.select()}
-                                          onChange={(e) => updateBBSRow(row.id, { supplyLenM: parseFloat(e.target.value) || 12 })}
-                                          className="h-5 text-xs w-14 text-right px-1 border-green-400 bg-white dark:bg-slate-800"
-                                          title="Supplied bar length (m) — default 12 m"
-                                        />
-                                        <span>m</span>
-                                      </span>
-                                      <span>= +{alongDrainOverlapFracPerM.toFixed(4)} m/m run.</span>
-                                      <span className="font-semibold">→ Eff. unit = {alongDrainEffLen.toFixed(4)} m &nbsp;|&nbsp; Wt/m = {countPerM.toFixed(2)} × {alongDrainEffLen.toFixed(4)} × {row.dia}²/162 = <b>{kgPerM.toFixed(3)} kg/m</b></span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
                               </Fragment>
                             );
                           })}
