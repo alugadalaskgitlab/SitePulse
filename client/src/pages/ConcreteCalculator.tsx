@@ -91,6 +91,7 @@ interface CalcState {
   boqItems: BOQItem[];
   bbsRows: BBSRow[];
   steelRates: SteelRates;
+  steelFabRatePerMT: number;
   clientOfferedRate: number;
   clientOfferedRateMode: "per_m3" | "per_rm";
   scenarios: Scenario[];
@@ -174,6 +175,7 @@ const DEFAULT_STATE: CalcState = {
   boqItems: [],
   bbsRows: [],
   steelRates: { r8: 58000, r10: 57000, r12: 56500, r16: 56000, r20: 55500, r25: 55000 },
+  steelFabRatePerMT: 0,
   clientOfferedRate: 0,
   clientOfferedRateMode: "per_m3",
   scenarios: [],
@@ -711,7 +713,14 @@ export default function ConcreteCalculator() {
     heightZones: s.qto.heightZones, totalDrainLength: qtoResult.totalLength,
   } : undefined, [isDrainType, qtoResult, s.qto.clearSpan, s.qto.wallThickness, s.qto.heightZones]);
   const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates, qtoCtxForBBS), [s.bbsRows, s.steelRates, qtoCtxForBBS]);
-  const steelCostPerM3 = useMemo(() => s.totalVolume > 0 ? bbsSummary.totalCost / s.totalVolume : 0, [bbsSummary.totalCost, s.totalVolume]);
+  const steelMatCostPerM3 = useMemo(() => s.totalVolume > 0 ? bbsSummary.totalCost / s.totalVolume : 0, [bbsSummary.totalCost, s.totalVolume]);
+  // Fabrication cost per m³ — only added to internal cost when petty contractor does NOT handle BBS
+  const steelFabPerM3 = useMemo(() => {
+    if (!s.steelFabRatePerMT || s.steelFabRatePerMT <= 0 || s.totalVolume <= 0) return 0;
+    if (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) return 0;
+    return (bbsSummary.totalKg / 1000) * s.steelFabRatePerMT / s.totalVolume;
+  }, [s.steelFabRatePerMT, s.pettyLabour.enabled, s.pettyLabour.contractorBBS, bbsSummary.totalKg, s.totalVolume]);
+  const steelCostPerM3 = useMemo(() => steelMatCostPerM3 + steelFabPerM3, [steelMatCostPerM3, steelFabPerM3]);
 
   // Cross-section area (m²) for ₹/RM ↔ ₹/m³ conversion
   const crossSectionM2 = useMemo(() => {
@@ -759,7 +768,8 @@ export default function ConcreteCalculator() {
     const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
     const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
     const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-    const steelPerM = bbsSummary.totalKgPerM * (steelRateAvg / 1000);
+    const steelFabForAllIn = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+    const steelPerM = bbsSummary.totalKgPerM * ((steelRateAvg + steelFabForAllIn) / 1000);
     const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
     const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
     const excavPerM = qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength;
@@ -1001,7 +1011,9 @@ export default function ConcreteCalculator() {
 
     const rccLabel = [eq.invert !== eq.wall ? `${eq.invert}/${eq.wall}` : eq.wall, "RCC"].join(" ");
     const steelMT = parseFloat((bbsSummary.totalKg / 1000).toFixed(3));
-    const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+    const steelMatRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+    // For BOQ quoting: always include fabrication rate (even if covered by petty contractor internally)
+    const steelBOQRate = Math.round(steelMatRateAvg + (s.steelFabRatePerMT ?? 0));
     // Always produce exactly 7 items in the standard client BOQ order
     return [
       // 1. Earthwork — L×W×D populated from QTO geometry
@@ -1010,8 +1022,8 @@ export default function ConcreteCalculator() {
       { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat((r.totalLength * r.pccWidth * (q.pccDepth / 1000)).toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3) },
       // 3. RCC — combined at blended element-grade rate
       { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate) },
-      // 4. HYSD reinforcement — weighted avg steel rate from BBS
-      { id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(steelRateAvg) },
+      // 4. HYSD reinforcement — material + fabrication (all-in client rate)
+      { id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: steelBOQRate },
       // 5. Gratings
       { id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos },
       // 6. Weepholes
@@ -2369,13 +2381,54 @@ export default function ConcreteCalculator() {
                           );
                         })}
                       </div>
-                      <div className="mt-3 p-3 bg-muted/30 rounded-lg">
+                      {/* Fabrication rate input */}
+                      <div className="mt-4 p-3 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Fabrication Rate</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Cutting, bending & placing labour (₹/MT) — added to BOQ steel rate</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              value={s.steelFabRatePerMT || ""}
+                              placeholder="e.g. 4000"
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => update({ steelFabRatePerMT: parseFloat(e.target.value) || 0 })}
+                              className="h-8 text-sm w-32 text-right"
+                              data-testid="input-steel-fab-rate"
+                            />
+                            <span className="text-xs text-slate-500 whitespace-nowrap">₹/MT</span>
+                          </div>
+                        </div>
+                        {s.pettyLabour.enabled && s.pettyLabour.contractorBBS && (
+                          <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded px-2 py-1">
+                            Petty contractor handles bar bending — fabrication cost already in contract rate. Rate entered here is for <b>client BOQ quoting only</b> and is not added to your internal cost.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Summary footer */}
+                      <div className="mt-3 p-3 bg-muted/30 rounded-lg space-y-1">
                         <div className="flex justify-between text-sm">
                           <span>Total Steel: {(bbsSummary.totalKg / 1000).toFixed(3)} MT</span>
-                          <span className="font-semibold">{fmtR(bbsSummary.totalCost)} total</span>
+                          <span className="font-semibold">{fmtR(bbsSummary.totalCost)} material</span>
                         </div>
-                        <div className="text-sm font-semibold text-slate-700 mt-1">
-                          Steel cost/m³: {fmtR(steelCostPerM3)} (÷ {s.totalVolume} m³)
+                        {s.steelFabRatePerMT > 0 && (
+                          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+                            <span>Fabrication: {fmtR(s.steelFabRatePerMT)}/MT × {(bbsSummary.totalKg / 1000).toFixed(3)} MT</span>
+                            <span>{fmtR((bbsSummary.totalKg / 1000) * s.steelFabRatePerMT)}</span>
+                          </div>
+                        )}
+                        {s.steelFabRatePerMT > 0 && (
+                          <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-300 border-t border-border/50 pt-1 mt-1">
+                            <span>All-in for BOQ: {fmtR((bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : 0) + s.steelFabRatePerMT)}/MT</span>
+                            <span>{fmtR(bbsSummary.totalCost + (bbsSummary.totalKg / 1000) * s.steelFabRatePerMT)}</span>
+                          </div>
+                        )}
+                        <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1">
+                          Steel cost/m³ (internal): {fmtR(steelCostPerM3)} (÷ {s.totalVolume} m³)
+                          {steelFabPerM3 > 0 && <span className="text-xs font-normal text-slate-500 ml-2">incl. fab ₹{fmtR(steelFabPerM3)}/m³</span>}
                         </div>
                       </div>
                     </div>
@@ -2807,7 +2860,8 @@ export default function ConcreteCalculator() {
               const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
               const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
               const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-              const steelPerM = bbsSummary.totalKgPerM * (steelRateAvg / 1000);
+              const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+              const steelPerM = bbsSummary.totalKgPerM * ((steelRateAvg + steelFabForCard) / 1000);
               const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
               const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
               const excavPerM = qtoResult.totalLength > 0 ? qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength : 0;
