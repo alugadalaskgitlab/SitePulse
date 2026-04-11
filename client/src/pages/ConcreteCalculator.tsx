@@ -1196,7 +1196,7 @@ export default function ConcreteCalculator() {
       </div>
 
       {/* ── Rate Summary bar ── */}
-      <Card className="mb-5 bg-gradient-to-r from-blue-950 to-slate-900 text-white border-none">
+      <Card className="mb-5 bg-gradient-to-r from-blue-950 to-slate-900 text-white border-none print:hidden">
         <CardContent className="py-4 px-5">
           <div className="flex items-center justify-between mb-3">
             <div>
