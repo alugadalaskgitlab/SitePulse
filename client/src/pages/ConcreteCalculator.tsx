@@ -4,12 +4,13 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp, HelpCircle, X, AlertTriangle, Target } from "lucide-react";
+import { ChevronLeft, Save, Plus, Trash2, Info, TrendingUp, BarChart3, LogOut, MapPin, Building2, FileUp, ChevronDown, ChevronUp, HelpCircle, X, AlertTriangle, Target, Lock, LockOpen } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
@@ -26,7 +27,8 @@ interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm:
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
 interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; }
-interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; }
+interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; hookMm?: number; }
+interface IncludedCosts { cement: boolean; caFa: boolean; admix: boolean; batching: boolean; placement: boolean; formwork: boolean; labour: boolean; curing: boolean; steel: boolean; wastage: boolean; overhead: boolean; margin: boolean; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; rates?: Record<string, number>; }
@@ -92,6 +94,9 @@ interface CalcState {
   bbsRows: BBSRow[];
   steelRates: SteelRates;
   steelFabRatePerMT: number;
+  supplyBarLengthM: number;
+  mixLocked: boolean;
+  includedCosts: IncludedCosts;
   clientOfferedRate: number;
   clientOfferedRateMode: "per_m3" | "per_rm";
   scenarios: Scenario[];
@@ -176,6 +181,9 @@ const DEFAULT_STATE: CalcState = {
   bbsRows: [],
   steelRates: { r8: 58000, r10: 57000, r12: 56500, r16: 56000, r20: 55500, r25: 55000 },
   steelFabRatePerMT: 0,
+  supplyBarLengthM: 12,
+  mixLocked: false,
+  includedCosts: { cement: true, caFa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true },
   clientOfferedRate: 0,
   clientOfferedRateMode: "per_m3",
   scenarios: [],
@@ -221,7 +229,20 @@ function loadState(): CalcState {
           ...(loaded.qto || {}),
           elementGrades: { ...DEFAULT_STATE.qto.elementGrades, ...(loaded.qto?.elementGrades || {}) },
         },
-        bbsRows: (loaded.bbsRows || []).map((r: BBSRow) => ({ element: "Invert-Bottom", zoneId: "all", countBasis: "spacing", spacingMm: 200, ...r })),
+        supplyBarLengthM: loaded.supplyBarLengthM ?? 12,
+        mixLocked: loaded.mixLocked ?? false,
+        includedCosts: { ...DEFAULT_STATE.includedCosts, ...(loaded.includedCosts || {}) },
+        bbsRows: (loaded.bbsRows || []).map((r: any) => {
+          const base = { element: "Invert-Bottom", zoneId: "all", countBasis: "spacing", spacingMm: 200, overlapN: 0, ...r };
+          // Migrate hookMult -> hookMm if hookMm not yet stored
+          if (base.hookMm === undefined && base.hookMult !== undefined && base.shape !== "Straight") {
+            const m = base.hookMult ?? DEFAULT_HOOK_MULT;
+            if (base.shape === "U-bar") base.hookMm = Math.round(2 * m * base.dia);
+            else if (base.shape === "L-bar") base.hookMm = Math.round(1 * m * base.dia);
+            else if (base.shape === "Ring" || base.shape === "Stirrup") base.hookMm = Math.round((2 * m + 10) * base.dia);
+          }
+          return base;
+        }),
       };
     }
   } catch {}
@@ -368,7 +389,7 @@ interface BBSQtoCtx {
   heightZones: HeightZone[]; totalDrainLength: number;
 }
 
-function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx) {
+function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx, supplyBarLengthM = 12) {
   const diaRateMap: Record<number, number> = {
     8: rates.r8, 10: rates.r10, 12: rates.r12, 16: rates.r16, 20: rates.r20, 25: rates.r25,
   };
@@ -384,10 +405,12 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
     : 0;
 
   rows.forEach((row) => {
-    const hookMult = row.shape === "Straight" ? 0 : (row.hookMult ?? DEFAULT_HOOK_MULT);
-    const hookAll = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, hookMult) : 0;
+    // Hook allowance: use direct mm value if set, otherwise fall back to default formula
+    const hookAll = row.shape === "Straight" ? 0
+      : row.hookMm !== undefined ? row.hookMm / 1000
+      : (HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, DEFAULT_HOOK_MULT) : 0);
     const overlapLen = (row.overlapN * row.dia) / 1000;
-    const unitLen = row.cutLength + hookAll + overlapLen; // m per bar
+    const unitLen = row.cutLength + hookAll + overlapLen; // m per bar (for transverse bars)
     const kgPerMBar = (row.dia * row.dia) / 162;
     const rate = diaRateMap[row.dia] || 56000;
 
@@ -404,14 +427,13 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
         rowKgPerM = unitLen * countPerM * kgPerMBar;
         rowKg = rowKgPerM * totalLength;
       } else if (dimType === "along_drain") {
-        // Bars running ALONG drain: countPerM = bars across section width.
-        // User enters cutLength=1m (per metre of drain). Overlap is a fraction:
-        // each supplied bar (default 12m) needs 1 overlap splice → overlapN×dia/1000 m extra per supplyLenM metres.
+        // Bars running ALONG drain: fixed number of bars across section width, each running full drain length.
+        // Each bar contributes 1m of length per 1m of drain. Overlap splice adds (overlapLen / supplyLen) extra per metre.
         const countPerM = spanMm / (row.spacingMm ?? 200);
-        const supplyLen = (row.supplyLenM ?? 12) > 0 ? (row.supplyLenM ?? 12) : 12;
+        const supplyLen = supplyBarLengthM > 0 ? supplyBarLengthM : 12;
         const overlapPerBar = (row.overlapN * row.dia) / 1000; // m per splice
         const overlapFracPerM = overlapPerBar / supplyLen; // extra m of bar per m of drain
-        const effectiveUnitLen = row.cutLength + hookAll + overlapFracPerM;
+        const effectiveUnitLen = 1.0 + overlapFracPerM; // FIX: was cutLength+hook+overlapFrac (12× error)
         rowKgPerM = countPerM * effectiveUnitLen * kgPerMBar;
         rowKg = rowKgPerM * totalLength;
       } else if (dimType === "drain_len") {
@@ -712,7 +734,7 @@ export default function ConcreteCalculator() {
     clearSpanMm: s.qto.clearSpan, wallThickMm: s.qto.wallThickness,
     heightZones: s.qto.heightZones, totalDrainLength: qtoResult.totalLength,
   } : undefined, [isDrainType, qtoResult, s.qto.clearSpan, s.qto.wallThickness, s.qto.heightZones]);
-  const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates, qtoCtxForBBS), [s.bbsRows, s.steelRates, qtoCtxForBBS]);
+  const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates, qtoCtxForBBS, s.supplyBarLengthM ?? 12), [s.bbsRows, s.steelRates, qtoCtxForBBS, s.supplyBarLengthM]);
   const steelMatCostPerM3 = useMemo(() => s.totalVolume > 0 ? bbsSummary.totalCost / s.totalVolume : 0, [bbsSummary.totalCost, s.totalVolume]);
   // Fabrication cost per m³ — only added to internal cost when petty contractor does NOT handle BBS
   const steelFabPerM3 = useMemo(() => {
@@ -899,7 +921,7 @@ export default function ConcreteCalculator() {
   }
 
   function addBBSRow() {
-    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 3.0, overlapN: 50, element: "Invert-Bottom", zoneId: "all", countBasis: "spacing" as const, spacingMm: 200, hookMult: DEFAULT_HOOK_MULT }] });
+    update({ bbsRows: [...s.bbsRows, { id: uid(), mark: `B${s.bbsRows.length + 1}`, dia: 12, shape: "Straight", count: 1, cutLength: 0.920, overlapN: 0, element: "Invert-Bottom", zoneId: "all", countBasis: "spacing" as const, spacingMm: 200, hookMm: 0 }] });
   }
 
   function updateBBSRow(id: string, patch: Partial<BBSRow>) {
@@ -912,7 +934,7 @@ export default function ConcreteCalculator() {
 
   function applyGradePreset(grade: string) {
     const preset = MIX_PRESETS[grade];
-    if (preset) update({ grade, mix: { ...preset } });
+    if (!s.mixLocked && preset) update({ grade, mix: { ...preset } });
     else update({ grade });
   }
 
@@ -1202,9 +1224,9 @@ export default function ConcreteCalculator() {
 
         {/* ══════════════ TAB 1: CALCULATOR ══════════════ */}
         <TabsContent value="calculator">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
             {/* Left column: sections 1-8 */}
-            <div className="lg:col-span-2 space-y-5">
+            <div className="lg:col-span-3 space-y-5">
 
               {/* Section ①: Project Info */}
               <Card>
@@ -1282,17 +1304,28 @@ export default function ConcreteCalculator() {
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">② Concrete Mix Design (IS:456)</CardTitle>
-                  <HelpBtn id="mix-design" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => update({ mixLocked: !s.mixLocked })}
+                      className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors ${s.mixLocked ? "bg-amber-100 border-amber-300 text-amber-700" : "border-border text-muted-foreground hover:border-primary"}`}
+                      title={s.mixLocked ? "Mix locked — grade change will not reset values. Click to unlock." : "Mix unlocked — grade change resets values to IS preset. Click to lock."}
+                    >
+                      {s.mixLocked ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
+                      <span className="hidden sm:inline">{s.mixLocked ? "Locked" : "Lock Mix"}</span>
+                    </button>
+                    <HelpBtn id="mix-design" />
+                  </div>
                 </CardHeader>
                 <HelpPanel id="mix-design" title="② Mix Design">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
                 <li>Auto-filled from Grade selection using IS:456/IS:10262 codal quantities — all values are editable</li>
+                <li><b>Lock Mix</b> — when locked (amber), changing the grade will NOT reset these values. Useful when you have a custom mix design from a lab report.</li>
                 <li><b>Cement kg/m³</b> — drives the ₹/m³ cement cost (quantity × price per 50 kg bag)</li>
                 <li><b>Coarse Agg kg/m³</b> — total CA weight; split across 20mm/10mm/6mm tabs by proportion</li>
                 <li><b>Fine Agg kg/m³</b> — for natural sand, volume is increased by bulkage factor (set in Section ③)</li>
                 <li><b>W/C Ratio</b> — informational only (not used in cost calculation)</li>
                 <li><b>Admix %</b> — admixture dosage as % of cement weight; multiplied by rate ₹/L from Section ③</li>
-                <li>Re-selecting Grade re-fills all values from the preset; you can then override individually</li>
                 </ul>
               </HelpPanel>
                 <CardContent className="px-5 pb-5">
@@ -1303,9 +1336,11 @@ export default function ConcreteCalculator() {
                     {numInput("W/C Ratio", s.mix.wcRatio, (v) => updateMix({ wcRatio: v }), { step: 0.01 })}
                     {numInput("Admix %", s.mix.admixPct, (v) => updateMix({ admixPct: v }), { unit: "%", step: 0.05 })}
                   </div>
-                  <p className="text-sm text-slate-600 mt-2 flex items-center gap-1">
-                    <Info className="w-3 h-3" /> Preset auto-filled from grade — all values editable
-                  </p>
+                  {s.mixLocked && (
+                    <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-2 flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Mix locked — grade change will not reset these values
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -2001,7 +2036,7 @@ export default function ConcreteCalculator() {
             </div>
 
             {/* Right column: Rate Summary panel */}
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-2">
               <div className="sticky top-4 space-y-4">
                 <Card>
                   <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
@@ -2026,13 +2061,15 @@ export default function ConcreteCalculator() {
                         const rawMatTotal = costs.cement + costs.ca + costs.fa + costs.admix;
                         const plantTotal = costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing;
                         const directTotal = rawMatTotal + plantTotal + costs.steel;
+                        const ic = s.includedCosts ?? { cement: true, caFa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true };
+                        const toggleInc = (k: keyof IncludedCosts) => update({ includedCosts: { ...ic, [k]: !ic[k] } });
                         const groups = [
                           {
                             label: "Raw Materials", color: "bg-amber-100 border-amber-200", textColor: "text-amber-800",
                             items: [
-                              { label: "Cement", val: costs.cement, color: "bg-amber-500" },
-                              { label: "CA + FA", val: costs.ca + costs.fa, color: "bg-orange-400" },
-                              { label: "Admixture", val: costs.admix, color: "bg-purple-400" },
+                              { label: "Cement", val: costs.cement, color: "bg-amber-500", key: "cement" as keyof IncludedCosts },
+                              { label: "CA + FA", val: costs.ca + costs.fa, color: "bg-orange-400", key: "caFa" as keyof IncludedCosts },
+                              { label: "Admixture", val: costs.admix, color: "bg-purple-400", key: "admix" as keyof IncludedCosts },
                             ],
                             subtotal: rawMatTotal,
                           },
@@ -2040,38 +2077,41 @@ export default function ConcreteCalculator() {
                             label: "Mixing, Placing & Curing", color: "bg-blue-50 border-blue-200", textColor: "text-blue-800",
                             items: pettyLabourRatePerM3 !== undefined
                               ? [
-                                  { label: "Batching", val: costs.batching, color: "bg-blue-400" },
-                                  { label: "Petty Labour", val: costs.placement, color: "bg-sky-400" },
+                                  { label: "Batching", val: costs.batching, color: "bg-blue-400", key: "batching" as keyof IncludedCosts },
+                                  { label: "Petty Labour", val: costs.placement, color: "bg-sky-400", key: "placement" as keyof IncludedCosts },
                                   ...(s.pettyLabour.contractorFormwork
                                     ? []
-                                    : [{ label: "Formwork", val: costs.formwork, color: "bg-teal-400" }]),
-                                  { label: "Labour", val: costs.labour, color: "bg-green-500" },
-                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
+                                    : [{ label: "Formwork", val: costs.formwork, color: "bg-teal-400", key: "formwork" as keyof IncludedCosts }]),
+                                  { label: "Labour", val: costs.labour, color: "bg-green-500", key: "labour" as keyof IncludedCosts },
+                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400", key: "curing" as keyof IncludedCosts },
                                 ]
                               : [
-                                  { label: "Batching", val: costs.batching, color: "bg-blue-400" },
-                                  { label: "Placement", val: costs.placement, color: "bg-sky-400" },
-                                  { label: "Formwork", val: costs.formwork, color: "bg-teal-400" },
-                                  { label: "Labour", val: costs.labour, color: "bg-green-500" },
-                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400" },
+                                  { label: "Batching", val: costs.batching, color: "bg-blue-400", key: "batching" as keyof IncludedCosts },
+                                  { label: "Placement", val: costs.placement, color: "bg-sky-400", key: "placement" as keyof IncludedCosts },
+                                  { label: "Formwork", val: costs.formwork, color: "bg-teal-400", key: "formwork" as keyof IncludedCosts },
+                                  { label: "Labour", val: costs.labour, color: "bg-green-500", key: "labour" as keyof IncludedCosts },
+                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400", key: "curing" as keyof IncludedCosts },
                                 ],
                             subtotal: plantTotal,
                           },
                           {
                             label: "Steel", color: "bg-slate-100 border-slate-200", textColor: "text-slate-700",
-                            items: [{ label: "Reinforcement", val: costs.steel, color: "bg-slate-500" }],
+                            items: [{ label: "Reinforcement", val: costs.steel, color: "bg-slate-500", key: "steel" as keyof IncludedCosts }],
                             subtotal: costs.steel,
                           },
                           {
                             label: "Wastage + Overhead + Margin", color: "bg-emerald-50 border-emerald-200", textColor: "text-emerald-800",
                             items: [
-                              { label: "Wastage", val: costs.wastage, color: "bg-red-300" },
-                              { label: "Overhead", val: costs.overhead, color: "bg-gray-400" },
-                              { label: "Margin", val: costs.margin, color: "bg-emerald-500" },
+                              { label: "Wastage", val: costs.wastage, color: "bg-red-300", key: "wastage" as keyof IncludedCosts },
+                              { label: "Overhead", val: costs.overhead, color: "bg-gray-400", key: "overhead" as keyof IncludedCosts },
+                              { label: "Margin", val: costs.margin, color: "bg-emerald-500", key: "margin" as keyof IncludedCosts },
                             ],
                             subtotal: costs.wastage + costs.overhead + costs.margin,
                           },
                         ];
+                        const allItems = groups.flatMap(g => g.items);
+                        const selectedTotal = allItems.reduce((sum, item) => sum + (ic[item.key] ? item.val : 0), 0);
+                        const anyUnchecked = allItems.some(item => !ic[item.key]);
                         return (
                           <>
                             {groups.slice(0, 3).map(g => (
@@ -2083,11 +2123,17 @@ export default function ConcreteCalculator() {
                                 <div className="space-y-1">
                                   {g.items.filter(i => i.val > 0 || g.items.length === 1).map(item => (
                                     <div key={item.label} className="flex items-center gap-1.5">
-                                      <div className="w-16 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
+                                      <Checkbox
+                                        checked={ic[item.key]}
+                                        onCheckedChange={() => toggleInc(item.key)}
+                                        className="h-3 w-3 shrink-0"
+                                        data-testid={`chk-inc-${item.key}`}
+                                      />
+                                      <div className="w-14 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
                                       <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
-                                        <div className={`h-full rounded ${item.color}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
+                                        <div className={`h-full rounded ${item.color} ${ic[item.key] ? "opacity-100" : "opacity-30"}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
                                       </div>
-                                      <div className="w-14 text-right text-[11px] font-medium">{fmtR(item.val)}</div>
+                                      <div className={`w-14 text-right text-[11px] font-medium ${ic[item.key] ? "" : "line-through opacity-40"}`}>{fmtR(item.val)}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -2106,11 +2152,17 @@ export default function ConcreteCalculator() {
                                 <div className="space-y-1">
                                   {g.items.filter(i => i.val > 0 || g.items.length === 1).map(item => (
                                     <div key={item.label} className="flex items-center gap-1.5">
-                                      <div className="w-16 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
+                                      <Checkbox
+                                        checked={ic[item.key]}
+                                        onCheckedChange={() => toggleInc(item.key)}
+                                        className="h-3 w-3 shrink-0"
+                                        data-testid={`chk-inc-${item.key}`}
+                                      />
+                                      <div className="w-14 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
                                       <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
-                                        <div className={`h-full rounded ${item.color}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
+                                        <div className={`h-full rounded ${item.color} ${ic[item.key] ? "opacity-100" : "opacity-30"}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
                                       </div>
-                                      <div className="w-14 text-right text-[11px] font-medium">{fmtR(item.val)}</div>
+                                      <div className={`w-14 text-right text-[11px] font-medium ${ic[item.key] ? "" : "line-through opacity-40"}`}>{fmtR(item.val)}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -2119,16 +2171,22 @@ export default function ConcreteCalculator() {
                           </>
                         );
                       })()}
-                      <div className="border-t border-border pt-2 mt-1">
+                      <div className="border-t border-border pt-2 mt-1 space-y-1">
                         <div className="flex justify-between items-center font-bold">
                           <span>Total ₹/m³</span>
                           <span className="text-blue-700">{fmtR(costs.total)}</span>
                         </div>
-                        {crossSectionM2 > 0 && <div className="flex justify-between items-center text-slate-700 font-medium mt-0.5"><span>Total ₹/RM</span><span>{fmtR(costs.total * crossSectionM2)}</span></div>}
+                        {crossSectionM2 > 0 && <div className="flex justify-between items-center text-slate-700 font-medium"><span>Total ₹/RM</span><span>{fmtR(costs.total * crossSectionM2)}</span></div>}
                         {s.escalationPct > 0 && (
-                          <div className="flex justify-between items-center text-slate-700 font-medium mt-0.5">
+                          <div className="flex justify-between items-center text-slate-700 font-medium">
                             <span>With esc. ({s.escalationPct}%)</span>
                             <span className="font-semibold">{fmtR(costs.totalWithEsc)}{crossSectionM2 > 0 ? ` · ${fmtR(costs.totalWithEsc * crossSectionM2)}/RM` : ""}</span>
+                          </div>
+                        )}
+                        {anyUnchecked && (
+                          <div className="flex justify-between items-center font-semibold text-violet-700 bg-violet-50 rounded px-2 py-1 border border-violet-200">
+                            <span className="text-xs">Selected ₹/m³</span>
+                            <span>{fmtR(selectedTotal)}{crossSectionM2 > 0 ? ` · ${fmtR(selectedTotal * crossSectionM2)}/RM` : ""}</span>
                           </div>
                         )}
                       </div>
@@ -2151,7 +2209,7 @@ export default function ConcreteCalculator() {
                 <div className="flex items-center gap-1">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Bar Bending Schedule (BBS)</CardTitle>
-                    <p className="text-sm text-slate-600">Weight = Dia²/162 × Length; Hook allowances auto-applied by shape (default 4d per hook end)</p>
+                    <p className="text-sm text-slate-600">Weight = Dia²/162 × Length; Hook (mm) is a direct input — default pre-filled from shape type</p>
                   </div>
                   <HelpBtn id="bbs" />
                 </div>
@@ -2161,7 +2219,7 @@ export default function ConcreteCalculator() {
               </CardHeader>
               <HelpPanel id="bbs" title="Bar Bending Schedule">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
-                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → hook formula: Straight=0, U-bar=2×4d, L-bar=1×4d, Ring/Stirrup=2×4d+10d (default 4d per hook end)</li>
+                <li><b>Mark</b> — label (e.g. M1); <b>Dia</b> — nominal dia mm; <b>Shape</b> → sets default Hook (mm): Straight=0, U-bar=8d, L-bar=4d, Ring/Stirrup=18d. You can override the hook mm directly in the cell.</li>
                 <li><b>Element</b> — structural element this bar belongs to (Invert/Wall/TopSlab etc.); <b>Zone</b> — height zone or All</li>
                 <li><b>Count Basis</b> — <b>@Spacing</b>: enter bar spacing (mm) → count/m is auto-derived from element dimension ÷ spacing; <b>Manual</b>: enter absolute count</li>
                 <li><b>Wt/m run (kg/m)</b> — weight of this bar row per metre of drain. For spacing mode: countPerM × unitLen × Dia²/162. For manual mode: total kg ÷ drain length</li>
@@ -2187,7 +2245,7 @@ export default function ConcreteCalculator() {
                             <th className="text-right p-2">Spacing/Count</th>
                             <th className="text-right p-2">Count/m</th>
                             <th className="text-right p-2">Cut (m)</th>
-                            <th className="text-right p-2">Hook (m)</th>
+                            <th className="text-right p-2">Hook (mm)</th>
                             <th className="text-right p-2">Overlap N</th>
                             <th className="text-right p-2">Wt/m (kg/m)</th>
                             <th className="text-right p-2">Total kg</th>
@@ -2196,34 +2254,37 @@ export default function ConcreteCalculator() {
                         </thead>
                         <tbody>
                           {s.bbsRows.map((row) => {
-                            const hookMult = row.shape === "Straight" ? 0 : (row.hookMult ?? DEFAULT_HOOK_MULT);
-                            const hook = HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, hookMult) : 0;
+                            // Hook allowance: direct mm if set, else default formula
+                            const hook = row.shape === "Straight" ? 0
+                              : row.hookMm !== undefined ? row.hookMm / 1000
+                              : (HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, DEFAULT_HOOK_MULT) : 0);
+                            // Default hook mm for input display
+                            const defaultHookMm = row.shape === "Straight" ? 0
+                              : Math.round((HOOK_ALLOWANCE[row.shape]?.(row.dia, DEFAULT_HOOK_MULT) ?? 0) * 1000);
+                            const hookMmDisplay = row.hookMm !== undefined ? row.hookMm : defaultHookMm;
                             const overlapLen = (row.overlapN * row.dia) / 1000;
-                            const unitLen = row.cutLength + hook + overlapLen;
+                            const unitLen = row.cutLength + hook + overlapLen; // for transverse/drain_len bars
                             const kgPerMBar = (row.dia * row.dia) / 162;
                             const basis = row.countBasis ?? "manual";
                             const dimType = ELEMENT_DIM_TYPE[row.element ?? "Manual"] ?? "manual";
+                            const isAlongDrain = dimType === "along_drain";
                             const totalLength = qtoResult?.totalLength ?? 0;
                             const spanMm = s.qto.clearSpan + 2 * s.qto.wallThickness;
                             const avgWallHMm = s.qto.heightZones.length > 0 ? s.qto.heightZones.reduce((sum, z) => sum + z.height * z.length, 0) / Math.max(1, s.qto.heightZones.reduce((sum, z) => sum + z.length, 0)) : 0;
                             let countPerM = 0;
                             let rowKg = 0;
-                            // For along_drain tips
-                            let alongDrainSupplyLen = (row.supplyLenM ?? 12) > 0 ? (row.supplyLenM ?? 12) : 12;
-                            let alongDrainOverlapFracPerM = 0;
-                            let alongDrainEffLen = 0;
+                            const globalSupplyLen = (s.supplyBarLengthM ?? 12) > 0 ? (s.supplyBarLengthM ?? 12) : 12;
                             if (basis === "spacing" && (row.spacingMm ?? 200) > 0) {
                               if (dimType === "span") {
                                 countPerM = spanMm / (row.spacingMm ?? 200);
                                 rowKg = unitLen * countPerM * kgPerMBar * totalLength;
                               } else if (dimType === "along_drain") {
-                                // Bars running ALONG drain: count = bars across section width;
-                                // overlap spread as a fraction over supplied bar length
+                                // FIXED: each bar contributes 1m per metre of drain; overlap distributed over supply length
                                 countPerM = spanMm / (row.spacingMm ?? 200);
                                 const overlapPerBar = (row.overlapN * row.dia) / 1000;
-                                alongDrainOverlapFracPerM = overlapPerBar / alongDrainSupplyLen;
-                                alongDrainEffLen = row.cutLength + hook + alongDrainOverlapFracPerM;
-                                rowKg = countPerM * alongDrainEffLen * kgPerMBar * totalLength;
+                                const overlapFracPerM = overlapPerBar / globalSupplyLen;
+                                const effectiveUnitLen = 1.0 + overlapFracPerM;
+                                rowKg = countPerM * effectiveUnitLen * kgPerMBar * totalLength;
                               } else if (dimType === "drain_len") {
                                 // Vertical bars SPACED along drain: count = 1000mm ÷ spacing
                                 countPerM = 1000 / (row.spacingMm ?? 200);
@@ -2312,9 +2373,21 @@ export default function ConcreteCalculator() {
                                 </td>
                                 <td className="p-1.5 text-right text-slate-700 font-medium">{countPerM.toFixed(2)}/m</td>
                                 <td className="p-1.5">
-                                  <Input type="number" step="0.1" value={row.cutLength} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { cutLength: parseFloat(e.target.value) || 0 })} className="h-7 text-sm w-24 text-right" />
+                                  <Input type="number" step="0.01" value={row.cutLength} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { cutLength: parseFloat(e.target.value) || 0 })} className={`h-7 text-sm w-24 text-right ${isAlongDrain ? "opacity-40 cursor-not-allowed" : ""}`} disabled={isAlongDrain} title={isAlongDrain ? "Not used for along-drain bars — bars run full drain length" : "Cut length in metres"} />
                                 </td>
-                                <td className="p-1.5 text-right text-slate-700 font-medium">{hook.toFixed(3)}</td>
+                                <td className="p-1.5">
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={hookMmDisplay}
+                                    disabled={row.shape === "Straight"}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => updateBBSRow(row.id, { hookMm: parseFloat(e.target.value) || 0 })}
+                                    className="h-7 text-sm w-16 text-right disabled:opacity-40"
+                                    title={row.shape === "Straight" ? "No hook for straight bars" : "Total hook allowance in mm (e.g. both ends combined: 50+50=100mm)"}
+                                  />
+                                </td>
                                 <td className="p-1.5">
                                   <Input type="number" value={row.overlapN} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { overlapN: isNaN(parseInt(e.target.value)) ? row.overlapN : parseInt(e.target.value) })} className="h-7 text-sm w-16 text-right" title="N×dia overlap splice" />
                                 </td>
@@ -2366,6 +2439,27 @@ export default function ConcreteCalculator() {
                           );
                         })}
                       </div>
+                      {/* Standard Supply Bar Length */}
+                      <div className="mt-4 flex flex-wrap items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Standard Supply Bar Length</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Length of TMT bars as supplied (m) — used to compute overlap splice cost for longitudinal bars</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            value={s.supplyBarLengthM ?? 12}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => update({ supplyBarLengthM: parseFloat(e.target.value) || 12 })}
+                            className="h-8 text-sm w-20 text-right"
+                            min="1"
+                            step="0.5"
+                            data-testid="input-supply-bar-length"
+                          />
+                          <span className="text-xs text-slate-500 whitespace-nowrap">m</span>
+                        </div>
+                      </div>
+
                       {/* Fabrication rate input */}
                       <div className="mt-4 p-3 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg space-y-2">
                         <div className="flex items-center justify-between flex-wrap gap-2">
