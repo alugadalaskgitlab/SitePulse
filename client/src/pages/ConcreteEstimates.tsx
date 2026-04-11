@@ -254,7 +254,7 @@ export default function ConcreteEstimates() {
                       <thead>
                         <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                           <th className="text-left px-5 py-2.5 font-semibold">Estimate Name</th>
-                          <th className="text-left px-4 py-2.5 font-semibold">Grade / Type</th>
+                          <th className="text-left px-4 py-2.5 font-semibold">Type</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Volume (m³)</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Total Cost</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Rate ₹/m³</th>
@@ -275,16 +275,11 @@ export default function ConcreteEstimates() {
                                 <span className="font-medium text-foreground">{est.name}</span>
                               </td>
                               <td className="px-4 py-3">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {est.grade && (
-                                    <Badge variant="outline" className="text-xs font-mono">{est.grade}</Badge>
-                                  )}
-                                  {est.structureType && (
-                                    <Badge variant="outline" className={`text-xs ${STRUCTURE_TYPE_COLORS[est.structureType] || ""}`}>
-                                      {est.structureType}
-                                    </Badge>
-                                  )}
-                                </div>
+                                {est.structureType && (
+                                  <Badge variant="outline" className={`text-xs ${STRUCTURE_TYPE_COLORS[est.structureType] || ""}`}>
+                                    {est.structureType}
+                                  </Badge>
+                                )}
                               </td>
                               <td className="px-4 py-3 text-right text-muted-foreground">
                                 {est.totalCum ? `${est.totalCum.toFixed(1)} m³` : "—"}
