@@ -3486,7 +3486,8 @@ export default function ConcreteCalculator() {
             const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
 
             // Helper to render a per-metre table for given zone lengths
-            function renderPerMTable(zoneWalls: number, zoneTotalLen: number, zoneLabel: string) {
+            // zoneWalls is gross for individual zones, net (after deductions) for the Combined row
+            function renderPerMTable(zoneWalls: number, zoneTotalLen: number, zoneLabel: string, wallBasis: "gross" | "net" = "gross") {
               const wallVol = zoneTotalLen > 0 ? zoneWalls / zoneTotalLen : 0;
               const invertVol = qtoResult.invertPerM;
               const topVol = qtoResult.topPerM;
@@ -3501,20 +3502,23 @@ export default function ConcreteCalculator() {
               const excC = excVol * s.qto.excavationRate;
               const bkfC = bkfVol * s.qto.backfillRate;
               const earthSub = excC + bkfC;
-              const stlC = steelPerM + bwPerM + lhPerM;
               const ancC = gratingPerM + weepholePerM;
-              const grdTotal = concSub + earthSub + stlC + ancC;
+              const grdTotal = concSub + earthSub + steelPerM + bwPerM + lhPerM + ancC;
+              const steelKgPerM = bbsSummary.totalKgPerM;
+              const steelMTPerM = steelKgPerM / 1000;
               const pMRows: { label: string; qtyPerM: string; rate: string; costPerM: number; isSub?: boolean }[] = [
                 { label: `PCC ${eq.pcc} Bed`, qtyPerM: `${pccVol.toFixed(3)} m³/m`, rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccC },
                 { label: `Invert Slab (${eq.invert})`, qtyPerM: `${invertVol.toFixed(3)} m³/m`, rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invC },
-                { label: `Walls (${eq.wall})`, qtyPerM: `${wallVol.toFixed(3)} m³/m`, rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wllC },
+                { label: `Walls (${eq.wall}, ${wallBasis})`, qtyPerM: `${wallVol.toFixed(3)} m³/m`, rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wllC },
                 ...(s.qto.isCovered || isBoxCulvert ? [{ label: `Top Slab (${eq.topSlab})`, qtyPerM: `${topVol.toFixed(3)} m³/m`, rate: `${fmtR(topSlabCostPerM3)}/m³`, costPerM: topC }] : []),
                 { label: "Concrete Sub-total", qtyPerM: "", rate: "", costPerM: concSub, isSub: true },
                 { label: "Excavation", qtyPerM: `${excVol.toFixed(3)} m³/m`, rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excC },
                 { label: "Backfill", qtyPerM: `${bkfVol.toFixed(3)} m³/m`, rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: bkfC },
                 { label: "Earthwork Sub-total", qtyPerM: "", rate: "", costPerM: earthSub, isSub: true },
-                { label: "Steel", qtyPerM: `${bbsSummary.totalKgPerM.toFixed(2)} kg/m`, rate: `${fmtR((steelRateAvg + steelFabForCard) / 1000)}/kg`, costPerM: stlC },
-                ...(ancC > 0 ? [{ label: "Ancillaries", qtyPerM: "", rate: "", costPerM: ancC }] : []),
+                { label: "Steel (BBS)", qtyPerM: `${steelMTPerM.toFixed(4)} MT/m (${steelKgPerM.toFixed(2)} kg/m)`, rate: `${fmtR(steelRateAvg + steelFabForCard)}/MT`, costPerM: steelPerM },
+                ...(bwPerM > 0 ? [{ label: "Binding Wire", qtyPerM: "", rate: "", costPerM: bwPerM }] : []),
+                ...(lhPerM > 0 ? [{ label: "Lifting Hooks", qtyPerM: "", rate: "", costPerM: lhPerM }] : []),
+                ...(ancC > 0 ? [{ label: "Gratings & Weepholes", qtyPerM: "", rate: "", costPerM: ancC }] : []),
                 { label: "Grand Total ₹/RM", qtyPerM: "", rate: "", costPerM: grdTotal, isSub: true },
               ];
               return (
@@ -3575,14 +3579,14 @@ export default function ConcreteCalculator() {
                   {hasMultiZone && (
                     <div className="mb-4">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Per Zone</p>
-                      {qtoResult.zones.map(z => renderPerMTable(z.wallsM3, z.length, `${z.label} (${z.length} m)`))}
+                      {qtoResult.zones.map(z => renderPerMTable(z.wallsM3, z.length, `${z.label} (${z.length} m)`, "gross"))}
                       <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Combined ({qtoResult.totalLength.toFixed(0)} m)</p>
-                        {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined")}
+                        {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net")}
                       </div>
                     </div>
                   )}
-                  {!hasMultiZone && renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined")}
+                  {!hasMultiZone && renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net")}
                 </CardContent>
               </Card>
             );
