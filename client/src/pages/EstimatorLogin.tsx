@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calculator, Lock, Home } from "lucide-react";
-import { readEstimatorRole } from "@/lib/estimatorAuth";
+import { signOutEstimator } from "@/lib/estimatorAuth";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
 export default function EstimatorLogin() {
@@ -18,8 +18,7 @@ export default function EstimatorLogin() {
   const returnTo = params.get("returnTo") || "/estimator-hub";
 
   useEffect(() => {
-    const existing = readEstimatorRole();
-    if (existing) setLocation(returnTo);
+    signOutEstimator();
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
