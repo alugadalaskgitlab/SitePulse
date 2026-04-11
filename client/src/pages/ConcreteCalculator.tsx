@@ -3456,12 +3456,27 @@ export default function ConcreteCalculator() {
                         </div>
                         <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-slate-600">RCC {s.grade} cost</span>
-                            <span className="font-medium">{fmtR(costs.totalWithEsc - costs.steel)}/m³</span>
+                            <span className="text-slate-600">RCC {s.grade} (concrete) ₹/m³</span>
+                            <span className="font-medium">{fmtR(costs.totalWithEsc - costs.steel)}</span>
                           </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Concrete ₹/m run</span>
+                            <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * (costs.totalWithEsc - costs.steel))}</span>
+                          </div>
+                          {bbsSummary.totalKgPerM > 0 && (() => {
+                            const steelRateAvg2 = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+                            const steelFab2 = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+                            const steelPerM2 = bbsSummary.totalKgPerM * ((steelRateAvg2 + steelFab2) / 1000);
+                            return (
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</span>
+                                <span className="font-medium">{fmtR(steelPerM2)}/m</span>
+                              </div>
+                            );
+                          })()}
                           <div className="flex justify-between font-bold border-t pt-1 mt-1">
-                            <span>Cost ₹/m run</span>
-                            <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * (costs.totalWithEsc - costs.steel))}</span>
+                            <span>Total ₹/m run</span>
+                            <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}</span>
                           </div>
                         </div>
                       </div>
@@ -3539,7 +3554,7 @@ export default function ConcreteCalculator() {
                     <table className="text-xs w-full min-w-[400px] border-separate border-spacing-0">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60">
-                          {["Item", "Qty / m", "Rate", "₹ / RM"].map(h => (
+                          {["Item", "Qty / RM", "Rate ₹ / unit", "₹ / RM"].map(h => (
                             <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
