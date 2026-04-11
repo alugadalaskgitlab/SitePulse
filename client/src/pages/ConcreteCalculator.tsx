@@ -2131,7 +2131,9 @@ export default function ConcreteCalculator() {
                     <div className="space-y-3 text-xs">
                       {(() => {
                         // ── Grade-aware cost recomputation ──────────────────────
-                        const bdMix = MIX_PRESETS[breakdownGrade] ?? s.mix;
+                        // When the selected grade matches the main estimate grade, use s.mix
+                        // (preserving any user edits/locked mix values). Otherwise use IS preset.
+                        const bdMix = breakdownGrade === s.grade ? s.mix : (MIX_PRESETS[breakdownGrade] ?? s.mix);
                         const bdPccMode = breakdownIsPcc || (s.qto.elementGrades?.pcc === breakdownGrade);
                         const bdState: CalcState = {
                           ...s,
@@ -2139,10 +2141,11 @@ export default function ConcreteCalculator() {
                           ...(bdPccMode ? {
                             shutteringAreaPerM3: 0,
                             stagingAreaPerM3: 0,
-                            // Force own_pump with zero rate — ensures placement=0 in every placementMode branch
-                            placementMode: "own_pump" as const,
+                            // Zero placement across all four modes without changing placementMode:
+                            // - own/hired/labour: placementRatePerDay=0 → rate/output = 0
+                            // - transit_mixer: tmHirePerTrip=0 → 0*trips/output = 0
                             placementRatePerDay: 0,
-                            placementOutputPerDay: 1,
+                            tmHirePerTrip: 0,
                             labourRatePerM3: 0,
                             pettyLabour: { ...s.pettyLabour, enabled: false },
                             wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false },
