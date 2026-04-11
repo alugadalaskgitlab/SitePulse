@@ -643,6 +643,10 @@ export default function ConcreteCalculator() {
   });
   const [activeAnalysisTab, setActiveAnalysisTab] = useState("price-impact");
   const [activeReportPill, setActiveReportPill] = useState("per-metre");
+  const [expandedQuotRows, setExpandedQuotRows] = useState<Set<string>>(new Set());
+  function toggleQuotRow(id: string) {
+    setExpandedQuotRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
   const [savedEstimateId, setSavedEstimateId] = useState<number | null>(() => {
     // Support ?estimateId= query param
     const params = new URLSearchParams(window.location.search);
@@ -2736,7 +2740,6 @@ export default function ConcreteCalculator() {
                       <div className="flex flex-wrap gap-3">
                         {(["pcc","invert","wall","topSlab"] as const).filter(k => k !== "topSlab" || showTopSlab).map(key => {
                           const labels: Record<string, string> = { pcc: "PCC Bed", invert: "Invert Slab", wall: "Walls", topSlab: "Top Slab" };
-                          const matCost = computeMaterialCostOnly(s.qto.elementGrades?.[key] ?? (key === "pcc" ? "M15" : "M25"), s);
                           return (
                             <div key={key} className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded border border-border/50 px-2 py-1.5">
                               <span className="text-sm text-slate-700 font-medium w-16">{labels[key]}</span>
@@ -2749,7 +2752,6 @@ export default function ConcreteCalculator() {
                                   {["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                                 </SelectContent>
                               </Select>
-                              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{fmtR(matCost)}/m³</span>
                             </div>
                           );
                         })}
@@ -3443,77 +3445,104 @@ export default function ConcreteCalculator() {
 
           {/* ── Concrete Rates ── */}
           {activeReportPill === "concrete-rates" && (() => {
-            const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
-            const rccBaseRate = costs.totalWithEsc - costs.steel;
-            const baseMat = computeMaterialCostOnly(s.grade, s);
-            const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
-            const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
-            const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
-            const tsM = s.qto.topSlabThick / 1000;
-            const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
-              ? s.qto.precastRatePerM2 / tsM
-              : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+            // Build a component-by-component cost table for each relevant grade
+            function buildConcGradeTable(grade: string, withFormworkPlacement: boolean, costsForGrade: CostBreakdown) {
+              const rawMat = costsForGrade.cement + costsForGrade.ca + costsForGrade.fa + costsForGrade.admix;
+              const plantPlacing = costsForGrade.batching + costsForGrade.placement + costsForGrade.formwork + costsForGrade.curing;
+              const direct = rawMat + plantPlacing + costsForGrade.labour + costsForGrade.wastage;
+              const tableRows: { label: string; val: number; isSub?: boolean; indent?: boolean; bold?: boolean }[] = [
+                { label: "Cement", val: costsForGrade.cement, indent: true },
+                { label: "Coarse Aggregate", val: costsForGrade.ca, indent: true },
+                { label: "Fine Aggregate", val: costsForGrade.fa, indent: true },
+                { label: "Admixture", val: costsForGrade.admix, indent: true },
+                { label: "Raw Materials Sub-total", val: rawMat, isSub: true },
+                { label: "Batching", val: costsForGrade.batching, indent: true },
+                { label: "Placement", val: withFormworkPlacement ? costsForGrade.placement : 0, indent: true },
+                { label: "Formwork & Staging", val: withFormworkPlacement ? costsForGrade.formwork : 0, indent: true },
+                { label: "Curing", val: costsForGrade.curing, indent: true },
+                ...(costsForGrade.labour > 0 ? [{ label: "Labour", val: costsForGrade.labour, indent: true }] : []),
+                ...(costsForGrade.wastage > 0 ? [{ label: "Wastage", val: costsForGrade.wastage, indent: true }] : []),
+                { label: "Plant & Placing Sub-total", val: plantPlacing + costsForGrade.labour + costsForGrade.wastage, isSub: true },
+                { label: "Direct Cost Sub-total", val: direct, isSub: true, bold: true },
+                { label: `Overhead (${s.overheadPct}%)`, val: costsForGrade.overhead, indent: true },
+                { label: `Margin (${s.marginPct}%)`, val: costsForGrade.margin, indent: true },
+                { label: `Total ₹/m³ (${grade})`, val: costsForGrade.total, isSub: true, bold: true },
+              ];
+              return tableRows;
+            }
 
-            const makeRow = (label: string, grade: string, ratePerM3: number, hasFormwork: boolean) => {
-              const mat = computeMaterialCostOnly(grade, s);
-              const batchPct = rccBaseRate > 0 ? costs.batching / rccBaseRate : 0;
-              const placePct = rccBaseRate > 0 ? costs.placement / rccBaseRate : 0;
-              const curingPct = rccBaseRate > 0 ? costs.curing / rccBaseRate : 0;
-              const formworkAmt = hasFormwork ? costs.formwork : 0;
-              const plant = ratePerM3 * batchPct;
-              const placing = hasFormwork ? ratePerM3 * placePct : 0;
-              const curing = ratePerM3 * curingPct;
-              const overhead = costs.overhead > 0 ? ratePerM3 * (costs.overhead / (rccBaseRate || 1)) : 0;
-              const margin = costs.margin > 0 ? ratePerM3 * (costs.margin / (rccBaseRate || 1)) : 0;
-              return { label, grade, mat, plant, placing, formwork: formworkAmt, curing, overhead, margin, total: ratePerM3 };
-            };
+            // Main grade costs — use existing computed costs (already has pettyLabour, steel excluded from concrete)
+            const mainCosts: CostBreakdown = { ...costs, steel: 0, total: costs.total - costs.steel, totalWithEsc: costs.totalWithEsc - costs.steel };
+            const mainRows = buildConcGradeTable(s.grade, true, mainCosts);
 
-            const rows = [
-              makeRow(`Active Grade (${s.grade})`, s.grade, rccBaseRate, true),
-              ...(isDrainType ? [
-                makeRow(`PCC Bed (${eq.pcc})`, eq.pcc, pccCostPerM3, false),
-                makeRow(`Invert Slab (${eq.invert})`, eq.invert, invertCostPerM3, true),
-                makeRow(`Walls (${eq.wall})`, eq.wall, wallCostPerM3, true),
-                ...(s.qto.topSlabType !== "None" ? [makeRow(`Top Slab (${eq.topSlab})`, eq.topSlab, topSlabCostPerM3, true)] : []),
-              ] : []),
-            ];
+            // PCC grade (only if pccDepth > 0)
+            const hasPCC = (s.qto?.pccDepth ?? 0) > 0;
+            const pccGrade = s.qto?.elementGrades?.pcc ?? "M15";
+            let pccCosts: CostBreakdown | null = null;
+            if (hasPCC) {
+              // PCC: same batching+curing costs as main, no formwork/placement
+              const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
+              const pccState: CalcState = { ...s, mix: pccMix };
+              const rawPcc = computeCosts(pccState, 0);
+              pccCosts = { ...rawPcc, placement: 0, formwork: 0, total: rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + rawPcc.curing + rawPcc.overhead + rawPcc.margin, totalWithEsc: 0 };
+              const direct = pccCosts.cement + pccCosts.ca + pccCosts.fa + pccCosts.admix + pccCosts.batching + pccCosts.curing + pccCosts.labour + pccCosts.wastage;
+              const overhead = direct * (s.overheadPct / 100);
+              const margin = (direct + overhead) * (s.marginPct / 100);
+              pccCosts = { ...pccCosts, overhead, margin, total: direct + overhead + margin, totalWithEsc: (direct + overhead + margin) * (1 + s.escalationPct / 100) };
+            }
+            const pccRows = pccCosts ? buildConcGradeTable(pccGrade, false, pccCosts) : [];
 
-            const cols = ["Element", "Grade", "Mat ₹/m³", "Batching", "Placing", "Formwork", "Curing", "OH", "Margin", "Total ₹/m³"];
+            const renderTable = (rows: { label: string; val: number; isSub?: boolean; indent?: boolean; bold?: boolean }[]) => (
+              <table className="text-xs w-full border-separate border-spacing-0 mt-2">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60">
+                    <th className="text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">Component</th>
+                    <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">₹ / m³</th>
+                    <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => {
+                    const lastRow = rows[rows.length - 1];
+                    const pct = lastRow.val > 0 ? (r.val / lastRow.val) * 100 : 0;
+                    return (
+                      <tr key={i} className={r.bold ? "bg-blue-50/80 dark:bg-blue-900/15 font-bold" : r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-semibold" : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
+                        <td className={`px-3 py-1.5 ${r.indent ? "pl-6 text-slate-600 dark:text-slate-400" : ""}`}>{r.label}</td>
+                        <td className="px-3 py-1.5 text-right font-mono">{r.val > 0 ? fmtR(r.val) : "—"}</td>
+                        <td className="px-3 py-1.5 text-right text-slate-500">{r.isSub && r.val > 0 ? `${pct.toFixed(0)}%` : ""}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            );
 
             return (
-              <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rates — ₹/m³ by Element</CardTitle>
-                  <p className="text-xs text-slate-500 mt-0.5">Cost breakdown per element using per-element grades. PCC excludes shuttering and placement.</p>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 overflow-x-auto">
-                  <table className="text-xs w-full min-w-[800px] border-separate border-spacing-0">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/60">
-                        {cols.map(h => (
-                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r, i) => (
-                        <tr key={r.label} className={`${i === 0 ? "font-semibold bg-blue-50/60 dark:bg-blue-900/10" : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20")}`}>
-                          <td className="px-3 py-2 whitespace-nowrap">{r.label}</td>
-                          <td className="px-3 py-2 text-right text-slate-600">{r.grade}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.mat)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.plant)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.placing)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.formwork)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.curing)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.overhead)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.margin)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-slate-100">{fmtR(r.total)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rate Analysis — {s.grade}</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for the active concrete grade.</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    {renderTable(mainRows)}
+                  </CardContent>
+                </Card>
+                {hasPCC && pccRows.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">PCC Bed — {pccGrade}</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">PCC rate excludes formwork and placement — blinding coat only.</p>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      {renderTable(pccRows)}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             );
           })()}
 
@@ -3534,9 +3563,12 @@ export default function ConcreteCalculator() {
 
             return (
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rates — Per Diameter</CardTitle>
-                  <p className="text-xs text-slate-500 mt-0.5">Purchase rate + fabrication per dia. BBS weights from the BBS tab.</p>
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rates — Per Diameter</CardTitle>
+                    <p className="text-xs text-slate-500 mt-0.5">Purchase rate + fabrication per dia. BBS weights from the BBS tab.</p>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 overflow-x-auto">
                   <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
@@ -3638,83 +3670,108 @@ export default function ConcreteCalculator() {
             const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
             const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
             const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
-            const excavPerM = qtoResult.totalLength > 0 ? qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength : 0;
-            const backfillPerM = qtoResult.totalLength > 0 ? qtoResult.backfillVol * s.qto.backfillRate / qtoResult.totalLength : 0;
-            const avgNetWallPerM = qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength * wallCostPerM3 : 0;
-            const netTopSlabPerM = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
             const steelPerM = bbsSummary.totalKgPerM * ((steelRateAvg + steelFabForCard) / 1000);
             const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
             const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
 
-            const pccPerMCost = qtoResult.pccPerM * pccCostPerM3;
-            const invertPerMCost = qtoResult.invertPerM * invertCostPerM3;
-            const wallsPerMCost = avgNetWallPerM;
-            const topSlabPerMCost = netTopSlabPerM;
-            const concreteSubtotal = pccPerMCost + invertPerMCost + wallsPerMCost + topSlabPerMCost;
-            const earthworkSubtotal = excavPerM + backfillPerM;
-            const steelTotal = steelPerM + bwPerM + lhPerM;
-            const ancillaryTotal = gratingPerM + weepholePerM;
-            const grandTotal = concreteSubtotal + earthworkSubtotal + steelTotal + ancillaryTotal;
-
-            const perMRows: { label: string; qtyPerM: string; rate: string; costPerM: number; isSub?: boolean; isSection?: boolean }[] = [
-              { label: `PCC ${eq.pcc} Bed`, qtyPerM: `${qtoResult.pccPerM.toFixed(3)} m³/m`, rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccPerMCost },
-              { label: `Invert Slab (${eq.invert})`, qtyPerM: `${qtoResult.invertPerM.toFixed(3)} m³/m`, rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invertPerMCost },
-              { label: `Walls (${eq.wall}) avg`, qtyPerM: `${(qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength : 0).toFixed(3)} m³/m`, rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wallsPerMCost },
-              ...(s.qto.topSlabType !== "None" ? [{ label: `Top Slab (${eq.topSlab})`, qtyPerM: `${(qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0).toFixed(3)} m³/m`, rate: `${fmtR(topSlabCostPerM3)}/m³`, costPerM: topSlabPerMCost }] : []),
-              { label: "Concrete Sub-total", qtyPerM: "", rate: "", costPerM: concreteSubtotal, isSub: true },
-              { label: "Excavation", qtyPerM: `${qtoResult.totalLength > 0 ? (qtoResult.excavVolume / qtoResult.totalLength).toFixed(3) : "—"} m³/m`, rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excavPerM },
-              { label: "Backfill", qtyPerM: `${qtoResult.totalLength > 0 ? (qtoResult.backfillVol / qtoResult.totalLength).toFixed(3) : "—"} m³/m`, rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: backfillPerM },
-              { label: "Earthwork Sub-total", qtyPerM: "", rate: "", costPerM: earthworkSubtotal, isSub: true },
-              { label: `Steel (Ø${bbsSummary.totalKg > 0 ? "weighted avg" : `${s.steelRates.r12 > 0 ? "₹" + s.steelRates.r12.toLocaleString() + "/MT" : "—"}` })`, qtyPerM: `${bbsSummary.totalKgPerM.toFixed(2)} kg/m`, rate: `${fmtR((steelRateAvg + steelFabForCard) / 1000)}/kg`, costPerM: steelPerM },
-              ...(bwPerM > 0 ? [{ label: "Binding Wire", qtyPerM: `${(bbsSummary.totalKgPerM * (s.qto.bindingWireKgPerMT ?? 10) / 1000).toFixed(3)} kg/m`, rate: `${fmtR(s.qto.bindingWireRatePerKg ?? 85)}/kg`, costPerM: bwPerM }] : []),
-              ...(lhPerM > 0 ? [{ label: "Lifting Hooks", qtyPerM: `1 per ${s.qto.liftingHookSpacingM ?? 2}m`, rate: `${fmtR(s.qto.liftingHookRatePerNos ?? 150)}/nos`, costPerM: lhPerM }] : []),
-              ...(gratingPerM > 0 ? [{ label: "Gratings", qtyPerM: `1 per ${s.qto.gratingsSpacing}m`, rate: `${fmtR(s.qto.gratingRatePerNos)}/nos`, costPerM: gratingPerM }] : []),
-              ...(weepholePerM > 0 ? [{ label: "Weepholes", qtyPerM: `1 per ${s.qto.weepholesSpacing}m`, rate: `${fmtR(s.qto.weepholeRatePerNos)}/nos`, costPerM: weepholePerM }] : []),
-              { label: "Grand Total (All-in ₹/RM)", qtyPerM: "", rate: "", costPerM: grandTotal, isSub: true },
-            ];
-
-            return (
-              <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                  <p className="text-xs text-slate-500 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 overflow-x-auto">
-                  <table className="text-xs w-full min-w-[450px] border-separate border-spacing-0">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/60">
-                        {["Item", "Qty / m", "Rate", "₹ / RM"].map(h => (
-                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {perMRows.map((r, i) => (
-                        <tr key={i} className={r.isSub
-                          ? "bg-slate-100 dark:bg-slate-700/40 font-bold"
-                          : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
-                          <td className={`px-3 py-2 whitespace-nowrap ${r.isSub ? "pl-3" : "pl-6"}`}>{r.label}</td>
-                          <td className="px-3 py-2 text-right text-slate-500">{r.qtyPerM}</td>
-                          <td className="px-3 py-2 text-right text-slate-500">{r.rate}</td>
-                          <td className={`px-3 py-2 text-right ${r.isSub ? "text-blue-700 dark:text-blue-400" : ""}`}>
-                            {r.costPerM > 0 ? fmtR(r.costPerM) : (r.isSub ? fmtR(0) : "—")}
-                          </td>
+            // Helper to render a per-metre table for given zone lengths
+            function renderPerMTable(zoneWalls: number, zoneTotalLen: number, zoneLabel: string) {
+              const wallVol = zoneTotalLen > 0 ? zoneWalls / zoneTotalLen : 0;
+              const invertVol = qtoResult.invertPerM;
+              const topVol = qtoResult.topPerM;
+              const pccVol = qtoResult.pccPerM;
+              const pccC = pccVol * pccCostPerM3;
+              const invC = invertVol * invertCostPerM3;
+              const wllC = wallVol * wallCostPerM3;
+              const topC = topVol * topSlabCostPerM3;
+              const concSub = pccC + invC + wllC + topC;
+              const excVol = qtoResult.totalLength > 0 ? qtoResult.excavVolume * zoneTotalLen / qtoResult.totalLength / zoneTotalLen : 0;
+              const bkfVol = qtoResult.totalLength > 0 ? qtoResult.backfillVol * zoneTotalLen / qtoResult.totalLength / zoneTotalLen : 0;
+              const excC = excVol * s.qto.excavationRate;
+              const bkfC = bkfVol * s.qto.backfillRate;
+              const earthSub = excC + bkfC;
+              const stlC = steelPerM + bwPerM + lhPerM;
+              const ancC = gratingPerM + weepholePerM;
+              const grdTotal = concSub + earthSub + stlC + ancC;
+              const pMRows: { label: string; qtyPerM: string; rate: string; costPerM: number; isSub?: boolean }[] = [
+                { label: `PCC ${eq.pcc} Bed`, qtyPerM: `${pccVol.toFixed(3)} m³/m`, rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccC },
+                { label: `Invert Slab (${eq.invert})`, qtyPerM: `${invertVol.toFixed(3)} m³/m`, rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invC },
+                { label: `Walls (${eq.wall})`, qtyPerM: `${wallVol.toFixed(3)} m³/m`, rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wllC },
+                ...(s.qto.isCovered || isBoxCulvert ? [{ label: `Top Slab (${eq.topSlab})`, qtyPerM: `${topVol.toFixed(3)} m³/m`, rate: `${fmtR(topSlabCostPerM3)}/m³`, costPerM: topC }] : []),
+                { label: "Concrete Sub-total", qtyPerM: "", rate: "", costPerM: concSub, isSub: true },
+                { label: "Excavation", qtyPerM: `${excVol.toFixed(3)} m³/m`, rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excC },
+                { label: "Backfill", qtyPerM: `${bkfVol.toFixed(3)} m³/m`, rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: bkfC },
+                { label: "Earthwork Sub-total", qtyPerM: "", rate: "", costPerM: earthSub, isSub: true },
+                { label: "Steel", qtyPerM: `${bbsSummary.totalKgPerM.toFixed(2)} kg/m`, rate: `${fmtR((steelRateAvg + steelFabForCard) / 1000)}/kg`, costPerM: stlC },
+                ...(ancC > 0 ? [{ label: "Ancillaries", qtyPerM: "", rate: "", costPerM: ancC }] : []),
+                { label: "Grand Total ₹/RM", qtyPerM: "", rate: "", costPerM: grdTotal, isSub: true },
+              ];
+              return (
+                <div key={zoneLabel} className="mb-4">
+                  {zoneLabel !== "Combined" && <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1 px-1">{zoneLabel}</p>}
+                  <div className="overflow-x-auto">
+                    <table className="text-xs w-full min-w-[400px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/60">
+                          {["Item", "Qty / m", "Rate", "₹ / RM"].map(h => (
+                            <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl px-4 py-3 text-center min-w-[140px]">
-                      <p className="text-xs text-blue-600 dark:text-blue-400">All-in ₹/RM</p>
-                      <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{fmtR(grandTotal)}</p>
+                      </thead>
+                      <tbody>
+                        {pMRows.map((r, ri) => (
+                          <tr key={ri} className={r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-bold" : (ri % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
+                            <td className={`px-3 py-2 whitespace-nowrap ${r.isSub ? "pl-3" : "pl-6"}`}>{r.label}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{r.qtyPerM}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{r.rate}</td>
+                            <td className={`px-3 py-2 text-right ${r.isSub ? "text-blue-700 dark:text-blue-400 font-bold" : ""}`}>
+                              {r.costPerM > 0 ? fmtR(r.costPerM) : (r.isSub ? fmtR(0) : "—")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-lg px-3 py-2 text-center">
+                      <p className="text-[10px] text-blue-600">₹/RM</p>
+                      <p className="text-base font-bold text-blue-800 dark:text-blue-300">{fmtR(grdTotal)}</p>
                     </div>
-                    {qtoResult.totalLength > 0 && (
-                      <div className="bg-slate-50 dark:bg-slate-800 border rounded-xl px-4 py-3 text-center min-w-[140px]">
-                        <p className="text-xs text-slate-500">Total Drain ({qtoResult.totalLength.toFixed(0)} m)</p>
-                        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{fmtR(grandTotal * qtoResult.totalLength)}</p>
+                    {zoneTotalLen > 0 && (
+                      <div className="bg-slate-50 border rounded-lg px-3 py-2 text-center">
+                        <p className="text-[10px] text-slate-500">{zoneTotalLen.toFixed(0)} m total</p>
+                        <p className="text-base font-bold">{fmtR(grdTotal * zoneTotalLen)}</p>
                       </div>
                     )}
                   </div>
+                </div>
+              );
+            }
+
+            // Per-zone breakdown (only if multiple zones; always show combined)
+            const hasMultiZone = qtoResult.zones.length > 1;
+
+            return (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                    <p className="text-xs text-slate-500 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {hasMultiZone && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Per Zone</p>
+                      {qtoResult.zones.map(z => renderPerMTable(z.wallsM3, z.length, `${z.label} (${z.length} m)`))}
+                      <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Combined ({qtoResult.totalLength.toFixed(0)} m)</p>
+                        {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined")}
+                      </div>
+                    </div>
+                  )}
+                  {!hasMultiZone && renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined")}
                 </CardContent>
               </Card>
             );
@@ -3806,23 +3863,26 @@ export default function ConcreteCalculator() {
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Quotation — Client Rate vs Our Cost</CardTitle>
                       <p className="text-xs text-slate-500 mt-0.5">Enter client's offered rate per item to compute margin.</p>
                     </div>
-                    <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" data-testid="btn-export-quotation-excel"
-                      onClick={async () => {
-                        const XLSX = await import("xlsx");
-                        const header = ["#", "Description", "Unit", "Qty", "Our Rate (₹)", "Our Amount (₹)", "Client Rate (₹)", "Client Revenue (₹)", "Margin (₹)", "Margin (%)"];
-                        const dataRows = rows.map((r, i) => [
-                          i + 1, r.description, r.unit, r.qty.toFixed(2),
-                          r.rate, r.ourCost,
-                          r.clientRate ?? "", r.clientRev ?? "",
-                          r.marginAmt ?? "", r.marginPct != null ? `${r.marginPct.toFixed(1)}%` : "",
-                        ]);
-                        const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-                        const wb = XLSX.utils.book_new();
-                        XLSX.utils.book_append_sheet(wb, ws, "Quotation");
-                        XLSX.writeFile(wb, `quotation-${s.estimateName || "estimate"}.xlsx`);
-                      }}>
-                      <FileUp className="w-3 h-3 mr-1" /> Export Excel
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" data-testid="btn-export-quotation-excel"
+                        onClick={async () => {
+                          const XLSX = await import("xlsx");
+                          const header = ["#", "Description", "Unit", "Qty", "Our Rate (₹)", "Our Amount (₹)", "Client Rate (₹)", "Client Revenue (₹)", "Margin (₹)", "Margin (%)"];
+                          const dataRows = rows.map((r, i) => [
+                            i + 1, r.description, r.unit, r.qty.toFixed(2),
+                            r.rate, r.ourCost,
+                            r.clientRate ?? "", r.clientRev ?? "",
+                            r.marginAmt ?? "", r.marginPct != null ? `${r.marginPct.toFixed(1)}%` : "",
+                          ]);
+                          const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+                          const wb = XLSX.utils.book_new();
+                          XLSX.utils.book_append_sheet(wb, ws, "Quotation");
+                          XLSX.writeFile(wb, `quotation-${s.estimateName || "estimate"}.xlsx`);
+                        }}>
+                        <FileUp className="w-3 h-3 mr-1" /> Export Excel
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
                     <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
@@ -3834,37 +3894,96 @@ export default function ConcreteCalculator() {
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={r.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
-                            <td className="px-3 py-2">{i + 1}</td>
-                            <td className="px-3 py-2 max-w-[220px] truncate" title={r.description}>{r.description}</td>
-                            <td className="px-3 py-2 text-right">{r.unit}</td>
-                            <td className="px-3 py-2 text-right">{r.qty.toFixed(2)}</td>
-                            <td className="px-3 py-2 text-right">{fmtR(r.rate)}</td>
-                            <td className="px-3 py-2 text-right">{fmtR(r.ourCost)}</td>
-                            <td className="px-3 py-1 text-right">
-                              <input
-                                type="number"
-                                className="w-20 text-right text-xs border border-slate-200 rounded px-1.5 py-1 bg-white dark:bg-slate-900 dark:border-slate-700"
-                                placeholder="0"
-                                value={r.clientRate ?? ""}
-                                onChange={e => updateClientRate(r.id, parseFloat(e.target.value) || 0)}
-                                data-testid={`input-quotation-client-rate-${r.id}`}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">{r.clientRev != null ? fmtR(r.clientRev) : "—"}</td>
-                            <td className={`px-3 py-2 text-right font-semibold ${r.marginAmt != null && r.marginAmt < 0 ? "text-red-600" : ""}`}>
-                              {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              {r.marginPct != null ? (
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(r.marginPct)}`}>
-                                  {r.marginPct.toFixed(1)}%
-                                </span>
-                              ) : "—"}
-                            </td>
-                          </tr>
-                        ))}
+                        {rows.map((r, i) => {
+                          const isExpanded = expandedQuotRows.has(r.id);
+                          // Per-item cost breakdown: detect item type from description and map to costs
+                          const catType = getBOQCategory(r.description);
+                          const itemCosts = (() => {
+                            if (catType === "RCC" || catType === "PCC") {
+                              const grade = catType === "PCC" ? (s.qto?.elementGrades?.pcc ?? "M15") : s.grade;
+                              const c: CostBreakdown = catType === "PCC" ? (() => {
+                                const pMix = MIX_PRESETS[grade] ?? MIX_PRESETS["M15"];
+                                const pState: CalcState = { ...s, mix: pMix };
+                                const raw = computeCosts(pState, 0);
+                                const d2 = raw.cement + raw.ca + raw.fa + raw.admix + raw.batching + raw.curing;
+                                const oh2 = d2 * (s.overheadPct / 100);
+                                const mg2 = (d2 + oh2) * (s.marginPct / 100);
+                                return { ...raw, placement: 0, formwork: 0, total: d2 + oh2 + mg2, totalWithEsc: (d2 + oh2 + mg2) * (1 + s.escalationPct / 100), overhead: oh2, margin: mg2 };
+                              })() : { ...costs, steel: 0 };
+                              return [
+                                { lbl: "Cement", val: c.cement * r.qty }, { lbl: "Coarse Aggregate", val: c.ca * r.qty },
+                                { lbl: "Fine Aggregate", val: c.fa * r.qty }, { lbl: "Admixture", val: c.admix * r.qty },
+                                { lbl: "Batching", val: c.batching * r.qty }, { lbl: "Placement", val: c.placement * r.qty },
+                                { lbl: "Formwork", val: c.formwork * r.qty }, { lbl: "Curing", val: c.curing * r.qty },
+                                { lbl: "Overhead", val: c.overhead * r.qty }, { lbl: "Margin", val: c.margin * r.qty },
+                                { lbl: "Total", val: c.total * r.qty, isBold: true },
+                              ];
+                            }
+                            if (catType === "Steel") {
+                              const steelAmt = r.ourCost;
+                              return [{ lbl: "Steel (BBS + Fab + OH + Margin)", val: steelAmt, isBold: true }];
+                            }
+                            if (catType === "Excavation") return [{ lbl: "Excavation (rate × qty)", val: r.ourCost, isBold: true }];
+                            if (catType === "Backfill") return [{ lbl: "Backfill (rate × qty)", val: r.ourCost, isBold: true }];
+                            return [{ lbl: "Our Cost", val: r.ourCost, isBold: true }];
+                          })();
+                          return (
+                            <Fragment key={r.id}>
+                              <tr
+                                className={`cursor-pointer ${i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"} hover:bg-blue-50/40 dark:hover:bg-blue-900/10`}
+                                onClick={() => toggleQuotRow(r.id)}
+                              >
+                                <td className="px-3 py-2">
+                                  <span className="inline-flex items-center gap-1">
+                                    {isExpanded ? <ChevronUp className="w-3 h-3 text-slate-400" /> : <ChevronDown className="w-3 h-3 text-slate-400" />}
+                                    {i + 1}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 max-w-[220px] truncate" title={r.description}>{r.description}</td>
+                                <td className="px-3 py-2 text-right">{r.unit}</td>
+                                <td className="px-3 py-2 text-right">{r.qty.toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right">{fmtR(r.rate)}</td>
+                                <td className="px-3 py-2 text-right">{fmtR(r.ourCost)}</td>
+                                <td className="px-3 py-1 text-right" onClick={e => e.stopPropagation()}>
+                                  <input
+                                    type="number"
+                                    className="w-20 text-right text-xs border border-slate-200 rounded px-1.5 py-1 bg-white dark:bg-slate-900 dark:border-slate-700"
+                                    placeholder="0"
+                                    value={r.clientRate ?? ""}
+                                    onChange={e => updateClientRate(r.id, parseFloat(e.target.value) || 0)}
+                                    data-testid={`input-quotation-client-rate-${r.id}`}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 text-right">{r.clientRev != null ? fmtR(r.clientRev) : "—"}</td>
+                                <td className={`px-3 py-2 text-right font-semibold ${r.marginAmt != null && r.marginAmt < 0 ? "text-red-600" : ""}`}>
+                                  {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {r.marginPct != null ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(r.marginPct)}`}>
+                                      {r.marginPct.toFixed(1)}%
+                                    </span>
+                                  ) : "—"}
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="bg-blue-50/30 dark:bg-blue-900/10">
+                                  <td colSpan={10} className="px-6 py-3">
+                                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Cost Breakdown — {r.description}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {itemCosts.map((c, ci) => (
+                                        <div key={ci} className={`rounded border px-2 py-1.5 text-center min-w-[100px] ${c.isBold ? "bg-slate-100 dark:bg-slate-700/60 border-slate-300" : "bg-white dark:bg-slate-800 border-slate-200"}`}>
+                                          <p className="text-[10px] text-slate-500">{c.lbl}</p>
+                                          <p className={`text-xs font-${c.isBold ? "bold" : "medium"}`}>{c.val > 0 ? fmtR(c.val) : "—"}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
                         <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
                           <td className="px-3 py-2" colSpan={5}>Total</td>
                           <td className="px-3 py-2 text-right">{fmtR(totalOurCost)}</td>
