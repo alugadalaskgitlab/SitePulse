@@ -2115,6 +2115,7 @@ export default function ConcreteCalculator() {
                         return (
                           <>
                             {groups.slice(0, 3).map(g => (
+
                               <div key={g.label} className={`rounded-lg border p-2 ${g.color}`}>
                                 <div className={`flex justify-between items-center mb-1.5 font-semibold ${g.textColor}`}>
                                   <span>{g.label}</span>
@@ -2168,6 +2169,12 @@ export default function ConcreteCalculator() {
                                 </div>
                               </div>
                             ))}
+                            {anyUnchecked && (
+                              <div className="flex justify-between items-center font-semibold text-violet-700 bg-violet-50 rounded px-2 py-1 border border-violet-200">
+                                <span className="text-xs">Selected ₹/m³</span>
+                                <span>{fmtR(selectedTotal)}{crossSectionM2 > 0 ? ` · ${fmtR(selectedTotal * crossSectionM2)}/RM` : ""}</span>
+                              </div>
+                            )}
                           </>
                         );
                       })()}
@@ -2181,12 +2188,6 @@ export default function ConcreteCalculator() {
                           <div className="flex justify-between items-center text-slate-700 font-medium">
                             <span>With esc. ({s.escalationPct}%)</span>
                             <span className="font-semibold">{fmtR(costs.totalWithEsc)}{crossSectionM2 > 0 ? ` · ${fmtR(costs.totalWithEsc * crossSectionM2)}/RM` : ""}</span>
-                          </div>
-                        )}
-                        {anyUnchecked && (
-                          <div className="flex justify-between items-center font-semibold text-violet-700 bg-violet-50 rounded px-2 py-1 border border-violet-200">
-                            <span className="text-xs">Selected ₹/m³</span>
-                            <span>{fmtR(selectedTotal)}{crossSectionM2 > 0 ? ` · ${fmtR(selectedTotal * crossSectionM2)}/RM` : ""}</span>
                           </div>
                         )}
                       </div>
