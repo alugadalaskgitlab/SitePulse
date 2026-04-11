@@ -3739,8 +3739,8 @@ export default function ConcreteCalculator() {
               const wllC = wallVol * wallCostPerM3;
               const topC = topVol * topSlabCostPerM3;
               const concSub = pccC + invC + wllC + topC;
-              const excVol = qtoResult.totalLength > 0 ? qtoResult.excavVolume * zoneTotalLen / qtoResult.totalLength / zoneTotalLen : 0;
-              const bkfVol = qtoResult.totalLength > 0 ? qtoResult.backfillVol * zoneTotalLen / qtoResult.totalLength / zoneTotalLen : 0;
+              const excVol = (qtoResult.totalLength > 0 && zoneTotalLen > 0) ? qtoResult.excavVolume / qtoResult.totalLength : 0;
+              const bkfVol = (qtoResult.totalLength > 0 && zoneTotalLen > 0) ? qtoResult.backfillVol / qtoResult.totalLength : 0;
               const excC = excVol * s.qto.excavationRate;
               const bkfC = bkfVol * s.qto.backfillRate;
               const earthSub = excC + bkfC;
@@ -4048,10 +4048,19 @@ export default function ConcreteCalculator() {
                                       {itemCosts.map((c, ci) => (
                                         <div key={ci} className={`rounded border px-2 py-1.5 text-center min-w-[100px] ${c.isBold ? "bg-slate-100 dark:bg-slate-700/60 border-slate-300" : "bg-white dark:bg-slate-800 border-slate-200"}`}>
                                           <p className="text-[10px] text-slate-500">{c.lbl}</p>
-                                          <p className={`text-xs font-${c.isBold ? "bold" : "medium"}`}>{c.val > 0 ? fmtR(c.val) : "—"}</p>
+                                          <p className={`text-xs ${c.isBold ? "font-bold" : "font-medium"}`}>{c.val > 0 ? fmtR(c.val) : "—"}</p>
                                         </div>
                                       ))}
                                     </div>
+                                    {r.clientRev != null && (
+                                      <div className="mt-2 flex gap-3 text-[10px] text-slate-600 dark:text-slate-400">
+                                        <span>Total Our Cost: <span className="font-semibold text-slate-800 dark:text-slate-200">{fmtR(r.ourCost)}</span></span>
+                                        <span>Client Amount: <span className="font-semibold text-slate-800 dark:text-slate-200">{fmtR(r.clientRev)}</span></span>
+                                        <span className={r.marginAmt != null && r.marginAmt >= 0 ? "text-green-700 font-semibold" : "text-red-600 font-semibold"}>
+                                          Margin: {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}{r.marginPct != null ? ` (${r.marginPct.toFixed(1)}%)` : ""}
+                                        </span>
+                                      </div>
+                                    )}
                                   </td>
                                 </tr>
                               )}
