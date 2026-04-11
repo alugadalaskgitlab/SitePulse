@@ -1294,19 +1294,6 @@ export default function ConcreteCalculator() {
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Concrete Grade</Label>
-                      <Select value={s.grade} onValueChange={applyGradePreset}>
-                        <SelectTrigger className="mt-1 h-9 text-sm" data-testid="select-grade">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.keys(MIX_PRESETS).map((g) => (
-                            <SelectItem key={g} value={g}>{g}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
                       {numInput("Total Volume (m³)", s.totalVolume, (v) => update({ totalVolume: v }), { unit: "m³", testId: "input-volume" })}
                     </div>
                     <div>
@@ -1346,6 +1333,22 @@ export default function ConcreteCalculator() {
                 </ul>
               </HelpPanel>
                 <CardContent className="px-5 pb-5">
+                  <div className="flex items-end gap-4 mb-4 pb-4 border-b border-border/50">
+                    <div>
+                      <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Concrete Grade</Label>
+                      <Select value={s.grade} onValueChange={applyGradePreset}>
+                        <SelectTrigger className="mt-1 h-9 text-sm w-28" data-testid="select-grade">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.keys(MIX_PRESETS).map((g) => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-1.5 max-w-xs">Selecting a grade auto-fills IS:456 quantities below. Lock the mix to prevent reset when grade changes.</p>
+                  </div>
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                     {numInput("Cement (kg/m³)", s.mix.cementKg, (v) => updateMix({ cementKg: v }), { testId: "input-cement-kg" })}
                     {numInput("Coarse Agg (kg/m³)", s.mix.caKg, (v) => updateMix({ caKg: v }))}
@@ -2689,9 +2692,48 @@ export default function ConcreteCalculator() {
                   <div className="space-y-5">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {numInput("Clear Span (mm)", s.qto.clearSpan, v => updateQto({ clearSpan: v }))}
-                      {numInput("Wall Thickness (mm)", s.qto.wallThickness, v => updateQto({ wallThickness: v }))}
-                      {numInput("Invert Slab Thick (mm)", s.qto.invertSlabThick, v => updateQto({ invertSlabThick: v }))}
-                      {numInput("PCC Depth (mm)", s.qto.pccDepth, v => updateQto({ pccDepth: v }))}
+                      {/* Wall Thickness + inline grade */}
+                      <div>
+                        {numInput("Wall Thickness (mm)", s.qto.wallThickness, v => updateQto({ wallThickness: v }))}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">Wall Grade:</span>
+                          <Select
+                            value={s.qto.elementGrades?.wall ?? "M25"}
+                            onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), wall: v } })}
+                          >
+                            <SelectTrigger className="h-6 text-xs flex-1 px-1.5"><SelectValue /></SelectTrigger>
+                            <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      {/* Invert Slab Thick + inline grade */}
+                      <div>
+                        {numInput("Invert Slab Thick (mm)", s.qto.invertSlabThick, v => updateQto({ invertSlabThick: v }))}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">Invert Grade:</span>
+                          <Select
+                            value={s.qto.elementGrades?.invert ?? "M25"}
+                            onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), invert: v } })}
+                          >
+                            <SelectTrigger className="h-6 text-xs flex-1 px-1.5"><SelectValue /></SelectTrigger>
+                            <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      {/* PCC Depth + inline grade */}
+                      <div>
+                        {numInput("PCC Depth (mm)", s.qto.pccDepth, v => updateQto({ pccDepth: v }))}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">PCC Grade:</span>
+                          <Select
+                            value={s.qto.elementGrades?.pcc ?? "M15"}
+                            onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), pcc: v } })}
+                          >
+                            <SelectTrigger className="h-6 text-xs flex-1 px-1.5"><SelectValue /></SelectTrigger>
+                            <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                       {numInput("PCC Side Offset (mm)", s.qto.pccOffset, v => updateQto({ pccOffset: v }))}
                       {numInput("Working Space (mm)", s.qto.workingSpace, v => updateQto({ workingSpace: v }))}
                       {numInput("Gratings Spacing (m)", s.qto.gratingsSpacing, v => updateQto({ gratingsSpacing: v }))}
@@ -2716,7 +2758,19 @@ export default function ConcreteCalculator() {
                         </div>
                         {s.qto.isCovered && (
                           <>
-                            {numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
+                            <div>
+                              {numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">Slab Grade:</span>
+                                <Select
+                                  value={s.qto.elementGrades?.topSlab ?? "M25"}
+                                  onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), topSlab: v } })}
+                                >
+                                  <SelectTrigger className="h-6 text-xs flex-1 px-1.5"><SelectValue /></SelectTrigger>
+                                  <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                                </Select>
+                              </div>
+                            </div>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Slab Type</Label>
                               <Select value={s.qto.topSlabType ?? "CIS"} onValueChange={(v) => updateQto({ topSlabType: v as "CIS" | "Precast" })}>
@@ -2732,31 +2786,21 @@ export default function ConcreteCalculator() {
                         )}
                       </div>
                     )}
-                    {isBoxCulvert && numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
-
-                    {/* Element Grades row */}
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">Element Grades <span className="normal-case font-normal text-slate-400">(IS 456 — min. cover 40mm for exposure B2)</span></p>
-                      <div className="flex flex-wrap gap-3">
-                        {(["pcc","invert","wall","topSlab"] as const).filter(k => k !== "topSlab" || showTopSlab).map(key => {
-                          const labels: Record<string, string> = { pcc: "PCC Bed", invert: "Invert Slab", wall: "Walls", topSlab: "Top Slab" };
-                          return (
-                            <div key={key} className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded border border-border/50 px-2 py-1.5">
-                              <span className="text-sm text-slate-700 font-medium w-16">{labels[key]}</span>
-                              <Select
-                                value={s.qto.elementGrades?.[key] ?? (key === "pcc" ? "M15" : "M25")}
-                                onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), [key]: v } })}
-                              >
-                                <SelectTrigger className="h-7 text-xs w-20 border-0 shadow-none p-0"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  {["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          );
-                        })}
+                    {isBoxCulvert && (
+                      <div className="inline-block">
+                        {numInput("Top Slab Thick (mm)", s.qto.topSlabThick, v => updateQto({ topSlabThick: v }))}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">Slab Grade:</span>
+                          <Select
+                            value={s.qto.elementGrades?.topSlab ?? "M25"}
+                            onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), topSlab: v } })}
+                          >
+                            <SelectTrigger className="h-6 text-xs w-20 px-1.5"><SelectValue /></SelectTrigger>
+                            <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -2974,8 +3018,7 @@ export default function ConcreteCalculator() {
                   <p className="text-sm text-slate-600 mt-0.5">Used when generating the Standard Drain BOQ and Per-Metre Rate Card.</p>
                 </CardHeader>
                 <CardContent className="px-5 pb-4 space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {numInput("PCC Rate (₹/m³)", s.qto.pccRatePerM3, v => updateQto({ pccRatePerM3: v }))}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {numInput("Excavation Rate (₹/m³)", s.qto.excavationRate, v => updateQto({ excavationRate: v }))}
                     {numInput("Backfill Rate (₹/m³)", s.qto.backfillRate, v => updateQto({ backfillRate: v }))}
                     {numInput("Grating Rate (₹/nos)", s.qto.gratingRatePerNos, v => updateQto({ gratingRatePerNos: v }))}
@@ -3265,9 +3308,9 @@ export default function ConcreteCalculator() {
                     const pct = lastRow.val > 0 ? (r.val / lastRow.val) * 100 : 0;
                     return (
                       <tr key={i} className={r.bold ? "bg-blue-50/80 dark:bg-blue-900/15 font-bold" : r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-semibold" : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
-                        <td className={`px-3 py-1.5 ${r.indent ? "pl-6 text-slate-600 dark:text-slate-400" : ""}`}>{r.label}</td>
+                        <td className={`px-3 py-1.5 ${r.indent ? "pl-6 text-slate-700 dark:text-slate-300" : ""}`}>{r.label}</td>
                         <td className="px-3 py-1.5 text-right font-mono">{r.val > 0 ? fmtR(r.val) : "—"}</td>
-                        <td className="px-3 py-1.5 text-right text-slate-500">{r.isSub && r.val > 0 ? `${pct.toFixed(0)}%` : ""}</td>
+                        <td className="px-3 py-1.5 text-right text-slate-600">{r.isSub && r.val > 0 ? `${pct.toFixed(0)}%` : ""}</td>
                       </tr>
                     );
                   })}
@@ -3281,7 +3324,7 @@ export default function ConcreteCalculator() {
                   <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rate Analysis — {s.grade}</CardTitle>
-                      <p className="text-xs text-slate-500 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for the active concrete grade.</p>
+                      <p className="text-xs text-slate-600 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for the active concrete grade.</p>
                     </div>
                     <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                   </CardHeader>
@@ -3293,7 +3336,7 @@ export default function ConcreteCalculator() {
                   <Card>
                     <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">PCC Bed — {pccGrade}</CardTitle>
-                      <p className="text-xs text-slate-500 mt-0.5">PCC rate excludes formwork and placement — blinding coat only.</p>
+                      <p className="text-xs text-slate-600 mt-0.5">PCC rate excludes formwork and placement — blinding coat only.</p>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
                       {renderTable(pccRows)}
@@ -3349,12 +3392,12 @@ export default function ConcreteCalculator() {
                   <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rate Analysis</CardTitle>
-                      <p className="text-xs text-slate-500 mt-0.5">Purchase rate + fabrication + wastage + OH + margin per diameter and summary.</p>
+                      <p className="text-xs text-slate-600 mt-0.5">Purchase rate + fabrication + wastage + OH + margin per diameter and summary.</p>
                     </div>
                     <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Per Diameter — Purchase Cost</p>
+                    <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-2">Per Diameter — Purchase Cost</p>
                     <table className="text-xs w-full min-w-[540px] border-separate border-spacing-0 mb-5">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60">
@@ -3389,12 +3432,12 @@ export default function ConcreteCalculator() {
                           </tr>
                         )}
                         {totalBBSKg === 0 && (
-                          <tr><td colSpan={8} className="px-3 py-3 text-center text-slate-400">No BBS data — add bars in the BBS tab</td></tr>
+                          <tr><td colSpan={8} className="px-3 py-3 text-center text-slate-600">No BBS data — add bars in the BBS tab</td></tr>
                         )}
                       </tbody>
                     </table>
 
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Rate Analysis — ₹/MT and ₹/m³</p>
+                    <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-2">Rate Analysis — ₹/MT and ₹/m³</p>
                     <table className="text-xs w-full min-w-[360px] border-separate border-spacing-0">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60">
@@ -3416,15 +3459,15 @@ export default function ConcreteCalculator() {
                     {crossSectionM2 > 0 && totalBBSKg > 0 && (
                       <div className="mt-4 flex flex-wrap gap-3">
                         <div className="rounded-lg border p-3 text-center">
-                          <p className="text-xs text-slate-500">Steel kg/m</p>
+                          <p className="text-xs text-slate-600">Steel kg/m</p>
                           <p className="font-bold">{bbsSummary.totalKgPerM.toFixed(2)} kg/m</p>
                         </div>
                         <div className="rounded-lg border p-3 text-center">
-                          <p className="text-xs text-slate-500">Steel ₹/m (all-in)</p>
+                          <p className="text-xs text-slate-600">Steel ₹/m (all-in)</p>
                           <p className="font-bold">{fmtR(bbsSummary.totalKgPerM * totalPerMT / 1000)}/m</p>
                         </div>
                         <div className="rounded-lg border p-3 text-center">
-                          <p className="text-xs text-slate-500">Steel ₹/m³ (all-in)</p>
+                          <p className="text-xs text-slate-600">Steel ₹/m³ (all-in)</p>
                           <p className="font-bold">{fmtR(toM3(totalPerMT))}/m³</p>
                         </div>
                       </div>
@@ -3444,7 +3487,7 @@ export default function ConcreteCalculator() {
                     <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                       <div>
                         <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                        <p className="text-xs text-slate-500 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
+                        <p className="text-xs text-slate-600 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
                       </div>
                       <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                     </CardHeader>
@@ -3564,9 +3607,9 @@ export default function ConcreteCalculator() {
                         {pMRows.map((r, ri) => (
                           <tr key={ri} className={r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-bold" : (ri % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
                             <td className={`px-3 py-2 whitespace-nowrap ${r.isSub ? "pl-3" : "pl-6"}`}>{r.label}</td>
-                            <td className="px-3 py-2 text-right text-slate-500">{r.qty}</td>
-                            <td className="px-3 py-2 text-right text-slate-400 text-[11px]">{r.unit}</td>
-                            <td className="px-3 py-2 text-right text-slate-500">{r.rate}</td>
+                            <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-300">{r.qty}</td>
+                            <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-400 text-[11px]">{r.unit}</td>
+                            <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-300">{r.rate}</td>
                             <td className={`px-3 py-2 text-right ${r.isSub ? "text-blue-700 dark:text-blue-400 font-bold" : ""}`}>
                               {r.costPerM > 0 ? fmtR(r.costPerM) : (r.isSub ? fmtR(0) : "—")}
                             </td>
@@ -3582,7 +3625,7 @@ export default function ConcreteCalculator() {
                     </div>
                     {zoneTotalLen > 0 && (
                       <div className="bg-slate-50 border rounded-lg px-3 py-2 text-center">
-                        <p className="text-[10px] text-slate-500">{zoneTotalLen.toFixed(0)} m total</p>
+                        <p className="text-[10px] text-slate-600">{zoneTotalLen.toFixed(0)} m total</p>
                         <p className="text-base font-bold">{fmtR(grdTotal * zoneTotalLen)}</p>
                       </div>
                     )}
@@ -3599,17 +3642,17 @@ export default function ConcreteCalculator() {
                 <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                    <p className="text-xs text-slate-500 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
+                    <p className="text-xs text-slate-600 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
                   </div>
                   <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
                   {hasMultiZone && (
                     <div className="mb-4">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Per Zone</p>
+                      <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-3">Per Zone</p>
                       {qtoResult.zones.map(z => renderPerMTable(z.wallsM3, z.length, `${z.label} (${z.length} m)`, "gross"))}
                       <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Combined ({qtoResult.totalLength.toFixed(0)} m)</p>
+                        <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Combined ({qtoResult.totalLength.toFixed(0)} m)</p>
                         {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net", qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0)}
                       </div>
                     </div>
@@ -3622,11 +3665,11 @@ export default function ConcreteCalculator() {
 
           {/* ── BOQ ── */}
           {activeReportPill === "boq" && (() => {
-            const items = s.boqItems;
+            const items = s.boqItems ?? [];
             if (items.length === 0) {
               return (
                 <Card>
-                  <CardContent className="px-5 py-8 text-center text-slate-500">
+                  <CardContent className="px-5 py-8 text-center text-slate-600">
                     <p>No BOQ items yet. Add items in the Dimensions &amp; QTO tab.</p>
                   </CardContent>
                 </Card>
@@ -3637,7 +3680,7 @@ export default function ConcreteCalculator() {
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">BOQ — Bill of Quantities</CardTitle>
-                  <p className="text-xs text-slate-500 mt-0.5">{items.length} item(s) — our estimated rates.</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{items.length} item(s) — our estimated rates.</p>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 overflow-x-auto">
                   <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
@@ -3672,11 +3715,11 @@ export default function ConcreteCalculator() {
 
           {/* ── Quotation ── */}
           {activeReportPill === "quotation" && (() => {
-            const items = s.boqItems;
+            const items = s.boqItems ?? [];
             if (items.length === 0) {
               return (
                 <Card>
-                  <CardContent className="px-5 py-8 text-center text-slate-500">
+                  <CardContent className="px-5 py-8 text-center text-slate-600">
                     <p>No BOQ items yet. Add items in the Dimensions &amp; QTO tab, then enter client-offered rates here.</p>
                   </CardContent>
                 </Card>
@@ -3704,7 +3747,7 @@ export default function ConcreteCalculator() {
                   <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Quotation — Client Rate vs Our Cost</CardTitle>
-                      <p className="text-xs text-slate-500 mt-0.5">Enter client's offered rate per item to compute margin.</p>
+                      <p className="text-xs text-slate-600 mt-0.5">Enter client's offered rate per item to compute margin.</p>
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
@@ -3852,11 +3895,11 @@ export default function ConcreteCalculator() {
                               {isExpanded && (
                                 <tr className="bg-blue-50/30 dark:bg-blue-900/10">
                                   <td colSpan={10} className="px-6 py-3">
-                                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Cost Breakdown — {r.description}</p>
+                                    <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-2">Cost Breakdown — {r.description}</p>
                                     <div className="flex flex-wrap gap-2">
                                       {itemCosts.map((c, ci) => (
                                         <div key={ci} className={`rounded border px-2 py-1.5 text-center min-w-[100px] ${c.isBold ? "bg-slate-100 dark:bg-slate-700/60 border-slate-300" : "bg-white dark:bg-slate-800 border-slate-200"}`}>
-                                          <p className="text-[10px] text-slate-500">{c.lbl}</p>
+                                          <p className="text-[10px] text-slate-600">{c.lbl}</p>
                                           <p className={`text-xs ${c.isBold ? "font-bold" : "font-medium"}`}>{c.val > 0 ? fmtR(c.val) : "—"}</p>
                                         </div>
                                       ))}
