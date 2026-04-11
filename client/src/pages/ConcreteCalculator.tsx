@@ -3869,7 +3869,8 @@ export default function ConcreteCalculator() {
                             if (catType === "Steel") {
                               const totalKg = bbsSummary.totalKg;
                               const purchCostAll = bbsSummary.totalCost;
-                              const fabCostAll = steelFabForCard * totalKg / 1000;
+                              const quotSteelFabRate = (s.pettyLabour?.enabled && s.pettyLabour?.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+                              const fabCostAll = quotSteelFabRate * totalKg / 1000;
                               const directSteel = purchCostAll + fabCostAll;
                               const steelWaste = s.wastage.steelCuttingWaste ? directSteel * (s.wastage.steelCuttingPct / 100) : 0;
                               const steelDW = directSteel + steelWaste;
