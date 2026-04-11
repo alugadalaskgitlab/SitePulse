@@ -657,6 +657,8 @@ export default function ConcreteCalculator() {
   });
   const [priceImpactRates, setPriceImpactRates] = useState<Record<string, number>>({});
   const [helpOpen, setHelpOpen] = useState<string | null>(null);
+  const [breakdownGrade, setBreakdownGrade] = useState(() => s.grade);
+  const [breakdownIsPcc, setBreakdownIsPcc] = useState(false);
   function toggleHelp(id: string) { setHelpOpen(prev => prev === id ? null : id); }
 
   // ── Inline help sub-components (closure over helpOpen + toggleHelp) ─────────
@@ -2086,7 +2088,30 @@ export default function ConcreteCalculator() {
               <div className="sticky top-4 space-y-4">
                 <Card>
                   <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                    <CardTitle className="text-sm font-semibold">Rate Breakdown</CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-sm font-semibold">Rate Breakdown</CardTitle>
+                      <Select value={breakdownGrade} onValueChange={v => { setBreakdownGrade(v); setBreakdownIsPcc(false); }}>
+                        <SelectTrigger className="h-6 text-xs w-20 border-slate-300" data-testid="select-breakdown-grade">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.keys(MIX_PRESETS).map(g => (
+                            <SelectItem key={g} value={g}>
+                              {g}{g === s.grade ? " (Main)" : ""}
+                              {g === s.qto.elementGrades?.pcc && g !== s.grade ? " (PCC)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button
+                        onClick={() => setBreakdownIsPcc(p => !p)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border font-medium transition-colors ${(breakdownIsPcc || s.qto.elementGrades?.pcc === breakdownGrade) ? "bg-amber-100 border-amber-400 text-amber-700" : "bg-slate-50 border-slate-300 text-slate-500 hover:border-slate-400"}`}
+                        title="Toggle PCC mode — hides steel, formwork and placement"
+                        data-testid="btn-breakdown-pcc-toggle"
+                      >
+                        PCC
+                      </button>
+                    </div>
                     <HelpBtn id="rate-summary" />
                   </CardHeader>
                   <HelpPanel id="rate-summary" title="Rate Breakdown">
@@ -2103,66 +2128,91 @@ export default function ConcreteCalculator() {
                     {/* Grouped cost breakdown */}
                     <div className="space-y-3 text-xs">
                       {(() => {
+                        // ── Grade-aware cost recomputation ──────────────────────
+                        const bdMix = MIX_PRESETS[breakdownGrade] ?? s.mix;
+                        const bdPccMode = breakdownIsPcc || (s.qto.elementGrades?.pcc === breakdownGrade);
+                        const bdState: CalcState = {
+                          ...s,
+                          mix: bdMix,
+                          ...(bdPccMode ? {
+                            shutteringAreaPerM3: 0,
+                            stagingAreaPerM3: 0,
+                            placementRatePerDay: 0,
+                            labourRatePerM3: 0,
+                            pettyLabour: { ...s.pettyLabour, enabled: false },
+                            wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false },
+                          } : {}),
+                        };
+                        const bdCosts = computeCosts(bdState, bdPccMode ? 0 : steelCostPerM3, undefined, undefined, bdPccMode ? undefined : pettyLabourRatePerM3);
+                        const bdMaxBar = Math.max(bdCosts.cement, bdCosts.ca, bdCosts.fa, bdCosts.admix, bdCosts.batching, bdCosts.placement, bdCosts.formwork, bdCosts.labour, bdCosts.curing, bdCosts.steel, bdCosts.wastage, bdCosts.overhead, bdCosts.margin, 1);
+
                         const rm = (v: number) => crossSectionM2 > 0 ? ` · ${fmtR(v * crossSectionM2)}/RM` : "";
-                        const rawMatTotal = costs.cement + costs.ca + costs.fa + costs.admix;
-                        const plantTotal = costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing;
-                        const directTotal = rawMatTotal + plantTotal + costs.steel;
+                        const rawMatTotal = bdCosts.cement + bdCosts.ca + bdCosts.fa + bdCosts.admix;
+                        const plantTotal = bdCosts.batching + bdCosts.placement + bdCosts.formwork + bdCosts.labour + bdCosts.curing;
+                        const directTotal = rawMatTotal + plantTotal + bdCosts.steel;
                         const ic = s.includedCosts ?? { cement: true, ca: true, fa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true };
                         const toggleInc = (k: keyof IncludedCosts) => update({ includedCosts: { ...ic, [k]: !ic[k] } });
+
+                        const usePettyLabel = pettyLabourRatePerM3 !== undefined && !bdPccMode;
                         const groups = [
                           {
                             label: "Raw Materials", color: "bg-amber-100 border-amber-200", textColor: "text-amber-800",
                             items: [
-                              { label: "Cement", val: costs.cement, color: "bg-amber-500", key: "cement" as keyof IncludedCosts },
-                              { label: "Coarse Agg", val: costs.ca, color: "bg-orange-400", key: "ca" as keyof IncludedCosts },
-                              { label: "Fine Agg", val: costs.fa, color: "bg-yellow-400", key: "fa" as keyof IncludedCosts },
-                              { label: "Admixture", val: costs.admix, color: "bg-purple-400", key: "admix" as keyof IncludedCosts },
+                              { label: "Cement", val: bdCosts.cement, color: "bg-amber-500", key: "cement" as keyof IncludedCosts },
+                              { label: "Coarse Agg", val: bdCosts.ca, color: "bg-orange-400", key: "ca" as keyof IncludedCosts },
+                              { label: "Fine Agg", val: bdCosts.fa, color: "bg-yellow-400", key: "fa" as keyof IncludedCosts },
+                              { label: "Admixture", val: bdCosts.admix, color: "bg-purple-400", key: "admix" as keyof IncludedCosts },
                             ],
                             subtotal: rawMatTotal,
                           },
                           {
                             label: "Mixing, Placing & Curing", color: "bg-blue-50 border-blue-200", textColor: "text-blue-800",
-                            items: pettyLabourRatePerM3 !== undefined
+                            items: usePettyLabel
                               ? [
-                                  { label: "Batching", val: costs.batching, color: "bg-blue-400", key: "batching" as keyof IncludedCosts },
-                                  { label: "Petty Labour", val: costs.placement, color: "bg-sky-400", key: "placement" as keyof IncludedCosts },
+                                  { label: "Batching", val: bdCosts.batching, color: "bg-blue-400", key: "batching" as keyof IncludedCosts },
+                                  { label: "Petty Labour", val: bdCosts.placement, color: "bg-sky-400", key: "placement" as keyof IncludedCosts },
                                   ...(s.pettyLabour.contractorFormwork
                                     ? []
-                                    : [{ label: "Formwork", val: costs.formwork, color: "bg-teal-400", key: "formwork" as keyof IncludedCosts }]),
-                                  { label: "Labour", val: costs.labour, color: "bg-green-500", key: "labour" as keyof IncludedCosts },
-                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400", key: "curing" as keyof IncludedCosts },
+                                    : [{ label: "Formwork", val: bdCosts.formwork, color: "bg-teal-400", key: "formwork" as keyof IncludedCosts }]),
+                                  { label: "Labour", val: bdCosts.labour, color: "bg-green-500", key: "labour" as keyof IncludedCosts },
+                                  { label: "Curing", val: bdCosts.curing, color: "bg-cyan-400", key: "curing" as keyof IncludedCosts },
                                 ]
                               : [
-                                  { label: "Batching", val: costs.batching, color: "bg-blue-400", key: "batching" as keyof IncludedCosts },
-                                  { label: "Placement", val: costs.placement, color: "bg-sky-400", key: "placement" as keyof IncludedCosts },
-                                  { label: "Formwork", val: costs.formwork, color: "bg-teal-400", key: "formwork" as keyof IncludedCosts },
-                                  { label: "Labour", val: costs.labour, color: "bg-green-500", key: "labour" as keyof IncludedCosts },
-                                  { label: "Curing", val: costs.curing, color: "bg-cyan-400", key: "curing" as keyof IncludedCosts },
+                                  { label: "Batching", val: bdCosts.batching, color: "bg-blue-400", key: "batching" as keyof IncludedCosts },
+                                  { label: "Placement", val: bdCosts.placement, color: "bg-sky-400", key: "placement" as keyof IncludedCosts },
+                                  { label: "Formwork", val: bdCosts.formwork, color: "bg-teal-400", key: "formwork" as keyof IncludedCosts },
+                                  { label: "Labour", val: bdCosts.labour, color: "bg-green-500", key: "labour" as keyof IncludedCosts },
+                                  { label: "Curing", val: bdCosts.curing, color: "bg-cyan-400", key: "curing" as keyof IncludedCosts },
                                 ],
                             subtotal: plantTotal,
                           },
-                          {
+                          ...(!bdPccMode ? [{
                             label: "Steel", color: "bg-slate-100 border-slate-200", textColor: "text-slate-700",
-                            items: [{ label: "Reinforcement", val: costs.steel, color: "bg-slate-500", key: "steel" as keyof IncludedCosts }],
-                            subtotal: costs.steel,
-                          },
+                            items: [{ label: "Reinforcement", val: bdCosts.steel, color: "bg-slate-500", key: "steel" as keyof IncludedCosts }],
+                            subtotal: bdCosts.steel,
+                          }] : []),
                           {
                             label: "Wastage + Overhead + Margin", color: "bg-emerald-50 border-emerald-200", textColor: "text-emerald-800",
                             items: [
-                              { label: "Wastage", val: costs.wastage, color: "bg-red-300", key: "wastage" as keyof IncludedCosts },
-                              { label: "Overhead", val: costs.overhead, color: "bg-gray-400", key: "overhead" as keyof IncludedCosts },
-                              { label: "Margin", val: costs.margin, color: "bg-emerald-500", key: "margin" as keyof IncludedCosts },
+                              { label: "Wastage", val: bdCosts.wastage, color: "bg-red-300", key: "wastage" as keyof IncludedCosts },
+                              { label: "Overhead", val: bdCosts.overhead, color: "bg-gray-400", key: "overhead" as keyof IncludedCosts },
+                              { label: "Margin", val: bdCosts.margin, color: "bg-emerald-500", key: "margin" as keyof IncludedCosts },
                             ],
-                            subtotal: costs.wastage + costs.overhead + costs.margin,
+                            subtotal: bdCosts.wastage + bdCosts.overhead + bdCosts.margin,
                           },
                         ];
                         const allItems = groups.flatMap(g => g.items);
                         const selectedTotal = allItems.reduce((sum, item) => sum + (ic[item.key] ? item.val : 0), 0);
                         const anyUnchecked = allItems.some(item => !ic[item.key]);
+                        const groupsBeforeWastage = bdPccMode ? 2 : 3;
                         return (
                           <>
-                            {groups.slice(0, 3).map(g => (
-
+                            {bdPccMode && (
+                              <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-center gap-1">
+                                <span className="font-medium">PCC mode</span> — steel, formwork & placement excluded; overhead &amp; margin recalculated on materials + batching + curing only.
+                              </div>
+                            )}
+                            {groups.slice(0, groupsBeforeWastage).map(g => (
                               <div key={g.label} className={`rounded-lg border p-2 ${g.color}`}>
                                 <div className={`flex justify-between items-center mb-1.5 font-semibold ${g.textColor}`}>
                                   <span>{g.label}</span>
@@ -2179,7 +2229,7 @@ export default function ConcreteCalculator() {
                                       />
                                       <div className="w-14 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
                                       <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
-                                        <div className={`h-full rounded ${item.color} ${ic[item.key] ? "opacity-100" : "opacity-30"}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
+                                        <div className={`h-full rounded ${item.color} ${ic[item.key] ? "opacity-100" : "opacity-30"}`} style={{ width: `${bdMaxBar > 0 ? (item.val / bdMaxBar) * 100 : 0}%` }} />
                                       </div>
                                       <div className={`w-14 text-right text-[11px] font-medium ${ic[item.key] ? "" : "line-through opacity-40"}`}>{fmtR(item.val)}</div>
                                     </div>
@@ -2191,7 +2241,7 @@ export default function ConcreteCalculator() {
                               <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Direct Cost Sub-total</span>
                               <span className="text-sm font-bold text-slate-800">{fmtR(directTotal)}/m³{rm(directTotal)}</span>
                             </div>
-                            {groups.slice(3).map(g => (
+                            {groups.slice(groupsBeforeWastage).map(g => (
                               <div key={g.label} className={`rounded-lg border p-2 ${g.color}`}>
                                 <div className={`flex justify-between items-center mb-1.5 font-semibold ${g.textColor}`}>
                                   <span>{g.label}</span>
@@ -2208,7 +2258,7 @@ export default function ConcreteCalculator() {
                                       />
                                       <div className="w-14 text-[11px] text-slate-600 font-medium shrink-0">{item.label}</div>
                                       <div className="flex-1 bg-white/60 rounded h-2 overflow-hidden">
-                                        <div className={`h-full rounded ${item.color} ${ic[item.key] ? "opacity-100" : "opacity-30"}`} style={{ width: `${maxBar > 0 ? (item.val / maxBar) * 100 : 0}%` }} />
+                                        <div className={`h-full rounded ${item.color} ${ic[item.key] ? "opacity-100" : "opacity-30"}`} style={{ width: `${bdMaxBar > 0 ? (item.val / bdMaxBar) * 100 : 0}%` }} />
                                       </div>
                                       <div className={`w-14 text-right text-[11px] font-medium ${ic[item.key] ? "" : "line-through opacity-40"}`}>{fmtR(item.val)}</div>
                                     </div>
@@ -2226,17 +2276,30 @@ export default function ConcreteCalculator() {
                         );
                       })()}
                       <div className="border-t border-border pt-2 mt-1 space-y-1">
-                        <div className="flex justify-between items-center font-bold">
-                          <span>Total ₹/m³</span>
-                          <span className="text-blue-700">{fmtR(costs.total)}</span>
-                        </div>
-                        {crossSectionM2 > 0 && <div className="flex justify-between items-center text-slate-700 font-medium"><span>Total ₹/RM</span><span>{fmtR(costs.total * crossSectionM2)}</span></div>}
-                        {s.escalationPct > 0 && (
-                          <div className="flex justify-between items-center text-slate-700 font-medium">
-                            <span>With esc. ({s.escalationPct}%)</span>
-                            <span className="font-semibold">{fmtR(costs.totalWithEsc)}{crossSectionM2 > 0 ? ` · ${fmtR(costs.totalWithEsc * crossSectionM2)}/RM` : ""}</span>
-                          </div>
-                        )}
+                        {(() => {
+                          const bdMix2 = MIX_PRESETS[breakdownGrade] ?? s.mix;
+                          const bdPcc2 = breakdownIsPcc || (s.qto.elementGrades?.pcc === breakdownGrade);
+                          const bdState2: CalcState = {
+                            ...s, mix: bdMix2,
+                            ...(bdPcc2 ? { shutteringAreaPerM3: 0, stagingAreaPerM3: 0, placementRatePerDay: 0, labourRatePerM3: 0, pettyLabour: { ...s.pettyLabour, enabled: false }, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false } } : {}),
+                          };
+                          const bdC2 = computeCosts(bdState2, bdPcc2 ? 0 : steelCostPerM3, undefined, undefined, bdPcc2 ? undefined : pettyLabourRatePerM3);
+                          return (
+                            <>
+                              <div className="flex justify-between items-center font-bold">
+                                <span>Total ₹/m³</span>
+                                <span className="text-blue-700">{fmtR(bdC2.total)}</span>
+                              </div>
+                              {crossSectionM2 > 0 && <div className="flex justify-between items-center text-slate-700 font-medium"><span>Total ₹/RM</span><span>{fmtR(bdC2.total * crossSectionM2)}</span></div>}
+                              {s.escalationPct > 0 && (
+                                <div className="flex justify-between items-center text-slate-700 font-medium">
+                                  <span>With esc. ({s.escalationPct}%)</span>
+                                  <span className="font-semibold">{fmtR(bdC2.totalWithEsc)}{crossSectionM2 > 0 ? ` · ${fmtR(bdC2.totalWithEsc * crossSectionM2)}/RM` : ""}</span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
 
