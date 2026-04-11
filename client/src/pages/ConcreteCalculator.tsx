@@ -2965,204 +2965,6 @@ export default function ConcreteCalculator() {
               </Card>
             )}
 
-            {/* Per-Metre Rate Card → moved to Reports tab */}
-            {false && isDrainType && qtoResult && qtoResult.zones.length > 0 && (() => {
-              const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
-              // Exclude steel from concrete element rates — steel is tracked separately as BBS kg/m
-              const rccBaseRate = costs.totalWithEsc - costs.steel;
-              const baseMat = computeMaterialCostOnly(s.grade, s);
-              const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
-              const wallCostPerM3  = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
-              const tsM = s.qto.topSlabThick / 1000;
-              const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
-                ? s.qto.precastRatePerM2 / tsM
-                : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-              // PCC: no shuttering, no petty labour/placement, no steel — strip formwork + placement from RCC base rate
-              const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
-              const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
-              const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
-              const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-              const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
-              const steelPerM = bbsSummary.totalKgPerM * ((steelRateAvg + steelFabForCard) / 1000);
-              const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
-              const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
-              const excavPerM = qtoResult.totalLength > 0 ? qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength : 0;
-              const backfillPerM = qtoResult.totalLength > 0 ? qtoResult.backfillVol * s.qto.backfillRate / qtoResult.totalLength : 0;
-              // All-in ₹/RM total (using net wall and net top slab volumes)
-              const avgNetWallPerM = qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength * wallCostPerM3 : 0;
-              const netTopSlabPerM = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
-              const allInPerM = (qtoResult.pccPerM * pccCostPerM3) + (qtoResult.invertPerM * invertCostPerM3) + avgNetWallPerM + netTopSlabPerM + gratingPerM + weepholePerM + steelPerM + bwPerM + excavPerM + backfillPerM + lhPerM;
-              return (
-              <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                  <p className="text-sm text-slate-600 mt-0.5">Cost per linear metre by element and zone. For margin analysis enter the client's rate in Analysis → Rate vs Client Offer.</p>
-                </CardHeader>
-                <CardContent className="px-5 pb-5 space-y-5">
-                  {/* Global ₹/RM breakdown (Steel, Binding Wire, Earthwork, etc.) */}
-                  <div className="rounded-lg border bg-muted/20 p-4">
-                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-3">Global Cost Components (₹/Running Metre)</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
-                      <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">PCC {eq.pcc} Bed</p>
-                        <p className="font-bold text-sm">{fmtR(qtoResult.pccPerM * pccCostPerM3)}/RM</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">Invert Slab ({eq.invert})</p>
-                        <p className="font-bold text-sm">{fmtR(qtoResult.invertPerM * invertCostPerM3)}/RM</p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">Walls ({eq.wall}) avg</p>
-                        <p className="font-bold text-sm">{fmtR(avgNetWallPerM)}/RM</p>
-                      </div>
-                      {showTopSlab && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">Top Slab ({s.qto.topSlabType === "Precast" ? "Precast ₹/m²" : eq.topSlab})</p>
-                        <p className="font-bold text-sm">{fmtR(qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0)}/RM</p>
-                      </div>}
-                      {gratingPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">MS Gratings</p>
-                        <p className="font-bold text-sm">{fmtR(gratingPerM)}/RM</p>
-                      </div>}
-                      {weepholePerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">Weepholes</p>
-                        <p className="font-bold text-sm">{fmtR(weepholePerM)}/RM</p>
-                      </div>}
-                      {steelPerM > 0 && <div className="bg-yellow-50 border-yellow-200 border rounded-lg p-2.5">
-                        <p className="text-xs text-slate-600">HYSD Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</p>
-                        <p className="font-bold text-sm text-yellow-700">{fmtR(steelPerM)}/RM</p>
-                      </div>}
-                      {bwPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">Binding Wire</p>
-                        <p className="font-bold text-sm">{fmtR(bwPerM)}/RM</p>
-                      </div>}
-                      {excavPerM > 0 && <div className="bg-orange-50 border-orange-200 border rounded-lg p-2.5">
-                        <p className="text-xs text-slate-600">Earthwork</p>
-                        <p className="font-bold text-sm text-orange-700">{fmtR(excavPerM)}/RM</p>
-                      </div>}
-                      {backfillPerM > 0 && <div className="bg-green-50 border-green-200 border rounded-lg p-2.5">
-                        <p className="text-xs text-slate-600">Backfill</p>
-                        <p className="font-bold text-sm text-green-700">{fmtR(backfillPerM)}/RM</p>
-                      </div>}
-                      {lhPerM > 0 && <div className="bg-white dark:bg-slate-800 rounded-lg border p-2.5">
-                        <p className="text-xs text-slate-600 dark:text-slate-400">Lifting Hooks</p>
-                        <p className="font-bold text-sm">{fmtR(lhPerM)}/RM</p>
-                      </div>}
-                    </div>
-                    {/* All-in total row */}
-                    <div className="mt-3 flex items-center justify-between border-t pt-3">
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">All-in Cost</p>
-                      <p className="text-xl font-bold text-primary">{fmtR(allInPerM)} <span className="text-sm font-normal text-slate-600 dark:text-slate-400">/ Running Metre</span></p>
-                    </div>
-                  </div>
-                  {/* Per-zone cards (walls vary by zone height) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {qtoResult.zones.map(z => {
-                      // Use net volumes: deduct weephole void distributed evenly per metre
-                      const deductWallPerM = qtoResult.totalLength > 0 ? qtoResult.deductWeephole / qtoResult.totalLength : 0;
-                      const netWallPerM = Math.max(0, z.wallsM3perM - deductWallPerM);
-                      const wallsPerM = netWallPerM * wallCostPerM3;
-                      const pccPerM_ = qtoResult.pccPerM * pccCostPerM3;
-                      const invertPerM_ = qtoResult.invertPerM * invertCostPerM3;
-                      // Net top slab per metre (after grating opening deduction)
-                      const topSlabPerM_ = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
-                      const totalPerM = wallsPerM + pccPerM_ + invertPerM_ + topSlabPerM_ + gratingPerM + weepholePerM + steelPerM + bwPerM + lhPerM + excavPerM + backfillPerM;
-                      return (
-                        <div key={z.id} className="border rounded-xl p-4 space-y-3 hover:shadow-sm transition-shadow">
-                          <div>
-                            <p className="font-semibold text-sm">{z.label}</p>
-                            <p className="text-sm text-slate-700 font-medium">H = {z.height} mm · L = {z.length} m</p>
-                          </div>
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">PCC {eq.pcc} Bed</span>
-                              <span className="font-medium">{fmtR(pccPerM_)}/m</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Invert ({eq.invert})</span>
-                              <span className="font-medium">{fmtR(invertPerM_)}/m</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Walls ({eq.wall}) H={z.height}mm</span>
-                              <span className="font-medium">{fmtR(wallsPerM)}/m</span>
-                            </div>
-                            {showTopSlab && <div className="flex justify-between">
-                              <span className="text-slate-600">Top Slab ({eq.topSlab})</span>
-                              <span className="font-medium">{fmtR(topSlabPerM_)}/m</span>
-                            </div>}
-                            {steelPerM > 0 && <div className="flex justify-between text-yellow-700">
-                              <span>Steel HYSD</span>
-                              <span className="font-medium">{fmtR(steelPerM)}/m</span>
-                            </div>}
-                            {gratingPerM > 0 && <div className="flex justify-between">
-                              <span className="text-slate-600">Gratings</span>
-                              <span className="font-medium">{fmtR(gratingPerM)}/m</span>
-                            </div>}
-                            {weepholePerM > 0 && <div className="flex justify-between">
-                              <span className="text-slate-600">Weepholes</span>
-                              <span className="font-medium">{fmtR(weepholePerM)}/m</span>
-                            </div>}
-                            {bwPerM > 0 && <div className="flex justify-between">
-                              <span className="text-slate-600">Binding Wire</span>
-                              <span className="font-medium">{fmtR(bwPerM)}/m</span>
-                            </div>}
-                            {lhPerM > 0 && <div className="flex justify-between">
-                              <span className="text-slate-600">Lifting Hooks</span>
-                              <span className="font-medium">{fmtR(lhPerM)}/m</span>
-                            </div>}
-                            {excavPerM > 0 && <div className="flex justify-between text-orange-700">
-                              <span>Earthwork Excav.</span>
-                              <span className="font-medium">{fmtR(excavPerM)}/m</span>
-                            </div>}
-                            {backfillPerM > 0 && <div className="flex justify-between text-green-700">
-                              <span>Backfilling</span>
-                              <span className="font-medium">{fmtR(backfillPerM)}/m</span>
-                            </div>}
-                            <div className="flex justify-between font-bold border-t pt-1.5 mt-1 text-sm">
-                              <span>Total Cost ₹/RM</span>
-                              <span className="text-blue-700">{fmtR(totalPerM)}</span>
-                            </div>
-                            {z.rccPerM > 0 && <div className="flex justify-between text-slate-600 text-[11px]">
-                              <span>Effective ₹/m³ concrete</span>
-                              <span className="font-medium">{fmtR(totalPerM / z.rccPerM)}</span>
-                            </div>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-              );
-            })()}
-
-            {/* Bridge / RW Per-Metre Rate Card → moved to Reports tab */}
-            {false && isBridgeType && bridgeQtoResult && (
-              <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                  <p className="text-sm text-slate-600 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
-                </CardHeader>
-                <CardContent className="px-5 pb-5">
-                  <div className="border rounded-xl p-4 space-y-3 max-w-sm">
-                    <div>
-                      <p className="font-semibold text-sm">{s.structureType}</p>
-                      <p className="text-sm text-slate-700 font-medium">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
-                    </div>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-slate-600 dark:text-slate-400">RCC {s.grade} cost</span>
-                        <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}/m</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
-                        <span>Cost ₹/m run</span>
-                        <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}</span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-600">For margin analysis, enter client's rate in Analysis → Rate vs Client Offer.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Earthwork & PCC Rates for BOQ */}
             {isDrainType && (
@@ -3212,55 +3014,6 @@ export default function ConcreteCalculator() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Element Summary Table → moved to Reports tab (Concrete Rates) */}
-            {false && elementCostBreakdown && (() => {
-              const eb = elementCostBreakdown;
-              const rows = [
-                { key: "pcc", label: "PCC", data: eb.pcc, note: "No shuttering/placement" },
-                { key: "invert", label: "Invert", data: eb.invert, note: "" },
-                { key: "wall", label: "Walls", data: eb.wall, note: "" },
-                ...(eb.topSlab ? [{ key: "topSlab", label: "Top Slab", data: eb.topSlab, note: "" }] : []),
-              ];
-              return (
-                <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                    <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Element Cost Summary</CardTitle>
-                    <p className="text-xs text-slate-600 mt-1">Cost breakdown per element/m³ (incl. OH &amp; margin) using per-element grades. PCC excludes shuttering and placement.</p>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4 overflow-x-auto">
-                    <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
-                      <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-800/50">
-                          {["Element", "Grade", "m³/RM", "Total m³", "Mat ₹/m³", "Batching ₹/m³", "Placing ₹/m³", "Curing ₹/m³", "Total ₹/m³"].map(h => (
-                            <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row, i) => (
-                          <tr key={row.key} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
-                            <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
-                              {row.label}
-                              {row.note && <span className="ml-1 text-[10px] text-amber-600">({row.note})</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right text-slate-700">{row.data.grade}</td>
-                            <td className="px-3 py-2 text-right">{row.data.m3perRm.toFixed(3)}</td>
-                            <td className="px-3 py-2 text-right">{row.data.totalM3.toFixed(2)}</td>
-                            <td className="px-3 py-2 text-right">{fmtR(row.data.mat)}</td>
-                            <td className="px-3 py-2 text-right">{fmtR(row.data.batching)}</td>
-                            <td className="px-3 py-2 text-right">{fmtR(row.data.placing)}</td>
-                            <td className="px-3 py-2 text-right">{fmtR(row.data.curing)}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-slate-800">{fmtR(row.data.total)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="text-[11px] text-slate-500 mt-2 pl-1">* Total ₹/m³ includes all cost categories (raw materials, batching, placement, curing, formwork, OH &amp; margin). Columns show only the sub-components listed.</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
 
             {/* BOQ Estimator */}
             <Card>
@@ -3600,7 +3353,7 @@ export default function ConcreteCalculator() {
                     <table className="text-xs w-full min-w-[540px] border-separate border-spacing-0 mb-5">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60">
-                          {["Dia", "Purchase ₹/MT", "BBS Weight (kg)", "Purchase ₹", "Fab ₹/MT", "Fab ₹", "Total ₹"].map(h => (
+                          {["Dia", "Purchase ₹/MT", "BBS Weight (kg)", "Purchase ₹", "Fab ₹/MT", "Fab ₹", "Total ₹", "Total ₹/m³"].map(h => (
                             <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -3615,6 +3368,7 @@ export default function ConcreteCalculator() {
                             <td className="px-3 py-2 text-right">{fmtR(steelFabForCard)}</td>
                             <td className="px-3 py-2 text-right">{fmtR(r.fabCost)}</td>
                             <td className="px-3 py-2 text-right font-semibold">{fmtR(r.totalCost)}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{kgPerM3 > 0 ? fmtR(r.totalCost / s.totalVolume) : "—"}</td>
                           </tr>
                         ))}
                         {totalBBSKg > 0 && (
@@ -3626,10 +3380,11 @@ export default function ConcreteCalculator() {
                             <td className="px-3 py-2 text-right">—</td>
                             <td className="px-3 py-2 text-right">{fmtR(totalFabCost)}</td>
                             <td className="px-3 py-2 text-right">{fmtR(totalPurchCost + totalFabCost)}</td>
+                            <td className="px-3 py-2 text-right">{kgPerM3 > 0 ? fmtR((totalPurchCost + totalFabCost) / s.totalVolume) : "—"}</td>
                           </tr>
                         )}
                         {totalBBSKg === 0 && (
-                          <tr><td colSpan={7} className="px-3 py-3 text-center text-slate-400">No BBS data — add bars in the BBS tab</td></tr>
+                          <tr><td colSpan={8} className="px-3 py-3 text-center text-slate-400">No BBS data — add bars in the BBS tab</td></tr>
                         )}
                       </tbody>
                     </table>
