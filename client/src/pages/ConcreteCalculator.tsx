@@ -3824,11 +3824,18 @@ export default function ConcreteCalculator() {
                         <div><span className="font-semibold">Date: </span>{s.date}</div>
                       </div>
                     </div>
+                    <p className="text-[10px] text-amber-700 dark:text-amber-400 mb-2 print:hidden flex items-center gap-1">
+                      <span className="inline-block w-3 h-3 rounded bg-amber-200 border border-amber-400"></span>
+                      Columns with amber tint are for internal margin analysis only — not printed on the client quotation.
+                    </p>
                     <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60 print:bg-slate-100">
-                          {["#", "Description", "Unit", "Qty", "Our Rate", "Our Cost", "Client Rate", "Client Revenue", "Margin ₹", "Margin %"].map(h => (
+                          {["#", "Description", "Unit", "Qty", "Rate (₹)", "Amount (₹)"].map(h => (
                             <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                          ))}
+                          {["Client Rate", "Client Revenue", "Margin ₹", "Margin %"].map(h => (
+                            <th key={h} className="text-right px-3 py-2 font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200 whitespace-nowrap bg-amber-50/60 dark:bg-amber-900/10 print:hidden">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -3912,8 +3919,8 @@ export default function ConcreteCalculator() {
                                 <td className="px-3 py-2 text-right">{r.unit}</td>
                                 <td className="px-3 py-2 text-right">{r.qty.toFixed(2)}</td>
                                 <td className="px-3 py-2 text-right">{fmtR(r.rate)}</td>
-                                <td className="px-3 py-2 text-right">{fmtR(r.ourCost)}</td>
-                                <td className="px-3 py-1 text-right" onClick={e => e.stopPropagation()}>
+                                <td className="px-3 py-2 text-right font-semibold">{fmtR(r.ourCost)}</td>
+                                <td className="px-3 py-1 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden" onClick={e => e.stopPropagation()}>
                                   <input
                                     type="number"
                                     className="w-20 text-right text-xs border border-slate-200 rounded px-1.5 py-1 bg-white dark:bg-slate-900 dark:border-slate-700"
@@ -3923,11 +3930,11 @@ export default function ConcreteCalculator() {
                                     data-testid={`input-quotation-client-rate-${r.id}`}
                                   />
                                 </td>
-                                <td className="px-3 py-2 text-right">{r.clientRev != null ? fmtR(r.clientRev) : "—"}</td>
-                                <td className={`px-3 py-2 text-right font-semibold ${r.marginAmt != null && r.marginAmt < 0 ? "text-red-600" : ""}`}>
+                                <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">{r.clientRev != null ? fmtR(r.clientRev) : "—"}</td>
+                                <td className={`px-3 py-2 text-right font-semibold bg-amber-50/40 dark:bg-amber-900/10 print:hidden ${r.marginAmt != null && r.marginAmt < 0 ? "text-red-600" : ""}`}>
                                   {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}
                                 </td>
-                                <td className="px-3 py-2 text-right">
+                                <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">
                                   {r.marginPct != null ? (
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(r.marginPct)}`}>
                                       {r.marginPct.toFixed(1)}%
@@ -3965,10 +3972,10 @@ export default function ConcreteCalculator() {
                         <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
                           <td className="px-3 py-2" colSpan={5}>Total</td>
                           <td className="px-3 py-2 text-right">{fmtR(totalOurCost)}</td>
-                          <td className="px-3 py-2"></td>
-                          <td className="px-3 py-2 text-right">{totalClientRev > 0 ? fmtR(totalClientRev) : "—"}</td>
-                          <td className={`px-3 py-2 text-right ${totalMargin < 0 ? "text-red-600" : "text-green-700"}`}>{totalClientRev > 0 ? fmtR(totalMargin) : "—"}</td>
-                          <td className="px-3 py-2 text-right">
+                          <td className="px-3 py-2 bg-amber-50/40 dark:bg-amber-900/10 print:hidden"></td>
+                          <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">{totalClientRev > 0 ? fmtR(totalClientRev) : "—"}</td>
+                          <td className={`px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden ${totalMargin < 0 ? "text-red-600" : "text-green-700"}`}>{totalClientRev > 0 ? fmtR(totalMargin) : "—"}</td>
+                          <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">
                             {totalClientRev > 0 && (
                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(overallMarginPct)}`}>
                                 {overallMarginPct.toFixed(1)}%
@@ -3981,7 +3988,7 @@ export default function ConcreteCalculator() {
                   </CardContent>
                 </Card>
                 {totalClientRev > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:hidden">
                     {[
                       { label: "Our Total Cost", val: fmtR(totalOurCost), color: "bg-slate-50 border-slate-200" },
                       { label: "Client Revenue", val: fmtR(totalClientRev), color: "bg-blue-50 border-blue-200" },
