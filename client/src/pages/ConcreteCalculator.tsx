@@ -3552,72 +3552,126 @@ export default function ConcreteCalculator() {
             const diaRows = ([8, 10, 12, 16, 20, 25] as const).map(dia => {
               const key = `r${dia}` as keyof SteelRates;
               const purchaseRate = s.steelRates[key];
-              const totalRate = purchaseRate + steelFabForCard;
               const bbsKg = bbsSummary.byDia[dia]?.kg ?? 0;
-              const bbsCost = bbsKg * totalRate / 1000;
-              return { dia, purchaseRate, fabRate: steelFabForCard, totalRate, bbsKg, bbsCost };
+              const purchCost = bbsKg * purchaseRate / 1000;
+              const fabCost = bbsKg * steelFabForCard / 1000;
+              const totalCost = purchCost + fabCost;
+              return { dia, purchaseRate, bbsKg, purchCost, fabCost, totalCost };
             });
             const totalBBSKg = bbsSummary.totalKg;
-            const totalBBSCost = bbsSummary.totalCost + (s.pettyLabour.enabled && s.pettyLabour.contractorBBS ? 0 : (s.steelFabRatePerMT ?? 0) * totalBBSKg / 1000);
-            const avgRate = totalBBSKg > 0 ? totalBBSCost / (totalBBSKg / 1000) : 0;
+            const totalPurchCost = bbsSummary.totalCost;
+            const totalFabCost = steelFabForCard * totalBBSKg / 1000;
+            const avgPurchasePerMT = totalBBSKg > 0 ? totalPurchCost / (totalBBSKg / 1000) : 0;
+            const kgPerM3 = s.totalVolume > 0 ? totalBBSKg / s.totalVolume : 0;
+
+            // Structured analysis ₹/MT and ₹/m³
+            const wasteEnabled = s.wastage.steelCuttingWaste && totalBBSKg > 0;
+            const directSteelPerMT = avgPurchasePerMT + steelFabForCard;
+            const wastePerMT = wasteEnabled ? directSteelPerMT * (s.wastage.steelCuttingPct / 100) : 0;
+            const directWastePerMT = directSteelPerMT + wastePerMT;
+            const overheadPerMT = directWastePerMT * (s.overheadPct / 100);
+            const marginPerMT = (directWastePerMT + overheadPerMT) * (s.marginPct / 100);
+            const totalPerMT = directWastePerMT + overheadPerMT + marginPerMT;
+            const toM3 = (perMT: number) => kgPerM3 > 0 ? perMT * kgPerM3 / 1000 : 0;
+
+            const analysisRows: { lbl: string; perMT: number; perM3: number; isSub?: boolean; bold?: boolean }[] = [
+              { lbl: `Weighted Avg Purchase (${totalBBSKg > 0 ? diaRows.filter(r => r.bbsKg > 0).length : 0} dia)`, perMT: avgPurchasePerMT, perM3: toM3(avgPurchasePerMT) },
+              { lbl: "Fabrication (cutting/bending/placing)", perMT: steelFabForCard, perM3: toM3(steelFabForCard) },
+              { lbl: "Direct Steel Sub-total", perMT: directSteelPerMT, perM3: toM3(directSteelPerMT), isSub: true },
+              ...(wasteEnabled ? [{ lbl: `Cutting Wastage (${s.wastage.steelCuttingPct}%)`, perMT: wastePerMT, perM3: toM3(wastePerMT) }] : []),
+              ...(wasteEnabled ? [{ lbl: "Direct + Wastage Sub-total", perMT: directWastePerMT, perM3: toM3(directWastePerMT), isSub: true }] : []),
+              { lbl: `Overhead (${s.overheadPct}%)`, perMT: overheadPerMT, perM3: toM3(overheadPerMT) },
+              { lbl: `Margin (${s.marginPct}%)`, perMT: marginPerMT, perM3: toM3(marginPerMT) },
+              { lbl: "Total (incl. OH + Margin)", perMT: totalPerMT, perM3: toM3(totalPerMT), isSub: true, bold: true },
+            ];
 
             return (
-              <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rates — Per Diameter</CardTitle>
-                    <p className="text-xs text-slate-500 mt-0.5">Purchase rate + fabrication per dia. BBS weights from the BBS tab.</p>
-                  </div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 overflow-x-auto">
-                  <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/60">
-                        {["Dia (mm)", "Purchase ₹/MT", "Fab ₹/MT", "Total ₹/MT", "BBS kg", "BBS Cost"].map(h => (
-                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {diaRows.map((r, i) => (
-                        <tr key={r.dia} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
-                          <td className="px-3 py-2 font-medium">Ø{r.dia}mm</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.purchaseRate)}</td>
-                          <td className="px-3 py-2 text-right">{fmtR(r.fabRate)}</td>
-                          <td className="px-3 py-2 text-right font-semibold">{fmtR(r.totalRate)}</td>
-                          <td className="px-3 py-2 text-right">{r.bbsKg > 0 ? r.bbsKg.toFixed(1) : "—"}</td>
-                          <td className="px-3 py-2 text-right">{r.bbsCost > 0 ? fmtR(r.bbsCost) : "—"}</td>
-                        </tr>
-                      ))}
-                      {totalBBSKg > 0 && (
-                        <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
-                          <td className="px-3 py-2" colSpan={3}>Total / Weighted Avg</td>
-                          <td className="px-3 py-2 text-right">{fmtR(avgRate)}/MT</td>
-                          <td className="px-3 py-2 text-right">{totalBBSKg.toFixed(1)} kg</td>
-                          <td className="px-3 py-2 text-right">{fmtR(totalBBSCost)}</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                  {totalBBSKg > 0 && crossSectionM2 > 0 && (
-                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      <div className="rounded-lg border p-3 text-center">
-                        <p className="text-xs text-slate-500">Steel kg/m</p>
-                        <p className="font-bold">{bbsSummary.totalKgPerM.toFixed(2)} kg/m</p>
-                      </div>
-                      <div className="rounded-lg border p-3 text-center">
-                        <p className="text-xs text-slate-500">Steel ₹/m</p>
-                        <p className="font-bold">{fmtR(bbsSummary.totalKgPerM * avgRate / 1000)}/m</p>
-                      </div>
-                      <div className="rounded-lg border p-3 text-center">
-                        <p className="text-xs text-slate-500">Steel ₹/m³</p>
-                        <p className="font-bold">{fmtR(costs.steel)}/m³</p>
-                      </div>
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rate Analysis</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">Purchase rate + fabrication + wastage + OH + margin per diameter and summary.</p>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 overflow-x-auto">
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Per Diameter — Purchase Cost</p>
+                    <table className="text-xs w-full min-w-[540px] border-separate border-spacing-0 mb-5">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/60">
+                          {["Dia", "Purchase ₹/MT", "BBS Weight (kg)", "Purchase ₹", "Fab ₹/MT", "Fab ₹", "Total ₹"].map(h => (
+                            <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {diaRows.filter(r => r.bbsKg > 0).map((r, i) => (
+                          <tr key={r.dia} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
+                            <td className="px-3 py-2 font-medium">Ø{r.dia}mm</td>
+                            <td className="px-3 py-2 text-right">{fmtR(r.purchaseRate)}</td>
+                            <td className="px-3 py-2 text-right">{r.bbsKg.toFixed(1)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(r.purchCost)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(steelFabForCard)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(r.fabCost)}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{fmtR(r.totalCost)}</td>
+                          </tr>
+                        ))}
+                        {totalBBSKg > 0 && (
+                          <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
+                            <td className="px-3 py-2">Total</td>
+                            <td className="px-3 py-2 text-right">{fmtR(avgPurchasePerMT)}/MT</td>
+                            <td className="px-3 py-2 text-right">{totalBBSKg.toFixed(1)} kg</td>
+                            <td className="px-3 py-2 text-right">{fmtR(totalPurchCost)}</td>
+                            <td className="px-3 py-2 text-right">—</td>
+                            <td className="px-3 py-2 text-right">{fmtR(totalFabCost)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(totalPurchCost + totalFabCost)}</td>
+                          </tr>
+                        )}
+                        {totalBBSKg === 0 && (
+                          <tr><td colSpan={7} className="px-3 py-3 text-center text-slate-400">No BBS data — add bars in the BBS tab</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Rate Analysis — ₹/MT and ₹/m³</p>
+                    <table className="text-xs w-full min-w-[360px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/60">
+                          {["Component", "₹ / MT", "₹ / m³"].map(h => (
+                            <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysisRows.map((r, i) => (
+                          <tr key={i} className={r.bold ? "bg-blue-50/80 dark:bg-blue-900/15 font-bold" : r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-semibold" : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
+                            <td className={`px-3 py-1.5 ${!r.isSub ? "pl-5" : ""}`}>{r.lbl}</td>
+                            <td className="px-3 py-1.5 text-right font-mono">{r.perMT > 0 ? fmtR(r.perMT) : "—"}</td>
+                            <td className="px-3 py-1.5 text-right font-mono">{r.perM3 > 0 ? fmtR(r.perM3) : (s.totalVolume > 0 ? "—" : "set volume")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {crossSectionM2 > 0 && totalBBSKg > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <div className="rounded-lg border p-3 text-center">
+                          <p className="text-xs text-slate-500">Steel kg/m</p>
+                          <p className="font-bold">{bbsSummary.totalKgPerM.toFixed(2)} kg/m</p>
+                        </div>
+                        <div className="rounded-lg border p-3 text-center">
+                          <p className="text-xs text-slate-500">Steel ₹/m (all-in)</p>
+                          <p className="font-bold">{fmtR(bbsSummary.totalKgPerM * totalPerMT / 1000)}/m</p>
+                        </div>
+                        <div className="rounded-lg border p-3 text-center">
+                          <p className="text-xs text-slate-500">Steel ₹/m³ (all-in)</p>
+                          <p className="font-bold">{fmtR(toM3(totalPerMT))}/m³</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             );
           })()}
 
@@ -3885,9 +3939,20 @@ export default function ConcreteCalculator() {
                     </div>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
+                    {/* Print-only quotation header — hidden on screen, visible when printing */}
+                    <div className="hidden print:block mb-6 pb-4 border-b-2 border-slate-800">
+                      <p className="text-lg font-bold text-slate-900 uppercase tracking-widest">High Lane Constructions</p>
+                      <p className="text-sm font-semibold text-slate-700 mt-1">QUOTATION</p>
+                      <div className="flex gap-8 mt-2 text-xs text-slate-600">
+                        <div><span className="font-semibold">Estimate: </span>{s.estimateName || "—"}</div>
+                        <div><span className="font-semibold">Structure: </span>{s.structureType} ({s.grade})</div>
+                        <div><span className="font-semibold">Prepared by: </span>{s.preparedBy || "—"}</div>
+                        <div><span className="font-semibold">Date: </span>{s.date}</div>
+                      </div>
+                    </div>
                     <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
                       <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-800/60">
+                        <tr className="bg-slate-50 dark:bg-slate-800/60 print:bg-slate-100">
                           {["#", "Description", "Unit", "Qty", "Our Rate", "Our Cost", "Client Rate", "Client Revenue", "Margin ₹", "Margin %"].map(h => (
                             <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
                           ))}
@@ -3900,23 +3965,32 @@ export default function ConcreteCalculator() {
                           const catType = getBOQCategory(r.description);
                           const itemCosts = (() => {
                             if (catType === "RCC" || catType === "PCC") {
-                              const grade = catType === "PCC" ? (s.qto?.elementGrades?.pcc ?? "M15") : s.grade;
-                              const c: CostBreakdown = catType === "PCC" ? (() => {
+                              const isPCC = catType === "PCC";
+                              const grade = isPCC ? (s.qto?.elementGrades?.pcc ?? "M15") : s.grade;
+                              let c: CostBreakdown;
+                              if (isPCC) {
                                 const pMix = MIX_PRESETS[grade] ?? MIX_PRESETS["M15"];
                                 const pState: CalcState = { ...s, mix: pMix };
                                 const raw = computeCosts(pState, 0);
                                 const d2 = raw.cement + raw.ca + raw.fa + raw.admix + raw.batching + raw.curing;
                                 const oh2 = d2 * (s.overheadPct / 100);
                                 const mg2 = (d2 + oh2) * (s.marginPct / 100);
-                                return { ...raw, placement: 0, formwork: 0, total: d2 + oh2 + mg2, totalWithEsc: (d2 + oh2 + mg2) * (1 + s.escalationPct / 100), overhead: oh2, margin: mg2 };
-                              })() : { ...costs, steel: 0 };
+                                c = { ...raw, placement: 0, formwork: 0, overhead: oh2, margin: mg2, total: d2 + oh2 + mg2, totalWithEsc: 0 };
+                              } else {
+                                // RCC: use costs but exclude steel (steel is separate BOQ item)
+                                const concrDirect = costs.cement + costs.ca + costs.fa + costs.admix + costs.batching + costs.placement + costs.formwork + costs.curing + costs.labour + costs.wastage;
+                                const concrOH = concrDirect * (s.overheadPct / 100);
+                                const concrMg = (concrDirect + concrOH) * (s.marginPct / 100);
+                                c = { ...costs, steel: 0, overhead: concrOH, margin: concrMg, total: concrDirect + concrOH + concrMg, totalWithEsc: 0 };
+                              }
+                              const concrTotal = c.cement + c.ca + c.fa + c.admix + c.batching + c.placement + c.formwork + c.curing + c.labour + c.wastage + c.overhead + c.margin;
                               return [
                                 { lbl: "Cement", val: c.cement * r.qty }, { lbl: "Coarse Aggregate", val: c.ca * r.qty },
                                 { lbl: "Fine Aggregate", val: c.fa * r.qty }, { lbl: "Admixture", val: c.admix * r.qty },
                                 { lbl: "Batching", val: c.batching * r.qty }, { lbl: "Placement", val: c.placement * r.qty },
                                 { lbl: "Formwork", val: c.formwork * r.qty }, { lbl: "Curing", val: c.curing * r.qty },
                                 { lbl: "Overhead", val: c.overhead * r.qty }, { lbl: "Margin", val: c.margin * r.qty },
-                                { lbl: "Total", val: c.total * r.qty, isBold: true },
+                                { lbl: "Total", val: concrTotal * r.qty, isBold: true },
                               ];
                             }
                             if (catType === "Steel") {
