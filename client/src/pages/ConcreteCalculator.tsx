@@ -709,6 +709,8 @@ export default function ConcreteCalculator() {
         try {
           const loaded = JSON.parse(est.state);
           setS((prev) => ({ ...DEFAULT_STATE, ...loaded, qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) } }));
+          setBreakdownGrade(loaded.grade ?? DEFAULT_STATE.grade);
+          setBreakdownIsPcc(false);
           setSavedEstimateId(id);
           localStorage.setItem(LS_KEY + "_estId", String(id));
         } catch {}
@@ -2137,7 +2139,10 @@ export default function ConcreteCalculator() {
                           ...(bdPccMode ? {
                             shutteringAreaPerM3: 0,
                             stagingAreaPerM3: 0,
+                            // Force own_pump with zero rate — ensures placement=0 in every placementMode branch
+                            placementMode: "own_pump" as const,
                             placementRatePerDay: 0,
+                            placementOutputPerDay: 1,
                             labourRatePerM3: 0,
                             pettyLabour: { ...s.pettyLabour, enabled: false },
                             wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false },
@@ -2272,35 +2277,22 @@ export default function ConcreteCalculator() {
                                 <span>{fmtR(selectedTotal)}{crossSectionM2 > 0 ? ` · ${fmtR(selectedTotal * crossSectionM2)}/RM` : ""}</span>
                               </div>
                             )}
-                          </>
-                        );
-                      })()}
-                      <div className="border-t border-border pt-2 mt-1 space-y-1">
-                        {(() => {
-                          const bdMix2 = MIX_PRESETS[breakdownGrade] ?? s.mix;
-                          const bdPcc2 = breakdownIsPcc || (s.qto.elementGrades?.pcc === breakdownGrade);
-                          const bdState2: CalcState = {
-                            ...s, mix: bdMix2,
-                            ...(bdPcc2 ? { shutteringAreaPerM3: 0, stagingAreaPerM3: 0, placementRatePerDay: 0, labourRatePerM3: 0, pettyLabour: { ...s.pettyLabour, enabled: false }, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false } } : {}),
-                          };
-                          const bdC2 = computeCosts(bdState2, bdPcc2 ? 0 : steelCostPerM3, undefined, undefined, bdPcc2 ? undefined : pettyLabourRatePerM3);
-                          return (
-                            <>
+                            <div className="border-t border-border pt-2 mt-1 space-y-1">
                               <div className="flex justify-between items-center font-bold">
                                 <span>Total ₹/m³</span>
-                                <span className="text-blue-700">{fmtR(bdC2.total)}</span>
+                                <span className="text-blue-700">{fmtR(bdCosts.total)}</span>
                               </div>
-                              {crossSectionM2 > 0 && <div className="flex justify-between items-center text-slate-700 font-medium"><span>Total ₹/RM</span><span>{fmtR(bdC2.total * crossSectionM2)}</span></div>}
+                              {crossSectionM2 > 0 && <div className="flex justify-between items-center text-slate-700 font-medium"><span>Total ₹/RM</span><span>{fmtR(bdCosts.total * crossSectionM2)}</span></div>}
                               {s.escalationPct > 0 && (
                                 <div className="flex justify-between items-center text-slate-700 font-medium">
                                   <span>With esc. ({s.escalationPct}%)</span>
-                                  <span className="font-semibold">{fmtR(bdC2.totalWithEsc)}{crossSectionM2 > 0 ? ` · ${fmtR(bdC2.totalWithEsc * crossSectionM2)}/RM` : ""}</span>
+                                  <span className="font-semibold">{fmtR(bdCosts.totalWithEsc)}{crossSectionM2 > 0 ? ` · ${fmtR(bdCosts.totalWithEsc * crossSectionM2)}/RM` : ""}</span>
                                 </div>
                               )}
-                            </>
-                          );
-                        })()}
-                      </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                   </CardContent>
