@@ -3824,18 +3824,11 @@ export default function ConcreteCalculator() {
                         <div><span className="font-semibold">Date: </span>{s.date}</div>
                       </div>
                     </div>
-                    <p className="text-[10px] text-amber-700 dark:text-amber-400 mb-2 print:hidden flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded bg-amber-200 border border-amber-400"></span>
-                      Columns with amber tint are for internal margin analysis only — not printed on the client quotation.
-                    </p>
-                    <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
+                    <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60 print:bg-slate-100">
                           {["#", "Description", "Unit", "Qty", "Rate (₹)", "Amount (₹)"].map(h => (
                             <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
-                          ))}
-                          {["Client Rate", "Client Revenue", "Margin ₹", "Margin %"].map(h => (
-                            <th key={h} className="text-right px-3 py-2 font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200 whitespace-nowrap bg-amber-50/60 dark:bg-amber-900/10 print:hidden">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -3920,31 +3913,10 @@ export default function ConcreteCalculator() {
                                 <td className="px-3 py-2 text-right">{r.qty.toFixed(2)}</td>
                                 <td className="px-3 py-2 text-right">{fmtR(r.rate)}</td>
                                 <td className="px-3 py-2 text-right font-semibold">{fmtR(r.ourCost)}</td>
-                                <td className="px-3 py-1 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden" onClick={e => e.stopPropagation()}>
-                                  <input
-                                    type="number"
-                                    className="w-20 text-right text-xs border border-slate-200 rounded px-1.5 py-1 bg-white dark:bg-slate-900 dark:border-slate-700"
-                                    placeholder="0"
-                                    value={r.clientRate ?? ""}
-                                    onChange={e => updateClientRate(r.id, parseFloat(e.target.value) || 0)}
-                                    data-testid={`input-quotation-client-rate-${r.id}`}
-                                  />
-                                </td>
-                                <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">{r.clientRev != null ? fmtR(r.clientRev) : "—"}</td>
-                                <td className={`px-3 py-2 text-right font-semibold bg-amber-50/40 dark:bg-amber-900/10 print:hidden ${r.marginAmt != null && r.marginAmt < 0 ? "text-red-600" : ""}`}>
-                                  {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}
-                                </td>
-                                <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">
-                                  {r.marginPct != null ? (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(r.marginPct)}`}>
-                                      {r.marginPct.toFixed(1)}%
-                                    </span>
-                                  ) : "—"}
-                                </td>
                               </tr>
                               {isExpanded && (
                                 <tr className="bg-blue-50/30 dark:bg-blue-900/10">
-                                  <td colSpan={10} className="px-6 py-3">
+                                  <td colSpan={6} className="px-6 py-3">
                                     <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-2">Cost Breakdown — {r.description}</p>
                                     <div className="flex flex-wrap gap-2">
                                       {itemCosts.map((c, ci) => (
@@ -3954,15 +3926,6 @@ export default function ConcreteCalculator() {
                                         </div>
                                       ))}
                                     </div>
-                                    {r.clientRev != null && (
-                                      <div className="mt-2 flex gap-3 text-[10px] text-slate-600 dark:text-slate-400">
-                                        <span>Total Our Cost: <span className="font-semibold text-slate-800 dark:text-slate-200">{fmtR(r.ourCost)}</span></span>
-                                        <span>Client Amount: <span className="font-semibold text-slate-800 dark:text-slate-200">{fmtR(r.clientRev)}</span></span>
-                                        <span className={r.marginAmt != null && r.marginAmt >= 0 ? "text-green-700 font-semibold" : "text-red-600 font-semibold"}>
-                                          Margin: {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}{r.marginPct != null ? ` (${r.marginPct.toFixed(1)}%)` : ""}
-                                        </span>
-                                      </div>
-                                    )}
                                   </td>
                                 </tr>
                               )}
@@ -3972,36 +3935,11 @@ export default function ConcreteCalculator() {
                         <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
                           <td className="px-3 py-2" colSpan={5}>Total</td>
                           <td className="px-3 py-2 text-right">{fmtR(totalOurCost)}</td>
-                          <td className="px-3 py-2 bg-amber-50/40 dark:bg-amber-900/10 print:hidden"></td>
-                          <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">{totalClientRev > 0 ? fmtR(totalClientRev) : "—"}</td>
-                          <td className={`px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden ${totalMargin < 0 ? "text-red-600" : "text-green-700"}`}>{totalClientRev > 0 ? fmtR(totalMargin) : "—"}</td>
-                          <td className="px-3 py-2 text-right bg-amber-50/40 dark:bg-amber-900/10 print:hidden">
-                            {totalClientRev > 0 && (
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(overallMarginPct)}`}>
-                                {overallMarginPct.toFixed(1)}%
-                              </span>
-                            )}
-                          </td>
                         </tr>
                       </tbody>
                     </table>
                   </CardContent>
                 </Card>
-                {totalClientRev > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:hidden">
-                    {[
-                      { label: "Our Total Cost", val: fmtR(totalOurCost), color: "bg-slate-50 border-slate-200" },
-                      { label: "Client Revenue", val: fmtR(totalClientRev), color: "bg-blue-50 border-blue-200" },
-                      { label: "Margin Amount", val: fmtR(totalMargin), color: `${totalMargin >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}` },
-                      { label: "Margin %", val: `${overallMarginPct.toFixed(1)}%`, color: `${badgeColor(overallMarginPct)} border-transparent` },
-                    ].map(c => (
-                      <div key={c.label} className={`rounded-xl border p-4 text-center ${c.color}`}>
-                        <p className="text-xs text-slate-600">{c.label}</p>
-                        <p className="text-lg font-bold mt-0.5">{c.val}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })()}
