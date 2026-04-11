@@ -3199,10 +3199,13 @@ export default function ConcreteCalculator() {
           {/* ── Concrete Rates ── */}
           {activeReportPill === "concrete-rates" && (() => {
             // Build a component-by-component cost table for each relevant grade
+            // Rows per spec: Cement/CA/FA/Admix → Raw Mats sub-total; Batching/Placement/Formwork/Curing
+            // (+ Labour if petty-labour active) → Plant sub-total; Wastage (when > 0); Direct; OH; Margin; Total
             function buildConcGradeTable(grade: string, withFormworkPlacement: boolean, costsForGrade: CostBreakdown) {
               const rawMat = costsForGrade.cement + costsForGrade.ca + costsForGrade.fa + costsForGrade.admix;
-              const plantPlacing = costsForGrade.batching + costsForGrade.placement + costsForGrade.formwork + costsForGrade.curing;
-              const direct = rawMat + plantPlacing + costsForGrade.labour + costsForGrade.wastage;
+              const plantBase = costsForGrade.batching + (withFormworkPlacement ? costsForGrade.placement : 0) + (withFormworkPlacement ? costsForGrade.formwork : 0) + costsForGrade.curing + costsForGrade.labour;
+              const plantSub = plantBase;
+              const direct = rawMat + plantSub + costsForGrade.wastage;
               const tableRows: { label: string; val: number; isSub?: boolean; indent?: boolean; bold?: boolean }[] = [
                 { label: "Cement", val: costsForGrade.cement, indent: true },
                 { label: "Coarse Aggregate", val: costsForGrade.ca, indent: true },
@@ -3210,12 +3213,11 @@ export default function ConcreteCalculator() {
                 { label: "Admixture", val: costsForGrade.admix, indent: true },
                 { label: "Raw Materials Sub-total", val: rawMat, isSub: true },
                 { label: "Batching", val: costsForGrade.batching, indent: true },
-                { label: "Placement", val: withFormworkPlacement ? costsForGrade.placement : 0, indent: true },
+                { label: withFormworkPlacement && costsForGrade.labour > 0 ? "Petty Labour (Placement)" : "Placement", val: withFormworkPlacement ? (costsForGrade.labour > 0 ? costsForGrade.labour : costsForGrade.placement) : 0, indent: true },
                 { label: "Formwork & Staging", val: withFormworkPlacement ? costsForGrade.formwork : 0, indent: true },
                 { label: "Curing", val: costsForGrade.curing, indent: true },
-                ...(costsForGrade.labour > 0 ? [{ label: "Labour", val: costsForGrade.labour, indent: true }] : []),
-                ...(costsForGrade.wastage > 0 ? [{ label: "Wastage", val: costsForGrade.wastage, indent: true }] : []),
-                { label: "Plant & Placing Sub-total", val: plantPlacing + costsForGrade.labour + costsForGrade.wastage, isSub: true },
+                { label: "Plant & Placing Sub-total", val: plantSub, isSub: true },
+                ...(costsForGrade.wastage > 0 ? [{ label: "Wastage (Sand/Cement/Curing/Formwork)", val: costsForGrade.wastage, indent: true }] : []),
                 { label: "Direct Cost Sub-total", val: direct, isSub: true, bold: true },
                 { label: `Overhead (${s.overheadPct}%)`, val: costsForGrade.overhead, indent: true },
                 { label: `Margin (${s.marginPct}%)`, val: costsForGrade.margin, indent: true },
@@ -3755,11 +3757,31 @@ export default function ConcreteCalculator() {
                               ];
                             }
                             if (catType === "Steel") {
-                              const steelAmt = r.ourCost;
-                              return [{ lbl: "Steel (BBS + Fab + OH + Margin)", val: steelAmt, isBold: true }];
+                              const totalKg = bbsSummary.totalKg;
+                              const purchCostAll = bbsSummary.totalCost;
+                              const fabCostAll = steelFabForCard * totalKg / 1000;
+                              const directSteel = purchCostAll + fabCostAll;
+                              const steelWaste = s.wastage.steelCuttingWaste ? directSteel * (s.wastage.steelCuttingPct / 100) : 0;
+                              const steelDW = directSteel + steelWaste;
+                              const steelOH = steelDW * (s.overheadPct / 100);
+                              const steelMg = (steelDW + steelOH) * (s.marginPct / 100);
+                              const steelTotal = steelDW + steelOH + steelMg;
+                              const factor = steelTotal > 0 ? r.ourCost / steelTotal : 1;
+                              return [
+                                { lbl: "Purchase (BBS)", val: purchCostAll * factor },
+                                { lbl: "Fabrication", val: fabCostAll * factor },
+                                ...(steelWaste > 0 ? [{ lbl: `Cutting Wastage (${s.wastage.steelCuttingPct}%)`, val: steelWaste * factor }] : []),
+                                { lbl: `Overhead (${s.overheadPct}%)`, val: steelOH * factor },
+                                { lbl: `Margin (${s.marginPct}%)`, val: steelMg * factor },
+                                { lbl: "Total", val: r.ourCost, isBold: true },
+                              ];
                             }
-                            if (catType === "Excavation") return [{ lbl: "Excavation (rate × qty)", val: r.ourCost, isBold: true }];
-                            if (catType === "Backfill") return [{ lbl: "Backfill (rate × qty)", val: r.ourCost, isBold: true }];
+                            if (catType === "Excavation") return [
+                              { lbl: `${r.qty.toFixed(2)} ${r.unit} × ${fmtR(r.rate)}/${r.unit}`, val: r.ourCost, isBold: true },
+                            ];
+                            if (catType === "Backfill") return [
+                              { lbl: `${r.qty.toFixed(2)} ${r.unit} × ${fmtR(r.rate)}/${r.unit}`, val: r.ourCost, isBold: true },
+                            ];
                             return [{ lbl: "Our Cost", val: r.ourCost, isBold: true }];
                           })();
                           return (
