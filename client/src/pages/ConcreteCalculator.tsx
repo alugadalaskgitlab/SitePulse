@@ -3513,10 +3513,11 @@ export default function ConcreteCalculator() {
 
             // Helper to render a per-metre table for given zone lengths
             // zoneWalls is gross for individual zones, net (after deductions) for the Combined row
-            function renderPerMTable(zoneWalls: number, zoneTotalLen: number, zoneLabel: string, wallBasis: "gross" | "net" = "gross") {
+            // topVolOverride allows the combined row to use net top slab quantity (after grating deduction)
+            function renderPerMTable(zoneWalls: number, zoneTotalLen: number, zoneLabel: string, wallBasis: "gross" | "net" = "gross", topVolOverride?: number) {
               const wallVol = zoneTotalLen > 0 ? zoneWalls / zoneTotalLen : 0;
               const invertVol = qtoResult.invertPerM;
-              const topVol = qtoResult.topPerM;
+              const topVol = topVolOverride !== undefined ? topVolOverride : qtoResult.topPerM;
               const pccVol = qtoResult.pccPerM;
               const pccC = pccVol * pccCostPerM3;
               const invC = invertVol * invertCostPerM3;
@@ -3532,20 +3533,20 @@ export default function ConcreteCalculator() {
               const grdTotal = concSub + earthSub + steelPerM + bwPerM + lhPerM + ancC;
               const steelKgPerM = bbsSummary.totalKgPerM;
               const steelMTPerM = steelKgPerM / 1000;
-              const pMRows: { label: string; qtyPerM: string; rate: string; costPerM: number; isSub?: boolean }[] = [
-                { label: `PCC ${eq.pcc} Bed`, qtyPerM: `${pccVol.toFixed(3)} m³/m`, rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccC },
-                { label: `Invert Slab (${eq.invert})`, qtyPerM: `${invertVol.toFixed(3)} m³/m`, rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invC },
-                { label: `Walls (${eq.wall}, ${wallBasis})`, qtyPerM: `${wallVol.toFixed(3)} m³/m`, rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wllC },
-                ...(s.qto.isCovered || isBoxCulvert ? [{ label: `Top Slab (${eq.topSlab})`, qtyPerM: `${topVol.toFixed(3)} m³/m`, rate: `${fmtR(topSlabCostPerM3)}/m³`, costPerM: topC }] : []),
-                { label: "Concrete Sub-total", qtyPerM: "", rate: "", costPerM: concSub, isSub: true },
-                { label: "Excavation", qtyPerM: `${excVol.toFixed(3)} m³/m`, rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excC },
-                { label: "Backfill", qtyPerM: `${bkfVol.toFixed(3)} m³/m`, rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: bkfC },
-                { label: "Earthwork Sub-total", qtyPerM: "", rate: "", costPerM: earthSub, isSub: true },
-                { label: "Steel (BBS)", qtyPerM: `${steelMTPerM.toFixed(4)} MT/m (${steelKgPerM.toFixed(2)} kg/m)`, rate: `${fmtR(steelRateAvg + steelFabForCard)}/MT`, costPerM: steelPerM },
-                ...(bwPerM > 0 ? [{ label: "Binding Wire", qtyPerM: "", rate: "", costPerM: bwPerM }] : []),
-                ...(lhPerM > 0 ? [{ label: "Lifting Hooks", qtyPerM: "", rate: "", costPerM: lhPerM }] : []),
-                ...(ancC > 0 ? [{ label: "Gratings & Weepholes", qtyPerM: "", rate: "", costPerM: ancC }] : []),
-                { label: "Grand Total ₹/RM", qtyPerM: "", rate: "", costPerM: grdTotal, isSub: true },
+              const pMRows: { label: string; qty: string; unit: string; rate: string; costPerM: number; isSub?: boolean }[] = [
+                { label: `PCC ${eq.pcc} Bed`, qty: pccVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccC },
+                { label: `Invert Slab (${eq.invert})`, qty: invertVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invC },
+                { label: `Walls (${eq.wall}, ${wallBasis})`, qty: wallVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wllC },
+                ...(s.qto.isCovered || isBoxCulvert ? [{ label: `Top Slab (${eq.topSlab})`, qty: topVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(topSlabCostPerM3)}/m³`, costPerM: topC }] : []),
+                { label: "Concrete Sub-total", qty: "", unit: "", rate: "", costPerM: concSub, isSub: true },
+                { label: "Excavation", qty: excVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excC },
+                { label: "Backfill", qty: bkfVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: bkfC },
+                { label: "Earthwork Sub-total", qty: "", unit: "", rate: "", costPerM: earthSub, isSub: true },
+                { label: "Steel (BBS)", qty: steelMTPerM.toFixed(4), unit: "MT/RM", rate: `${fmtR(steelRateAvg + steelFabForCard)}/MT`, costPerM: steelPerM },
+                ...(bwPerM > 0 ? [{ label: "Binding Wire", qty: "", unit: "", rate: "", costPerM: bwPerM }] : []),
+                ...(lhPerM > 0 ? [{ label: "Lifting Hooks", qty: "", unit: "", rate: "", costPerM: lhPerM }] : []),
+                ...(ancC > 0 ? [{ label: "Gratings & Weepholes", qty: "", unit: "", rate: "", costPerM: ancC }] : []),
+                { label: "Grand Total ₹/RM", qty: "", unit: "", rate: "", costPerM: grdTotal, isSub: true },
               ];
               return (
                 <div key={zoneLabel} className="mb-4">
@@ -3554,7 +3555,7 @@ export default function ConcreteCalculator() {
                     <table className="text-xs w-full min-w-[400px] border-separate border-spacing-0">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60">
-                          {["Item", "Qty / RM", "Rate ₹ / unit", "₹ / RM"].map(h => (
+                          {["Item", "Qty / RM", "Unit", "Rate ₹ / unit", "₹ / RM"].map(h => (
                             <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -3563,7 +3564,8 @@ export default function ConcreteCalculator() {
                         {pMRows.map((r, ri) => (
                           <tr key={ri} className={r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-bold" : (ri % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
                             <td className={`px-3 py-2 whitespace-nowrap ${r.isSub ? "pl-3" : "pl-6"}`}>{r.label}</td>
-                            <td className="px-3 py-2 text-right text-slate-500">{r.qtyPerM}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{r.qty}</td>
+                            <td className="px-3 py-2 text-right text-slate-400 text-[11px]">{r.unit}</td>
                             <td className="px-3 py-2 text-right text-slate-500">{r.rate}</td>
                             <td className={`px-3 py-2 text-right ${r.isSub ? "text-blue-700 dark:text-blue-400 font-bold" : ""}`}>
                               {r.costPerM > 0 ? fmtR(r.costPerM) : (r.isSub ? fmtR(0) : "—")}
@@ -3608,11 +3610,11 @@ export default function ConcreteCalculator() {
                       {qtoResult.zones.map(z => renderPerMTable(z.wallsM3, z.length, `${z.label} (${z.length} m)`, "gross"))}
                       <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Combined ({qtoResult.totalLength.toFixed(0)} m)</p>
-                        {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net")}
+                        {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net", qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0)}
                       </div>
                     </div>
                   )}
-                  {!hasMultiZone && renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net")}
+                  {!hasMultiZone && renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net", qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0)}
                 </CardContent>
               </Card>
             );
