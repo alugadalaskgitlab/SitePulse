@@ -3224,8 +3224,10 @@ export default function ConcreteCalculator() {
               return tableRows;
             }
 
-            // Main grade costs — use existing computed costs (already has pettyLabour, steel excluded from concrete)
-            const mainCosts: CostBreakdown = { ...costs, steel: 0, total: costs.total - costs.steel, totalWithEsc: costs.totalWithEsc - costs.steel };
+            // Main grade costs — recompute from scratch with steel forced to 0 and steel-cutting-waste disabled
+            // This ensures overhead and margin are derived from a concrete-only direct base (no steel contamination)
+            const sNoSteel: CalcState = { ...s, wastage: { ...s.wastage, steelCuttingWaste: false } };
+            const mainCosts = computeCosts(sNoSteel, 0, undefined, undefined, pettyLabourRatePerM3);
             const mainRows = buildConcGradeTable(s.grade, true, mainCosts);
 
             // PCC grade (only if pccDepth > 0)
@@ -3233,15 +3235,15 @@ export default function ConcreteCalculator() {
             const pccGrade = s.qto?.elementGrades?.pcc ?? "M15";
             let pccCosts: CostBreakdown | null = null;
             if (hasPCC) {
-              // PCC: same batching+curing costs as main, no formwork/placement
+              // PCC: recompute with steel=0 and steelCuttingWaste disabled, no placement/formwork
               const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
-              const pccState: CalcState = { ...s, mix: pccMix };
+              const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
               const rawPcc = computeCosts(pccState, 0);
-              pccCosts = { ...rawPcc, placement: 0, formwork: 0, total: rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + rawPcc.curing + rawPcc.overhead + rawPcc.margin, totalWithEsc: 0 };
-              const direct = pccCosts.cement + pccCosts.ca + pccCosts.fa + pccCosts.admix + pccCosts.batching + pccCosts.curing + pccCosts.labour + pccCosts.wastage;
-              const overhead = direct * (s.overheadPct / 100);
-              const margin = (direct + overhead) * (s.marginPct / 100);
-              pccCosts = { ...pccCosts, overhead, margin, total: direct + overhead + margin, totalWithEsc: (direct + overhead + margin) * (1 + s.escalationPct / 100) };
+              // Zero out placement/formwork; recompute OH+margin from concrete-only direct
+              const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + rawPcc.curing + rawPcc.labour + rawPcc.wastage;
+              const pccOH = pccDirect * (s.overheadPct / 100);
+              const pccMg = (pccDirect + pccOH) * (s.marginPct / 100);
+              pccCosts = { ...rawPcc, placement: 0, formwork: 0, overhead: pccOH, margin: pccMg, total: pccDirect + pccOH + pccMg, totalWithEsc: (pccDirect + pccOH + pccMg) * (1 + s.escalationPct / 100) };
             }
             const pccRows = pccCosts ? buildConcGradeTable(pccGrade, false, pccCosts) : [];
 
