@@ -2857,9 +2857,35 @@ export default function ConcreteCalculator() {
                 {isBridgeType && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {numInput("Base Width (mm)", s.qto.bwBaseWidth, v => updateQto({ bwBaseWidth: v }))}
-                    {numInput("Stem Thickness (mm)", s.qto.bwStemThick, v => updateQto({ bwStemThick: v }))}
+                    {/* Stem Thickness + inline grade */}
+                    <div>
+                      {numInput("Stem Thickness (mm)", s.qto.bwStemThick, v => updateQto({ bwStemThick: v }))}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">Stem Grade:</span>
+                        <Select
+                          value={s.qto.elementGrades?.wall ?? "M25"}
+                          onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), wall: v } })}
+                        >
+                          <SelectTrigger className="h-6 text-xs flex-1 px-1.5"><SelectValue /></SelectTrigger>
+                          <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                     {numInput("Wall / Stem Height (mm)", s.qto.bwHeight, v => updateQto({ bwHeight: v }))}
-                    {numInput("Footing Depth (mm)", s.qto.bwFootingDepth, v => updateQto({ bwFootingDepth: v }))}
+                    {/* Footing Depth + inline grade */}
+                    <div>
+                      {numInput("Footing Depth (mm)", s.qto.bwFootingDepth, v => updateQto({ bwFootingDepth: v }))}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[11px] text-slate-600 dark:text-slate-400 shrink-0">Footing Grade:</span>
+                        <Select
+                          value={s.qto.elementGrades?.invert ?? "M25"}
+                          onValueChange={(v) => updateQto({ elementGrades: { ...(s.qto.elementGrades ?? { pcc:"M15", invert:"M25", wall:"M25", topSlab:"M25" }), invert: v } })}
+                        >
+                          <SelectTrigger className="h-6 text-xs flex-1 px-1.5"><SelectValue /></SelectTrigger>
+                          <SelectContent>{["M10","M15","M20","M25","M30","M35","M40"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -3482,6 +3508,12 @@ export default function ConcreteCalculator() {
           {activeReportPill === "per-metre" && (() => {
             if (!isDrainType || !qtoResult || qtoResult.zones.length === 0) {
               if (isBridgeType && bridgeQtoResult) {
+                const bEq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+                const bRccBaseRate = costs.totalWithEsc - costs.steel;
+                const bBaseMat = computeMaterialCostOnly(s.grade, s);
+                const bStemCostPerM3 = bRccBaseRate - bBaseMat + computeMaterialCostOnly(bEq.wall, s);
+                const bFootCostPerM3 = bRccBaseRate - bBaseMat + computeMaterialCostOnly(bEq.invert, s);
+                const bConcretePerM = bridgeQtoResult.stemVol * bStemCostPerM3 + bridgeQtoResult.baseVol * bFootCostPerM3;
                 return (
                   <Card>
                     <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
@@ -3499,28 +3531,37 @@ export default function ConcreteCalculator() {
                         </div>
                         <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-slate-600">RCC {s.grade} (concrete) ₹/m³</span>
-                            <span className="font-medium">{fmtR(costs.totalWithEsc - costs.steel)}</span>
+                            <span className="text-slate-600">Stem RCC {bEq.wall} ₹/m³</span>
+                            <span className="font-medium">{fmtR(bStemCostPerM3)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Footing RCC {bEq.invert} ₹/m³</span>
+                            <span className="font-medium">{fmtR(bFootCostPerM3)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-600">Concrete ₹/m run</span>
-                            <span className="font-medium">{fmtR(bridgeQtoResult.totalRCCperM * (costs.totalWithEsc - costs.steel))}</span>
+                            <span className="font-medium">{fmtR(bConcretePerM)}</span>
                           </div>
-                          {bbsSummary.totalKgPerM > 0 && (() => {
+                          {(() => {
                             const steelRateAvg2 = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
                             const steelFab2 = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
                             const steelPerM2 = bbsSummary.totalKgPerM * ((steelRateAvg2 + steelFab2) / 1000);
+                            const totalPerM = bConcretePerM + steelPerM2;
                             return (
-                              <div className="flex justify-between">
-                                <span className="text-slate-600">Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</span>
-                                <span className="font-medium">{fmtR(steelPerM2)}/m</span>
-                              </div>
+                              <>
+                                {bbsSummary.totalKgPerM > 0 && (
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600">Steel ({bbsSummary.totalKgPerM.toFixed(2)} kg/m)</span>
+                                    <span className="font-medium">{fmtR(steelPerM2)}/m</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between font-bold border-t pt-1 mt-1">
+                                  <span>Total ₹/m run</span>
+                                  <span className="text-blue-700">{fmtR(totalPerM)}</span>
+                                </div>
+                              </>
                             );
                           })()}
-                          <div className="flex justify-between font-bold border-t pt-1 mt-1">
-                            <span>Total ₹/m run</span>
-                            <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}</span>
-                          </div>
                         </div>
                       </div>
                     </CardContent>
