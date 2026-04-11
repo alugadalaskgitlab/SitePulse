@@ -3375,7 +3375,8 @@ export default function ConcreteCalculator() {
 
           {/* ── Steel Rates ── */}
           {activeReportPill === "steel-rates" && (() => {
-            const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+            const steelFabForCard = s.steelFabRatePerMT ?? 0;
+            const fabIsBOQOnly = s.pettyLabour?.enabled && s.pettyLabour?.contractorBBS;
             const diaRows = ([8, 10, 12, 16, 20, 25] as const).map(dia => {
               const key = `r${dia}` as keyof SteelRates;
               const purchaseRate = s.steelRates[key];
@@ -3403,7 +3404,7 @@ export default function ConcreteCalculator() {
 
             const analysisRows: { lbl: string; perMT: number; perM3: number; isSub?: boolean; bold?: boolean }[] = [
               { lbl: `Weighted Avg Purchase (${totalBBSKg > 0 ? diaRows.filter(r => r.bbsKg > 0).length : 0} dia)`, perMT: avgPurchasePerMT, perM3: toM3(avgPurchasePerMT) },
-              { lbl: "Fabrication (cutting/bending/placing)", perMT: steelFabForCard, perM3: toM3(steelFabForCard) },
+              { lbl: `Fabrication (cutting/bending/placing)${fabIsBOQOnly ? " — BOQ rate only" : ""}`, perMT: steelFabForCard, perM3: toM3(steelFabForCard) },
               { lbl: "Direct Steel Sub-total", perMT: directSteelPerMT, perM3: toM3(directSteelPerMT), isSub: true },
               ...(wasteEnabled ? [{ lbl: `Cutting Wastage (${s.wastage.steelCuttingPct}%)`, perMT: wastePerMT, perM3: toM3(wastePerMT) }] : []),
               ...(wasteEnabled ? [{ lbl: "Direct + Wastage Sub-total", perMT: directWastePerMT, perM3: toM3(directWastePerMT), isSub: true }] : []),
