@@ -26,9 +26,9 @@ interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: num
 interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
-interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; }
+interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; clientRate?: number; }
 interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; hookMm?: number; }
-interface IncludedCosts { cement: boolean; caFa: boolean; admix: boolean; batching: boolean; placement: boolean; formwork: boolean; labour: boolean; curing: boolean; steel: boolean; wastage: boolean; overhead: boolean; margin: boolean; }
+interface IncludedCosts { cement: boolean; ca: boolean; fa: boolean; admix: boolean; batching: boolean; placement: boolean; formwork: boolean; labour: boolean; curing: boolean; steel: boolean; wastage: boolean; overhead: boolean; margin: boolean; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; rates?: Record<string, number>; }
@@ -96,6 +96,7 @@ interface CalcState {
   steelFabRatePerMT: number;
   supplyBarLengthM: number;
   mixLocked: boolean;
+  includeAdmix: boolean;
   includedCosts: IncludedCosts;
   clientOfferedRate: number;
   clientOfferedRateMode: "per_m3" | "per_rm";
@@ -183,7 +184,8 @@ const DEFAULT_STATE: CalcState = {
   steelFabRatePerMT: 0,
   supplyBarLengthM: 12,
   mixLocked: false,
-  includedCosts: { cement: true, caFa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true },
+  includeAdmix: true,
+  includedCosts: { cement: true, ca: true, fa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true },
   clientOfferedRate: 0,
   clientOfferedRateMode: "per_m3",
   scenarios: [],
@@ -231,7 +233,14 @@ function loadState(): CalcState {
         },
         supplyBarLengthM: loaded.supplyBarLengthM ?? 12,
         mixLocked: loaded.mixLocked ?? false,
-        includedCosts: { ...DEFAULT_STATE.includedCosts, ...(loaded.includedCosts || {}) },
+        includeAdmix: loaded.includeAdmix ?? true,
+        includedCosts: (() => {
+          const saved = loaded.includedCosts || {};
+          // Migrate old caFa key → separate ca and fa
+          const migratedCa = saved.ca !== undefined ? saved.ca : (saved.caFa !== undefined ? saved.caFa : true);
+          const migratedFa = saved.fa !== undefined ? saved.fa : (saved.caFa !== undefined ? saved.caFa : true);
+          return { ...DEFAULT_STATE.includedCosts, ...saved, ca: migratedCa, fa: migratedFa };
+        })(),
         bbsRows: (loaded.bbsRows || []).map((r: any) => {
           const base = { element: "Invert-Bottom", zoneId: "all", countBasis: "spacing", spacingMm: 200, overlapN: 0, ...r };
           // Migrate hookMult -> hookMm if hookMm not yet stored
@@ -294,8 +303,8 @@ function computeCosts(s: CalcState, steelCostPerM3 = 0, locCASources?: CASourceO
   const faBulkageFactor = s.faType === "natural" ? (1 + s.faBulkagePct / 100) : 1;
   const fa = (s.mix.faKg / 1000) * faLanded * faBulkageFactor;
 
-  // Admixture
-  const admix = s.admixDosage * s.admixRate;
+  // Admixture (excluded when includeAdmix is false)
+  const admix = (s.includeAdmix !== false) ? s.admixDosage * s.admixRate : 0;
 
   // Batching
   const batching = s.batchingRows.reduce((sum, row) => {
@@ -495,7 +504,7 @@ function computeMaterialCostOnly(grade: string, s: CalcState): number {
   const faLanded = faRatePerMT + (s.faLeadKm * 2 * s.faFreightRate / Math.max(1, s.faPayload));
   const faBulkageFactor = s.faType === "natural" ? (1 + s.faBulkagePct / 100) : 1;
   const fa = (mix.faKg / 1000) * faLanded * faBulkageFactor;
-  const admix = s.admixDosage * s.admixRate;
+  const admix = (s.includeAdmix !== false) ? s.admixDosage * s.admixRate : 0;
   return cement + ca + fa + admix;
 }
 
@@ -633,6 +642,7 @@ export default function ConcreteCalculator() {
     try { return localStorage.getItem("cc_active_tab") ?? "calculator"; } catch { return "calculator"; }
   });
   const [activeAnalysisTab, setActiveAnalysisTab] = useState("price-impact");
+  const [activeReportPill, setActiveReportPill] = useState("per-metre");
   const [savedEstimateId, setSavedEstimateId] = useState<number | null>(() => {
     // Support ?estimateId= query param
     const params = new URLSearchParams(window.location.search);
@@ -1216,7 +1226,10 @@ export default function ConcreteCalculator() {
         <TabsList className="mb-4">
           <TabsTrigger value="calculator" data-testid="tab-calculator">Calculator</TabsTrigger>
           <TabsTrigger value="bbs" data-testid="tab-bbs">BBS & Wastage</TabsTrigger>
-          <TabsTrigger value="qto-boq" data-testid="tab-qto-boq"><Building2 className="w-3.5 h-3.5 mr-1" />QTO & BOQ</TabsTrigger>
+          <TabsTrigger value="qto-boq" data-testid="tab-qto-boq"><Building2 className="w-3.5 h-3.5 mr-1" />Dimensions & QTO</TabsTrigger>
+          <TabsTrigger value="reports" data-testid="tab-reports">
+            <FileUp className="w-3.5 h-3.5 mr-1" />Reports
+          </TabsTrigger>
           <TabsTrigger value="analysis" data-testid="tab-analysis">
             <TrendingUp className="w-3.5 h-3.5 mr-1" />Analysis
           </TabsTrigger>
@@ -1425,7 +1438,7 @@ export default function ConcreteCalculator() {
                               })}
                             </div>
                             <p className="text-sm text-slate-700 font-medium mt-2">
-                              Landed = {fmtR(ratePerMT)}/MT (normalized) + freight = <strong>{fmtR(landed)}/MT</strong>
+                              {fmtR(ratePerMT)}/MT{ratePerMT !== tab.purchaseRate ? " (normalized)" : ""} + freight <span className="text-slate-500">{fmtR(landed - ratePerMT)}/MT</span> = <strong>{fmtR(landed)}/MT</strong>
                             </p>
                           </TabsContent>
                         );
@@ -1473,8 +1486,18 @@ export default function ConcreteCalculator() {
                       {numInput("Payload (MT)", s.faPayload, (v) => update({ faPayload: v }))}
                       {s.faType === "natural" && numInput("Bulkage %", s.faBulkagePct, (v) => update({ faBulkagePct: v }), { unit: "%", step: 1, min: 0, testId: "input-bulkage" })}
                     </div>
+                    {(() => {
+                      const faRatePerMT = aggRateToPerMT(s.faPurchaseRate, s.faUom ?? "per_cft");
+                      const faFreightComp = s.faLeadKm * 2 * s.faFreightRate / Math.max(1, s.faPayload);
+                      const faLandedMT = faRatePerMT + faFreightComp;
+                      return (
+                        <p className="text-sm text-slate-700 font-medium mt-2">
+                          {fmtR(faRatePerMT)}/MT{faRatePerMT !== s.faPurchaseRate ? " (normalized)" : ""} + freight <span className="text-slate-500">{fmtR(faFreightComp)}/MT</span> = <strong>{fmtR(faLandedMT)}/MT</strong>
+                        </p>
+                      );
+                    })()}
                     {s.faType === "natural" && (
-                      <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                         <Info className="w-3 h-3" /> Bulkage adds {fmtPct(s.faBulkagePct)} to effective FA volume → +{fmtR(costs.fa * s.faBulkagePct / 100 / (1 + s.faBulkagePct / 100))}/m³ impact
                       </p>
                     )}
@@ -1482,14 +1505,30 @@ export default function ConcreteCalculator() {
 
                   {/* Admixture */}
                   <div>
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Admixture</p>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="flex items-center gap-3 mb-2">
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Admixture</p>
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <Checkbox
+                          checked={s.includeAdmix !== false}
+                          onCheckedChange={(v) => update({ includeAdmix: !!v })}
+                          className="h-3.5 w-3.5"
+                          data-testid="chk-include-admix"
+                        />
+                        <span className="text-xs text-slate-500">Include in rate</span>
+                      </label>
+                    </div>
+                    <div className={`grid grid-cols-3 gap-3 transition-opacity ${s.includeAdmix === false ? "opacity-50" : ""}`}>
                       {numInput("Dosage (L/m³)", s.admixDosage, (v) => update({ admixDosage: v }), { step: 0.05 })}
                       {numInput("Rate (₹/L)", s.admixRate, (v) => update({ admixRate: v }))}
                       <div className="flex items-end pb-1">
-                        <span className="text-sm font-semibold text-slate-700">→ {fmtR(costs.admix)}/m³</span>
+                        <span className="text-sm font-semibold text-slate-700">
+                          → {s.includeAdmix === false ? <span className="line-through text-slate-400">{fmtR(s.admixDosage * s.admixRate)}/m³</span> : <>{fmtR(costs.admix)}/m³</>}
+                        </span>
                       </div>
                     </div>
+                    {s.includeAdmix === false && (
+                      <p className="text-xs text-amber-600 mt-1">Admixture excluded from concrete rate — cost not included in totals</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2061,14 +2100,15 @@ export default function ConcreteCalculator() {
                         const rawMatTotal = costs.cement + costs.ca + costs.fa + costs.admix;
                         const plantTotal = costs.batching + costs.placement + costs.formwork + costs.labour + costs.curing;
                         const directTotal = rawMatTotal + plantTotal + costs.steel;
-                        const ic = s.includedCosts ?? { cement: true, caFa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true };
+                        const ic = s.includedCosts ?? { cement: true, ca: true, fa: true, admix: true, batching: true, placement: true, formwork: true, labour: true, curing: true, steel: true, wastage: true, overhead: true, margin: true };
                         const toggleInc = (k: keyof IncludedCosts) => update({ includedCosts: { ...ic, [k]: !ic[k] } });
                         const groups = [
                           {
                             label: "Raw Materials", color: "bg-amber-100 border-amber-200", textColor: "text-amber-800",
                             items: [
                               { label: "Cement", val: costs.cement, color: "bg-amber-500", key: "cement" as keyof IncludedCosts },
-                              { label: "CA + FA", val: costs.ca + costs.fa, color: "bg-orange-400", key: "caFa" as keyof IncludedCosts },
+                              { label: "Coarse Agg", val: costs.ca, color: "bg-orange-400", key: "ca" as keyof IncludedCosts },
+                              { label: "Fine Agg", val: costs.fa, color: "bg-yellow-400", key: "fa" as keyof IncludedCosts },
                               { label: "Admixture", val: costs.admix, color: "bg-purple-400", key: "admix" as keyof IncludedCosts },
                             ],
                             subtotal: rawMatTotal,
@@ -2634,9 +2674,9 @@ export default function ConcreteCalculator() {
                 <li><b>Structure Dimensions</b> — wall thickness, slab thickness, clear span (all in mm); drives all QTO formulas</li>
                 <li><b>Height Zones</b> — each zone has a wall height and road length. Total drain length = Σ zone lengths</li>
                 <li><b>Volume Summary</b> — shows walls/invert/top slab/PCC per zone. "Apply to Calculator" sets Section ① total volume</li>
-                <li><b>Per-Metre Rate Card</b> — RCC cost ÷ road length. Enter offered rates per zone to see margin per linear metre</li>
+                <li><b>Per-Metre Rate Card &amp; Quotation</b> — now in the <b>Reports</b> tab (pill: Per Metre / Quotation)</li>
                 <li><b>BOQ Estimator</b> — "Load Standard Drain BOQ" auto-generates 9-item BOQ from QTO volumes. Import Excel or Add Item manually</li>
-                <li><b>Element Summary</b> — shows cost breakdown per element (PCC/Invert/Walls/Top Slab) with grade and m³ volumes; PCC excludes shuttering and placement</li>
+                <li><b>Concrete Rates</b> (in Reports tab) — element-by-element cost breakdown per m³ (mat/batching/placing/curing/OH/margin)</li>
                 <li><b>Rate vs Client Offer</b> — enter client's offered rate in Analysis tab to compute BOQ margin</li>
                 </ul>
               </HelpPanel>
@@ -2923,8 +2963,8 @@ export default function ConcreteCalculator() {
               </Card>
             )}
 
-            {/* Per-Metre Rate Card (Drain / Box Culvert) */}
-            {isDrainType && qtoResult && qtoResult.zones.length > 0 && (() => {
+            {/* Per-Metre Rate Card → moved to Reports tab */}
+            {false && isDrainType && qtoResult && qtoResult.zones.length > 0 && (() => {
               const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
               // Exclude steel from concrete element rates — steel is tracked separately as BBS kg/m
               const rccBaseRate = costs.totalWithEsc - costs.steel;
@@ -3093,8 +3133,8 @@ export default function ConcreteCalculator() {
               );
             })()}
 
-            {/* Bridge / RW Per-Metre Rate Card */}
-            {isBridgeType && bridgeQtoResult && (
+            {/* Bridge / RW Per-Metre Rate Card → moved to Reports tab */}
+            {false && isBridgeType && bridgeQtoResult && (
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
@@ -3171,8 +3211,8 @@ export default function ConcreteCalculator() {
               </Card>
             )}
 
-            {/* Element Summary Table */}
-            {elementCostBreakdown && (() => {
+            {/* Element Summary Table → moved to Reports tab (Concrete Rates) */}
+            {false && elementCostBreakdown && (() => {
               const eb = elementCostBreakdown;
               const rows = [
                 { key: "pcc", label: "PCC", data: eb.pcc, note: "No shuttering/placement" },
@@ -3375,6 +3415,492 @@ export default function ConcreteCalculator() {
 
 
           </div>
+        </TabsContent>
+
+        {/* ══════════════ TAB: REPORTS ══════════════ */}
+        <TabsContent value="reports">
+          {/* Pill selector */}
+          <div className="flex gap-2 flex-wrap mb-5">
+            {([
+              { id: "concrete-rates", label: "Concrete Rates" },
+              { id: "steel-rates", label: "Steel Rates" },
+              { id: "per-metre", label: "Per Metre" },
+              { id: "boq", label: "BOQ" },
+              { id: "quotation", label: "Quotation" },
+            ] as const).map(p => (
+              <button
+                key={p.id}
+                data-testid={`pill-report-${p.id}`}
+                onClick={() => setActiveReportPill(p.id)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  activeReportPill === p.id
+                    ? "bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100"
+                    : "bg-white text-slate-700 border-slate-300 hover:border-slate-500 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-600"
+                }`}
+              >{p.label}</button>
+            ))}
+          </div>
+
+          {/* ── Concrete Rates ── */}
+          {activeReportPill === "concrete-rates" && (() => {
+            const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+            const rccBaseRate = costs.totalWithEsc - costs.steel;
+            const baseMat = computeMaterialCostOnly(s.grade, s);
+            const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
+            const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
+            const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
+            const tsM = s.qto.topSlabThick / 1000;
+            const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
+              ? s.qto.precastRatePerM2 / tsM
+              : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+
+            const makeRow = (label: string, grade: string, ratePerM3: number, hasFormwork: boolean) => {
+              const mat = computeMaterialCostOnly(grade, s);
+              const batchPct = rccBaseRate > 0 ? costs.batching / rccBaseRate : 0;
+              const placePct = rccBaseRate > 0 ? costs.placement / rccBaseRate : 0;
+              const curingPct = rccBaseRate > 0 ? costs.curing / rccBaseRate : 0;
+              const formworkAmt = hasFormwork ? costs.formwork : 0;
+              const plant = ratePerM3 * batchPct;
+              const placing = hasFormwork ? ratePerM3 * placePct : 0;
+              const curing = ratePerM3 * curingPct;
+              const overhead = costs.overhead > 0 ? ratePerM3 * (costs.overhead / (rccBaseRate || 1)) : 0;
+              const margin = costs.margin > 0 ? ratePerM3 * (costs.margin / (rccBaseRate || 1)) : 0;
+              return { label, grade, mat, plant, placing, formwork: formworkAmt, curing, overhead, margin, total: ratePerM3 };
+            };
+
+            const rows = [
+              makeRow(`Active Grade (${s.grade})`, s.grade, rccBaseRate, true),
+              ...(isDrainType ? [
+                makeRow(`PCC Bed (${eq.pcc})`, eq.pcc, pccCostPerM3, false),
+                makeRow(`Invert Slab (${eq.invert})`, eq.invert, invertCostPerM3, true),
+                makeRow(`Walls (${eq.wall})`, eq.wall, wallCostPerM3, true),
+                ...(s.qto.topSlabType !== "None" ? [makeRow(`Top Slab (${eq.topSlab})`, eq.topSlab, topSlabCostPerM3, true)] : []),
+              ] : []),
+            ];
+
+            const cols = ["Element", "Grade", "Mat ₹/m³", "Batching", "Placing", "Formwork", "Curing", "OH", "Margin", "Total ₹/m³"];
+
+            return (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rates — ₹/m³ by Element</CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">Cost breakdown per element using per-element grades. PCC excludes shuttering and placement.</p>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 overflow-x-auto">
+                  <table className="text-xs w-full min-w-[800px] border-separate border-spacing-0">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/60">
+                        {cols.map(h => (
+                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={r.label} className={`${i === 0 ? "font-semibold bg-blue-50/60 dark:bg-blue-900/10" : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20")}`}>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.label}</td>
+                          <td className="px-3 py-2 text-right text-slate-600">{r.grade}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.mat)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.plant)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.placing)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.formwork)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.curing)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.overhead)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.margin)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-slate-100">{fmtR(r.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Steel Rates ── */}
+          {activeReportPill === "steel-rates" && (() => {
+            const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+            const diaRows = ([8, 10, 12, 16, 20, 25] as const).map(dia => {
+              const key = `r${dia}` as keyof SteelRates;
+              const purchaseRate = s.steelRates[key];
+              const totalRate = purchaseRate + steelFabForCard;
+              const bbsKg = bbsSummary.byDia[dia]?.kg ?? 0;
+              const bbsCost = bbsKg * totalRate / 1000;
+              return { dia, purchaseRate, fabRate: steelFabForCard, totalRate, bbsKg, bbsCost };
+            });
+            const totalBBSKg = bbsSummary.totalKg;
+            const totalBBSCost = bbsSummary.totalCost + (s.pettyLabour.enabled && s.pettyLabour.contractorBBS ? 0 : (s.steelFabRatePerMT ?? 0) * totalBBSKg / 1000);
+            const avgRate = totalBBSKg > 0 ? totalBBSCost / (totalBBSKg / 1000) : 0;
+
+            return (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rates — Per Diameter</CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">Purchase rate + fabrication per dia. BBS weights from the BBS tab.</p>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 overflow-x-auto">
+                  <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/60">
+                        {["Dia (mm)", "Purchase ₹/MT", "Fab ₹/MT", "Total ₹/MT", "BBS kg", "BBS Cost"].map(h => (
+                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diaRows.map((r, i) => (
+                        <tr key={r.dia} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
+                          <td className="px-3 py-2 font-medium">Ø{r.dia}mm</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.purchaseRate)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(r.fabRate)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{fmtR(r.totalRate)}</td>
+                          <td className="px-3 py-2 text-right">{r.bbsKg > 0 ? r.bbsKg.toFixed(1) : "—"}</td>
+                          <td className="px-3 py-2 text-right">{r.bbsCost > 0 ? fmtR(r.bbsCost) : "—"}</td>
+                        </tr>
+                      ))}
+                      {totalBBSKg > 0 && (
+                        <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
+                          <td className="px-3 py-2" colSpan={3}>Total / Weighted Avg</td>
+                          <td className="px-3 py-2 text-right">{fmtR(avgRate)}/MT</td>
+                          <td className="px-3 py-2 text-right">{totalBBSKg.toFixed(1)} kg</td>
+                          <td className="px-3 py-2 text-right">{fmtR(totalBBSCost)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  {totalBBSKg > 0 && crossSectionM2 > 0 && (
+                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-slate-500">Steel kg/m</p>
+                        <p className="font-bold">{bbsSummary.totalKgPerM.toFixed(2)} kg/m</p>
+                      </div>
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-slate-500">Steel ₹/m</p>
+                        <p className="font-bold">{fmtR(bbsSummary.totalKgPerM * avgRate / 1000)}/m</p>
+                      </div>
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-slate-500">Steel ₹/m³</p>
+                        <p className="font-bold">{fmtR(costs.steel)}/m³</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Per Metre ── */}
+          {activeReportPill === "per-metre" && (() => {
+            if (!isDrainType || !qtoResult || qtoResult.zones.length === 0) {
+              if (isBridgeType && bridgeQtoResult) {
+                return (
+                  <Card>
+                    <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-5 pb-5">
+                      <div className="border rounded-xl p-4 space-y-3 max-w-sm">
+                        <div>
+                          <p className="font-semibold text-sm">{s.structureType}</p>
+                          <p className="text-sm text-slate-700 font-medium">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between font-bold border-t pt-1">
+                            <span>Cost ₹/m run</span>
+                            <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return (
+                <Card>
+                  <CardContent className="px-5 py-8 text-center text-slate-500">
+                    <p>Per-Metre Rate Card requires QTO dimensions to be entered in the Dimensions &amp; QTO tab.</p>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+            const rccBaseRate = costs.totalWithEsc - costs.steel;
+            const baseMat = computeMaterialCostOnly(s.grade, s);
+            const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
+            const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
+            const tsM = s.qto.topSlabThick / 1000;
+            const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
+              ? s.qto.precastRatePerM2 / tsM
+              : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+            const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
+            const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+            const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+            const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
+            const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
+            const excavPerM = qtoResult.totalLength > 0 ? qtoResult.excavVolume * s.qto.excavationRate / qtoResult.totalLength : 0;
+            const backfillPerM = qtoResult.totalLength > 0 ? qtoResult.backfillVol * s.qto.backfillRate / qtoResult.totalLength : 0;
+            const avgNetWallPerM = qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength * wallCostPerM3 : 0;
+            const netTopSlabPerM = qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength * topSlabCostPerM3 : 0;
+            const steelPerM = bbsSummary.totalKgPerM * ((steelRateAvg + steelFabForCard) / 1000);
+            const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
+            const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
+
+            const pccPerMCost = qtoResult.pccPerM * pccCostPerM3;
+            const invertPerMCost = qtoResult.invertPerM * invertCostPerM3;
+            const wallsPerMCost = avgNetWallPerM;
+            const topSlabPerMCost = netTopSlabPerM;
+            const concreteSubtotal = pccPerMCost + invertPerMCost + wallsPerMCost + topSlabPerMCost;
+            const earthworkSubtotal = excavPerM + backfillPerM;
+            const steelTotal = steelPerM + bwPerM + lhPerM;
+            const ancillaryTotal = gratingPerM + weepholePerM;
+            const grandTotal = concreteSubtotal + earthworkSubtotal + steelTotal + ancillaryTotal;
+
+            const perMRows: { label: string; qtyPerM: string; rate: string; costPerM: number; isSub?: boolean; isSection?: boolean }[] = [
+              { label: `PCC ${eq.pcc} Bed`, qtyPerM: `${qtoResult.pccPerM.toFixed(3)} m³/m`, rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccPerMCost },
+              { label: `Invert Slab (${eq.invert})`, qtyPerM: `${qtoResult.invertPerM.toFixed(3)} m³/m`, rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invertPerMCost },
+              { label: `Walls (${eq.wall}) avg`, qtyPerM: `${(qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength : 0).toFixed(3)} m³/m`, rate: `${fmtR(wallCostPerM3)}/m³`, costPerM: wallsPerMCost },
+              ...(s.qto.topSlabType !== "None" ? [{ label: `Top Slab (${eq.topSlab})`, qtyPerM: `${(qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0).toFixed(3)} m³/m`, rate: `${fmtR(topSlabCostPerM3)}/m³`, costPerM: topSlabPerMCost }] : []),
+              { label: "Concrete Sub-total", qtyPerM: "", rate: "", costPerM: concreteSubtotal, isSub: true },
+              { label: "Excavation", qtyPerM: `${qtoResult.totalLength > 0 ? (qtoResult.excavVolume / qtoResult.totalLength).toFixed(3) : "—"} m³/m`, rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excavPerM },
+              { label: "Backfill", qtyPerM: `${qtoResult.totalLength > 0 ? (qtoResult.backfillVol / qtoResult.totalLength).toFixed(3) : "—"} m³/m`, rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: backfillPerM },
+              { label: "Earthwork Sub-total", qtyPerM: "", rate: "", costPerM: earthworkSubtotal, isSub: true },
+              { label: `Steel (Ø${bbsSummary.totalKg > 0 ? "weighted avg" : `${s.steelRates.r12 > 0 ? "₹" + s.steelRates.r12.toLocaleString() + "/MT" : "—"}` })`, qtyPerM: `${bbsSummary.totalKgPerM.toFixed(2)} kg/m`, rate: `${fmtR((steelRateAvg + steelFabForCard) / 1000)}/kg`, costPerM: steelPerM },
+              ...(bwPerM > 0 ? [{ label: "Binding Wire", qtyPerM: `${(bbsSummary.totalKgPerM * (s.qto.bindingWireKgPerMT ?? 10) / 1000).toFixed(3)} kg/m`, rate: `${fmtR(s.qto.bindingWireRatePerKg ?? 85)}/kg`, costPerM: bwPerM }] : []),
+              ...(lhPerM > 0 ? [{ label: "Lifting Hooks", qtyPerM: `1 per ${s.qto.liftingHookSpacingM ?? 2}m`, rate: `${fmtR(s.qto.liftingHookRatePerNos ?? 150)}/nos`, costPerM: lhPerM }] : []),
+              ...(gratingPerM > 0 ? [{ label: "Gratings", qtyPerM: `1 per ${s.qto.gratingsSpacing}m`, rate: `${fmtR(s.qto.gratingRatePerNos)}/nos`, costPerM: gratingPerM }] : []),
+              ...(weepholePerM > 0 ? [{ label: "Weepholes", qtyPerM: `1 per ${s.qto.weepholesSpacing}m`, rate: `${fmtR(s.qto.weepholeRatePerNos)}/nos`, costPerM: weepholePerM }] : []),
+              { label: "Grand Total (All-in ₹/RM)", qtyPerM: "", rate: "", costPerM: grandTotal, isSub: true },
+            ];
+
+            return (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 overflow-x-auto">
+                  <table className="text-xs w-full min-w-[450px] border-separate border-spacing-0">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/60">
+                        {["Item", "Qty / m", "Rate", "₹ / RM"].map(h => (
+                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {perMRows.map((r, i) => (
+                        <tr key={i} className={r.isSub
+                          ? "bg-slate-100 dark:bg-slate-700/40 font-bold"
+                          : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
+                          <td className={`px-3 py-2 whitespace-nowrap ${r.isSub ? "pl-3" : "pl-6"}`}>{r.label}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{r.qtyPerM}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{r.rate}</td>
+                          <td className={`px-3 py-2 text-right ${r.isSub ? "text-blue-700 dark:text-blue-400" : ""}`}>
+                            {r.costPerM > 0 ? fmtR(r.costPerM) : (r.isSub ? fmtR(0) : "—")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl px-4 py-3 text-center min-w-[140px]">
+                      <p className="text-xs text-blue-600 dark:text-blue-400">All-in ₹/RM</p>
+                      <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{fmtR(grandTotal)}</p>
+                    </div>
+                    {qtoResult.totalLength > 0 && (
+                      <div className="bg-slate-50 dark:bg-slate-800 border rounded-xl px-4 py-3 text-center min-w-[140px]">
+                        <p className="text-xs text-slate-500">Total Drain ({qtoResult.totalLength.toFixed(0)} m)</p>
+                        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{fmtR(grandTotal * qtoResult.totalLength)}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── BOQ ── */}
+          {activeReportPill === "boq" && (() => {
+            const items = s.boqItems;
+            if (items.length === 0) {
+              return (
+                <Card>
+                  <CardContent className="px-5 py-8 text-center text-slate-500">
+                    <p>No BOQ items yet. Add items in the Dimensions &amp; QTO tab.</p>
+                  </CardContent>
+                </Card>
+              );
+            }
+            const grandTotal = items.reduce((sum, it) => sum + it.qty * it.rate, 0);
+            return (
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
+                  <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">BOQ — Bill of Quantities</CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">{items.length} item(s) — our estimated rates.</p>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 overflow-x-auto">
+                  <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/60">
+                        {["#", "Description", "Unit", "Qty", "Rate (₹)", "Amount (₹)"].map(h => (
+                          <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, i) => (
+                        <tr key={it.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
+                          <td className="px-3 py-2">{i + 1}</td>
+                          <td className="px-3 py-2 max-w-[280px]">{it.description}</td>
+                          <td className="px-3 py-2 text-right">{it.unit}</td>
+                          <td className="px-3 py-2 text-right">{it.qty.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right">{fmtR(it.rate)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{fmtR(it.qty * it.rate)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
+                        <td className="px-3 py-2" colSpan={5}>Grand Total</td>
+                        <td className="px-3 py-2 text-right text-blue-700 dark:text-blue-400">{fmtR(grandTotal)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Quotation ── */}
+          {activeReportPill === "quotation" && (() => {
+            const items = s.boqItems;
+            if (items.length === 0) {
+              return (
+                <Card>
+                  <CardContent className="px-5 py-8 text-center text-slate-500">
+                    <p>No BOQ items yet. Add items in the Dimensions &amp; QTO tab, then enter client-offered rates here.</p>
+                  </CardContent>
+                </Card>
+              );
+            }
+            const updateClientRate = (id: string, rate: number) => {
+              update({ boqItems: s.boqItems.map(it => it.id === id ? { ...it, clientRate: rate } : it) });
+            };
+            const rows = items.map(it => {
+              const ourCost = it.qty * it.rate;
+              const clientRev = it.clientRate != null ? it.qty * it.clientRate : null;
+              const marginAmt = clientRev != null ? clientRev - ourCost : null;
+              const marginPct = clientRev != null && ourCost > 0 ? ((clientRev - ourCost) / clientRev) * 100 : null;
+              return { ...it, ourCost, clientRev, marginAmt, marginPct };
+            });
+            const totalOurCost = rows.reduce((acc, r) => acc + r.ourCost, 0);
+            const totalClientRev = rows.filter(r => r.clientRev != null).reduce((acc, r) => acc + (r.clientRev ?? 0), 0);
+            const totalMargin = totalClientRev - rows.filter(r => r.clientRev != null).reduce((acc, r) => acc + r.ourCost, 0);
+            const overallMarginPct = totalClientRev > 0 ? (totalMargin / totalClientRev) * 100 : 0;
+            const badgeColor = (pct: number | null) => pct == null ? "" : pct >= 10 ? "bg-green-100 text-green-800" : pct >= 5 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800";
+
+            return (
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Quotation — Client Rate vs Our Cost</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">Enter client's offered rate per item to compute margin.</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" data-testid="btn-export-quotation-excel"
+                      onClick={async () => {
+                        const XLSX = await import("xlsx");
+                        const header = ["#", "Description", "Unit", "Qty", "Our Rate (₹)", "Our Amount (₹)", "Client Rate (₹)", "Client Revenue (₹)", "Margin (₹)", "Margin (%)"];
+                        const dataRows = rows.map((r, i) => [
+                          i + 1, r.description, r.unit, r.qty.toFixed(2),
+                          r.rate, r.ourCost,
+                          r.clientRate ?? "", r.clientRev ?? "",
+                          r.marginAmt ?? "", r.marginPct != null ? `${r.marginPct.toFixed(1)}%` : "",
+                        ]);
+                        const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, "Quotation");
+                        XLSX.writeFile(wb, `quotation-${s.estimateName || "estimate"}.xlsx`);
+                      }}>
+                      <FileUp className="w-3 h-3 mr-1" /> Export Excel
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 overflow-x-auto">
+                    <table className="text-xs w-full min-w-[700px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/60">
+                          {["#", "Description", "Unit", "Qty", "Our Rate", "Our Cost", "Client Rate", "Client Revenue", "Margin ₹", "Margin %"].map(h => (
+                            <th key={h} className="text-right first:text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={r.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
+                            <td className="px-3 py-2">{i + 1}</td>
+                            <td className="px-3 py-2 max-w-[220px] truncate" title={r.description}>{r.description}</td>
+                            <td className="px-3 py-2 text-right">{r.unit}</td>
+                            <td className="px-3 py-2 text-right">{r.qty.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(r.rate)}</td>
+                            <td className="px-3 py-2 text-right">{fmtR(r.ourCost)}</td>
+                            <td className="px-3 py-1 text-right">
+                              <input
+                                type="number"
+                                className="w-20 text-right text-xs border border-slate-200 rounded px-1.5 py-1 bg-white dark:bg-slate-900 dark:border-slate-700"
+                                placeholder="0"
+                                value={r.clientRate ?? ""}
+                                onChange={e => updateClientRate(r.id, parseFloat(e.target.value) || 0)}
+                                data-testid={`input-quotation-client-rate-${r.id}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right">{r.clientRev != null ? fmtR(r.clientRev) : "—"}</td>
+                            <td className={`px-3 py-2 text-right font-semibold ${r.marginAmt != null && r.marginAmt < 0 ? "text-red-600" : ""}`}>
+                              {r.marginAmt != null ? fmtR(r.marginAmt) : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {r.marginPct != null ? (
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(r.marginPct)}`}>
+                                  {r.marginPct.toFixed(1)}%
+                                </span>
+                              ) : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
+                          <td className="px-3 py-2" colSpan={5}>Total</td>
+                          <td className="px-3 py-2 text-right">{fmtR(totalOurCost)}</td>
+                          <td className="px-3 py-2"></td>
+                          <td className="px-3 py-2 text-right">{totalClientRev > 0 ? fmtR(totalClientRev) : "—"}</td>
+                          <td className={`px-3 py-2 text-right ${totalMargin < 0 ? "text-red-600" : "text-green-700"}`}>{totalClientRev > 0 ? fmtR(totalMargin) : "—"}</td>
+                          <td className="px-3 py-2 text-right">
+                            {totalClientRev > 0 && (
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor(overallMarginPct)}`}>
+                                {overallMarginPct.toFixed(1)}%
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+                {totalClientRev > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Our Total Cost", val: fmtR(totalOurCost), color: "bg-slate-50 border-slate-200" },
+                      { label: "Client Revenue", val: fmtR(totalClientRev), color: "bg-blue-50 border-blue-200" },
+                      { label: "Margin Amount", val: fmtR(totalMargin), color: `${totalMargin >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}` },
+                      { label: "Margin %", val: `${overallMarginPct.toFixed(1)}%`, color: `${badgeColor(overallMarginPct)} border-transparent` },
+                    ].map(c => (
+                      <div key={c.label} className={`rounded-xl border p-4 text-center ${c.color}`}>
+                        <p className="text-xs text-slate-600">{c.label}</p>
+                        <p className="text-lg font-bold mt-0.5">{c.val}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </TabsContent>
 
         {/* ══════════════ TAB 3: ANALYSIS ══════════════ */}
