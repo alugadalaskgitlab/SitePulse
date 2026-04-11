@@ -3213,7 +3213,8 @@ export default function ConcreteCalculator() {
                 { label: "Admixture", val: costsForGrade.admix, indent: true },
                 { label: "Raw Materials Sub-total", val: rawMat, isSub: true },
                 { label: "Batching", val: costsForGrade.batching, indent: true },
-                { label: withFormworkPlacement && costsForGrade.labour > 0 ? "Petty Labour (Placement)" : "Placement", val: withFormworkPlacement ? (costsForGrade.labour > 0 ? costsForGrade.labour : costsForGrade.placement) : 0, indent: true },
+                { label: "Placement", val: withFormworkPlacement ? costsForGrade.placement : 0, indent: true },
+                ...(costsForGrade.labour > 0 ? [{ label: "Petty Labour", val: costsForGrade.labour, indent: true }] : []),
                 { label: "Formwork & Staging", val: withFormworkPlacement ? costsForGrade.formwork : 0, indent: true },
                 { label: "Curing", val: costsForGrade.curing, indent: true },
                 { label: "Plant & Placing Sub-total", val: plantSub, isSub: true },
@@ -3440,8 +3441,12 @@ export default function ConcreteCalculator() {
               if (isBridgeType && bridgeQtoResult) {
                 return (
                   <Card>
-                    <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
-                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                    <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                        <p className="text-xs text-slate-500 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
+                      </div>
+                      <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                     </CardHeader>
                     <CardContent className="px-5 pb-5">
                       <div className="border rounded-xl p-4 space-y-3 max-w-sm">
@@ -3450,9 +3455,13 @@ export default function ConcreteCalculator() {
                           <p className="text-sm text-slate-700 font-medium">Stem {bridgeQtoResult.stemVol.toFixed(3)} m³/m + Base {bridgeQtoResult.baseVol.toFixed(3)} m³/m</p>
                         </div>
                         <div className="space-y-1 text-xs">
-                          <div className="flex justify-between font-bold border-t pt-1">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">RCC {s.grade} cost</span>
+                            <span className="font-medium">{fmtR(costs.totalWithEsc - costs.steel)}/m³</span>
+                          </div>
+                          <div className="flex justify-between font-bold border-t pt-1 mt-1">
                             <span>Cost ₹/m run</span>
-                            <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * costs.totalWithEsc)}</span>
+                            <span className="text-blue-700">{fmtR(bridgeQtoResult.totalRCCperM * (costs.totalWithEsc - costs.steel))}</span>
                           </div>
                         </div>
                       </div>
