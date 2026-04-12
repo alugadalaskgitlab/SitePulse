@@ -982,7 +982,55 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
   );
 }
 
-// ─── Rate Analysis Sheet ───────────────────────────────────────────────────────
+// ─── Rate Analysis — Grade Build-Up + BOQ Abstract + Rate Sheet ─────────────
+
+interface GradeLineItem { label: string; amount: number; }
+interface GradeBreakdown {
+  grade: string;
+  elements: string[];
+  mix: { cementKg: number; caKg: number; faKg: number };
+  lines: GradeLineItem[];
+  directPerM3: number;
+  ohPct: number; marginPct: number;
+  ohPerM3: number; marginPerM3: number;
+  allInPerM3: number;
+}
+
+function computeGradeBreakdown(
+  grade: string, elements: string[],
+  project: ProjectV2, loc: LocationV2,
+  addPccPlacing = false
+): GradeBreakdown {
+  const mix = MIX_PRESETS[grade] ?? MIX_PRESETS["M25"];
+  const cementCost = (mix.cementKg / 50) * project.cementBagPrice;
+  const [tab20, tab10, tab6] = loc.caTabs;
+  const caCost =
+    (mix.caKg * (tab20.proportion / 100) / 1000) * landedPerMT(tab20) +
+    (mix.caKg * (tab10.proportion / 100) / 1000) * landedPerMT(tab10) +
+    (mix.caKg * (tab6.proportion  / 100) / 1000) * landedPerMT(tab6);
+  const bulkMult = (loc.faSource.type === "natural" && loc.faSource.bulkagePct > 0)
+    ? (1 + loc.faSource.bulkagePct / 100) : 1;
+  const faCost = (mix.faKg / 1000) * landedPerMT(loc.faSource) * bulkMult;
+  const admixCost = loc.admixDosageL * loc.admixRatePerL;
+  const lines: GradeLineItem[] = [
+    { label: `Cement (${mix.cementKg} kg/m³)`,       amount: cementCost },
+    { label: `Coarse Agg. (${mix.caKg} kg/m³)`,      amount: caCost },
+    { label: `Fine Agg. (${mix.faKg} kg/m³)`,        amount: faCost },
+  ];
+  if (admixCost > 0) lines.push({ label: `Admixture (${loc.admixDosageL} L/m³)`, amount: admixCost });
+  lines.push({ label: "Batching / Transit Mix",       amount: project.batchingRatePerM3 });
+  lines.push({ label: "Curing",                       amount: project.curingRatePerM3 });
+  if (addPccPlacing && loc.pccPlacingPerM3 > 0)
+    lines.push({ label: "PCC Placing Labour",         amount: loc.pccPlacingPerM3 });
+  const directPerM3 = lines.reduce((s, l) => s + l.amount, 0);
+  const ohPct = loc.overheadPct; const marginPct = loc.marginPct;
+  const ohPerM3     = directPerM3 * (ohPct / 100);
+  const marginPerM3 = (directPerM3 + ohPerM3) * (marginPct / 100);
+  const allInPerM3  = directPerM3 + ohPerM3 + marginPerM3;
+  return { grade, elements, mix, lines, directPerM3, ohPct, marginPct, ohPerM3, marginPerM3, allInPerM3 };
+}
+
+// ─── Rate Sheet ───────────────────────────────────────────────────────────────
 
 function RateSheet({ state }: { state: StateV2 }) {
   const { project, locations } = state;
@@ -999,6 +1047,7 @@ function RateSheet({ state }: { state: StateV2 }) {
   const blendedRM = totalLen > 0 ? totalProjectCost / totalLen : 0;
 
   const allFixtureNames = Array.from(new Set(locations.flatMap(l => l.fixtures.map(f => f.name))));
+  const hasSlab = locations.some(l => l.section.coverSlabThickMm > 0);
 
   // Weighted average per metre across all locations
   const wAvg = (vals: number[]) => {
@@ -1006,6 +1055,28 @@ function RateSheet({ state }: { state: StateV2 }) {
     return costs.reduce((s, c, i) => s + (vals[i] ?? 0) * c.geom.effectiveLengthM, 0) / totalLen;
   };
 
+  // ── Grade Rate Build-Up Data ──────────────────────────────────────────────
+  const firstLoc = locations[0];
+  const ohsDiffer = locations.length > 1 && locations.some(
+    l => l.overheadPct !== firstLoc.overheadPct || l.marginPct !== firstLoc.marginPct
+  );
+  const gradeMap = new Map<string, { elements: string[]; isPcc: boolean }>();
+  const addGrade = (grade: string, element: string, isPcc = false) => {
+    if (gradeMap.has(grade)) {
+      gradeMap.get(grade)!.elements.push(element);
+    } else {
+      gradeMap.set(grade, { elements: [element], isPcc });
+    }
+  };
+  addGrade(project.pccGrade,    "PCC Bedding",  true);
+  addGrade(project.invertGrade, "Invert Slab");
+  addGrade(project.wallGrade,   "Side Walls");
+  if (hasSlab) addGrade(project.slabGrade, "Cover Slab");
+  const gradeBreakdowns = Array.from(gradeMap.entries()).map(([grade, meta]) =>
+    computeGradeBreakdown(grade, meta.elements, project, firstLoc, meta.isPcc)
+  );
+
+  // ── Style classes ─────────────────────────────────────────────────────────
   const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0 bg-muted/20";
   const td = "text-right p-2 text-xs border-b border-r last:border-r-0 tabular-nums";
   const tdBold = td + " font-bold";
@@ -1033,7 +1104,7 @@ function RateSheet({ state }: { state: StateV2 }) {
       qty: c => c.geom.invertM3perM, rate: c => c.invert.allInPerUnit, cost: c => c.invert.perM },
     { label: `RCC ${project.wallGrade} — Side Walls`, unit: "m³/m",
       qty: c => c.geom.wallM3perM, rate: c => c.walls.allInPerUnit, cost: c => c.walls.perM },
-    ...(locations.some(l => l.section.coverSlabThickMm > 0) ? [{
+    ...(hasSlab ? [{
       label: `RCC ${project.slabGrade} — Cover Slab`, unit: "m³/m",
       qty: (c: LocCostResult) => c.geom.slabM3perM,
       rate: (c: LocCostResult) => c.slab.allInPerUnit,
@@ -1041,7 +1112,7 @@ function RateSheet({ state }: { state: StateV2 }) {
     }] : []),
     { label: "Steel (Supply+Fab)", unit: "kg/m",
       qty: c => c.rebar.totalKgPerM,
-      rate: c => c.steel.allInPerUnit,    // ₹/MT
+      rate: c => c.steel.allInPerUnit,
       cost: c => c.steel.perM },
     { label: "Excavation", unit: "m³/m",
       qty: c => c.geom.excavM3perM, rate: c => c.excav.allInPerUnit, cost: c => c.excav.perM },
@@ -1064,8 +1135,237 @@ function RateSheet({ state }: { state: StateV2 }) {
   const clientRate = project.clientRatePerRM;
   const hasClientRate = clientRate > 0;
 
+  // ── BOQ Abstract rows ─────────────────────────────────────────────────────
+  type AbsRow = {
+    label: string; grade: string; unit: string; rateUnit: string;
+    qty: (c: LocCostResult) => number;
+    rate: (c: LocCostResult) => number;
+    cost: (c: LocCostResult) => number;
+    isSummary?: boolean; isAbsolute?: boolean;
+  };
+  const absRows: AbsRow[] = [
+    { label: "PCC Bedding",   grade: project.pccGrade,    unit: "m³/m", rateUnit: "₹/m³",
+      qty: c => c.geom.pccM3perM,     rate: c => c.pcc.allInPerUnit,    cost: c => c.pcc.perM },
+    { label: "Invert Slab",   grade: project.invertGrade, unit: "m³/m", rateUnit: "₹/m³",
+      qty: c => c.geom.invertM3perM,  rate: c => c.invert.allInPerUnit, cost: c => c.invert.perM },
+    { label: "Side Walls",    grade: project.wallGrade,   unit: "m³/m", rateUnit: "₹/m³",
+      qty: c => c.geom.wallM3perM,    rate: c => c.walls.allInPerUnit,  cost: c => c.walls.perM },
+    ...(hasSlab ? [{
+      label: "Cover Slab", grade: project.slabGrade, unit: "m³/m", rateUnit: "₹/m³",
+      qty: (c: LocCostResult) => c.geom.slabM3perM,
+      rate: (c: LocCostResult) => c.slab.allInPerUnit, cost: (c: LocCostResult) => c.slab.perM,
+    }] : []),
+    { label: "Reinforcement", grade: "—", unit: "kg/m", rateUnit: "₹/MT",
+      qty: c => c.rebar.totalKgPerM, rate: c => c.steel.allInPerUnit, cost: c => c.steel.perM },
+    { label: "Excavation",    grade: "—", unit: "m³/m", rateUnit: "₹/m³",
+      qty: c => c.geom.excavM3perM,   rate: c => c.excav.allInPerUnit,  cost: c => c.excav.perM },
+    { label: "Backfill",      grade: "—", unit: "m³/m", rateUnit: "₹/m³",
+      qty: c => c.geom.backfillM3perM, rate: c => c.backfill.allInPerUnit, cost: c => c.backfill.perM },
+    ...allFixtureNames.map(name => ({
+      label: name, grade: "—", unit: "nos/m", rateUnit: "₹/nos",
+      qty:  (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.nosPerM ?? 0,
+      rate: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.allInPerNos ?? 0,
+      cost: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.allInPerM ?? 0,
+    })),
+    { label: "Petty Labour", grade: "—", unit: "₹/m", rateUnit: "—",
+      qty: () => 1, rate: c => c.pettyPerM, cost: c => c.pettyPerM },
+    { label: "TOTAL", grade: "", unit: "₹/m", rateUnit: "",
+      qty: () => 1, rate: c => c.totalPerM, cost: c => c.totalPerM,
+      isSummary: true, isAbsolute: false },
+    { label: "TOTAL PROJECT ₹", grade: "", unit: "₹", rateUnit: "",
+      qty: c => c.geom.effectiveLengthM, rate: () => 0, cost: c => c.totalProjectCost,
+      isSummary: true, isAbsolute: true },
+  ];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
+
+      {/* ── Section 1: Concrete Grade Rate Build-Up ─────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">Concrete Grade Rate Build-Up</h3>
+          <span className="text-xs text-muted-foreground">(rates incl. OH & Margin from {firstLoc.name})</span>
+          {ohsDiffer && (
+            <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded">
+              OH / Margin varies by zone
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {gradeBreakdowns.map(bd => (
+            <div key={bd.grade} className="border rounded-lg overflow-hidden text-xs">
+              <div className="bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 flex items-baseline justify-between">
+                <span className="font-bold text-sm">{bd.grade}</span>
+                <span className="text-slate-300 text-[11px]">{bd.elements.join(" · ")}</span>
+              </div>
+              <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b">
+                Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {bd.lines.map(line => (
+                    <tr key={line.label} className="border-b border-border/50">
+                      <td className="px-2 py-1 text-left">{line.label}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{fmt(line.amount, 0)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-muted/30 border-t-2 border-border">
+                    <td className="px-2 py-1 text-left font-semibold">Direct Total</td>
+                    <td className="px-2 py-1 text-right tabular-nums font-semibold">{fmt(bd.directPerM3, 0)}</td>
+                  </tr>
+                  <tr className="text-amber-700 dark:text-amber-400">
+                    <td className="px-2 py-1 text-left">+ Overhead ({bd.ohPct}%)</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(bd.ohPerM3, 0)}</td>
+                  </tr>
+                  <tr className="text-amber-700 dark:text-amber-400 border-b">
+                    <td className="px-2 py-1 text-left">+ Margin ({bd.marginPct}%)</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(bd.marginPerM3, 0)}</td>
+                  </tr>
+                  <tr className="bg-green-50 dark:bg-green-950">
+                    <td className="px-2 py-1.5 text-left font-bold text-green-800 dark:text-green-300">
+                      All-In Rate ₹/m³
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums font-bold text-green-800 dark:text-green-300">
+                      {fmt(bd.allInPerM3, 0)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Section 2: BOQ Abstract ──────────────────────────────────────── */}
+      <div className="space-y-2">
+        <h3 className="font-semibold text-sm">Abstract of Quantities &amp; Costs — Location / Zone-wise</h3>
+        <div className="overflow-x-auto">
+          <table
+            className="border-collapse border text-xs"
+            style={{ minWidth: `${Math.max(520, 270 + locations.length * 220)}px` }}
+          >
+            <thead>
+              <tr className="bg-muted/50">
+                <th className="p-2 text-left font-semibold border-b border-r">Item</th>
+                <th className="p-2 text-left font-semibold text-muted-foreground border-b border-r">Grade</th>
+                <th className="p-2 text-left font-semibold text-muted-foreground border-b border-r">Unit</th>
+                {locations.map((l, i) => (
+                  <th key={l.id} colSpan={4} className={`${th} text-center`}>
+                    {l.name}
+                    <br/>
+                    <span className="font-normal text-muted-foreground text-[10px]">
+                      {fmtM(costs[i].geom.effectiveLengthM)} m
+                    </span>
+                  </th>
+                ))}
+                {locations.length > 1 && (
+                  <th colSpan={3} className={`${th} text-center bg-blue-50 dark:bg-blue-950`}>
+                    Combined
+                    <br/>
+                    <span className="font-normal text-[10px]">{fmtM(totalLen)} m</span>
+                  </th>
+                )}
+              </tr>
+              <tr className="bg-muted/20">
+                <th className="p-2 border-b border-r" />
+                <th className="p-2 border-b border-r" />
+                <th className="p-2 border-b border-r" />
+                {locations.map(l => (
+                  <Fragment key={l.id}>
+                    <th className={th}>Qty/m</th>
+                    <th className={th}>Total</th>
+                    <th className={th}>Rate/unit</th>
+                    <th className={th}>₹/m</th>
+                  </Fragment>
+                ))}
+                {locations.length > 1 && (
+                  <Fragment>
+                    <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Total</th>
+                    <th className={`${th} bg-blue-50 dark:bg-blue-950`}>₹/m</th>
+                    <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Total ₹</th>
+                  </Fragment>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {absRows.map((row, ri) => {
+                const isSummary = !!row.isSummary;
+                const isAbsolute = !!row.isAbsolute;
+                const trCls = isSummary
+                  ? "bg-blue-50/50 dark:bg-blue-950/30 font-bold"
+                  : ri % 2 === 0 ? "" : "bg-muted/10";
+                const showUnitRate = row.rateUnit !== "" && row.rateUnit !== "—";
+                return (
+                  <tr key={row.label} className={trCls}>
+                    <td className={`${rowLabel} ${isSummary ? "font-bold" : ""}`}>{row.label}</td>
+                    <td className={`${unitCell} text-left`}>{row.grade}</td>
+                    <td className={unitCell}>{row.unit}</td>
+                    {costs.map((c, ci) => {
+                      const q  = row.qty(c);
+                      const r  = row.rate(c);
+                      const v  = row.cost(c);
+                      const len = c.geom.effectiveLengthM;
+                      const totalQ = isAbsolute ? len : q * len;
+                      const totalQLabel = row.unit === "m³/m"
+                        ? `${fmt(totalQ, 1)} m³`
+                        : row.unit === "kg/m"
+                          ? `${fmt(totalQ, 0)} kg`
+                          : row.unit === "nos/m"
+                            ? `${fmt(totalQ, 1)} nos`
+                            : fmt(totalQ, 0);
+                      return (
+                        <Fragment key={ci}>
+                          <td className={isSummary ? tdBold : td}>{isAbsolute ? "—" : fmtM(q)}</td>
+                          <td className={isSummary ? tdBold : td}>{isAbsolute ? fmt(len, 1)+" m" : totalQLabel}</td>
+                          <td className={isSummary ? tdBold : td}>
+                            {isAbsolute || !showUnitRate ? "—" : `${fmt(r, 0)} ${row.rateUnit}`}
+                          </td>
+                          <td className={isSummary ? tdBold : td}>{fmt(v, 0)}</td>
+                        </Fragment>
+                      );
+                    })}
+                    {locations.length > 1 && (() => {
+                      const combTotal = isAbsolute
+                        ? totalLen
+                        : costs.reduce((s, c) => s + row.qty(c) * c.geom.effectiveLengthM, 0);
+                      const combRPM = isAbsolute
+                        ? totalProjectCost
+                        : wAvg(costs.map(c => row.cost(c)));
+                      const combTotalRs = isAbsolute
+                        ? totalProjectCost
+                        : costs.reduce((s, c) => s + row.cost(c) * c.geom.effectiveLengthM, 0);
+                      const combTotalLabel = row.unit === "m³/m"
+                        ? `${fmt(combTotal, 1)} m³`
+                        : row.unit === "kg/m"
+                          ? `${fmt(combTotal, 0)} kg`
+                          : row.unit === "nos/m"
+                            ? `${fmt(combTotal, 1)} nos`
+                            : fmt(combTotal, 0);
+                      return (
+                        <Fragment>
+                          <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                            {isAbsolute ? fmt(totalLen, 1)+" m" : combTotalLabel}
+                          </td>
+                          <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                            {isAbsolute ? "—" : fmt(combRPM, 0)}
+                          </td>
+                          <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                            {fmt(combTotalRs, 0)}
+                          </td>
+                        </Fragment>
+                      );
+                    })()}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Section 3: Detailed Rate Sheet ───────────────────────────────── */}
+      <div className="space-y-2">
+        <h3 className="font-semibold text-sm">Detailed Rate Sheet — All-In ₹/m (incl. OH &amp; Margin)</h3>
       <div className="overflow-x-auto">
         <table className="border-collapse border text-sm" style={{ minWidth: `${Math.max(500, 260 + locations.length * 240)}px` }}>
           <thead>
@@ -1076,6 +1376,10 @@ function RateSheet({ state }: { state: StateV2 }) {
                 <th key={l.id} colSpan={3} className={`${th} text-center`}>
                   {l.name}<br/>
                   <span className="font-normal text-muted-foreground">{fmtM(costs[i].geom.effectiveLengthM)} m</span>
+                  <br/>
+                  <span className="font-normal text-amber-600 dark:text-amber-400 text-[10px]">
+                    OH {l.overheadPct}% · Margin {l.marginPct}%
+                  </span>
                 </th>
               ))}
               {locations.length > 1 && (
@@ -1152,6 +1456,7 @@ function RateSheet({ state }: { state: StateV2 }) {
             })}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Client Rate & Margin Summary */}
