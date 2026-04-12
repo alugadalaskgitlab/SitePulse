@@ -431,46 +431,50 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
     const basis = row.countBasis ?? "manual";
     const dimType = ELEMENT_DIM_TYPE[row.element ?? "Manual"] ?? "manual";
 
+    // Zone-aware effective length: if bar is assigned to a specific zone, use that zone's length only
+    const isZoneSpecific = !!row.zoneId && row.zoneId !== "all" && !!qtoCtx;
+    const effectiveLen = isZoneSpecific
+      ? (qtoCtx!.heightZones.find(z => z.id === row.zoneId)?.length ?? totalLength)
+      : totalLength;
+
     if (basis === "spacing" && (row.spacingMm ?? 200) > 0) {
       if (dimType === "span") {
         // Bars running ACROSS drain: count = slab width ÷ spacing; unitLen = full physical bar length
         const countPerM = spanMm / (row.spacingMm ?? 200);
         rowKgPerM = unitLen * countPerM * kgPerMBar;
-        rowKg = rowKgPerM * totalLength;
+        rowKg = rowKgPerM * effectiveLen;
+        rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
       } else if (dimType === "along_drain") {
         // Bars running ALONG drain: fixed number of bars across section width, each running full drain length.
-        // Each bar contributes 1m of length per 1m of drain. Overlap splice adds (overlapLen / supplyLen) extra per metre.
         const countPerM = spanMm / (row.spacingMm ?? 200);
         const supplyLen = supplyBarLengthM > 0 ? supplyBarLengthM : 12;
-        const overlapPerBar = (row.overlapN * row.dia) / 1000; // m per splice
-        const overlapFracPerM = overlapPerBar / supplyLen; // extra m of bar per m of drain
-        const effectiveUnitLen = 1.0 + overlapFracPerM; // FIX: was cutLength+hook+overlapFrac (12× error)
+        const overlapPerBar = (row.overlapN * row.dia) / 1000;
+        const overlapFracPerM = overlapPerBar / supplyLen;
+        const effectiveUnitLen = 1.0 + overlapFracPerM;
         rowKgPerM = countPerM * effectiveUnitLen * kgPerMBar;
-        rowKg = rowKgPerM * totalLength;
+        rowKg = rowKgPerM * effectiveLen;
+        rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
       } else if (dimType === "drain_len") {
         // Vertical/longitudinal bars SPACED along the drain: count = 1000mm ÷ spacing.
-        // unitLen is the physical bar height (cut length + hooks + overlap at lap joints).
         const countPerM = 1000 / (row.spacingMm ?? 200);
         rowKgPerM = unitLen * countPerM * kgPerMBar;
-        rowKg = rowKgPerM * totalLength;
+        rowKg = rowKgPerM * effectiveLen;
+        rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
       } else if (dimType === "wall") {
         // Horizontal distribution bars: count = wall height ÷ spacing; zone-aware
-        const zoneH = row.zoneId && row.zoneId !== "all" && qtoCtx
-          ? (qtoCtx.heightZones.find(z => z.id === row.zoneId)?.height ?? avgWallHMm)
+        const zoneH = isZoneSpecific
+          ? (qtoCtx!.heightZones.find(z => z.id === row.zoneId)?.height ?? avgWallHMm)
           : avgWallHMm;
-        const zoneLen = row.zoneId && row.zoneId !== "all" && qtoCtx
-          ? (qtoCtx.heightZones.find(z => z.id === row.zoneId)?.length ?? totalLength)
-          : totalLength;
         const countPerM = zoneH / (row.spacingMm ?? 200);
         rowKgPerM = unitLen * countPerM * kgPerMBar;
-        // Zone-specific rows: kg = kgPerM × zoneLen; global kgPerM = kg / totalLength
-        rowKg = rowKgPerM * (row.zoneId && row.zoneId !== "all" && qtoCtx ? zoneLen : totalLength);
+        rowKg = rowKgPerM * effectiveLen;
         rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
       } else {
         // Dist/Tie/Lifting Hook in spacing mode → 1 bar per metre run (longitudinal)
         const countPerM = 1;
         rowKgPerM = unitLen * countPerM * kgPerMBar;
-        rowKg = rowKgPerM * totalLength;
+        rowKg = rowKgPerM * effectiveLen;
+        rowKgPerM = totalLength > 0 ? rowKg / totalLength : 0;
       }
     } else {
       // manual mode
@@ -2648,32 +2652,32 @@ export default function ConcreteCalculator() {
                             let countPerM = 0;
                             let rowKg = 0;
                             const globalSupplyLen = (s.supplyBarLengthM ?? 12) > 0 ? (s.supplyBarLengthM ?? 12) : 12;
+                            // Zone-aware effective length (same logic as computeBBSSummary)
+                            const selectedZone = row.zoneId && row.zoneId !== "all" ? s.qto.heightZones.find(z => z.id === row.zoneId) : null;
+                            const effLen = selectedZone ? selectedZone.length : totalLength;
                             if (basis === "spacing" && (row.spacingMm ?? 200) > 0) {
                               if (dimType === "span") {
                                 countPerM = spanMm / (row.spacingMm ?? 200);
-                                rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                                rowKg = unitLen * countPerM * kgPerMBar * effLen;
                               } else if (dimType === "along_drain") {
-                                // FIXED: each bar contributes 1m per metre of drain; overlap distributed over supply length
                                 countPerM = spanMm / (row.spacingMm ?? 200);
                                 const overlapPerBar = (row.overlapN * row.dia) / 1000;
                                 const overlapFracPerM = overlapPerBar / globalSupplyLen;
                                 const effectiveUnitLen = 1.0 + overlapFracPerM;
-                                rowKg = countPerM * effectiveUnitLen * kgPerMBar * totalLength;
+                                rowKg = countPerM * effectiveUnitLen * kgPerMBar * effLen;
                               } else if (dimType === "drain_len") {
-                                // Vertical bars SPACED along drain: count = 1000mm ÷ spacing
                                 countPerM = 1000 / (row.spacingMm ?? 200);
-                                rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                                rowKg = unitLen * countPerM * kgPerMBar * effLen;
                               } else if (dimType === "wall") {
-                                const selectedZone = row.zoneId && row.zoneId !== "all" ? s.qto.heightZones.find(z => z.id === row.zoneId) : null;
                                 const wallH = selectedZone ? selectedZone.height : avgWallHMm;
-                                const zoneLen = selectedZone ? selectedZone.length : totalLength;
                                 countPerM = wallH / (row.spacingMm ?? 200);
-                                rowKg = unitLen * countPerM * kgPerMBar * zoneLen;
+                                rowKg = unitLen * countPerM * kgPerMBar * effLen;
+                                // Normalise countPerM to a "per metre of drain" rate for display
                                 countPerM = totalLength > 0 ? rowKg / (unitLen * kgPerMBar * totalLength) : countPerM;
                               } else {
                                 // Dist/Tie/Lifting Hook — 1 bar per metre run
                                 countPerM = 1;
-                                rowKg = unitLen * countPerM * kgPerMBar * totalLength;
+                                rowKg = unitLen * countPerM * kgPerMBar * effLen;
                               }
                             } else {
                               rowKg = unitLen * row.count * kgPerMBar;
