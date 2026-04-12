@@ -22,7 +22,7 @@ import { readEstimatorRole } from "@/lib/estimatorAuth";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type AggUom = "per_mt" | "per_cft" | "per_m3";
-type BarTypeV2 = "u_bar" | "invert_main" | "wall_dist" | "slab_main" | "slab_dist";
+type BarTypeV2 = "u_bar" | "invert_main" | "invert_dist" | "wall_dist" | "slab_main" | "slab_dist";
 type FAType = "natural" | "robosand";
 
 interface CATab {
@@ -68,7 +68,9 @@ interface RebarRowV2 {
   diaMm: number;
   spacingMm: number;
   coverMm: number;
-  faceCount: number;
+  wallFaces: 2 | 4;
+  layers: 1 | 2;
+  faceCount?: number;
 }
 
 interface FixtureV2 {
@@ -138,19 +140,30 @@ const MIX_PRESETS: Record<string, { cementKg: number; caKg: number; faKg: number
 };
 
 const BAR_TYPE_LABELS: Record<BarTypeV2, string> = {
-  u_bar: "U-Bar (Wall+Invert main)",
-  invert_main: "Invert Main Bar",
-  wall_dist: "Wall Distribution (horiz)",
-  slab_main: "Cover Slab Main Bar",
-  slab_dist: "Cover Slab Distribution",
+  u_bar:       "U-Bar — Wall + Invert (transverse)",
+  invert_main: "Invert Floor Main (transverse)",
+  invert_dist: "Invert Floor Dist (longitudinal)",
+  wall_dist:   "Wall Horizontal Dist (longitudinal)",
+  slab_main:   "Cover Slab Main (transverse)",
+  slab_dist:   "Cover Slab Dist (longitudinal)",
+};
+
+const BAR_TYPE_NOTES: Record<BarTypeV2, string> = {
+  u_bar:       "Bent bar spanning both walls + invert floor",
+  invert_main: "Straight bar across invert bottom (transverse)",
+  invert_dist: "Bars along drain length on invert floor (longitudinal) — 1 or 2 layers",
+  wall_dist:   "Horizontal bars along walls (longitudinal) — inner face or both faces",
+  slab_main:   "Bar across cover slab width (transverse)",
+  slab_dist:   "Bar along cover slab length (longitudinal) — always single layer",
 };
 
 const DEFAULT_REBAR_ROWS: RebarRowV2[] = [
-  { id: "r1", barType: "u_bar",       diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
-  { id: "r2", barType: "invert_main", diaMm: 10, spacingMm: 200, coverMm: 40, faceCount: 1 },
-  { id: "r3", barType: "wall_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 2 },
-  { id: "r4", barType: "slab_main",   diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
-  { id: "r5", barType: "slab_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 1 },
+  { id: "r1", barType: "u_bar",       diaMm: 10, spacingMm: 150, coverMm: 40, wallFaces: 2, layers: 1 },
+  { id: "r2", barType: "invert_main", diaMm: 10, spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
+  { id: "r3", barType: "invert_dist", diaMm: 8,  spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
+  { id: "r4", barType: "wall_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
+  { id: "r5", barType: "slab_main",   diaMm: 10, spacingMm: 150, coverMm: 40, wallFaces: 2, layers: 1 },
+  { id: "r6", barType: "slab_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
 ];
 
 const DEFAULT_SECTION: SectionDimsV2 = {
@@ -318,53 +331,86 @@ function computeGeom(loc: LocationV2): GeomResult {
 
 interface RebarResult {
   totalKgPerM: number;
-  rows: Array<{ id: string; cutLengthMm: number; nosPerM: number; kgPerM: number }>;
+  rows: Array<{ id: string; cutLengthMm: number; nosPerM: number; kgPerM: number; cutFormula: string; nosFormula: string }>;
 }
 
-function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[] }): RebarResult {
+interface RebarComputedRow {
+  id: string;
+  cutLengthMm: number;
+  nosPerM: number;
+  kgPerM: number;
+  cutFormula: string;
+  nosFormula: string;
+}
+
+function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[]; effectiveWallHMm?: number }): RebarResult {
   const s = loc.section;
   const overallWMm = s.invertClearWidthMm + 2 * s.wallThickMm;
-  const wallHMm    = s.wallHeightMm;
+  const wallHMm    = loc.effectiveWallHMm ?? s.wallHeightMm;
 
-  const rows = loc.rebarRows.map(row => {
-    const { barType, diaMm, spacingMm, coverMm, faceCount } = row;
+  const rows: RebarComputedRow[] = loc.rebarRows.map(row => {
+    const { barType, diaMm, spacingMm, coverMm } = row;
     const kgPerMBar = diaMm * diaMm / 162;
     let cutLengthMm = 0;
     let nosPerM = 0;
+    let cutFormula = "";
+    let nosFormula = "";
+
+    // Backward-compat: old estimates may have faceCount instead of wallFaces
+    const wallFaces: 2 | 4 = row.wallFaces ?? (row.faceCount === 4 ? 4 : 2);
+    const layers: 1 | 2    = row.layers ?? 1;
 
     switch (barType) {
       case "u_bar": {
         const hooks = 2 * 9 * diaMm;
         cutLengthMm = 2 * wallHMm + overallWMm - 2 * coverMm + hooks;
         nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
+        cutFormula = `2×${wallHMm}(wallH) + ${overallWMm}(width) − 2×${coverMm}(cover) + ${hooks}(hooks) = ${cutLengthMm.toFixed(0)}mm`;
+        nosFormula = `1000 / ${spacingMm}(spacing) = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "invert_main": {
         cutLengthMm = overallWMm - 2 * coverMm;
         nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
+        cutFormula = `${overallWMm}(overallW) − 2×${coverMm}(cover) = ${cutLengthMm.toFixed(0)}mm`;
+        nosFormula = `1000 / ${spacingMm}(spacing) = ${nosPerM.toFixed(2)} nos/m`;
+        break;
+      }
+      case "invert_dist": {
+        const stdHook = 9 * diaMm;
+        cutLengthMm = 1000 + 2 * stdHook;
+        nosPerM = spacingMm > 0 ? layers * (overallWMm - 2 * coverMm) / spacingMm : 0;
+        cutFormula = `1000 + 2×${stdHook}(hook) = ${cutLengthMm.toFixed(0)}mm`;
+        nosFormula = `${layers}(layer) × (${overallWMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "wall_dist": {
         cutLengthMm = 1000;
         const barsPerFace = (wallHMm - 2 * coverMm) / (spacingMm || 200);
-        nosPerM = faceCount * barsPerFace;
+        nosPerM = wallFaces * barsPerFace;
+        cutFormula = `1000mm (runs along drain length)`;
+        nosFormula = `${wallFaces}(faces) × (${wallHMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "slab_main": {
         cutLengthMm = overallWMm - 2 * coverMm;
         nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
+        cutFormula = `${overallWMm}(overallW) − 2×${coverMm}(cover) = ${cutLengthMm.toFixed(0)}mm`;
+        nosFormula = `1000 / ${spacingMm}(spacing) = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "slab_dist": {
         const stdHook = 9 * diaMm;
         cutLengthMm = 1000 + 2 * stdHook;
         nosPerM = spacingMm > 0 ? (overallWMm - 2 * coverMm) / spacingMm : 0;
+        cutFormula = `1000 + 2×${stdHook}(hook) = ${cutLengthMm.toFixed(0)}mm`;
+        nosFormula = `(${overallWMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
     }
 
     const kgPerM = (cutLengthMm / 1000) * nosPerM * kgPerMBar;
-    return { id: row.id, cutLengthMm, nosPerM, kgPerM };
+    return { id: row.id, cutLengthMm, nosPerM, kgPerM, cutFormula, nosFormula };
   });
 
   return { totalKgPerM: rows.reduce((s, r) => s + r.kgPerM, 0), rows };
@@ -390,7 +436,7 @@ interface LocCostResult {
 
 function computeLocCost(loc: LocationV2, project: ProjectV2): LocCostResult {
   const geom = computeGeom(loc);
-  const rebar = computeRebar({ section: loc.section, rebarRows: loc.rebarRows });
+  const rebar = computeRebar({ section: loc.section, rebarRows: loc.rebarRows, effectiveWallHMm: geom.effectiveWallHMm });
   const oh = loc.overheadPct;
   const mg = loc.marginPct;
 
@@ -567,64 +613,120 @@ function FAInput({ fa, onChange }: { fa: FASource; onChange: (fa: FASource) => v
   );
 }
 
-function RebarTable({ rows, section, onChange }: {
-  rows: RebarRowV2[]; section: SectionDimsV2;
+function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
+  rows: RebarRowV2[]; section: SectionDimsV2; effectiveWallHMm?: number;
   onChange: (rows: RebarRowV2[]) => void;
 }) {
-  const rebar = computeRebar({ section, rebarRows: rows });
+  const rebar = computeRebar({ section, rebarRows: rows, effectiveWallHMm });
   const rowResultMap = Object.fromEntries(rebar.rows.map(r => [r.id, r]));
 
   const addRow = () => onChange([...rows, {
-    id: uid(), barType: "u_bar", diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1
+    id: uid(), barType: "u_bar", diaMm: 10, spacingMm: 150, coverMm: 40, wallFaces: 2, layers: 1
   }]);
   const updRow = (id: string, field: keyof RebarRowV2, val: unknown) =>
     onChange(rows.map(r => r.id === id ? { ...r, [field]: val } : r));
   const delRow = (id: string) => onChange(rows.filter(r => r.id !== id));
 
+  const overallWMm = section.invertClearWidthMm + 2 * section.wallThickMm;
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Guidance callout */}
+      <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded p-2.5 text-xs text-blue-800 dark:text-blue-200 space-y-1">
+        <p className="font-semibold">Cut length and Nos/m are auto-derived from section dimensions.</p>
+        <p>You only need to enter: <strong>bar type, diameter, spacing, and cover</strong>.
+          For wall distribution bars, also pick wall coverage (inner or both faces).
+          For invert floor dist bars, pick layers (1 or 2).</p>
+        <p className="text-blue-600 dark:text-blue-300">
+          Tip: For chainages with different rebar density (e.g. single-layer walls vs double-layer),
+          create <strong>separate Locations</strong> — the Rate Sheet combines them automatically.
+        </p>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="border-b">
-              <th className="text-left py-1 pr-2 font-medium text-muted-foreground">Bar Type</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Dia (mm)</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Spacing (mm)</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cover (mm)</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Faces/Mult</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cut (mm)</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Nos/m</th>
-              <th className="text-right py-1 font-medium text-muted-foreground">kg/m</th>
+            <tr className="border-b bg-muted/20">
+              <th className="text-left py-1.5 pr-2 pl-1 font-medium text-muted-foreground w-48">Bar Type</th>
+              <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-16">Ø (mm)</th>
+              <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-20">Spacing</th>
+              <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-16">Cover</th>
+              <th className="text-left py-1.5 pr-2 font-medium text-muted-foreground w-36">Wall / Layers</th>
+              <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground">Cut (mm)</th>
+              <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground">Nos/m</th>
+              <th className="text-right py-1.5 font-medium text-muted-foreground">kg/m</th>
               <th className="w-6" />
             </tr>
           </thead>
           <tbody>
-            {rows.map(row => {
+            {rows.map((row, ri) => {
               const res = rowResultMap[row.id];
+              const wallFaces = row.wallFaces ?? 2;
+              const layers    = row.layers ?? 1;
               return (
-                <tr key={row.id} className="border-b hover:bg-muted/30">
-                  <td className="py-1 pr-2">
-                    <Select value={row.barType} onValueChange={v => updRow(row.id, "barType", v as BarTypeV2)}>
-                      <SelectTrigger className="h-7 text-xs w-44"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(BAR_TYPE_LABELS).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <tr key={row.id} className={`border-b hover:bg-muted/30 ${ri % 2 === 0 ? "" : "bg-muted/5"}`}>
+                  <td className="py-1 pr-2 pl-1">
+                    <div>
+                      <Select value={row.barType} onValueChange={v => updRow(row.id, "barType", v as BarTypeV2)}>
+                        <SelectTrigger className="h-7 text-xs w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(BAR_TYPE_LABELS).map(([k, v]) => (
+                            <SelectItem key={k} value={k} title={BAR_TYPE_NOTES[k as BarTypeV2]}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-muted-foreground mt-0.5 text-[10px] leading-tight pl-0.5">
+                        {BAR_TYPE_NOTES[row.barType]}
+                      </p>
+                    </div>
                   </td>
-                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
-                    value={row.diaMm} onChange={e => updRow(row.id, "diaMm", +e.target.value)} /></td>
-                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-20 text-right"
-                    value={row.spacingMm} onChange={e => updRow(row.id, "spacingMm", +e.target.value)} /></td>
-                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
-                    value={row.coverMm} onChange={e => updRow(row.id, "coverMm", +e.target.value)} /></td>
-                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
-                    value={row.faceCount} onChange={e => updRow(row.id, "faceCount", +e.target.value)} /></td>
-                  <td className="text-right pr-2 tabular-nums">{res ? fmt(res.cutLengthMm, 0) : "—"}</td>
-                  <td className="text-right pr-2 tabular-nums">{res ? fmtM(res.nosPerM) : "—"}</td>
-                  <td className="text-right tabular-nums font-medium">{res ? fmtM(res.kgPerM) : "—"}</td>
-                  <td className="pl-1">
+                  <td className="pr-2 align-top pt-1">
+                    <Input type="number" className="h-7 text-xs w-16 text-right"
+                      value={row.diaMm} onChange={e => updRow(row.id, "diaMm", +e.target.value)} />
+                  </td>
+                  <td className="pr-2 align-top pt-1">
+                    <Input type="number" className="h-7 text-xs w-20 text-right"
+                      value={row.spacingMm} onChange={e => updRow(row.id, "spacingMm", +e.target.value)} />
+                  </td>
+                  <td className="pr-2 align-top pt-1">
+                    <Input type="number" className="h-7 text-xs w-16 text-right"
+                      value={row.coverMm} onChange={e => updRow(row.id, "coverMm", +e.target.value)} />
+                  </td>
+                  <td className="pr-2 align-top pt-1">
+                    {row.barType === "wall_dist" && (
+                      <Select value={String(wallFaces)} onValueChange={v => updRow(row.id, "wallFaces", +v as 2 | 4)}>
+                        <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="2">Inner face (×2 walls)</SelectItem>
+                          <SelectItem value="4">Both faces (×4 walls)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {row.barType === "invert_dist" && (
+                      <Select value={String(layers)} onValueChange={v => updRow(row.id, "layers", +v as 1 | 2)}>
+                        <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Single layer</SelectItem>
+                          <SelectItem value="2">Double layer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {row.barType !== "wall_dist" && row.barType !== "invert_dist" && (
+                      <span className="text-muted-foreground text-xs px-2">—</span>
+                    )}
+                  </td>
+                  <td className="text-right pr-2 align-top pt-1.5 tabular-nums" title={res?.cutFormula}>
+                    <span className="cursor-help border-b border-dotted border-muted-foreground">
+                      {res ? fmt(res.cutLengthMm, 0) : "—"}
+                    </span>
+                  </td>
+                  <td className="text-right pr-2 align-top pt-1.5 tabular-nums" title={res?.nosFormula}>
+                    <span className="cursor-help border-b border-dotted border-muted-foreground">
+                      {res ? fmtM(res.nosPerM) : "—"}
+                    </span>
+                  </td>
+                  <td className="text-right align-top pt-1.5 tabular-nums font-medium">{res ? fmtM(res.kgPerM) : "—"}</td>
+                  <td className="pl-1 align-top pt-1">
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => delRow(row.id)}>
                       <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
@@ -635,15 +737,20 @@ function RebarTable({ rows, section, onChange }: {
           </tbody>
           <tfoot>
             <tr className="border-t bg-muted/30">
-              <td colSpan={7} className="py-1 text-right pr-2 font-semibold text-xs">Total Steel</td>
-              <td className="text-right font-bold text-xs tabular-nums">{fmtM(rebar.totalKgPerM)} kg/m</td>
+              <td colSpan={7} className="py-1.5 text-right pr-2 font-semibold text-xs">
+                Total Steel &nbsp;
+                <span className="font-normal text-muted-foreground text-[10px]">
+                  (overallW={overallWMm}mm)
+                </span>
+              </td>
+              <td className="text-right font-bold text-xs tabular-nums pr-1">{fmtM(rebar.totalKgPerM)} kg/m</td>
               <td />
             </tr>
           </tfoot>
         </table>
       </div>
       <Button variant="outline" size="sm" onClick={addRow} className="h-7 text-xs gap-1">
-        <Plus className="h-3 w-3" /> Add Bar
+        <Plus className="h-3 w-3" /> Add Bar Row
       </Button>
     </div>
   );
@@ -836,7 +943,12 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
             )}
 
             {secTab === "rebar" && (
-              <RebarTable rows={loc.rebarRows} section={loc.section} onChange={rows => upd("rebarRows", rows)} />
+              <RebarTable
+                rows={loc.rebarRows}
+                section={loc.section}
+                effectiveWallHMm={cost.geom.effectiveWallHMm}
+                onChange={rows => upd("rebarRows", rows)}
+              />
             )}
 
             {secTab === "fixtures" && (
