@@ -12,9 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Switch } from "@/components/ui/switch";
 import {
   Building2, Plus, Trash2, ChevronDown, ChevronUp, Save, FolderOpen,
-  ArrowLeft, Copy, BarChart3, Ruler, Layers
+  ArrowLeft, Copy, BarChart3, Ruler, Layers, Calculator
 } from "lucide-react";
 import type { ConcreteEstimateV2 } from "@shared/schema";
 import { readEstimatorRole } from "@/lib/estimatorAuth";
@@ -88,8 +89,6 @@ interface LocationV2 {
   subZones: SubZoneV2[];
   caTabs: CATab[];
   faSource: FASource;
-  admixDosageL: number;
-  admixRatePerL: number;
   steelRatePerMT: number;
   steelFabRatePerMT: number;
   excavRatePerM3: number;
@@ -98,27 +97,50 @@ interface LocationV2 {
   fixtures: FixtureV2[];
   overheadPct: number;
   marginPct: number;
-  pettyLabourPerRM: number;
-  pccPlacingPerM3: number;
 }
 
 interface ProjectV2 {
+  // Identity
   name: string;
   preparedBy: string;
   date: string;
   contractor: string;
   structureType: "Drain" | "Box Culvert";
+  // Concrete grades
   pccGrade: string;
   invertGrade: string;
   wallGrade: string;
   slabGrade: string;
+  // Cement
   cementBagPrice: number;
+  // Batching / plant
   batchingRatePerM3: number;
-  curingRatePerM3: number;
+  // Placing labour
+  placingRatePerM3: number;    // RCC placing (invert, walls, slab)
+  pccPlacingPerM3: number;     // PCC bedding placing
+  // Admixture
+  admixEnabled: boolean;
+  admixDosageL: number;
+  admixRatePerL: number;
+  // Curing — water
+  curingMode: "tanker" | "flat";
+  curingFlatRatePerM3: number;
+  tankerCapKL: number;
+  tankerTripsPerDay: number;
+  tankerHireRatePerDay: number;
+  curingDays: number;
+  // Curing — compound (additive toggle on top of water curing)
+  curingCompoundEnabled: boolean;
+  curingCompoundRatePerL: number;
+  curingCompoundCoverageM2perL: number;
+  curingCompoundSurfacePerRM: number;
+  // Petty labour contract
+  pettyLabourEnabled: boolean;
+  pettyLabourPerRM: number;
+  // Overhead & margin defaults
   defaultOverheadPct: number;
   defaultMarginPct: number;
-  defaultPettyLabourPerRM: number;
-  defaultPccPlacingPerM3: number;
+  // Commercial
   clientRatePerRM: number;
 }
 
@@ -196,8 +218,6 @@ function makeDefaultLocation(project: ProjectV2, idx: number): LocationV2 {
     subZones: [],
     caTabs: DEFAULT_CA_TABS.map(t => ({ ...t })),
     faSource: { ...DEFAULT_FA },
-    admixDosageL: 0.5,
-    admixRatePerL: 80,
     steelRatePerMT: 65000,
     steelFabRatePerMT: 8000,
     excavRatePerM3: 180,
@@ -206,8 +226,6 @@ function makeDefaultLocation(project: ProjectV2, idx: number): LocationV2 {
     fixtures: [],
     overheadPct: project.defaultOverheadPct,
     marginPct: project.defaultMarginPct,
-    pettyLabourPerRM: project.defaultPettyLabourPerRM,
-    pccPlacingPerM3: project.defaultPccPlacingPerM3,
   };
 }
 
@@ -223,11 +241,25 @@ const DEFAULT_PROJECT: ProjectV2 = {
   slabGrade: "M25",
   cementBagPrice: 380,
   batchingRatePerM3: 350,
-  curingRatePerM3: 50,
+  placingRatePerM3: 250,
+  pccPlacingPerM3: 300,
+  admixEnabled: true,
+  admixDosageL: 0.5,
+  admixRatePerL: 80,
+  curingMode: "tanker",
+  curingFlatRatePerM3: 50,
+  tankerCapKL: 6,
+  tankerTripsPerDay: 2,
+  tankerHireRatePerDay: 1200,
+  curingDays: 7,
+  curingCompoundEnabled: false,
+  curingCompoundRatePerL: 120,
+  curingCompoundCoverageM2perL: 5,
+  curingCompoundSurfacePerRM: 2.5,
+  pettyLabourEnabled: true,
+  pettyLabourPerRM: 2500,
   defaultOverheadPct: 8,
   defaultMarginPct: 10,
-  defaultPettyLabourPerRM: 2500,
-  defaultPccPlacingPerM3: 300,
   clientRatePerRM: 0,
 };
 
@@ -268,7 +300,7 @@ function concreteMatPerM3(grade: string, project: ProjectV2, loc: LocationV2): n
     ? (1 + loc.faSource.bulkagePct / 100) : 1;
   const faCost = faMT * faLanded * bulkMult;
 
-  const admixCost = loc.admixDosageL * loc.admixRatePerL;
+  const admixCost = project.admixEnabled ? project.admixDosageL * project.admixRatePerL : 0;
   return cementCost + caCost + faCost + admixCost;
 }
 
@@ -453,17 +485,34 @@ function computeLocCost(loc: LocationV2, project: ProjectV2): LocCostResult {
     perM: allIn(directPerUnit, oh, mg) * qtyPerM,
   });
 
-  const pccDirect    = pccMat    + project.batchingRatePerM3 + project.curingRatePerM3 + loc.pccPlacingPerM3;
-  const invertDirect = invertMat + project.batchingRatePerM3 + project.curingRatePerM3;
-  const wallDirect   = wallMat   + project.batchingRatePerM3 + project.curingRatePerM3;
-  const slabDirect   = slabMat   + project.batchingRatePerM3 + project.curingRatePerM3;
+  // Curing cost per m³ — computed from project curing settings
+  const totalRccM3 = geom.totalRccM3perM + geom.pccM3perM; // approx volume for tanker calc
+  const locVol = totalRccM3 * geom.effectiveLengthM || 1;
+  let curingPerM3 = 0;
+  if (project.curingMode === "tanker") {
+    const tankerTotalCost = project.tankerTripsPerDay * project.tankerHireRatePerDay * project.curingDays;
+    curingPerM3 = locVol > 0 ? tankerTotalCost / locVol : 0;
+  } else {
+    curingPerM3 = project.curingFlatRatePerM3;
+  }
+  if (project.curingCompoundEnabled) {
+    const compSurfaceM2 = loc.lengthM * project.curingCompoundSurfacePerRM;
+    const compCoverage  = project.curingCompoundCoverageM2perL || 1;
+    const compCost      = (compSurfaceM2 / compCoverage) * project.curingCompoundRatePerL;
+    curingPerM3 += locVol > 0 ? compCost / locVol : 0;
+  }
+
+  const pccDirect    = pccMat    + project.batchingRatePerM3 + curingPerM3 + project.pccPlacingPerM3;
+  const invertDirect = invertMat + project.batchingRatePerM3 + curingPerM3 + project.placingRatePerM3;
+  const wallDirect   = wallMat   + project.batchingRatePerM3 + curingPerM3 + project.placingRatePerM3;
+  const slabDirect   = slabMat   + project.batchingRatePerM3 + curingPerM3 + project.placingRatePerM3;
   const steelDirect  = loc.steelRatePerMT + loc.steelFabRatePerMT;
 
   const pcc     = mkElem(pccDirect,    geom.pccM3perM);
   const invert  = mkElem(invertDirect, geom.invertM3perM);
   const walls   = mkElem(wallDirect,   geom.wallM3perM);
   const slab    = mkElem(slabDirect,   geom.slabM3perM);
-  const steel   = mkElem(steelDirect,  rebar.totalKgPerM / 1000); // direct in ₹/MT, qty in MT/m
+  const steel   = mkElem(steelDirect,  rebar.totalKgPerM / 1000);
   const excav   = mkElem(loc.excavRatePerM3,   geom.excavM3perM);
   const backfill = mkElem(loc.backfillRatePerM3, geom.backfillM3perM);
 
@@ -474,7 +523,7 @@ function computeLocCost(loc: LocationV2, project: ProjectV2): LocCostResult {
   });
   const fixturesPerM = fixtureResults.reduce((s, f) => s + f.allInPerM, 0);
 
-  const pettyPerM = loc.pettyLabourPerRM;
+  const pettyPerM = project.pettyLabourEnabled ? project.pettyLabourPerRM : 0;
   const totalPerM = pcc.perM + invert.perM + walls.perM + slab.perM + steel.perM + excav.perM + backfill.perM + fixturesPerM + pettyPerM;
 
   return {
@@ -934,14 +983,6 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                   <p className="text-sm font-medium mb-2">Fine Aggregate</p>
                   <FAInput fa={loc.faSource} onChange={fa => upd("faSource", fa)} />
                 </div>
-                <Separator />
-                <div>
-                  <p className="text-sm font-medium mb-2">Admixture</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <NumInput label="Dosage" value={loc.admixDosageL} onChange={v => upd("admixDosageL", v)} unit="L/m³" dec={2} />
-                    <NumInput label="Rate" value={loc.admixRatePerL} onChange={v => upd("admixRatePerL", v)} unit="₹/L" />
-                  </div>
-                </div>
               </div>
             )}
 
@@ -968,11 +1009,12 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                   <NumInput label="Steel Fabrication" value={loc.steelFabRatePerMT} onChange={v => upd("steelFabRatePerMT", v)} unit="₹/MT" />
                   <NumInput label="Excavation" value={loc.excavRatePerM3} onChange={v => upd("excavRatePerM3", v)} unit="₹/m³" />
                   <NumInput label="Backfill" value={loc.backfillRatePerM3} onChange={v => upd("backfillRatePerM3", v)} unit="₹/m³" />
-                  <NumInput label="PCC Placing Labour" value={loc.pccPlacingPerM3} onChange={v => upd("pccPlacingPerM3", v)} unit="₹/m³" />
-                  <NumInput label="Petty Labour (RCC+formwork)" value={loc.pettyLabourPerRM} onChange={v => upd("pettyLabourPerRM", v)} unit="₹/RM" />
                   <NumInput label="Overhead %" value={loc.overheadPct} onChange={v => upd("overheadPct", v)} unit="%" dec={1} />
                   <NumInput label="Margin %" value={loc.marginPct} onChange={v => upd("marginPct", v)} unit="%" dec={1} />
                 </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Batching, placing labour, admixture, curing &amp; petty labour rates are set in Cost Rates &amp; Parameters (project-wide).
+                </p>
               </div>
             )}
           </CardContent>
@@ -1011,17 +1053,28 @@ function computeGradeBreakdown(
   const bulkMult = (loc.faSource.type === "natural" && loc.faSource.bulkagePct > 0)
     ? (1 + loc.faSource.bulkagePct / 100) : 1;
   const faCost = (mix.faKg / 1000) * landedPerMT(loc.faSource) * bulkMult;
-  const admixCost = loc.admixDosageL * loc.admixRatePerL;
+  const admixCost = project.admixEnabled ? project.admixDosageL * project.admixRatePerL : 0;
+  // Approximate curing cost per m³ using project settings (flat-rate equivalent for grade card)
+  const curingPerM3Approx = project.curingMode === "flat"
+    ? project.curingFlatRatePerM3
+    : (project.tankerTripsPerDay * project.tankerHireRatePerDay * project.curingDays) / 100; // per 100m³ approximation
   const lines: GradeLineItem[] = [
     { label: `Cement (${mix.cementKg} kg/m³)`,       amount: cementCost },
     { label: `Coarse Agg. (${mix.caKg} kg/m³)`,      amount: caCost },
     { label: `Fine Agg. (${mix.faKg} kg/m³)`,        amount: faCost },
   ];
-  if (admixCost > 0) lines.push({ label: `Admixture (${loc.admixDosageL} L/m³)`, amount: admixCost });
+  if (admixCost > 0) lines.push({ label: `Admixture (${project.admixDosageL} L/m³)`, amount: admixCost });
   lines.push({ label: "Batching / Transit Mix",       amount: project.batchingRatePerM3 });
-  lines.push({ label: "Curing",                       amount: project.curingRatePerM3 });
-  if (addPccPlacing && loc.pccPlacingPerM3 > 0)
-    lines.push({ label: "PCC Placing Labour",         amount: loc.pccPlacingPerM3 });
+  if (addPccPlacing) {
+    lines.push({ label: "PCC Placing Labour",         amount: project.pccPlacingPerM3 });
+  } else {
+    lines.push({ label: "RCC Placing Labour",         amount: project.placingRatePerM3 });
+  }
+  lines.push({ label: "Curing (water)",               amount: curingPerM3Approx });
+  if (project.curingCompoundEnabled) {
+    const compCostPerRM = (project.curingCompoundSurfacePerRM / (project.curingCompoundCoverageM2perL || 1)) * project.curingCompoundRatePerL;
+    lines.push({ label: "Curing Compound",            amount: compCostPerRM }); // shown as additive note
+  }
   const directPerM3 = lines.reduce((s, l) => s + l.amount, 0);
   const ohPct = loc.overheadPct; const marginPct = loc.marginPct;
   const ohPerM3     = directPerM3 * (ohPct / 100);
@@ -1591,12 +1644,46 @@ function normalizeRebarRow(row: RebarRowV2): RebarRowV2 {
 }
 
 function normalizeState(raw: StateV2): StateV2 {
+  const p = raw.project ?? {};
+  // Migrate old project-level fields
+  const project: ProjectV2 = {
+    ...DEFAULT_PROJECT,
+    ...p,
+    // If old schema had curingRatePerM3 but no curingMode, migrate to flat mode
+    curingMode: (p as any).curingMode ?? ((p as any).curingRatePerM3 ? "flat" : "tanker"),
+    curingFlatRatePerM3: (p as any).curingFlatRatePerM3 ?? (p as any).curingRatePerM3 ?? DEFAULT_PROJECT.curingFlatRatePerM3,
+    // Migrate old default fields to new direct fields
+    pettyLabourPerRM: (p as any).pettyLabourPerRM ?? (p as any).defaultPettyLabourPerRM ?? DEFAULT_PROJECT.pettyLabourPerRM,
+    pccPlacingPerM3: (p as any).pccPlacingPerM3 ?? (p as any).defaultPccPlacingPerM3 ?? DEFAULT_PROJECT.pccPlacingPerM3,
+    placingRatePerM3: (p as any).placingRatePerM3 ?? DEFAULT_PROJECT.placingRatePerM3,
+    admixEnabled: (p as any).admixEnabled ?? true,
+    admixDosageL: (p as any).admixDosageL ?? DEFAULT_PROJECT.admixDosageL,
+    admixRatePerL: (p as any).admixRatePerL ?? DEFAULT_PROJECT.admixRatePerL,
+    pettyLabourEnabled: (p as any).pettyLabourEnabled ?? true,
+  };
   return {
     ...raw,
-    locations: (raw.locations ?? []).map(loc => ({
-      ...loc,
-      rebarRows: (loc.rebarRows ?? []).map(normalizeRebarRow),
-    })),
+    project,
+    locations: (raw.locations ?? []).map(loc => {
+      const l: LocationV2 = {
+        id: loc.id,
+        name: loc.name,
+        lengthM: loc.lengthM,
+        section: loc.section,
+        subZones: loc.subZones ?? [],
+        caTabs: loc.caTabs ?? DEFAULT_CA_TABS.map(t => ({ ...t })),
+        faSource: loc.faSource ?? { ...DEFAULT_FA },
+        steelRatePerMT: (loc as any).steelRatePerMT ?? 65000,
+        steelFabRatePerMT: (loc as any).steelFabRatePerMT ?? 8000,
+        excavRatePerM3: (loc as any).excavRatePerM3 ?? 180,
+        backfillRatePerM3: (loc as any).backfillRatePerM3 ?? 80,
+        rebarRows: ((loc as any).rebarRows ?? []).map(normalizeRebarRow),
+        fixtures: (loc as any).fixtures ?? [],
+        overheadPct: (loc as any).overheadPct ?? project.defaultOverheadPct,
+        marginPct: (loc as any).marginPct ?? project.defaultMarginPct,
+      };
+      return l;
+    }),
   };
 }
 
@@ -1809,29 +1896,29 @@ export default function ConcreteCalculatorV2() {
         </TabsList>
 
         <TabsContent value="setup" className="space-y-4 mt-4">
-          {/* Project Info */}
+          {/* ── Project Info ───────────────────────────────────────────────── */}
           <Card>
             <CardHeader className="p-3">
-              <CardTitle className="text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Project Setup</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Project Info</CardTitle>
             </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-3">
+            <CardContent className="p-3 pt-0">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="space-y-1 md:col-span-2">
-                  <Label className="text-xs text-muted-foreground">Estimate Name</Label>
+                  <Label className="text-xs text-muted-foreground">Estimate / Project Name</Label>
                   <Input className="h-8 text-sm" value={state.project.name}
-                    onChange={e => updProject("name", e.target.value)} placeholder="e.g. NH-44 Road Drain Ch.0-5km" />
+                    onChange={e => updProject("name", e.target.value)} placeholder="e.g. NH-44 Road Drain Ch.0–5km" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Date</Label>
                   <Input className="h-8 text-sm" type="date" value={state.project.date} onChange={e => updProject("date", e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Prepared By</Label>
-                  <Input className="h-8 text-sm" value={state.project.preparedBy} onChange={e => updProject("preparedBy", e.target.value)} placeholder="Name" />
+                  <Label className="text-xs text-muted-foreground">Client / Contractor</Label>
+                  <Input className="h-8 text-sm" value={state.project.contractor} onChange={e => updProject("contractor", e.target.value)} placeholder="Client or contractor name" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Contractor</Label>
-                  <Input className="h-8 text-sm" value={state.project.contractor} onChange={e => updProject("contractor", e.target.value)} placeholder="Contractor name" />
+                  <Label className="text-xs text-muted-foreground">Prepared By</Label>
+                  <Input className="h-8 text-sm" value={state.project.preparedBy} onChange={e => updProject("preparedBy", e.target.value)} placeholder="Name" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Structure Type</Label>
@@ -1844,26 +1931,177 @@ export default function ConcreteCalculatorV2() {
                   </Select>
                 </div>
               </div>
-              <Separator />
-              <p className="text-xs font-medium text-muted-foreground">Concrete Grades</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <GradeSelect label="PCC Grade" value={state.project.pccGrade} onChange={v => updProject("pccGrade", v)} />
-                <GradeSelect label="Invert Slab Grade" value={state.project.invertGrade} onChange={v => updProject("invertGrade", v)} />
-                <GradeSelect label="Side Walls Grade" value={state.project.wallGrade} onChange={v => updProject("wallGrade", v)} />
-                <GradeSelect label="Cover Slab Grade" value={state.project.slabGrade} onChange={v => updProject("slabGrade", v)} />
+            </CardContent>
+          </Card>
+
+          {/* ── Cost Rates & Parameters ────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2"><Calculator className="h-4 w-4" /> Cost Rates &amp; Parameters</CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 space-y-4">
+
+              {/* Concrete Grades */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Concrete Grades</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <GradeSelect label="PCC Grade" value={state.project.pccGrade} onChange={v => updProject("pccGrade", v)} />
+                  <GradeSelect label="Invert Slab Grade" value={state.project.invertGrade} onChange={v => updProject("invertGrade", v)} />
+                  <GradeSelect label="Side Walls Grade" value={state.project.wallGrade} onChange={v => updProject("wallGrade", v)} />
+                  <GradeSelect label="Cover Slab Grade" value={state.project.slabGrade} onChange={v => updProject("slabGrade", v)} />
+                </div>
               </div>
+
               <Separator />
-              <p className="text-xs font-medium text-muted-foreground">Project-Level Rates & Defaults</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <NumInput label="Cement Price" value={state.project.cementBagPrice} onChange={v => updProject("cementBagPrice", v)} unit="₹/bag (50kg)" />
-                <NumInput label="Batching Rate" value={state.project.batchingRatePerM3} onChange={v => updProject("batchingRatePerM3", v)} unit="₹/m³" />
-                <NumInput label="Curing Rate" value={state.project.curingRatePerM3} onChange={v => updProject("curingRatePerM3", v)} unit="₹/m³" />
-                <NumInput label="Default OH %" value={state.project.defaultOverheadPct} onChange={v => updProject("defaultOverheadPct", v)} unit="%" dec={1} />
-                <NumInput label="Default Margin %" value={state.project.defaultMarginPct} onChange={v => updProject("defaultMarginPct", v)} unit="%" dec={1} />
-                <NumInput label="Default Petty Labour" value={state.project.defaultPettyLabourPerRM} onChange={v => updProject("defaultPettyLabourPerRM", v)} unit="₹/RM" />
-                <NumInput label="Default PCC Placing" value={state.project.defaultPccPlacingPerM3} onChange={v => updProject("defaultPccPlacingPerM3", v)} unit="₹/m³" />
-                <NumInput label="Client Offered Rate" value={state.project.clientRatePerRM} onChange={v => updProject("clientRatePerRM", v)} unit="₹/m" />
+
+              {/* Cement */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cement</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <NumInput label="Cement Price" value={state.project.cementBagPrice} onChange={v => updProject("cementBagPrice", v)} unit="₹/bag (50 kg)" />
+                </div>
               </div>
+
+              <Separator />
+
+              {/* Batching & Placing */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Plant — Batching &amp; Placing</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <NumInput label="Batching / Transit Mix" value={state.project.batchingRatePerM3} onChange={v => updProject("batchingRatePerM3", v)} unit="₹/m³" />
+                  <NumInput label="RCC Placing Labour" value={state.project.placingRatePerM3} onChange={v => updProject("placingRatePerM3", v)} unit="₹/m³" />
+                  <NumInput label="PCC Bedding Placing" value={state.project.pccPlacingPerM3} onChange={v => updProject("pccPlacingPerM3", v)} unit="₹/m³" />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Admixture */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Admixture</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{state.project.admixEnabled ? "Included" : "Not used"}</span>
+                    <Switch
+                      checked={state.project.admixEnabled}
+                      onCheckedChange={v => updProject("admixEnabled", v)}
+                    />
+                  </div>
+                </div>
+                <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity ${!state.project.admixEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+                  <NumInput label="Dosage" value={state.project.admixDosageL} onChange={v => updProject("admixDosageL", v)} unit="L/m³" dec={2} />
+                  <NumInput label="Rate" value={state.project.admixRatePerL} onChange={v => updProject("admixRatePerL", v)} unit="₹/L" />
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Cost</Label>
+                    <div className="h-8 flex items-center text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
+                      {state.project.admixEnabled ? `₹${fmt(state.project.admixDosageL * state.project.admixRatePerL, 0)}/m³` : "—"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Curing — Water */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Curing — Water</p>
+                <div className="flex items-center gap-3 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => updProject("curingMode", "tanker")}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${state.project.curingMode === "tanker" ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
+                  >
+                    Water Tanker
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updProject("curingMode", "flat")}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${state.project.curingMode === "flat" ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
+                  >
+                    Flat Rate
+                  </button>
+                </div>
+                {state.project.curingMode === "tanker" ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <NumInput label="Tanker Capacity" value={state.project.tankerCapKL} onChange={v => updProject("tankerCapKL", v)} unit="KL" dec={1} />
+                    <NumInput label="Trips / Day" value={state.project.tankerTripsPerDay} onChange={v => updProject("tankerTripsPerDay", v)} />
+                    <NumInput label="Hire Rate" value={state.project.tankerHireRatePerDay} onChange={v => updProject("tankerHireRatePerDay", v)} unit="₹/day" />
+                    <NumInput label="Curing Days" value={state.project.curingDays} onChange={v => updProject("curingDays", v)} unit="days" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <NumInput label="Curing Rate" value={state.project.curingFlatRatePerM3} onChange={v => updProject("curingFlatRatePerM3", v)} unit="₹/m³" />
+                  </div>
+                )}
+
+                {/* Curing Compound — toggle */}
+                <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-xs font-semibold">Curing Compound</p>
+                      <p className="text-[10px] text-muted-foreground">Applied in addition to water curing</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{state.project.curingCompoundEnabled ? "ON" : "OFF"}</span>
+                      <Switch
+                        checked={state.project.curingCompoundEnabled}
+                        onCheckedChange={v => updProject("curingCompoundEnabled", v)}
+                      />
+                    </div>
+                  </div>
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity ${!state.project.curingCompoundEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+                    <NumInput label="Compound Rate" value={state.project.curingCompoundRatePerL} onChange={v => updProject("curingCompoundRatePerL", v)} unit="₹/L" />
+                    <NumInput label="Coverage" value={state.project.curingCompoundCoverageM2perL} onChange={v => updProject("curingCompoundCoverageM2perL", v)} unit="m²/L" dec={1} />
+                    <NumInput label="Surface per RM" value={state.project.curingCompoundSurfacePerRM} onChange={v => updProject("curingCompoundSurfacePerRM", v)} unit="m²/m" dec={2} />
+                    {state.project.curingCompoundEnabled && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Cost per RM</Label>
+                        <div className="h-8 flex items-center text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
+                          ₹{fmt(
+                            (state.project.curingCompoundSurfacePerRM / (state.project.curingCompoundCoverageM2perL || 1)) * state.project.curingCompoundRatePerL,
+                            0
+                          )}/m
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Petty Labour Contract */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Petty Labour Contract</p>
+                    <p className="text-[10px] text-muted-foreground">Site formwork, setting-out, minor works — per running metre</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{state.project.pettyLabourEnabled ? "Active" : "Not used"}</span>
+                    <Switch
+                      checked={state.project.pettyLabourEnabled}
+                      onCheckedChange={v => updProject("pettyLabourEnabled", v)}
+                    />
+                  </div>
+                </div>
+                <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity ${!state.project.pettyLabourEnabled ? "opacity-40 pointer-events-none" : ""}`}>
+                  <NumInput label="Rate" value={state.project.pettyLabourPerRM} onChange={v => updProject("pettyLabourPerRM", v)} unit="₹/RM" />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Overhead, Margin & Commercial */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Overhead, Margin &amp; Commercial</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <NumInput label="Default Overhead %" value={state.project.defaultOverheadPct} onChange={v => updProject("defaultOverheadPct", v)} unit="%" dec={1} />
+                  <NumInput label="Default Margin %" value={state.project.defaultMarginPct} onChange={v => updProject("defaultMarginPct", v)} unit="%" dec={1} />
+                  <NumInput label="Client Offered Rate" value={state.project.clientRatePerRM} onChange={v => updProject("clientRatePerRM", v)} unit="₹/RM" />
+                </div>
+              </div>
+
             </CardContent>
           </Card>
 
