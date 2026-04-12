@@ -386,10 +386,12 @@ function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[]; ef
       }
       case "wall_dist": {
         cutLengthMm = 1000;
-        const barsPerFace = (wallHMm - 2 * coverMm) / (spacingMm || 200);
+        const barsPerFace = spacingMm > 0 ? (wallHMm - 2 * coverMm) / spacingMm : 0;
         nosPerM = wallFaces * barsPerFace;
         cutFormula = `1000mm (runs along drain length)`;
-        nosFormula = `${wallFaces}(faces) × (${wallHMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
+        nosFormula = spacingMm > 0
+          ? `${wallFaces}(faces) × (${wallHMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`
+          : `${wallFaces}(faces) × (${wallHMm} − 2×${coverMm}) / spacing — enter spacing to compute`;
         break;
       }
       case "slab_main": {
