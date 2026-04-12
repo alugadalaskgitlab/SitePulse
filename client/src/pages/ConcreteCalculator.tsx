@@ -2815,6 +2815,126 @@ export default function ConcreteCalculator() {
                       </table>
                     </div>
 
+                    {/* Zone-Wise Steel Summary — shown when >1 zone and QTO configured */}
+                    {qtoResult && qtoResult.zones.length > 1 && (() => {
+                      const totalLen = qtoResult.totalLength;
+                      const spanMm = s.qto.clearSpan + 2 * s.qto.wallThickness;
+                      const supplyLen = (s.supplyBarLengthM ?? 12) > 0 ? (s.supplyBarLengthM ?? 12) : 12;
+
+                      // Compute steel kg attributable to each zone
+                      const zoneSummary = qtoResult.zones.map(zone => {
+                        const zH = zone.h * 1000; // mm
+                        const zLen = zone.length; // m
+                        let zKg = 0;
+
+                        s.bbsRows.forEach(row => {
+                          const isSpecificZone = row.zoneId && row.zoneId !== "all";
+                          if (isSpecificZone && row.zoneId !== zone.id) return; // belongs to another zone
+                          const hook = row.shape === "Straight" ? 0
+                            : row.hookMm !== undefined ? row.hookMm / 1000
+                            : (HOOK_ALLOWANCE[row.shape]?.(row.dia, DEFAULT_HOOK_MULT) ?? 0);
+                          const overlapLen = (row.overlapN * row.dia) / 1000;
+                          const unitLen = row.cutLength + hook + overlapLen;
+                          const kgPerMBar = (row.dia * row.dia) / 162;
+                          const dimType = ELEMENT_DIM_TYPE[row.element ?? "Manual"] ?? "manual";
+                          const basis = row.countBasis ?? "manual";
+
+                          let contribution = 0;
+                          if (basis === "spacing" && (row.spacingMm ?? 200) > 0) {
+                            const sp = row.spacingMm ?? 200;
+                            if (dimType === "span") {
+                              contribution = unitLen * (spanMm / sp) * kgPerMBar * zLen;
+                            } else if (dimType === "along_drain") {
+                              const effLen = 1.0 + overlapLen / supplyLen;
+                              contribution = (spanMm / sp) * effLen * kgPerMBar * zLen;
+                            } else if (dimType === "drain_len") {
+                              contribution = unitLen * (1000 / sp) * kgPerMBar * zLen;
+                            } else if (dimType === "wall") {
+                              // Use this zone's actual height for count (not average — exact zone height)
+                              contribution = unitLen * (zH / sp) * kgPerMBar * zLen;
+                            } else {
+                              // manual dimType in spacing mode → proportional
+                              contribution = totalLen > 0 ? (unitLen * kgPerMBar * zLen) : 0;
+                            }
+                          } else {
+                            // Manual count mode
+                            const totalKg = unitLen * row.count * kgPerMBar;
+                            if (isSpecificZone) {
+                              contribution = totalKg; // fully assigned to this zone
+                            } else {
+                              contribution = totalLen > 0 ? totalKg * (zLen / totalLen) : 0;
+                            }
+                          }
+                          zKg += contribution;
+                        });
+
+                        // Zone concrete volumes
+                        const zWallM3 = zone.wallsM3perM * zLen;
+                        const zInvertM3 = qtoResult.invertPerM * zLen;
+                        const zTopM3 = showTopSlab ? qtoResult.topPerM * zLen : 0;
+                        const zRccM3 = zWallM3 + zInvertM3 + zTopM3;
+
+                        return {
+                          id: zone.id,
+                          label: `H = ${(zone.h * 1000).toFixed(0)} mm`,
+                          length: zLen,
+                          kg: zKg,
+                          kgPerM: zLen > 0 ? zKg / zLen : 0,
+                          kgPerM3: zRccM3 > 0 ? zKg / zRccM3 : 0,
+                          rccM3: zRccM3,
+                        };
+                      });
+
+                      const totalKgCheck = zoneSummary.reduce((s, z) => s + z.kg, 0);
+
+                      return (
+                        <div className="mt-5 pt-4 border-t border-border/60">
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Zone-Wise Steel Summary</p>
+                          <p className="text-xs text-slate-500 mb-3">
+                            Steel breakdown per depth zone — wall bars use each zone's actual height for count calculation.
+                          </p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs border-separate border-spacing-0">
+                              <thead>
+                                <tr className="bg-slate-50 dark:bg-slate-800/60">
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200 rounded-tl">Depth Zone</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">Length (m)</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">RCC Vol (m³)</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">Steel (kg)</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">kg / m</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200 rounded-tr">kg / m³</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {zoneSummary.map((z, i) => (
+                                  <tr key={z.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/50 dark:bg-slate-800/20"}>
+                                    <td className="px-3 py-1.5 font-medium text-slate-700">{z.label}</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-600">{z.length.toFixed(0)}</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-600">{z.rccM3.toFixed(2)}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono font-semibold text-amber-700">{z.kg.toFixed(1)}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono text-slate-700">{z.kgPerM.toFixed(2)}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono text-slate-700">{z.kgPerM3.toFixed(1)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr className="border-t-2 border-slate-300 bg-amber-50/60 dark:bg-amber-900/10 font-semibold">
+                                  <td className="px-3 py-2 text-slate-700">Total</td>
+                                  <td className="px-3 py-2 text-right text-slate-600">{totalLen.toFixed(0)}</td>
+                                  <td className="px-3 py-2 text-right text-slate-600">{zoneSummary.reduce((s, z) => s + z.rccM3, 0).toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-amber-700">{totalKgCheck.toFixed(1)}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-600">{totalLen > 0 ? (totalKgCheck / totalLen).toFixed(2) : "—"}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                    {zoneSummary.reduce((s, z) => s + z.rccM3, 0) > 0 ? (totalKgCheck / zoneSummary.reduce((s, z) => s + z.rccM3, 0)).toFixed(1) : "—"}
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Steel rates per dia */}
                     <div className="mt-5">
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Steel Rates per Diameter</p>
