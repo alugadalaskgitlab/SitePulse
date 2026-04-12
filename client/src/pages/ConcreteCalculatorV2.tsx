@@ -640,6 +640,7 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
         <p className="text-blue-600 dark:text-blue-300">
           Tip: For chainages with different rebar density (e.g. single-layer walls vs double-layer),
           create <strong>separate Locations</strong> — the Rate Sheet combines them automatically.
+          Cover slab distribution bars (slab_dist) are always single layer.
         </p>
       </div>
 
@@ -661,8 +662,8 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
           <tbody>
             {rows.map((row, ri) => {
               const res = rowResultMap[row.id];
-              const wallFaces = row.wallFaces ?? 2;
-              const layers    = row.layers ?? 1;
+              const wallFaces: 2 | 4 = row.wallFaces ?? (row.faceCount === 4 ? 4 : 2);
+              const layers: 1 | 2   = row.layers ?? 1;
               return (
                 <tr key={row.id} className={`border-b hover:bg-muted/30 ${ri % 2 === 0 ? "" : "bg-muted/5"}`}>
                   <td className="py-1 pr-2 pl-1">
@@ -1235,6 +1236,24 @@ function RateSheet({ state }: { state: StateV2 }) {
   );
 }
 
+// ─── State Normalization ──────────────────────────────────────────────────────
+
+function normalizeRebarRow(row: RebarRowV2): RebarRowV2 {
+  const wallFaces: 2 | 4 = row.wallFaces ?? (row.faceCount === 4 ? 4 : 2);
+  const layers: 1 | 2    = row.layers ?? 1;
+  return { ...row, wallFaces, layers };
+}
+
+function normalizeState(raw: StateV2): StateV2 {
+  return {
+    ...raw,
+    locations: (raw.locations ?? []).map(loc => ({
+      ...loc,
+      rebarRows: (loc.rebarRows ?? []).map(normalizeRebarRow),
+    })),
+  };
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function ConcreteCalculatorV2() {
@@ -1265,7 +1284,7 @@ export default function ConcreteCalculatorV2() {
   useEffect(() => {
     if (loadedEst?.state) {
       try {
-        setState(JSON.parse(loadedEst.state));
+        setState(normalizeState(JSON.parse(loadedEst.state)));
         setDirty(false);
       } catch {}
     }
@@ -1342,7 +1361,7 @@ export default function ConcreteCalculatorV2() {
 
   const loadEstimate = (est: ConcreteEstimateV2) => {
     try {
-      setState(JSON.parse(est.state));
+      setState(normalizeState(JSON.parse(est.state)));
       setSavedId(est.id);
       setDirty(false);
       setShowLoadDialog(false);
