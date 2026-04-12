@@ -515,9 +515,15 @@ function computeMaterialCostOnly(grade: string, s: CalcState): number {
 // No formwork, no steel.
 function computePccRatePerM3(s: CalcState, pccGrade: string, pccPlacingRate: number): number {
   const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
-  const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+  // Disable petty-labour contract for PCC (pccPlacingRate already covers placement separately)
+  const pccState: CalcState = {
+    ...s, mix: pccMix,
+    wastage: { ...s.wastage, steelCuttingWaste: false },
+    pettyLabour: { ...s.pettyLabour, enabled: false },
+  };
   const raw = computeCosts(pccState, 0);
-  const direct = raw.cement + raw.ca + raw.fa + raw.admix + raw.batching + pccPlacingRate + raw.curing + raw.labour + raw.wastage;
+  // Direct chain: material + batching + pccPlacingRate + curing + material wastage (no steel, no formwork, no RCC labour)
+  const direct = raw.cement + raw.ca + raw.fa + raw.admix + raw.batching + pccPlacingRate + raw.curing + raw.wastage;
   const oh = direct * (s.overheadPct / 100);
   const mg = (direct + oh) * (s.marginPct / 100);
   return (direct + oh + mg) * (1 + s.escalationPct / 100);
@@ -647,12 +653,14 @@ function calcBridgeRWQTO(q: QtoState) {
 
 // ─── Rate Analysis Pill Component ─────────────────────────────────────────────
 
+type RateAnalysisZone = { label: string; h: number; length: number; m3perRm: number; totalM3: number };
 type RateAnalysisElement = {
   key: string; label: string; grade: string;
   concreteType: "PCC" | "RCC";
   m3perRm: number; totalM3: number;
   mat: number; batching: number; placing: number;
   formwork: number; curing: number; overhead: number; margin: number; total: number;
+  zones?: RateAnalysisZone[];
 };
 
 function RateAnalysisPill({
@@ -737,56 +745,103 @@ function RateAnalysisPill({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {visible.map(el => {
-            const mult = unit === "rm" ? el.m3perRm : 1;
-            const total = el.total * mult;
+            const totalPerM3 = el.total;
+            const totalPerRm = el.total * el.m3perRm;
+            const primary = unit === "rm" ? totalPerRm : totalPerM3;
+            const secondary = unit === "rm" ? totalPerM3 : totalPerRm;
+            const hasZones = el.zones && el.zones.length > 1;
             return (
               <Card key={el.key} className="overflow-hidden">
                 <CardHeader className="pb-2 pt-4 px-5 bg-slate-50 dark:bg-slate-800/50 border-b flex flex-row items-start justify-between">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-800 dark:text-slate-100">{el.label}</CardTitle>
-                    <p className="text-xs text-slate-500 mt-0.5">{el.concreteType} · {el.grade} · {el.m3perRm.toFixed(3)} m³/RM · {el.totalM3.toFixed(1)} m³ total</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{el.concreteType} · {el.grade} · {el.m3perRm.toFixed(3)} m³/RM · {el.totalM3.toFixed(1)} m³</p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-base font-bold text-blue-700">{fmtR(total)}</div>
+                  <div className="text-right shrink-0 ml-3">
+                    <div className="text-base font-bold text-blue-700">{fmtR(primary)}</div>
                     <div className="text-[10px] text-slate-500">{unit === "rm" ? "per RM" : "per m³"}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{fmtR(secondary)} <span className="text-[9px]">{unit === "rm" ? "/ m³" : "/ RM"}</span></div>
                   </div>
                 </CardHeader>
                 <CardContent className="px-5 py-3 space-y-1.5">
                   {/* Progress bar */}
                   <div className="flex h-3 rounded-full overflow-hidden mb-3">
-                    {componentKeys.filter(c => (el[c.key] as number) > 0).map(c => {
-                      const pct = ((el[c.key] as number) / el.total) * 100;
+                    {componentKeys.filter(c => el[c.key] > 0).map(c => {
+                      const pct = (el[c.key] / el.total) * 100;
                       return <div key={c.key} className={`${c.color}`} style={{ width: `${pct}%` }} title={`${c.label}: ${pct.toFixed(0)}%`} />;
                     })}
                   </div>
-                  {/* Component rows */}
+                  {/* Component cost rows */}
                   <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-slate-500">
+                        <th className="text-left pb-1 font-medium">Component</th>
+                        <th className="text-right pb-1 font-medium">₹/m³</th>
+                        <th className="text-right pb-1 font-medium">₹/RM</th>
+                        <th className="text-right pb-1 font-medium pl-2">%</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {componentKeys.map(c => {
-                        const raw = el[c.key] as number;
-                        if (raw <= 0) return null;
-                        const val = raw * mult;
-                        const pct = (raw / el.total) * 100;
+                        if (el[c.key] <= 0) return null;
+                        const pct = (el[c.key] / el.total) * 100;
                         return (
                           <tr key={c.key}>
                             <td className="py-0.5 flex items-center gap-1.5">
                               <span className={`w-2 h-2 rounded-sm inline-block ${c.color}`} />
                               {c.label}
                             </td>
-                            <td className="py-0.5 text-right font-mono text-slate-700">{fmtR(val)}</td>
-                            <td className="py-0.5 text-right text-slate-400 pl-3">{pct.toFixed(0)}%</td>
+                            <td className="py-0.5 text-right font-mono text-slate-700">{fmtR(el[c.key])}</td>
+                            <td className="py-0.5 text-right font-mono text-slate-500">{fmtR(el[c.key] * el.m3perRm)}</td>
+                            <td className="py-0.5 text-right text-slate-400 pl-2">{pct.toFixed(0)}%</td>
                           </tr>
                         );
                       })}
                       <tr className="border-t border-slate-200 font-semibold">
-                        <td className="pt-1.5">Total (pre-esc)</td>
-                        <td className="pt-1.5 text-right font-mono text-blue-700">{fmtR(total)}</td>
+                        <td className="pt-1.5">Total</td>
+                        <td className="pt-1.5 text-right font-mono text-blue-700">{fmtR(totalPerM3)}</td>
+                        <td className="pt-1.5 text-right font-mono text-blue-600">{fmtR(totalPerRm)}</td>
                         <td></td>
                       </tr>
+                      {totalLength > 0 && (
+                        <tr className="text-slate-500">
+                          <td className="pt-0.5 text-[10px]">× {totalLength.toFixed(0)} m total</td>
+                          <td></td>
+                          <td className="pt-0.5 text-right font-mono text-[10px]">{fmtR(totalPerRm * totalLength)}</td>
+                          <td></td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
-                  {totalLength > 0 && unit === "rm" && (
-                    <p className="text-[10px] text-slate-500 pt-1">× {totalLength.toFixed(0)} m drain length = {fmtR(total * totalLength)}</p>
+                  {/* Zone sub-table (shown when >1 zone) */}
+                  {hasZones && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1.5">By Zone</p>
+                      <table className="w-full text-[11px]">
+                        <thead>
+                          <tr className="text-slate-400">
+                            <th className="text-left pb-1 font-medium">Zone</th>
+                            <th className="text-right pb-1 font-medium">Len (m)</th>
+                            <th className="text-right pb-1 font-medium">m³/RM</th>
+                            <th className="text-right pb-1 font-medium">m³</th>
+                            <th className="text-right pb-1 font-medium">₹/RM</th>
+                            <th className="text-right pb-1 font-medium">Total ₹</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {el.zones!.map((z, i) => (
+                            <tr key={i} className={i % 2 === 0 ? "bg-slate-50/60" : ""}>
+                              <td className="py-0.5">{z.label}</td>
+                              <td className="py-0.5 text-right text-slate-600">{z.length.toFixed(0)}</td>
+                              <td className="py-0.5 text-right text-slate-600">{z.m3perRm.toFixed(3)}</td>
+                              <td className="py-0.5 text-right text-slate-600">{z.totalM3.toFixed(2)}</td>
+                              <td className="py-0.5 text-right font-mono">{fmtR(z.m3perRm * el.total)}</td>
+                              <td className="py-0.5 text-right font-mono text-blue-700">{fmtR(z.totalM3 * el.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -1006,11 +1061,11 @@ export default function ConcreteCalculator() {
     const isPettyRm = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
     const pccPlacing = isPettyRm ? 0 : (s.pccPlacingRatePerM3 ?? 0);
     const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, pccPlacing);
-    // Derive PCC component breakdown from scratch for display
+    // Derive PCC component breakdown from scratch for display (no petty labour, no steel, no formwork)
     const pccMix = MIX_PRESETS[eq.pcc] ?? MIX_PRESETS["M15"];
-    const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+    const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
     const rawPcc = computeCosts(pccState, 0);
-    const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.labour + rawPcc.wastage;
+    const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.wastage;
     const pccOH = pccDirect * (s.overheadPct / 100);
     const pccMg = (pccDirect + pccOH) * (s.marginPct / 100);
     const matBase = (grade: string) => computeMaterialCostOnly(grade, s);
@@ -3600,11 +3655,11 @@ export default function ConcreteCalculator() {
             if (hasPCC) {
               // Use the canonical PCC rate computation (bottom-up, includes pccPlacingRate, no formwork, no steel)
               const pccPlacing = (s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm") ? 0 : (s.pccPlacingRatePerM3 ?? 0);
-              // Build a detailed cost breakdown for display — reuse the PCC material/batching cost path
+              // Build a detailed cost breakdown for display (no petty labour, no steel, no formwork)
               const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
-              const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+              const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
               const rawPcc = computeCosts(pccState, 0);
-              const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.labour + rawPcc.wastage;
+              const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.wastage;
               const pccOH = pccDirect * (s.overheadPct / 100);
               const pccMg = (pccDirect + pccOH) * (s.marginPct / 100);
               const pccTotal = pccDirect + pccOH + pccMg;
@@ -3818,16 +3873,27 @@ export default function ConcreteCalculator() {
                 </Card>
               );
             }
+            // Build zone breakdowns per element type using qtoResult zone data
+            const zones = qtoResult?.zones ?? [];
+            const pccPerM = qtoResult?.pccPerM ?? 0;
+            const invertPerM = qtoResult?.invertPerM ?? 0;
+            const topPerM = qtoResult?.topPerM ?? 0;
+            const buildZones = (getM3perRm: (z: typeof zones[0]) => number): RateAnalysisZone[] =>
+              zones.map(z => ({
+                label: `H=${(z.h * 1000).toFixed(0)}mm`,
+                h: z.h, length: z.length,
+                m3perRm: getM3perRm(z),
+                totalM3: getM3perRm(z) * z.length,
+              }));
             // Gather all elements into flat list
-            const allElems = [
-              { key: "pcc", label: "PCC (Blinding)", ...ecd.pcc },
-              { key: "invert", label: "Invert", ...ecd.invert },
-              { key: "wall", label: "Wall", ...ecd.wall },
-              ...(ecd.topSlab ? [{ key: "topSlab", label: "Top Slab", ...ecd.topSlab }] : []),
+            const allElems: RateAnalysisElement[] = [
+              { key: "pcc", label: "PCC (Blinding)", ...ecd.pcc, zones: buildZones(() => pccPerM) },
+              { key: "invert", label: "Invert", ...ecd.invert, zones: buildZones(() => invertPerM) },
+              { key: "wall", label: "Wall", ...ecd.wall, zones: buildZones(z => z.wallsM3perM) },
+              ...(ecd.topSlab ? [{ key: "topSlab", label: "Top Slab", ...ecd.topSlab, zones: buildZones(() => topPerM) }] : []),
             ];
             // Unique grades
             const allGrades = [...new Set(allElems.map(e => e.grade))];
-            // Per-metre indicator
             const totalLen = qtoResult?.totalLength ?? 0;
             return (
               <RateAnalysisPill
