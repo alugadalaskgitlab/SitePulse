@@ -1034,6 +1034,14 @@ function computeGradeBreakdown(
 
 function RateSheet({ state }: { state: StateV2 }) {
   const { project, locations } = state;
+  const [collapsedGrades, setCollapsedGrades] = useState<Set<string>>(new Set());
+  const toggleGrade = (grade: string) =>
+    setCollapsedGrades(prev => {
+      const next = new Set(prev);
+      next.has(grade) ? next.delete(grade) : next.add(grade);
+      return next;
+    });
+
   if (locations.length === 0) return (
     <div className="text-center py-12 text-muted-foreground">
       <Layers className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -1075,13 +1083,6 @@ function RateSheet({ state }: { state: StateV2 }) {
   const gradeBreakdowns = Array.from(gradeMap.entries()).map(([grade, meta]) =>
     computeGradeBreakdown(grade, meta.elements, project, firstLoc, meta.isPcc)
   );
-  const [collapsedGrades, setCollapsedGrades] = useState<Set<string>>(new Set());
-  const toggleGrade = (grade: string) =>
-    setCollapsedGrades(prev => {
-      const next = new Set(prev);
-      next.has(grade) ? next.delete(grade) : next.add(grade);
-      return next;
-    });
 
   // ── Style classes ─────────────────────────────────────────────────────────
   const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0 bg-muted/20";
@@ -1346,7 +1347,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                           <td className={isSummary ? tdBold : td}>
                             {isAbsolute || !showUnitRate ? "—" : `${fmt(r, 0)} ${row.rateUnit}`}
                           </td>
-                          <td className={isSummary ? tdBold : td}>{fmt(v, 0)}</td>
+                          <td className={isSummary ? tdBold : td}>{isAbsolute ? "—" : fmt(v, 0)}</td>
                           <td className={isSummary ? tdBold : td}>{fmt(totalRs, 0)}</td>
                         </Fragment>
                       );
