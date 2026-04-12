@@ -107,7 +107,9 @@ interface ProjectV2 {
   contractor: string;
   structureType: "Drain" | "Box Culvert";
   pccGrade: string;
-  rccGrade: string;
+  invertGrade: string;
+  wallGrade: string;
+  slabGrade: string;
   cementBagPrice: number;
   batchingRatePerM3: number;
   curingRatePerM3: number;
@@ -115,6 +117,7 @@ interface ProjectV2 {
   defaultMarginPct: number;
   defaultPettyLabourPerRM: number;
   defaultPccPlacingPerM3: number;
+  clientRatePerRM: number;
 }
 
 interface StateV2 {
@@ -143,11 +146,11 @@ const BAR_TYPE_LABELS: Record<BarTypeV2, string> = {
 };
 
 const DEFAULT_REBAR_ROWS: RebarRowV2[] = [
-  { id: "r1", barType: "u_bar",      diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
-  { id: "r2", barType: "invert_main",diaMm: 10, spacingMm: 200, coverMm: 40, faceCount: 1 },
-  { id: "r3", barType: "wall_dist",  diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 2 },
-  { id: "r4", barType: "slab_main",  diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
-  { id: "r5", barType: "slab_dist",  diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 1 },
+  { id: "r1", barType: "u_bar",       diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
+  { id: "r2", barType: "invert_main", diaMm: 10, spacingMm: 200, coverMm: 40, faceCount: 1 },
+  { id: "r3", barType: "wall_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 2 },
+  { id: "r4", barType: "slab_main",   diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
+  { id: "r5", barType: "slab_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 1 },
 ];
 
 const DEFAULT_SECTION: SectionDimsV2 = {
@@ -202,7 +205,9 @@ const DEFAULT_PROJECT: ProjectV2 = {
   contractor: "",
   structureType: "Drain",
   pccGrade: "M15",
-  rccGrade: "M25",
+  invertGrade: "M25",
+  wallGrade: "M25",
+  slabGrade: "M25",
   cementBagPrice: 380,
   batchingRatePerM3: 350,
   curingRatePerM3: 50,
@@ -210,6 +215,7 @@ const DEFAULT_PROJECT: ProjectV2 = {
   defaultMarginPct: 10,
   defaultPettyLabourPerRM: 2500,
   defaultPccPlacingPerM3: 300,
+  clientRatePerRM: 0,
 };
 
 const DEFAULT_STATE: StateV2 = {
@@ -250,7 +256,6 @@ function concreteMatPerM3(grade: string, project: ProjectV2, loc: LocationV2): n
   const faCost = faMT * faLanded * bulkMult;
 
   const admixCost = loc.admixDosageL * loc.admixRatePerL;
-
   return cementCost + caCost + faCost + admixCost;
 }
 
@@ -269,6 +274,7 @@ interface GeomResult {
   excavM3perM: number;
   backfillM3perM: number;
   effectiveLengthM: number;
+  effectiveWallHMm: number;
 }
 
 function computeGeom(loc: LocationV2): GeomResult {
@@ -294,10 +300,10 @@ function computeGeom(loc: LocationV2): GeomResult {
   const pccOffM = s.pccOffsetMm / 1000;
   const wkSpM   = s.workingSpaceMm / 1000;
 
-  const pccWidthM  = overallWM + 2 * pccOffM;
-  const pccM3perM  = pccWidthM * pccDepM;
+  const pccWidthM   = overallWM + 2 * pccOffM;
+  const pccM3perM   = pccWidthM * pccDepM;
   const invertM3perM = overallWM * invThM;
-  const netWallHM  = Math.max(0, wallHM - invThM);
+  const netWallHM   = Math.max(0, wallHM - invThM);
   const wallM3perM  = 2 * wallThM * netWallHM;
   const slabM3perM  = slabThM > 0 ? overallWM * slabThM : 0;
   const totalRccM3perM = invertM3perM + wallM3perM + slabM3perM;
@@ -307,7 +313,7 @@ function computeGeom(loc: LocationV2): GeomResult {
   const excavM3perM = excavWidM * excavDepM;
   const backfillM3perM = Math.max(0, excavM3perM - pccM3perM - totalRccM3perM);
 
-  return { pccM3perM, invertM3perM, wallM3perM, slabM3perM, totalRccM3perM, excavM3perM, backfillM3perM, effectiveLengthM };
+  return { pccM3perM, invertM3perM, wallM3perM, slabM3perM, totalRccM3perM, excavM3perM, backfillM3perM, effectiveLengthM, effectiveWallHMm };
 }
 
 interface RebarResult {
@@ -363,15 +369,18 @@ function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[] }):
   return { totalKgPerM: rows.reduce((s, r) => s + r.kgPerM, 0), rows };
 }
 
+interface ElementCost { allInPerUnit: number; perM: number; directPerUnit: number; }
+
 interface LocCostResult {
   geom: GeomResult;
   rebar: RebarResult;
-  pccAllInPerM3: number; pccPerM: number;
-  rccAllInPerM3: number;
-  invertPerM: number; wallsPerM: number; slabPerM: number;
-  steelAllInPerMT: number; steelPerM: number;
-  excavAllInPerM3: number; excavPerM: number;
-  backfillAllInPerM3: number; backfillPerM: number;
+  pcc: ElementCost;
+  invert: ElementCost;
+  walls: ElementCost;
+  slab: ElementCost;
+  steel: ElementCost;
+  excav: ElementCost;
+  backfill: ElementCost;
   fixtureResults: Array<{ fixture: FixtureV2; nosPerM: number; allInPerNos: number; allInPerM: number }>;
   pettyPerM: number;
   totalPerM: number;
@@ -380,32 +389,34 @@ interface LocCostResult {
 
 function computeLocCost(loc: LocationV2, project: ProjectV2): LocCostResult {
   const geom = computeGeom(loc);
-  const rebar = computeRebar(loc);
+  const rebar = computeRebar({ section: loc.section, rebarRows: loc.rebarRows });
   const oh = loc.overheadPct;
   const mg = loc.marginPct;
 
-  const pccMat = concreteMatPerM3(project.pccGrade, project, loc);
-  const rccMat = concreteMatPerM3(project.rccGrade, project, loc);
+  const pccMat     = concreteMatPerM3(project.pccGrade, project, loc);
+  const invertMat  = concreteMatPerM3(project.invertGrade, project, loc);
+  const wallMat    = concreteMatPerM3(project.wallGrade, project, loc);
+  const slabMat    = concreteMatPerM3(project.slabGrade, project, loc);
 
-  const pccDirect = pccMat + project.batchingRatePerM3 + project.curingRatePerM3 + loc.pccPlacingPerM3;
-  const pccAllInPerM3 = allIn(pccDirect, oh, mg);
+  const mkElem = (directPerUnit: number, qtyPerM: number): ElementCost => ({
+    directPerUnit,
+    allInPerUnit: allIn(directPerUnit, oh, mg),
+    perM: allIn(directPerUnit, oh, mg) * qtyPerM,
+  });
 
-  const rccDirect = rccMat + project.batchingRatePerM3 + project.curingRatePerM3;
-  const rccAllInPerM3 = allIn(rccDirect, oh, mg);
+  const pccDirect    = pccMat    + project.batchingRatePerM3 + project.curingRatePerM3 + loc.pccPlacingPerM3;
+  const invertDirect = invertMat + project.batchingRatePerM3 + project.curingRatePerM3;
+  const wallDirect   = wallMat   + project.batchingRatePerM3 + project.curingRatePerM3;
+  const slabDirect   = slabMat   + project.batchingRatePerM3 + project.curingRatePerM3;
+  const steelDirect  = loc.steelRatePerMT + loc.steelFabRatePerMT;
 
-  const steelDirectPerMT = loc.steelRatePerMT + loc.steelFabRatePerMT;
-  const steelAllInPerMT = allIn(steelDirectPerMT, oh, mg);
-
-  const excavAllInPerM3 = allIn(loc.excavRatePerM3, oh, mg);
-  const backfillAllInPerM3 = allIn(loc.backfillRatePerM3, oh, mg);
-
-  const pccPerM    = pccAllInPerM3 * geom.pccM3perM;
-  const invertPerM = rccAllInPerM3 * geom.invertM3perM;
-  const wallsPerM  = rccAllInPerM3 * geom.wallM3perM;
-  const slabPerM   = rccAllInPerM3 * geom.slabM3perM;
-  const steelPerM  = (steelAllInPerMT / 1000) * rebar.totalKgPerM;
-  const excavPerM  = excavAllInPerM3 * geom.excavM3perM;
-  const backfillPerM = backfillAllInPerM3 * geom.backfillM3perM;
+  const pcc     = mkElem(pccDirect,    geom.pccM3perM);
+  const invert  = mkElem(invertDirect, geom.invertM3perM);
+  const walls   = mkElem(wallDirect,   geom.wallM3perM);
+  const slab    = mkElem(slabDirect,   geom.slabM3perM);
+  const steel   = mkElem(steelDirect,  rebar.totalKgPerM / 1000); // direct in ₹/MT, qty in MT/m
+  const excav   = mkElem(loc.excavRatePerM3,   geom.excavM3perM);
+  const backfill = mkElem(loc.backfillRatePerM3, geom.backfillM3perM);
 
   const fixtureResults = loc.fixtures.map(f => {
     const nosPerM = f.spacingM > 0 ? 1 / f.spacingM : 0;
@@ -415,15 +426,11 @@ function computeLocCost(loc: LocationV2, project: ProjectV2): LocCostResult {
   const fixturesPerM = fixtureResults.reduce((s, f) => s + f.allInPerM, 0);
 
   const pettyPerM = loc.pettyLabourPerRM;
-  const totalPerM = pccPerM + invertPerM + wallsPerM + slabPerM + steelPerM + excavPerM + backfillPerM + fixturesPerM + pettyPerM;
+  const totalPerM = pcc.perM + invert.perM + walls.perM + slab.perM + steel.perM + excav.perM + backfill.perM + fixturesPerM + pettyPerM;
 
   return {
     geom, rebar,
-    pccAllInPerM3, pccPerM,
-    rccAllInPerM3, invertPerM, wallsPerM, slabPerM,
-    steelAllInPerMT, steelPerM,
-    excavAllInPerM3, excavPerM,
-    backfillAllInPerM3, backfillPerM,
+    pcc, invert, walls, slab, steel, excav, backfill,
     fixtureResults, pettyPerM,
     totalPerM,
     totalProjectCost: totalPerM * geom.effectiveLengthM,
@@ -436,8 +443,7 @@ function fmt(n: number, dec = 0): string {
   if (!isFinite(n)) return "—";
   return n.toLocaleString("en-IN", { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
-function fmtM(n: number): string { return fmt(n, 2); }
-
+function fmtM(n: number): string { return fmt(n, 3); }
 function uid(): string { return `_${Math.random().toString(36).slice(2)}`; }
 
 function NumInput({ label, value, onChange, unit, dec = 0, small = false }: {
@@ -463,14 +469,17 @@ function NumInput({ label, value, onChange, unit, dec = 0, small = false }: {
   );
 }
 
-function GradeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function GradeSelect({ value, onChange, label }: { value: string; onChange: (v: string) => void; label?: string }) {
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {Object.keys(MIX_PRESETS).map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-      </SelectContent>
-    </Select>
+    <div className="space-y-1">
+      {label && <Label className="text-xs text-muted-foreground">{label}</Label>}
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {Object.keys(MIX_PRESETS).map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -512,9 +521,7 @@ function CATabsInput({ tabs, onChange }: { tabs: CATab[]; onChange: (tabs: CATab
         <NumInput label="Freight" value={tab.freightRate} onChange={v => upd("freightRate", v)} unit="₹/MT/km" />
         <NumInput label="Payload" value={tab.payload} onChange={v => upd("payload", v)} unit="MT" />
       </div>
-      <p className="text-xs text-muted-foreground">
-        Landed: ₹{fmt(landedPerMT(tab), 0)}/MT
-      </p>
+      <p className="text-xs text-muted-foreground">Landed: ₹{fmt(landedPerMT(tab), 0)}/MT</p>
     </div>
   );
 }
@@ -580,9 +587,10 @@ function RebarTable({ rows, section, onChange }: {
           <thead>
             <tr className="border-b">
               <th className="text-left py-1 pr-2 font-medium text-muted-foreground">Bar Type</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Dia</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Spacing</th>
-              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cover</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Dia (mm)</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Spacing (mm)</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cover (mm)</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Faces/Mult</th>
               <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cut (mm)</th>
               <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Nos/m</th>
               <th className="text-right py-1 font-medium text-muted-foreground">kg/m</th>
@@ -610,6 +618,8 @@ function RebarTable({ rows, section, onChange }: {
                     value={row.spacingMm} onChange={e => updRow(row.id, "spacingMm", +e.target.value)} /></td>
                   <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
                     value={row.coverMm} onChange={e => updRow(row.id, "coverMm", +e.target.value)} /></td>
+                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
+                    value={row.faceCount} onChange={e => updRow(row.id, "faceCount", +e.target.value)} /></td>
                   <td className="text-right pr-2 tabular-nums">{res ? fmt(res.cutLengthMm, 0) : "—"}</td>
                   <td className="text-right pr-2 tabular-nums">{res ? fmtM(res.nosPerM) : "—"}</td>
                   <td className="text-right tabular-nums font-medium">{res ? fmtM(res.kgPerM) : "—"}</td>
@@ -624,7 +634,7 @@ function RebarTable({ rows, section, onChange }: {
           </tbody>
           <tfoot>
             <tr className="border-t bg-muted/30">
-              <td colSpan={6} className="py-1 text-right pr-2 font-semibold text-xs">Total Steel</td>
+              <td colSpan={7} className="py-1 text-right pr-2 font-semibold text-xs">Total Steel</td>
               <td className="text-right font-bold text-xs tabular-nums">{fmtM(rebar.totalKgPerM)} kg/m</td>
               <td />
             </tr>
@@ -634,6 +644,50 @@ function RebarTable({ rows, section, onChange }: {
       <Button variant="outline" size="sm" onClick={addRow} className="h-7 text-xs gap-1">
         <Plus className="h-3 w-3" /> Add Bar
       </Button>
+    </div>
+  );
+}
+
+function SubZoneEditor({ subZones, defaultHeight, onChange }: {
+  subZones: SubZoneV2[];
+  defaultHeight: number;
+  onChange: (zones: SubZoneV2[]) => void;
+}) {
+  const add = () => onChange([...subZones, { id: uid(), label: `Zone ${subZones.length + 1}`, wallHeightMm: defaultHeight, lengthM: 50 }]);
+  const upd = (id: string, field: keyof SubZoneV2, val: unknown) =>
+    onChange(subZones.map(z => z.id === id ? { ...z, [field]: val } : z));
+  const del = (id: string) => onChange(subZones.filter(z => z.id !== id));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">Define zones with varying wall heights (e.g., for changing invert levels)</p>
+        <Button variant="outline" size="sm" onClick={add} className="h-7 text-xs gap-1">
+          <Plus className="h-3 w-3" /> Add Zone
+        </Button>
+      </div>
+      {subZones.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">No sub-zones — using uniform wall height from section dimensions above.</p>
+      )}
+      {subZones.map(z => (
+        <div key={z.id} className="flex items-center gap-2">
+          <Input className="h-7 text-xs flex-1" placeholder="Zone label" value={z.label}
+            onChange={e => upd(z.id, "label", e.target.value)} />
+          <Input type="number" className="h-7 text-xs w-24" placeholder="Wall H mm"
+            value={z.wallHeightMm || ""} onChange={e => upd(z.id, "wallHeightMm", +e.target.value)} />
+          <Input type="number" className="h-7 text-xs w-20" placeholder="Length m"
+            value={z.lengthM || ""} onChange={e => upd(z.id, "lengthM", +e.target.value)} />
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => del(z.id)}>
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </Button>
+        </div>
+      ))}
+      {subZones.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Effective length: {fmt(subZones.reduce((s, z) => s + z.lengthM, 0), 1)}m ·
+          Avg wall height: {fmt(subZones.reduce((s, z) => s + z.wallHeightMm, 0) / subZones.length, 0)}mm
+        </p>
+      )}
     </div>
   );
 }
@@ -650,9 +704,9 @@ function FixturesInput({ fixtures, onChange }: { fixtures: FixtureV2[]; onChange
         <div key={f.id} className="flex items-center gap-2">
           <Input className="h-7 text-xs flex-1" placeholder="Fixture name"
             value={f.name} onChange={e => upd(f.id, "name", e.target.value)} />
-          <Input type="number" className="h-7 text-xs w-24" placeholder="Rate ₹/nos"
+          <Input type="number" className="h-7 text-xs w-28" placeholder="Rate ₹/nos"
             value={f.ratePerNos || ""} onChange={e => upd(f.id, "ratePerNos", +e.target.value)} />
-          <Input type="number" className="h-7 text-xs w-20" placeholder="Spacing m"
+          <Input type="number" className="h-7 text-xs w-24" placeholder="Spacing m"
             value={f.spacingM || ""} onChange={e => upd(f.id, "spacingM", +e.target.value)} />
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => del(f.id)}>
             <Trash2 className="h-3 w-3 text-destructive" />
@@ -693,9 +747,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
             <div className="flex items-center gap-1">
               <NumInput value={loc.lengthM} onChange={v => upd("lengthM", v)} unit="m" small />
             </div>
-            <Badge variant="secondary" className="text-xs shrink-0">
-              ₹{fmt(cost.totalPerM, 0)}/m
-            </Badge>
+            <Badge variant="secondary" className="text-xs shrink-0">₹{fmt(cost.totalPerM, 0)}/m</Badge>
             <div className="flex gap-1">
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDuplicate} title="Duplicate">
                 <Copy className="h-3.5 w-3.5" />
@@ -708,7 +760,6 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="p-3 pt-0 space-y-3">
-            {/* Sub-tabs */}
             <div className="flex flex-wrap gap-1 border-b pb-2">
               {(["section", "aggregates", "rebar", "fixtures", "costs"] as const).map(t => (
                 <button key={t} onClick={() => setSecTab(t)}
@@ -730,13 +781,13 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                   <NumInput label="PCC Offset (mm)" value={loc.section.pccOffsetMm} onChange={v => updSec("pccOffsetMm", v)} />
                   <NumInput label="Working Space (mm)" value={loc.section.workingSpaceMm} onChange={v => updSec("workingSpaceMm", v)} />
                 </div>
-                <div className="bg-muted/30 rounded p-3 text-xs space-y-1">
+                <div className="bg-muted/30 rounded p-3 text-xs">
                   <p className="font-semibold text-muted-foreground mb-1">Computed Volumes (per metre run)</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
                     {[
                       ["PCC", fmtM(cost.geom.pccM3perM), "m³/m"],
                       ["Invert Slab", fmtM(cost.geom.invertM3perM), "m³/m"],
-                      ["Walls", fmtM(cost.geom.wallM3perM), "m³/m"],
+                      ["Side Walls", fmtM(cost.geom.wallM3perM), "m³/m"],
                       ["Cover Slab", fmtM(cost.geom.slabM3perM), "m³/m"],
                       ["Total RCC", fmtM(cost.geom.totalRccM3perM), "m³/m"],
                       ["Excavation", fmtM(cost.geom.excavM3perM), "m³/m"],
@@ -748,6 +799,15 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                       </div>
                     ))}
                   </div>
+                </div>
+                <Separator />
+                <div>
+                  <p className="text-xs font-medium mb-2">Variable-Height Sub-Zones (optional)</p>
+                  <SubZoneEditor
+                    subZones={loc.subZones}
+                    defaultHeight={loc.section.wallHeightMm}
+                    onChange={zones => upd("subZones", zones)}
+                  />
                 </div>
               </div>
             )}
@@ -780,7 +840,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
 
             {secTab === "fixtures" && (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Add fixtures like gratings, weepholes, expansion joints etc.</p>
+                <p className="text-xs text-muted-foreground">Fixtures (gratings, weepholes, expansion joints, etc.)</p>
                 <FixturesInput fixtures={loc.fixtures} onChange={f => upd("fixtures", f)} />
               </div>
             )}
@@ -788,31 +848,14 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
             {secTab === "costs" && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <NumInput label="Steel Supply Rate" value={loc.steelRatePerMT} onChange={v => upd("steelRatePerMT", v)} unit="₹/MT" />
+                  <NumInput label="Steel Supply" value={loc.steelRatePerMT} onChange={v => upd("steelRatePerMT", v)} unit="₹/MT" />
                   <NumInput label="Steel Fabrication" value={loc.steelFabRatePerMT} onChange={v => upd("steelFabRatePerMT", v)} unit="₹/MT" />
-                  <NumInput label="Excavation Rate" value={loc.excavRatePerM3} onChange={v => upd("excavRatePerM3", v)} unit="₹/m³" />
-                  <NumInput label="Backfill Rate" value={loc.backfillRatePerM3} onChange={v => upd("backfillRatePerM3", v)} unit="₹/m³" />
+                  <NumInput label="Excavation" value={loc.excavRatePerM3} onChange={v => upd("excavRatePerM3", v)} unit="₹/m³" />
+                  <NumInput label="Backfill" value={loc.backfillRatePerM3} onChange={v => upd("backfillRatePerM3", v)} unit="₹/m³" />
                   <NumInput label="PCC Placing Labour" value={loc.pccPlacingPerM3} onChange={v => upd("pccPlacingPerM3", v)} unit="₹/m³" />
-                  <NumInput label="Petty Labour Rate" value={loc.pettyLabourPerRM} onChange={v => upd("pettyLabourPerRM", v)} unit="₹/RM" />
-                  <NumInput label="Overhead %" value={loc.overheadPct} onChange={v => upd("overheadPct", v)} unit="%" />
-                  <NumInput label="Margin %" value={loc.marginPct} onChange={v => upd("marginPct", v)} unit="%" />
-                </div>
-                <div className="bg-muted/30 rounded p-3 text-xs space-y-1">
-                  <p className="font-semibold text-muted-foreground mb-1">Cost Summary</p>
-                  {[
-                    ["PCC", fmt(cost.pccAllInPerM3, 0) + " ₹/m³", fmt(cost.pccPerM, 0) + " ₹/m"],
-                    ["RCC", fmt(cost.rccAllInPerM3, 0) + " ₹/m³", fmt(cost.invertPerM + cost.wallsPerM + cost.slabPerM, 0) + " ₹/m"],
-                    ["Steel", fmt(cost.steelAllInPerMT, 0) + " ₹/MT", fmt(cost.steelPerM, 0) + " ₹/m"],
-                    ["Excavation", fmt(cost.excavAllInPerM3, 0) + " ₹/m³", fmt(cost.excavPerM, 0) + " ₹/m"],
-                    ["Petty Labour", "Contract rate", fmt(cost.pettyPerM, 0) + " ₹/m"],
-                    ["TOTAL", "—", fmt(cost.totalPerM, 0) + " ₹/m"],
-                  ].map(([l, r, c]) => (
-                    <div key={l as string} className="flex justify-between">
-                      <span className="text-muted-foreground">{l}</span>
-                      <span>{r}</span>
-                      <span className="font-medium">{c}</span>
-                    </div>
-                  ))}
+                  <NumInput label="Petty Labour (RCC+formwork)" value={loc.pettyLabourPerRM} onChange={v => upd("pettyLabourPerRM", v)} unit="₹/RM" />
+                  <NumInput label="Overhead %" value={loc.overheadPct} onChange={v => upd("overheadPct", v)} unit="%" dec={1} />
+                  <NumInput label="Margin %" value={loc.marginPct} onChange={v => upd("marginPct", v)} unit="%" dec={1} />
                 </div>
               </div>
             )}
@@ -836,127 +879,245 @@ function RateSheet({ state }: { state: StateV2 }) {
 
   const costs = locations.map(loc => computeLocCost(loc, project));
   const totalLen = costs.reduce((s, c) => s + c.geom.effectiveLengthM, 0);
+  const totalProjectCost = costs.reduce((s, c) => s + c.totalProjectCost, 0);
+  const blendedRM = totalLen > 0 ? totalProjectCost / totalLen : 0;
 
   const allFixtureNames = Array.from(new Set(locations.flatMap(l => l.fixtures.map(f => f.name))));
 
+  // Weighted average per metre across all locations
   const wAvg = (vals: number[]) => {
     if (totalLen === 0) return 0;
     return costs.reduce((s, c, i) => s + (vals[i] ?? 0) * c.geom.effectiveLengthM, 0) / totalLen;
   };
-  const wSum = (vals: number[]) => costs.reduce((s, c, i) => s + (vals[i] ?? 0) * c.geom.effectiveLengthM, 0);
 
-  const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0";
+  const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0 bg-muted/20";
   const td = "text-right p-2 text-xs border-b border-r last:border-r-0 tabular-nums";
   const tdBold = td + " font-bold";
   const rowLabel = "p-2 text-xs font-medium border-b border-r whitespace-nowrap";
+  const unitCell = "p-2 text-xs text-muted-foreground border-b border-r";
 
-  const rows: Array<{
+  type SheetRow = {
     label: string;
     unit: string;
     qty: (c: LocCostResult) => number;
     rate: (c: LocCostResult) => number;
     cost: (c: LocCostResult) => number;
-    isSection?: boolean;
     isSummary?: boolean;
-  }> = [
-    { label: `PCC ${project.pccGrade}`, unit: "m³/m", qty: c => c.geom.pccM3perM, rate: c => c.pccAllInPerM3, cost: c => c.pccPerM },
-    { label: `RCC ${project.rccGrade} — Invert Slab`, unit: "m³/m", qty: c => c.geom.invertM3perM, rate: c => c.rccAllInPerM3, cost: c => c.invertPerM },
-    { label: `RCC ${project.rccGrade} — Side Walls`, unit: "m³/m", qty: c => c.geom.wallM3perM, rate: c => c.rccAllInPerM3, cost: c => c.wallsPerM },
-    ...(locations.some(l => l.section.coverSlabThickMm > 0) ? [
-      { label: `RCC ${project.rccGrade} — Cover Slab`, unit: "m³/m", qty: (c: LocCostResult) => c.geom.slabM3perM, rate: (c: LocCostResult) => c.rccAllInPerM3, cost: (c: LocCostResult) => c.slabPerM },
-    ] : []),
-    { label: "Steel (Supply + Fab)", unit: "kg/m", qty: c => c.rebar.totalKgPerM, rate: c => c.steelAllInPerMT / 1000, cost: c => c.steelPerM },
-    { label: "Excavation", unit: "m³/m", qty: c => c.geom.excavM3perM, rate: c => c.excavAllInPerM3, cost: c => c.excavPerM },
-    { label: "Backfill", unit: "m³/m", qty: c => c.geom.backfillM3perM, rate: c => c.backfillAllInPerM3, cost: c => c.backfillPerM },
+    isAbsolute?: boolean;
+    showRate?: boolean;
+  };
+
+  const FLAT_LABELS = ["Petty Labour", "TOTAL RATE", "TOTAL PROJECT COST", "Client Rate", "Profit/Loss"];
+  function showRate(label: string) { return !FLAT_LABELS.includes(label); }
+
+  const rows: SheetRow[] = [
+    { label: `PCC ${project.pccGrade}`, unit: "m³/m",
+      qty: c => c.geom.pccM3perM, rate: c => c.pcc.allInPerUnit, cost: c => c.pcc.perM },
+    { label: `RCC ${project.invertGrade} — Invert Slab`, unit: "m³/m",
+      qty: c => c.geom.invertM3perM, rate: c => c.invert.allInPerUnit, cost: c => c.invert.perM },
+    { label: `RCC ${project.wallGrade} — Side Walls`, unit: "m³/m",
+      qty: c => c.geom.wallM3perM, rate: c => c.walls.allInPerUnit, cost: c => c.walls.perM },
+    ...(locations.some(l => l.section.coverSlabThickMm > 0) ? [{
+      label: `RCC ${project.slabGrade} — Cover Slab`, unit: "m³/m",
+      qty: (c: LocCostResult) => c.geom.slabM3perM,
+      rate: (c: LocCostResult) => c.slab.allInPerUnit,
+      cost: (c: LocCostResult) => c.slab.perM,
+    }] : []),
+    { label: "Steel (Supply+Fab)", unit: "kg/m",
+      qty: c => c.rebar.totalKgPerM,
+      rate: c => c.steel.allInPerUnit,    // ₹/MT
+      cost: c => c.steel.perM },
+    { label: "Excavation", unit: "m³/m",
+      qty: c => c.geom.excavM3perM, rate: c => c.excav.allInPerUnit, cost: c => c.excav.perM },
+    { label: "Backfill", unit: "m³/m",
+      qty: c => c.geom.backfillM3perM, rate: c => c.backfill.allInPerUnit, cost: c => c.backfill.perM },
     ...allFixtureNames.map(name => ({
-      label: name,
-      unit: "nos/m",
+      label: name, unit: "nos/m",
       qty: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.nosPerM ?? 0,
       rate: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.allInPerNos ?? 0,
       cost: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.allInPerM ?? 0,
     })),
-    { label: "Petty Labour (RM contract)", unit: "₹/m", qty: () => 1, rate: c => c.pettyPerM, cost: c => c.pettyPerM },
-    { label: "TOTAL RATE", unit: "₹/m", qty: () => 1, rate: c => c.totalPerM, cost: c => c.totalPerM, isSummary: true },
-    { label: "Length", unit: "m", qty: c => c.geom.effectiveLengthM, rate: () => 1, cost: c => c.geom.effectiveLengthM, isSummary: true },
-    { label: "TOTAL COST", unit: "₹", qty: () => 1, rate: c => c.totalProjectCost, cost: c => c.totalProjectCost, isSummary: true },
+    { label: "Petty Labour", unit: "₹/m",
+      qty: () => 1, rate: c => c.pettyPerM, cost: c => c.pettyPerM },
+    { label: "TOTAL RATE", unit: "₹/m",
+      qty: () => 1, rate: c => c.totalPerM, cost: c => c.totalPerM, isSummary: true },
+    { label: "TOTAL PROJECT COST", unit: "₹",
+      qty: c => c.geom.effectiveLengthM, rate: () => 1, cost: c => c.totalProjectCost, isSummary: true, isAbsolute: true },
   ];
 
+  const clientRate = project.clientRatePerRM;
+  const hasClientRate = clientRate > 0;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="border-collapse border text-sm" style={{ minWidth: `${Math.max(600, 300 + locations.length * 220)}px` }}>
-        <thead>
-          <tr className="bg-muted/50">
-            <th className="p-2 text-left text-xs font-semibold border-b border-r">Item</th>
-            <th className="p-2 text-xs font-semibold text-muted-foreground border-b border-r">Unit</th>
-            {locations.map((l, i) => (
-              <th key={l.id} colSpan={3} className={`${th} text-center`}>
-                {l.name} ({fmtM(costs[i].geom.effectiveLengthM)}m)
-              </th>
-            ))}
-            {locations.length > 1 && (
-              <th colSpan={3} className={`${th} text-center bg-blue-50 dark:bg-blue-950`}>
-                Combined ({fmtM(totalLen)}m)
-              </th>
-            )}
-          </tr>
-          <tr className="bg-muted/20">
-            <th className="p-2 border-b border-r" />
-            <th className="p-2 border-b border-r" />
-            {locations.map(l => (
-              <Fragment key={l.id}>
-                <th className={th}>Qty/m</th>
-                <th className={th}>Rate</th>
-                <th className={th}>₹/m</th>
-              </Fragment>
-            ))}
-            {locations.length > 1 && (
-              <Fragment>
-                <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Qty/m</th>
-                <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Rate</th>
-                <th className={`${th} bg-blue-50 dark:bg-blue-950`}>₹/m</th>
-              </Fragment>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => {
-            const isSummary = row.isSummary;
-            const trCls = isSummary ? "bg-blue-50/50 dark:bg-blue-950/30" : ri % 2 === 0 ? "" : "bg-muted/10";
-            return (
-              <tr key={row.label} className={trCls}>
-                <td className={`${rowLabel} ${isSummary ? "font-bold" : ""}`}>{row.label}</td>
-                <td className="p-2 text-xs text-muted-foreground border-b border-r">{row.unit}</td>
-                {costs.map((c, ci) => {
-                  const q = row.qty(c);
-                  const r = row.rate(c);
-                  const v = row.cost(c);
-                  const noRate = ["Petty Labour (RM contract)", "TOTAL RATE", "Length", "TOTAL COST"].includes(row.label);
-                  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto">
+        <table className="border-collapse border text-sm" style={{ minWidth: `${Math.max(500, 260 + locations.length * 240)}px` }}>
+          <thead>
+            <tr className="bg-muted/50">
+              <th className="p-2 text-left text-xs font-semibold border-b border-r">Item</th>
+              <th className="p-2 text-xs font-semibold text-muted-foreground border-b border-r">Unit</th>
+              {locations.map((l, i) => (
+                <th key={l.id} colSpan={3} className={`${th} text-center`}>
+                  {l.name}<br/>
+                  <span className="font-normal text-muted-foreground">{fmtM(costs[i].geom.effectiveLengthM)} m</span>
+                </th>
+              ))}
+              {locations.length > 1 && (
+                <th colSpan={3} className={`${th} text-center bg-blue-50 dark:bg-blue-950`}>
+                  Combined<br/>
+                  <span className="font-normal">{fmtM(totalLen)} m</span>
+                </th>
+              )}
+            </tr>
+            <tr className="bg-muted/20">
+              <th className="p-2 border-b border-r" />
+              <th className="p-2 border-b border-r" />
+              {locations.map(l => (
+                <Fragment key={l.id}>
+                  <th className={th}>Qty/m</th>
+                  <th className={th}>Rate (₹)</th>
+                  <th className={th}>₹/m</th>
+                </Fragment>
+              ))}
+              {locations.length > 1 && (
+                <Fragment>
+                  <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Qty/m</th>
+                  <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Rate (₹)</th>
+                  <th className={`${th} bg-blue-50 dark:bg-blue-950`}>₹/m</th>
+                </Fragment>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => {
+              const isSummary = !!row.isSummary;
+              const isAbsolute = !!row.isAbsolute;
+              const trCls = isSummary ? "bg-blue-50/50 dark:bg-blue-950/30 font-bold" : ri % 2 === 0 ? "" : "bg-muted/10";
+              const noRate = !showRate(row.label);
+
+              return (
+                <tr key={row.label} className={trCls}>
+                  <td className={`${rowLabel} ${isSummary ? "font-bold" : ""}`}>{row.label}</td>
+                  <td className={unitCell}>{row.unit}</td>
+                  {costs.map((c, ci) => {
+                    const q = row.qty(c);
+                    const r = row.rate(c);
+                    const v = row.cost(c);
+                    return (
+                      <Fragment key={ci}>
+                        <td className={isSummary ? tdBold : td}>{isAbsolute ? fmt(q, 1) : fmtM(q)}</td>
+                        <td className={isSummary ? tdBold : td}>{noRate ? "—" : fmt(r, 0)}</td>
+                        <td className={isSummary ? tdBold : td}>{fmt(v, 0)}</td>
+                      </Fragment>
+                    );
+                  })}
+                  {locations.length > 1 && (() => {
+                    const combinedQty = isAbsolute ? totalLen : wAvg(costs.map(c => row.qty(c)));
+                    const combinedRate = wAvg(costs.map(c => row.rate(c)));
+                    const combinedCost = isAbsolute
+                      ? costs.reduce((s, c) => s + row.cost(c), 0)
+                      : wAvg(costs.map(c => row.cost(c)));
+                    return (
+                      <Fragment>
+                        <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                          {isAbsolute ? fmt(combinedQty, 1) : fmtM(combinedQty)}
+                        </td>
+                        <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                          {noRate ? "—" : fmt(combinedRate, 0)}
+                        </td>
+                        <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                          {fmt(combinedCost, 0)}
+                        </td>
+                      </Fragment>
+                    );
+                  })()}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Client Rate & Margin Summary */}
+      {hasClientRate && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="bg-muted/30 px-4 py-2 font-semibold text-sm">Contract Profitability</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: `${Math.max(500, 260 + locations.length * 240)}px` }}>
+              <tbody>
+                <tr className="border-b">
+                  <td className={rowLabel}>Client Rate (offered)</td>
+                  <td className={unitCell}>₹/m</td>
+                  {costs.map((_, ci) => (
                     <Fragment key={ci}>
-                      <td className={isSummary ? tdBold : td}>{fmtM(q)}</td>
-                      <td className={isSummary ? tdBold : td}>{noRate ? "—" : fmt(r, 0)}</td>
-                      <td className={isSummary ? tdBold : td}>{fmt(v, 0)}</td>
+                      <td className={td}>—</td>
+                      <td className={td}>—</td>
+                      <td className={td + " font-semibold"}>{fmt(clientRate, 0)}</td>
                     </Fragment>
-                  );
-                })}
-                {locations.length > 1 && (
-                  <>
-                    <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
-                      {fmtM(wAvg(costs.map(c => row.qty(c))))}
-                    </td>
-                    <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
-                      {row.label === "Petty Labour (RM contract)" || row.label === "TOTAL RATE" || row.label === "Length" || row.label === "TOTAL COST" ? "—" : fmt(wAvg(costs.map(c => row.rate(c))), 0)}
-                    </td>
-                    <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
-                      {fmt(wSum(costs.map(c => row.cost(c))), 0)}
-                    </td>
-                  </>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  ))}
+                  {locations.length > 1 && (
+                    <Fragment>
+                      <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>—</td>
+                      <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>—</td>
+                      <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20 font-semibold`}>{fmt(clientRate, 0)}</td>
+                    </Fragment>
+                  )}
+                </tr>
+                <tr className="border-b">
+                  <td className={rowLabel}>Our Cost</td>
+                  <td className={unitCell}>₹/m</td>
+                  {costs.map((c, ci) => (
+                    <Fragment key={ci}>
+                      <td className={td}>—</td>
+                      <td className={td}>—</td>
+                      <td className={td}>{fmt(c.totalPerM, 0)}</td>
+                    </Fragment>
+                  ))}
+                  {locations.length > 1 && (
+                    <Fragment>
+                      <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>—</td>
+                      <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>—</td>
+                      <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>{fmt(blendedRM, 0)}</td>
+                    </Fragment>
+                  )}
+                </tr>
+                <tr>
+                  <td className={rowLabel + " font-bold"}>Profit / Loss</td>
+                  <td className={unitCell}>₹/m + %</td>
+                  {costs.map((c, ci) => {
+                    const profit = clientRate - c.totalPerM;
+                    const pct = clientRate > 0 ? (profit / clientRate) * 100 : 0;
+                    const color = pct >= 10 ? "text-green-600" : pct >= 5 ? "text-amber-600" : "text-red-600";
+                    return (
+                      <Fragment key={ci}>
+                        <td className={td}>—</td>
+                        <td className={td}>—</td>
+                        <td className={`${td} font-bold ${color}`}>
+                          {fmt(profit, 0)} ({fmt(pct, 1)}%)
+                        </td>
+                      </Fragment>
+                    );
+                  })}
+                  {locations.length > 1 && (() => {
+                    const profit = clientRate - blendedRM;
+                    const pct = clientRate > 0 ? (profit / clientRate) * 100 : 0;
+                    const color = pct >= 10 ? "text-green-600" : pct >= 5 ? "text-amber-600" : "text-red-600";
+                    return (
+                      <Fragment>
+                        <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>—</td>
+                        <td className={`${td} bg-blue-50/30 dark:bg-blue-950/20`}>—</td>
+                        <td className={`${td} font-bold ${color} bg-blue-50/30 dark:bg-blue-950/20`}>
+                          {fmt(profit, 0)} ({fmt(pct, 1)}%)
+                        </td>
+                      </Fragment>
+                    );
+                  })()}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1005,7 +1166,10 @@ export default function ConcreteCalculatorV2() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const totalLen = state.locations.reduce((s, l) => s + (l.subZones.length > 0 ? l.subZones.reduce((a, z) => a + z.lengthM, 0) : l.lengthM), 0);
+      const totalLen = state.locations.reduce((s, l) => {
+        const sz = l.subZones;
+        return s + (sz.length > 0 ? sz.reduce((a, z) => a + z.lengthM, 0) : l.lengthM);
+      }, 0);
       const costs = state.locations.map(loc => computeLocCost(loc, state.project));
       const totalAmt = costs.reduce((s, c) => s + c.totalProjectCost, 0);
       const payload = {
@@ -1082,9 +1246,9 @@ export default function ConcreteCalculatorV2() {
 
   if (!role) return null;
 
-  const totalLen = state.locations.reduce((s, l) => s + (l.subZones.length > 0 ? l.subZones.reduce((a, z) => a + z.lengthM, 0) : l.lengthM), 0);
   const costs = state.locations.map(loc => computeLocCost(loc, state.project));
-  const totalAmt = costs.reduce((sum, c) => sum + c.totalProjectCost, 0);
+  const totalLen = costs.reduce((s, c) => s + c.geom.effectiveLengthM, 0);
+  const totalAmt = costs.reduce((s, c) => s + c.totalProjectCost, 0);
   const blendedRM = totalLen > 0 ? totalAmt / totalLen : 0;
 
   return (
@@ -1096,11 +1260,9 @@ export default function ConcreteCalculatorV2() {
         </Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold truncate">
-            {state.project.name || "New Concrete Estimate"} {dirty && <span className="text-muted-foreground text-sm">•</span>}
+            {state.project.name || "New Concrete Estimate"}{dirty ? <span className="text-muted-foreground text-sm ml-1">•</span> : ""}
           </h1>
-          {state.project.structureType && (
-            <p className="text-sm text-muted-foreground">{state.project.structureType} · {state.project.contractor || "—"}</p>
-          )}
+          <p className="text-sm text-muted-foreground">{state.project.structureType} · {state.project.contractor || "—"}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowLoadDialog(true)} className="gap-1">
@@ -1119,9 +1281,15 @@ export default function ConcreteCalculatorV2() {
       {state.locations.length > 0 && (
         <div className="flex gap-4 bg-muted/30 rounded-lg p-3 text-sm flex-wrap">
           <div><span className="text-muted-foreground">Locations: </span><strong>{state.locations.length}</strong></div>
-          <div><span className="text-muted-foreground">Total Length: </span><strong>{fmtM(totalLen)} m</strong></div>
+          <div><span className="text-muted-foreground">Total Length: </span><strong>{fmt(totalLen, 1)} m</strong></div>
           <div><span className="text-muted-foreground">Blended Rate: </span><strong>₹{fmt(blendedRM, 0)}/m</strong></div>
           <div><span className="text-muted-foreground">Total Cost: </span><strong>₹{fmt(totalAmt, 0)}</strong></div>
+          {state.project.clientRatePerRM > 0 && (() => {
+            const profit = state.project.clientRatePerRM - blendedRM;
+            const pct = state.project.clientRatePerRM > 0 ? (profit / state.project.clientRatePerRM) * 100 : 0;
+            const color = pct >= 10 ? "text-green-600" : pct >= 5 ? "text-amber-600" : "text-red-600";
+            return <div><span className="text-muted-foreground">Margin: </span><strong className={color}>{fmt(pct, 1)}%</strong></div>;
+          })()}
         </div>
       )}
 
@@ -1136,14 +1304,16 @@ export default function ConcreteCalculatorV2() {
           </CardHeader>
           <CardContent className="p-3 pt-0">
             {allEstimates.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No saved estimates yet.</p>
+              <p className="text-sm text-muted-foreground">No saved v2 estimates yet.</p>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {allEstimates.map(est => (
                   <div key={est.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
                     <div>
                       <p className="font-medium text-sm">{est.name}</p>
-                      <p className="text-xs text-muted-foreground">{est.structureType} · {est.contractor || "—"} · {est.totalLengthM ? fmtM(est.totalLengthM) + "m" : "—"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {est.structureType} · {est.contractor || "—"} · {est.totalLengthM ? fmt(est.totalLengthM, 1) + "m" : "—"}
+                      </p>
                     </div>
                     <Button size="sm" variant="outline" onClick={() => loadEstimate(est)}>Load</Button>
                   </div>
@@ -1197,22 +1367,24 @@ export default function ConcreteCalculatorV2() {
                 </div>
               </div>
               <Separator />
+              <p className="text-xs font-medium text-muted-foreground">Concrete Grades</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">PCC Grade</Label>
-                  <GradeSelect value={state.project.pccGrade} onChange={v => updProject("pccGrade", v)} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">RCC Grade</Label>
-                  <GradeSelect value={state.project.rccGrade} onChange={v => updProject("rccGrade", v)} />
-                </div>
+                <GradeSelect label="PCC Grade" value={state.project.pccGrade} onChange={v => updProject("pccGrade", v)} />
+                <GradeSelect label="Invert Slab Grade" value={state.project.invertGrade} onChange={v => updProject("invertGrade", v)} />
+                <GradeSelect label="Side Walls Grade" value={state.project.wallGrade} onChange={v => updProject("wallGrade", v)} />
+                <GradeSelect label="Cover Slab Grade" value={state.project.slabGrade} onChange={v => updProject("slabGrade", v)} />
+              </div>
+              <Separator />
+              <p className="text-xs font-medium text-muted-foreground">Project-Level Rates & Defaults</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <NumInput label="Cement Price" value={state.project.cementBagPrice} onChange={v => updProject("cementBagPrice", v)} unit="₹/bag (50kg)" />
                 <NumInput label="Batching Rate" value={state.project.batchingRatePerM3} onChange={v => updProject("batchingRatePerM3", v)} unit="₹/m³" />
                 <NumInput label="Curing Rate" value={state.project.curingRatePerM3} onChange={v => updProject("curingRatePerM3", v)} unit="₹/m³" />
-                <NumInput label="Default OH %" value={state.project.defaultOverheadPct} onChange={v => updProject("defaultOverheadPct", v)} unit="%" />
-                <NumInput label="Default Margin %" value={state.project.defaultMarginPct} onChange={v => updProject("defaultMarginPct", v)} unit="%" />
+                <NumInput label="Default OH %" value={state.project.defaultOverheadPct} onChange={v => updProject("defaultOverheadPct", v)} unit="%" dec={1} />
+                <NumInput label="Default Margin %" value={state.project.defaultMarginPct} onChange={v => updProject("defaultMarginPct", v)} unit="%" dec={1} />
                 <NumInput label="Default Petty Labour" value={state.project.defaultPettyLabourPerRM} onChange={v => updProject("defaultPettyLabourPerRM", v)} unit="₹/RM" />
                 <NumInput label="Default PCC Placing" value={state.project.defaultPccPlacingPerM3} onChange={v => updProject("defaultPccPlacingPerM3", v)} unit="₹/m³" />
+                <NumInput label="Client Offered Rate" value={state.project.clientRatePerRM} onChange={v => updProject("clientRatePerRM", v)} unit="₹/m" />
               </div>
             </CardContent>
           </Card>
