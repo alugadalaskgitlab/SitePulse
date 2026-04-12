@@ -356,7 +356,8 @@ function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[] }):
         break;
       }
       case "slab_dist": {
-        cutLengthMm = 1000;
+        const stdHook = 9 * diaMm;
+        cutLengthMm = 1000 + 2 * stdHook;
         nosPerM = spacingMm > 0 ? (overallWMm - 2 * coverMm) / spacingMm : 0;
         break;
       }
