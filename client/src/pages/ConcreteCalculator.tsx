@@ -516,9 +516,10 @@ function computeMaterialCostOnly(grade: string, s: CalcState): number {
 function computePccRatePerM3(s: CalcState, pccGrade: string, pccPlacingRate: number): number {
   const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
   // Disable petty-labour contract for PCC (pccPlacingRate already covers placement separately)
+  // Also disable formwork damage wastage — PCC has no formwork, so formwork damage reduction doesn't apply
   const pccState: CalcState = {
     ...s, mix: pccMix,
-    wastage: { ...s.wastage, steelCuttingWaste: false },
+    wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false },
     pettyLabour: { ...s.pettyLabour, enabled: false },
   };
   const raw = computeCosts(pccState, 0);
@@ -717,6 +718,10 @@ function RateAnalysisPill({
           {/* Grade toggles */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-slate-600 font-medium">Grade:</span>
+            <button
+              onClick={() => setActiveGrades(prev => prev.size === allGrades.length ? new Set([allGrades[0]]) : new Set(allGrades))}
+              className="px-2 py-0.5 text-[10px] rounded border border-slate-300 text-slate-500 hover:border-slate-500 transition-colors"
+            >{activeGrades.size === allGrades.length ? "None" : "All"}</button>
             {allGrades.map(g => (
               <button
                 key={g}
@@ -1061,9 +1066,9 @@ export default function ConcreteCalculator() {
     const isPettyRm = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
     const pccPlacing = isPettyRm ? 0 : (s.pccPlacingRatePerM3 ?? 0);
     const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, pccPlacing);
-    // Derive PCC component breakdown from scratch for display (no petty labour, no steel, no formwork)
+    // Derive PCC component breakdown from scratch for display (no petty labour, no steel, no formwork, no formwork-damage wastage)
     const pccMix = MIX_PRESETS[eq.pcc] ?? MIX_PRESETS["M15"];
-    const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
+    const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
     const rawPcc = computeCosts(pccState, 0);
     const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.wastage;
     const pccOH = pccDirect * (s.overheadPct / 100);
@@ -3655,9 +3660,9 @@ export default function ConcreteCalculator() {
             if (hasPCC) {
               // Use the canonical PCC rate computation (bottom-up, includes pccPlacingRate, no formwork, no steel)
               const pccPlacing = (s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm") ? 0 : (s.pccPlacingRatePerM3 ?? 0);
-              // Build a detailed cost breakdown for display (no petty labour, no steel, no formwork)
+              // Build a detailed cost breakdown for display (no petty labour, no steel, no formwork, no formwork-damage wastage)
               const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
-              const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
+              const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
               const rawPcc = computeCosts(pccState, 0);
               const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.wastage;
               const pccOH = pccDirect * (s.overheadPct / 100);
