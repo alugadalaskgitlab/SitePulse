@@ -27,7 +27,7 @@ interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm:
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
 interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; clientRate?: number; }
-interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; hookMm?: number; }
+interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; hookMm?: number; hookAuto?: boolean; }
 interface IncludedCosts { cement: boolean; ca: boolean; fa: boolean; admix: boolean; batching: boolean; placement: boolean; formwork: boolean; labour: boolean; curing: boolean; steel: boolean; wastage: boolean; overhead: boolean; margin: boolean; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
@@ -78,6 +78,7 @@ interface CalcState {
   admixDosage: number; admixRate: number;
   batchingRows: BatchingRow[];
   placementMode: "own" | "hired" | "transit_mixer" | "labour"; placementRatePerDay: number; placementOutputPerDay: number;
+  pccPlacingRatePerM3: number;
   tmHirePerTrip: number; tmTripsPerDay: number;
   shutteringSystem: string; stagingSystem: string;
   shutteringAreaPerM3: number; shutteringCostPerM2: number; shutteringReuseCycles: number;
@@ -161,6 +162,7 @@ const DEFAULT_STATE: CalcState = {
   admixDosage: 0, admixRate: 0,
   batchingRows: [],
   placementMode: "hired", placementRatePerDay: 0, placementOutputPerDay: 0,
+  pccPlacingRatePerM3: 0,
   tmHirePerTrip: 0, tmTripsPerDay: 0,
   shutteringSystem: "Steel Frame + Timber Ply", stagingSystem: "Prop & Beam",
   shutteringAreaPerM3: 0, shutteringCostPerM2: 0, shutteringReuseCycles: 20,
@@ -508,6 +510,19 @@ function computeMaterialCostOnly(grade: string, s: CalcState): number {
   return cement + ca + fa + admix;
 }
 
+// Compute a proper PCC rate per m³ from scratch:
+// PCC material (own grade mix) + same batching + pccPlacingRate + same curing + OH + margin + esc
+// No formwork, no steel.
+function computePccRatePerM3(s: CalcState, pccGrade: string, pccPlacingRate: number): number {
+  const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
+  const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+  const raw = computeCosts(pccState, 0);
+  const direct = raw.cement + raw.ca + raw.fa + raw.admix + raw.batching + pccPlacingRate + raw.curing + raw.labour + raw.wastage;
+  const oh = direct * (s.overheadPct / 100);
+  const mg = (direct + oh) * (s.marginPct / 100);
+  return (direct + oh + mg) * (1 + s.escalationPct / 100);
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function numInput(label: string, value: number, onChange: (v: number) => void, opts: { unit?: string; step?: number; min?: number; testId?: string } = {}) {
@@ -628,6 +643,159 @@ function calcBridgeRWQTO(q: QtoState) {
   const baseVol = baseW * fd;
   const totalRCCperM = stemVol + baseVol;
   return { stemVol, baseVol, totalRCCperM, baseW, stemT, h, fd };
+}
+
+// ─── Rate Analysis Pill Component ─────────────────────────────────────────────
+
+type RateAnalysisElement = {
+  key: string; label: string; grade: string;
+  concreteType: "PCC" | "RCC";
+  m3perRm: number; totalM3: number;
+  mat: number; batching: number; placing: number;
+  formwork: number; curing: number; overhead: number; margin: number; total: number;
+};
+
+function RateAnalysisPill({
+  elements, allGrades, totalLength,
+}: {
+  elements: RateAnalysisElement[];
+  allGrades: string[];
+  totalLength: number;
+}) {
+  const [typeFilter, setTypeFilter] = useState<"All" | "PCC" | "RCC">("All");
+  const [activeGrades, setActiveGrades] = useState<Set<string>>(() => new Set(allGrades));
+  const [unit, setUnit] = useState<"m3" | "rm">("m3");
+
+  const toggleGrade = (g: string) => {
+    setActiveGrades(prev => {
+      const n = new Set(prev);
+      if (n.has(g)) { if (n.size > 1) n.delete(g); } else n.add(g);
+      return n;
+    });
+  };
+
+  const visible = elements.filter(e =>
+    (typeFilter === "All" || e.concreteType === typeFilter) &&
+    activeGrades.has(e.grade)
+  );
+
+  type NumericElemKey = "mat" | "batching" | "placing" | "formwork" | "curing" | "overhead" | "margin";
+  const componentKeys: { key: NumericElemKey; label: string; color: string }[] = [
+    { key: "mat", label: "Materials", color: "bg-blue-500" },
+    { key: "batching", label: "Batching", color: "bg-violet-500" },
+    { key: "placing", label: "Placing", color: "bg-indigo-500" },
+    { key: "formwork", label: "Formwork", color: "bg-orange-400" },
+    { key: "curing", label: "Curing", color: "bg-teal-500" },
+    { key: "overhead", label: "Overhead", color: "bg-amber-500" },
+    { key: "margin", label: "Margin", color: "bg-green-600" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <Card>
+        <CardContent className="px-5 py-4 flex flex-wrap gap-4 items-center">
+          {/* Type */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-600 font-medium">Type:</span>
+            {(["All", "PCC", "RCC"] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${typeFilter === t ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-700 border-slate-300 hover:border-slate-500"}`}
+              >{t}</button>
+            ))}
+          </div>
+          {/* Grade toggles */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-slate-600 font-medium">Grade:</span>
+            {allGrades.map(g => (
+              <button
+                key={g}
+                onClick={() => toggleGrade(g)}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${activeGrades.has(g) ? "bg-blue-700 text-white border-blue-700" : "bg-white text-slate-500 border-slate-300"}`}
+              >{g}</button>
+            ))}
+          </div>
+          {/* Unit */}
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-xs text-slate-600 font-medium">Show as:</span>
+            {([["m3", "₹/m³"], ["rm", "₹/RM"]] as const).map(([val, lbl]) => (
+              <button
+                key={val}
+                onClick={() => setUnit(val)}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${unit === val ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-700 border-slate-300 hover:border-slate-500"}`}
+              >{lbl}</button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Element cards */}
+      {visible.length === 0 ? (
+        <Card><CardContent className="px-5 py-6 text-center text-slate-500 text-sm">No elements match the current filters.</CardContent></Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {visible.map(el => {
+            const mult = unit === "rm" ? el.m3perRm : 1;
+            const total = el.total * mult;
+            return (
+              <Card key={el.key} className="overflow-hidden">
+                <CardHeader className="pb-2 pt-4 px-5 bg-slate-50 dark:bg-slate-800/50 border-b flex flex-row items-start justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-slate-800 dark:text-slate-100">{el.label}</CardTitle>
+                    <p className="text-xs text-slate-500 mt-0.5">{el.concreteType} · {el.grade} · {el.m3perRm.toFixed(3)} m³/RM · {el.totalM3.toFixed(1)} m³ total</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-base font-bold text-blue-700">{fmtR(total)}</div>
+                    <div className="text-[10px] text-slate-500">{unit === "rm" ? "per RM" : "per m³"}</div>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-5 py-3 space-y-1.5">
+                  {/* Progress bar */}
+                  <div className="flex h-3 rounded-full overflow-hidden mb-3">
+                    {componentKeys.filter(c => (el[c.key] as number) > 0).map(c => {
+                      const pct = ((el[c.key] as number) / el.total) * 100;
+                      return <div key={c.key} className={`${c.color}`} style={{ width: `${pct}%` }} title={`${c.label}: ${pct.toFixed(0)}%`} />;
+                    })}
+                  </div>
+                  {/* Component rows */}
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {componentKeys.map(c => {
+                        const raw = el[c.key] as number;
+                        if (raw <= 0) return null;
+                        const val = raw * mult;
+                        const pct = (raw / el.total) * 100;
+                        return (
+                          <tr key={c.key}>
+                            <td className="py-0.5 flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-sm inline-block ${c.color}`} />
+                              {c.label}
+                            </td>
+                            <td className="py-0.5 text-right font-mono text-slate-700">{fmtR(val)}</td>
+                            <td className="py-0.5 text-right text-slate-400 pl-3">{pct.toFixed(0)}%</td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="border-t border-slate-200 font-semibold">
+                        <td className="pt-1.5">Total (pre-esc)</td>
+                        <td className="pt-1.5 text-right font-mono text-blue-700">{fmtR(total)}</td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {totalLength > 0 && unit === "rm" && (
+                    <p className="text-[10px] text-slate-500 pt-1">× {totalLength.toFixed(0)} m drain length = {fmtR(total * totalLength)}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -803,8 +971,10 @@ export default function ConcreteCalculator() {
     const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
       ? s.qto.precastRatePerM2 / tsM
       : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-    // PCC: no shuttering and no petty labour/placement — strip both from RCC base rate
-    const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
+    // PCC: proper rate from scratch — material + batching + pccPlacingRate + curing + OH + margin
+    const isPettyRm = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
+    const pccPlacing = isPettyRm ? 0 : (s.pccPlacingRatePerM3 ?? 0);
+    const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, pccPlacing);
     const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
     const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
     const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
@@ -820,7 +990,7 @@ export default function ConcreteCalculator() {
       avgNetWallPerM + netTopSlabPerM + gratingPerM + weepholePerM + steelPerM + bwPerM + excavPerM + backfillPerM + lhPerM;
   }, [isDrainType, qtoResult, costs, s, bbsSummary]);
 
-  // Element-level cost breakdown for Element Summary table
+  // Element-level cost breakdown for Element Summary table and Rate Analysis report
   const elementCostBreakdown = useMemo(() => {
     if (!isDrainType || !qtoResult || qtoResult.totalLength <= 0) return null;
     const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
@@ -832,31 +1002,50 @@ export default function ConcreteCalculator() {
     const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
       ? s.qto.precastRatePerM2 / tsM
       : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-    const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
+    // PCC: proper rate from scratch
+    const isPettyRm = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
+    const pccPlacing = isPettyRm ? 0 : (s.pccPlacingRatePerM3 ?? 0);
+    const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, pccPlacing);
+    // Derive PCC component breakdown from scratch for display
+    const pccMix = MIX_PRESETS[eq.pcc] ?? MIX_PRESETS["M15"];
+    const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+    const rawPcc = computeCosts(pccState, 0);
+    const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.labour + rawPcc.wastage;
+    const pccOH = pccDirect * (s.overheadPct / 100);
+    const pccMg = (pccDirect + pccOH) * (s.marginPct / 100);
     const matBase = (grade: string) => computeMaterialCostOnly(grade, s);
+    // RCC component fractions (from base rate, proportional approach)
     const batchPct = costs.batching / (rccBaseRate || 1);
     const placePct = costs.placement / (rccBaseRate || 1);
+    const formworkPct = costs.formwork / (rccBaseRate || 1);
     const curingPct = costs.curing / (rccBaseRate || 1);
+    const ohPct = costs.overhead / (rccBaseRate || 1);
+    const mgPct = costs.margin / (rccBaseRate || 1);
+    const rccElem = (total: number, mat: number) => ({
+      mat, batching: total * batchPct, placing: total * placePct,
+      formwork: total * formworkPct, curing: total * curingPct,
+      overhead: total * ohPct, margin: total * mgPct, total,
+    });
     return {
       pcc: {
-        grade: eq.pcc, m3perRm: qtoResult.pccPerM, totalM3: qtoResult.totalPCC,
-        mat: computeMaterialCostOnly(eq.pcc, s), batching: pccCostPerM3 * batchPct, placing: 0,
-        curing: pccCostPerM3 * curingPct, total: pccCostPerM3,
+        grade: eq.pcc, concreteType: "PCC" as const, m3perRm: qtoResult.pccPerM, totalM3: qtoResult.totalPCC,
+        mat: rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix,
+        batching: rawPcc.batching, placing: pccPlacing, formwork: 0,
+        curing: rawPcc.curing, overhead: pccOH, margin: pccMg, total: pccCostPerM3,
       },
       invert: {
-        grade: eq.invert, m3perRm: qtoResult.invertPerM, totalM3: qtoResult.totalInvert,
-        mat: matBase(eq.invert), batching: invertCostPerM3 * batchPct, placing: invertCostPerM3 * placePct,
-        curing: invertCostPerM3 * curingPct, total: invertCostPerM3,
+        grade: eq.invert, concreteType: "RCC" as const, m3perRm: qtoResult.invertPerM, totalM3: qtoResult.totalInvert,
+        ...rccElem(invertCostPerM3, matBase(eq.invert)),
       },
       wall: {
-        grade: eq.wall, m3perRm: qtoResult.totalWallsNet / qtoResult.totalLength, totalM3: qtoResult.totalWallsNet,
-        mat: matBase(eq.wall), batching: wallCostPerM3 * batchPct, placing: wallCostPerM3 * placePct,
-        curing: wallCostPerM3 * curingPct, total: wallCostPerM3,
+        grade: eq.wall, concreteType: "RCC" as const,
+        m3perRm: qtoResult.totalWallsNet / qtoResult.totalLength, totalM3: qtoResult.totalWallsNet,
+        ...rccElem(wallCostPerM3, matBase(eq.wall)),
       },
       topSlab: showTopSlab ? {
-        grade: eq.topSlab, m3perRm: qtoResult.totalTopNet / qtoResult.totalLength, totalM3: qtoResult.totalTopNet,
-        mat: matBase(eq.topSlab), batching: topSlabCostPerM3 * batchPct, placing: topSlabCostPerM3 * placePct,
-        curing: topSlabCostPerM3 * curingPct, total: topSlabCostPerM3,
+        grade: eq.topSlab, concreteType: "RCC" as const,
+        m3perRm: qtoResult.totalTopNet / qtoResult.totalLength, totalM3: qtoResult.totalTopNet,
+        ...rccElem(topSlabCostPerM3, matBase(eq.topSlab)),
       } : null,
     };
   }, [isDrainType, qtoResult, costs, s, showTopSlab]);
@@ -1911,6 +2100,23 @@ export default function ConcreteCalculator() {
                       </div>
                     )}
                   </div>
+
+                  {/* PCC Placing Rate — separate from RCC pump placement */}
+                  {!(s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm") && (
+                    <div className="mt-4 pt-4 border-t border-border/60">
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">PCC Placing Rate</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                        Labour/equipment cost for placing PCC (blinding concrete). Applied separately from RCC pump placement.
+                        {s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_m3" && " (Petty labour contract covers RCC only — enter PCC placing separately.)"}
+                      </p>
+                      <div className="flex items-end gap-3 flex-wrap">
+                        {numInput("PCC Placing Rate (₹/m³)", s.pccPlacingRatePerM3 ?? 0, (v) => update({ pccPlacingRatePerM3: v }), { testId: "input-pcc-placing-rate" })}
+                        <div className="flex items-end pb-1 text-sm text-slate-600 dark:text-slate-400">
+                          included in PCC ₹/m³ rate analysis
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -2364,10 +2570,12 @@ export default function ConcreteCalculator() {
                             const hook = row.shape === "Straight" ? 0
                               : row.hookMm !== undefined ? row.hookMm / 1000
                               : (HOOK_ALLOWANCE[row.shape] ? HOOK_ALLOWANCE[row.shape](row.dia, DEFAULT_HOOK_MULT) : 0);
-                            // Default hook mm for input display
-                            const defaultHookMm = row.shape === "Straight" ? 0
+                            // Computed auto hook for current dia + shape
+                            const autoHookMm = row.shape === "Straight" ? 0
                               : Math.round((HOOK_ALLOWANCE[row.shape]?.(row.dia, DEFAULT_HOOK_MULT) ?? 0) * 1000);
-                            const hookMmDisplay = row.hookMm !== undefined ? row.hookMm : defaultHookMm;
+                            const hookMmDisplay = row.hookMm !== undefined ? row.hookMm : autoHookMm;
+                            // "auto" if hookMm matches computed value or is unset; "edited" if manually changed
+                            const hookIsAuto = row.hookAuto !== false && (row.hookMm === undefined || row.hookMm === autoHookMm);
                             const overlapLen = (row.overlapN * row.dia) / 1000;
                             const unitLen = row.cutLength + hook + overlapLen; // for transverse/drain_len bars
                             const kgPerMBar = (row.dia * row.dia) / 162;
@@ -2419,7 +2627,13 @@ export default function ConcreteCalculator() {
                                   <Input value={row.mark} onChange={(e) => updateBBSRow(row.id, { mark: e.target.value.toUpperCase() })} className="h-7 text-xs w-14 uppercase" />
                                 </td>
                                 <td className="p-1.5">
-                                  <Select value={String(row.dia)} onValueChange={(v) => updateBBSRow(row.id, { dia: parseInt(v) })}>
+                                  <Select value={String(row.dia)} onValueChange={(v) => {
+                                    const newDia = parseInt(v);
+                                    const newAutoHook = row.shape === "Straight" ? 0 : Math.round((HOOK_ALLOWANCE[row.shape]?.(newDia, DEFAULT_HOOK_MULT) ?? 0) * 1000);
+                                    // Auto-update hook if it was auto (not manually edited)
+                                    const hookPatch = hookIsAuto ? { hookMm: newAutoHook, hookAuto: true } : {};
+                                    updateBBSRow(row.id, { dia: newDia, ...hookPatch });
+                                  }}>
                                     <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       {DIA_SIZES.map((d) => <SelectItem key={d} value={String(d)}>{d}mm</SelectItem>)}
@@ -2427,7 +2641,10 @@ export default function ConcreteCalculator() {
                                   </Select>
                                 </td>
                                 <td className="p-1.5">
-                                  <Select value={row.shape} onValueChange={(v) => updateBBSRow(row.id, { shape: v })}>
+                                  <Select value={row.shape} onValueChange={(v) => {
+                                    const newHook = v === "Straight" ? 0 : Math.round((HOOK_ALLOWANCE[v]?.(row.dia, DEFAULT_HOOK_MULT) ?? 0) * 1000);
+                                    updateBBSRow(row.id, { shape: v, hookMm: newHook, hookAuto: true });
+                                  }}>
                                     <SelectTrigger className="h-7 text-xs w-22"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       {["Straight", "U-bar", "L-bar", "Ring", "Stirrup"].map((sh) => <SelectItem key={sh} value={sh}>{sh}</SelectItem>)}
@@ -2482,17 +2699,24 @@ export default function ConcreteCalculator() {
                                   <Input type="number" step="0.01" value={row.cutLength} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { cutLength: parseFloat(e.target.value) || 0 })} className={`h-7 text-sm w-24 text-right ${isAlongDrain ? "opacity-40 cursor-not-allowed" : ""}`} disabled={isAlongDrain} title={isAlongDrain ? "Not used for along-drain bars — bars run full drain length" : "Cut length in metres"} />
                                 </td>
                                 <td className="p-1.5">
-                                  <Input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={hookMmDisplay}
-                                    disabled={row.shape === "Straight"}
-                                    onFocus={(e) => e.target.select()}
-                                    onChange={(e) => updateBBSRow(row.id, { hookMm: parseFloat(e.target.value) || 0 })}
-                                    className="h-7 text-sm w-16 text-right disabled:opacity-40"
-                                    title={row.shape === "Straight" ? "No hook for straight bars" : "Total hook allowance in mm (e.g. both ends combined: 50+50=100mm)"}
-                                  />
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <Input
+                                      type="number"
+                                      step="1"
+                                      min="0"
+                                      value={hookMmDisplay}
+                                      disabled={row.shape === "Straight"}
+                                      onFocus={(e) => e.target.select()}
+                                      onChange={(e) => updateBBSRow(row.id, { hookMm: parseFloat(e.target.value) || 0, hookAuto: false })}
+                                      className="h-7 text-sm w-16 text-right disabled:opacity-40"
+                                      title={row.shape === "Straight" ? "No hook for straight bars" : `Hook allowance in mm. Auto = ${autoHookMm}mm (IS formula). Edit to override for thickness constraints.`}
+                                    />
+                                    {row.shape !== "Straight" && (
+                                      <span className={`text-[9px] leading-none px-1 rounded ${hookIsAuto ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"}`}>
+                                        {hookIsAuto ? "auto" : "edited"}
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="p-1.5">
                                   <Input type="number" value={row.overlapN} onFocus={(e) => e.target.select()} onChange={(e) => updateBBSRow(row.id, { overlapN: isNaN(parseInt(e.target.value)) ? row.overlapN : parseInt(e.target.value) })} className="h-7 text-sm w-16 text-right" title="N×dia overlap splice" />
@@ -2510,11 +2734,19 @@ export default function ConcreteCalculator() {
                         <tfoot>
                           <tr className="border-t-2 border-border bg-muted/20 font-semibold">
                             <td colSpan={12} className="p-2 text-xs">Total Steel</td>
-                            <td className="p-2 text-right text-xs text-yellow-700">{bbsSummary.totalKgPerM.toFixed(3)} kg/m</td>
+                            <td className="p-2 text-right text-xs text-yellow-700">
+                              {bbsSummary.totalKgPerM.toFixed(3)} kg/m
+                              {s.totalVolume > 0 && crossSectionM2 > 0 && (
+                                <span className="ml-1 text-slate-500">({(bbsSummary.totalKgPerM / crossSectionM2).toFixed(1)} kg/m³)</span>
+                              )}
+                            </td>
                             <td className="p-2 text-right text-xs font-semibold">
                               {bbsSummary.totalKg.toFixed(1)} kg
                               {bbsSummary.totalKg >= 100 && (
                                 <span className="ml-1 text-slate-600 dark:text-slate-400">({(bbsSummary.totalKg / 1000).toFixed(3)} MT)</span>
+                              )}
+                              {s.totalVolume > 0 && (
+                                <span className="ml-1 text-slate-500 text-[10px]">= {(bbsSummary.totalKg / s.totalVolume).toFixed(1)} kg/m³</span>
                               )}
                             </td>
                             <td></td>
@@ -3306,6 +3538,7 @@ export default function ConcreteCalculator() {
             {([
               { id: "concrete-rates", label: "Concrete Rates" },
               { id: "steel-rates", label: "Steel Rates" },
+              { id: "rate-analysis", label: "Rate Analysis" },
               { id: "per-metre", label: "Per Metre" },
               { id: "boq", label: "BOQ" },
               { id: "quotation", label: "Quotation" },
@@ -3365,15 +3598,25 @@ export default function ConcreteCalculator() {
             const pccGrade = s.qto?.elementGrades?.pcc ?? "M15";
             let pccCosts: CostBreakdown | null = null;
             if (hasPCC) {
-              // PCC: recompute with steel=0 and steelCuttingWaste disabled, no placement/formwork
+              // Use the canonical PCC rate computation (bottom-up, includes pccPlacingRate, no formwork, no steel)
+              const pccPlacing = (s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm") ? 0 : (s.pccPlacingRatePerM3 ?? 0);
+              // Build a detailed cost breakdown for display — reuse the PCC material/batching cost path
               const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
               const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
               const rawPcc = computeCosts(pccState, 0);
-              // Zero out placement/formwork; recompute OH+margin from concrete-only direct
-              const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + rawPcc.curing + rawPcc.labour + rawPcc.wastage;
+              const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.labour + rawPcc.wastage;
               const pccOH = pccDirect * (s.overheadPct / 100);
               const pccMg = (pccDirect + pccOH) * (s.marginPct / 100);
-              pccCosts = { ...rawPcc, placement: 0, formwork: 0, overhead: pccOH, margin: pccMg, total: pccDirect + pccOH + pccMg, totalWithEsc: (pccDirect + pccOH + pccMg) * (1 + s.escalationPct / 100) };
+              const pccTotal = pccDirect + pccOH + pccMg;
+              pccCosts = {
+                ...rawPcc,
+                placement: pccPlacing,
+                formwork: 0,
+                overhead: pccOH,
+                margin: pccMg,
+                total: pccTotal,
+                totalWithEsc: pccTotal * (1 + s.escalationPct / 100)
+              };
             }
             const pccRows = pccCosts ? buildConcGradeTable(pccGrade, false, pccCosts) : [];
 
@@ -3563,6 +3806,38 @@ export default function ConcreteCalculator() {
             );
           })()}
 
+          {/* ── Rate Analysis ── */}
+          {activeReportPill === "rate-analysis" && (() => {
+            const ecd = elementCostBreakdown;
+            if (!ecd) {
+              return (
+                <Card>
+                  <CardContent className="px-5 py-8 text-center text-slate-500">
+                    <p>Rate Analysis requires QTO dimensions — enter them in the <b>Dimensions &amp; QTO</b> tab first.</p>
+                  </CardContent>
+                </Card>
+              );
+            }
+            // Gather all elements into flat list
+            const allElems = [
+              { key: "pcc", label: "PCC (Blinding)", ...ecd.pcc },
+              { key: "invert", label: "Invert", ...ecd.invert },
+              { key: "wall", label: "Wall", ...ecd.wall },
+              ...(ecd.topSlab ? [{ key: "topSlab", label: "Top Slab", ...ecd.topSlab }] : []),
+            ];
+            // Unique grades
+            const allGrades = [...new Set(allElems.map(e => e.grade))];
+            // Per-metre indicator
+            const totalLen = qtoResult?.totalLength ?? 0;
+            return (
+              <RateAnalysisPill
+                elements={allElems}
+                allGrades={allGrades}
+                totalLength={totalLen}
+              />
+            );
+          })()}
+
           {/* ── Per Metre ── */}
           {activeReportPill === "per-metre" && (() => {
             if (!isDrainType || !qtoResult || qtoResult.zones.length === 0) {
@@ -3645,7 +3920,8 @@ export default function ConcreteCalculator() {
             const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
               ? s.qto.precastRatePerM2 / tsM
               : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-            const pccCostPerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + computeMaterialCostOnly(eq.pcc, s));
+            const isPettyRmPerM = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
+            const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, isPettyRmPerM ? 0 : (s.pccPlacingRatePerM3 ?? 0));
             const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
             const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
             const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
