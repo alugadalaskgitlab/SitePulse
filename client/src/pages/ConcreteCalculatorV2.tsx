@@ -1075,6 +1075,13 @@ function RateSheet({ state }: { state: StateV2 }) {
   const gradeBreakdowns = Array.from(gradeMap.entries()).map(([grade, meta]) =>
     computeGradeBreakdown(grade, meta.elements, project, firstLoc, meta.isPcc)
   );
+  const [collapsedGrades, setCollapsedGrades] = useState<Set<string>>(new Set());
+  const toggleGrade = (grade: string) =>
+    setCollapsedGrades(prev => {
+      const next = new Set(prev);
+      next.has(grade) ? next.delete(grade) : next.add(grade);
+      return next;
+    });
 
   // ── Style classes ─────────────────────────────────────────────────────────
   const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0 bg-muted/20";
@@ -1192,47 +1199,64 @@ function RateSheet({ state }: { state: StateV2 }) {
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          {gradeBreakdowns.map(bd => (
-            <div key={bd.grade} className="border rounded-lg overflow-hidden text-xs">
-              <div className="bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 flex items-baseline justify-between">
-                <span className="font-bold text-sm">{bd.grade}</span>
-                <span className="text-slate-300 text-[11px]">{bd.elements.join(" · ")}</span>
+          {gradeBreakdowns.map(bd => {
+            const isCollapsed = collapsedGrades.has(bd.grade);
+            return (
+              <div key={bd.grade} className="border rounded-lg overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => toggleGrade(bd.grade)}
+                  className="w-full bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 flex items-center justify-between hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="font-bold text-sm">{bd.grade}</span>
+                    <span className="text-slate-300 text-[11px]">{bd.elements.join(" · ")}</span>
+                  </span>
+                  <span className="text-slate-300 text-[11px] flex items-center gap-1">
+                    <span className="font-semibold tabular-nums">₹{fmt(bd.allInPerM3, 0)}/m³</span>
+                    <span>{isCollapsed ? "▶" : "▼"}</span>
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <>
+                    <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b">
+                      Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA
+                    </div>
+                    <table className="w-full">
+                      <tbody>
+                        {bd.lines.map(line => (
+                          <tr key={line.label} className="border-b border-border/50">
+                            <td className="px-2 py-1 text-left">{line.label}</td>
+                            <td className="px-2 py-1 text-right tabular-nums">{fmt(line.amount, 0)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-muted/30 border-t-2 border-border">
+                          <td className="px-2 py-1 text-left font-semibold">Direct Total</td>
+                          <td className="px-2 py-1 text-right tabular-nums font-semibold">{fmt(bd.directPerM3, 0)}</td>
+                        </tr>
+                        <tr className="text-amber-700 dark:text-amber-400">
+                          <td className="px-2 py-1 text-left">+ Overhead ({bd.ohPct}%)</td>
+                          <td className="px-2 py-1 text-right tabular-nums">{fmt(bd.ohPerM3, 0)}</td>
+                        </tr>
+                        <tr className="text-amber-700 dark:text-amber-400 border-b">
+                          <td className="px-2 py-1 text-left">+ Margin ({bd.marginPct}%)</td>
+                          <td className="px-2 py-1 text-right tabular-nums">{fmt(bd.marginPerM3, 0)}</td>
+                        </tr>
+                        <tr className="bg-green-50 dark:bg-green-950">
+                          <td className="px-2 py-1.5 text-left font-bold text-green-800 dark:text-green-300">
+                            All-In Rate ₹/m³
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-bold text-green-800 dark:text-green-300">
+                            {fmt(bd.allInPerM3, 0)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </>
+                )}
               </div>
-              <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b">
-                Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA
-              </div>
-              <table className="w-full">
-                <tbody>
-                  {bd.lines.map(line => (
-                    <tr key={line.label} className="border-b border-border/50">
-                      <td className="px-2 py-1 text-left">{line.label}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{fmt(line.amount, 0)}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-muted/30 border-t-2 border-border">
-                    <td className="px-2 py-1 text-left font-semibold">Direct Total</td>
-                    <td className="px-2 py-1 text-right tabular-nums font-semibold">{fmt(bd.directPerM3, 0)}</td>
-                  </tr>
-                  <tr className="text-amber-700 dark:text-amber-400">
-                    <td className="px-2 py-1 text-left">+ Overhead ({bd.ohPct}%)</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(bd.ohPerM3, 0)}</td>
-                  </tr>
-                  <tr className="text-amber-700 dark:text-amber-400 border-b">
-                    <td className="px-2 py-1 text-left">+ Margin ({bd.marginPct}%)</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(bd.marginPerM3, 0)}</td>
-                  </tr>
-                  <tr className="bg-green-50 dark:bg-green-950">
-                    <td className="px-2 py-1.5 text-left font-bold text-green-800 dark:text-green-300">
-                      All-In Rate ₹/m³
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums font-bold text-green-800 dark:text-green-300">
-                      {fmt(bd.allInPerM3, 0)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -1250,7 +1274,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                 <th className="p-2 text-left font-semibold text-muted-foreground border-b border-r">Grade</th>
                 <th className="p-2 text-left font-semibold text-muted-foreground border-b border-r">Unit</th>
                 {locations.map((l, i) => (
-                  <th key={l.id} colSpan={4} className={`${th} text-center`}>
+                  <th key={l.id} colSpan={5} className={`${th} text-center`}>
                     {l.name}
                     <br/>
                     <span className="font-normal text-muted-foreground text-[10px]">
@@ -1276,6 +1300,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                     <th className={th}>Total</th>
                     <th className={th}>Rate/unit</th>
                     <th className={th}>₹/m</th>
+                    <th className={th}>Total ₹</th>
                   </Fragment>
                 ))}
                 {locations.length > 1 && (
@@ -1313,6 +1338,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                           : row.unit === "nos/m"
                             ? `${fmt(totalQ, 1)} nos`
                             : fmt(totalQ, 0);
+                      const totalRs = isAbsolute ? v : v * len;
                       return (
                         <Fragment key={ci}>
                           <td className={isSummary ? tdBold : td}>{isAbsolute ? "—" : fmtM(q)}</td>
@@ -1321,6 +1347,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                             {isAbsolute || !showUnitRate ? "—" : `${fmt(r, 0)} ${row.rateUnit}`}
                           </td>
                           <td className={isSummary ? tdBold : td}>{fmt(v, 0)}</td>
+                          <td className={isSummary ? tdBold : td}>{fmt(totalRs, 0)}</td>
                         </Fragment>
                       );
                     })}
@@ -1376,10 +1403,6 @@ function RateSheet({ state }: { state: StateV2 }) {
                 <th key={l.id} colSpan={3} className={`${th} text-center`}>
                   {l.name}<br/>
                   <span className="font-normal text-muted-foreground">{fmtM(costs[i].geom.effectiveLengthM)} m</span>
-                  <br/>
-                  <span className="font-normal text-amber-600 dark:text-amber-400 text-[10px]">
-                    OH {l.overheadPct}% · Margin {l.marginPct}%
-                  </span>
                 </th>
               ))}
               {locations.length > 1 && (
@@ -1387,6 +1410,21 @@ function RateSheet({ state }: { state: StateV2 }) {
                   Combined<br/>
                   <span className="font-normal">{fmtM(totalLen)} m</span>
                 </th>
+              )}
+            </tr>
+            <tr className="bg-amber-50/60 dark:bg-amber-950/20">
+              <th className="p-1 border-b border-r text-[10px] text-amber-700 dark:text-amber-400 font-medium text-left">
+                OH / Margin
+              </th>
+              <th className="p-1 border-b border-r" />
+              {locations.map(l => (
+                <th key={l.id} colSpan={3}
+                  className="p-1 text-center text-[10px] text-amber-700 dark:text-amber-400 border-b border-r font-normal italic">
+                  OH {l.overheadPct}% &nbsp;·&nbsp; Margin {l.marginPct}%
+                </th>
+              ))}
+              {locations.length > 1 && (
+                <th colSpan={3} className="p-1 border-b bg-blue-50/30 dark:bg-blue-950/20" />
               )}
             </tr>
             <tr className="bg-muted/20">
