@@ -3572,6 +3572,69 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // CONCRETE ESTIMATES V2 (Location-Centric)
+  // ============================================
+
+  app.get("/api/concrete/v2/estimates", async (_req, res) => {
+    try {
+      const estimates = await storage.getConcreteEstimatesV2();
+      res.json(estimates);
+    } catch (err) {
+      console.error("Error fetching concrete v2 estimates:", err);
+      res.status(500).json({ message: "Failed to fetch estimates" });
+    }
+  });
+
+  app.get("/api/concrete/v2/estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const estimate = await storage.getConcreteEstimateV2(id);
+      if (!estimate) return res.status(404).json({ message: "Estimate not found" });
+      res.json(estimate);
+    } catch (err) {
+      console.error("Error fetching concrete v2 estimate:", err);
+      res.status(500).json({ message: "Failed to fetch estimate" });
+    }
+  });
+
+  app.post("/api/concrete/v2/estimates", async (req, res) => {
+    try {
+      const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
+      if (!name || !state) return res.status(400).json({ message: "name and state required" });
+      const estimate = await storage.createConcreteEstimateV2({ name, contractor: contractor || null, structureType: structureType || null, state, totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
+      res.status(201).json(estimate);
+    } catch (err) {
+      console.error("Error creating concrete v2 estimate:", err);
+      res.status(500).json({ message: "Failed to create estimate" });
+    }
+  });
+
+  app.patch("/api/concrete/v2/estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
+      const estimate = await storage.updateConcreteEstimateV2(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, ...(state ? { state } : {}), totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
+      if (!estimate) return res.status(404).json({ message: "Estimate not found" });
+      res.json(estimate);
+    } catch (err) {
+      console.error("Error updating concrete v2 estimate:", err);
+      res.status(500).json({ message: "Failed to update estimate" });
+    }
+  });
+
+  app.delete("/api/concrete/v2/estimates/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteConcreteEstimateV2(id);
+      if (!deleted) return res.status(404).json({ message: "Estimate not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting concrete v2 estimate:", err);
+      res.status(500).json({ message: "Failed to delete estimate" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();

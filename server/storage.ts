@@ -135,6 +135,9 @@ import {
   concreteEstimates,
   type ConcreteEstimate,
   type InsertConcreteEstimate,
+  concreteEstimatesV2,
+  type ConcreteEstimateV2,
+  type InsertConcreteEstimateV2,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
@@ -418,6 +421,11 @@ export interface IStorage {
   createConcreteEstimate(data: InsertConcreteEstimate): Promise<ConcreteEstimate>;
   updateConcreteEstimate(id: number, data: Partial<InsertConcreteEstimate>): Promise<ConcreteEstimate | undefined>;
   deleteConcreteEstimate(id: number): Promise<boolean>;
+  getConcreteEstimatesV2(): Promise<ConcreteEstimateV2[]>;
+  getConcreteEstimateV2(id: number): Promise<ConcreteEstimateV2 | undefined>;
+  createConcreteEstimateV2(data: InsertConcreteEstimateV2): Promise<ConcreteEstimateV2>;
+  updateConcreteEstimateV2(id: number, data: Partial<InsertConcreteEstimateV2>): Promise<ConcreteEstimateV2 | undefined>;
+  deleteConcreteEstimateV2(id: number): Promise<boolean>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -7158,6 +7166,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteConcreteEstimate(id: number): Promise<boolean> {
     const result = await db.delete(concreteEstimates).where(eq(concreteEstimates.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getConcreteEstimatesV2(): Promise<ConcreteEstimateV2[]> {
+    return await db.select().from(concreteEstimatesV2).orderBy(desc(concreteEstimatesV2.updatedAt));
+  }
+
+  async getConcreteEstimateV2(id: number): Promise<ConcreteEstimateV2 | undefined> {
+    const [row] = await db.select().from(concreteEstimatesV2).where(eq(concreteEstimatesV2.id, id));
+    return row;
+  }
+
+  async createConcreteEstimateV2(data: InsertConcreteEstimateV2): Promise<ConcreteEstimateV2> {
+    const [row] = await db.insert(concreteEstimatesV2).values(data).returning();
+    return row;
+  }
+
+  async updateConcreteEstimateV2(id: number, data: Partial<InsertConcreteEstimateV2>): Promise<ConcreteEstimateV2 | undefined> {
+    const [row] = await db.update(concreteEstimatesV2)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(concreteEstimatesV2.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteConcreteEstimateV2(id: number): Promise<boolean> {
+    const result = await db.delete(concreteEstimatesV2).where(eq(concreteEstimatesV2.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 }

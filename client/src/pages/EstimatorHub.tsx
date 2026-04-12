@@ -77,23 +77,31 @@ export default function EstimatorHub() {
             </CardContent>
           </Card>
 
-          {/* Concrete Rate Calculator */}
+          {/* Concrete Rate Calculator v2 */}
           <Card className="border-2 hover:border-blue-400 transition-all hover:shadow-md">
             <CardContent className="p-8 flex flex-col items-center text-center">
               <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-5">
                 <Building2 className="w-8 h-8 text-blue-600" />
               </div>
               <h2 className="text-2xl font-bold mb-2">Concrete Rate</h2>
-              <p className="text-base text-muted-foreground mb-6">
-                Comprehensive BOQ analysis for drains, box culverts, bridges &amp; retaining walls
+              <p className="text-base text-muted-foreground mb-4">
+                Location-centric drain &amp; box culvert rate analysis with auto rebar design and per-location aggregate sourcing
               </p>
               <div className="flex flex-col gap-2 w-full text-left">
                 <a
-                  href="/admin/concrete-estimates"
+                  href="/concrete-calculator-v2"
                   className="flex items-center justify-between text-base font-semibold px-4 py-3 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 transition-colors"
+                  data-testid="link-concrete-v2-open"
+                >
+                  <span className="flex items-center gap-2.5"><Plus className="w-5 h-5" /> New Estimate (v2)</span>
+                  <ChevronRight className="w-5 h-5" />
+                </a>
+                <a
+                  href="/admin/concrete-estimates"
+                  className="flex items-center justify-between text-base font-medium px-4 py-3 rounded-lg bg-muted/60 hover:bg-muted text-foreground transition-colors"
                   data-testid="link-concrete-estimates"
                 >
-                  <span className="flex items-center gap-2.5"><BarChart3 className="w-5 h-5" /> Saved Estimates</span>
+                  <span className="flex items-center gap-2.5"><BarChart3 className="w-5 h-5" /> v1 Saved Estimates</span>
                   <ChevronRight className="w-5 h-5" />
                 </a>
                 <a
@@ -101,7 +109,7 @@ export default function EstimatorHub() {
                   className="flex items-center justify-between text-base font-medium px-4 py-3 rounded-lg bg-muted/60 hover:bg-muted text-foreground transition-colors"
                   data-testid="link-concrete-open"
                 >
-                  <span className="flex items-center gap-2.5"><Plus className="w-5 h-5" /> New Estimate</span>
+                  <span className="flex items-center gap-2.5"><Plus className="w-5 h-5" /> v1 Calculator (legacy)</span>
                   <ChevronRight className="w-5 h-5" />
                 </a>
               </div>

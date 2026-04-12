@@ -1,0 +1,1263 @@
+import { useState, useCallback, useEffect, Fragment } from "react";
+import { useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Building2, Plus, Trash2, ChevronDown, ChevronUp, Save, FolderOpen,
+  ArrowLeft, Copy, BarChart3, Ruler, Layers
+} from "lucide-react";
+import type { ConcreteEstimateV2 } from "@shared/schema";
+import { readEstimatorRole } from "@/lib/estimatorAuth";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type AggUom = "per_mt" | "per_cft" | "per_m3";
+type BarTypeV2 = "u_bar" | "invert_main" | "wall_dist" | "slab_main" | "slab_dist";
+type FAType = "natural" | "robosand";
+
+interface CATab {
+  proportion: number;
+  purchaseRate: number;
+  uom: AggUom;
+  leadKm: number;
+  freightRate: number;
+  payload: number;
+}
+
+interface FASource {
+  type: FAType;
+  purchaseRate: number;
+  uom: AggUom;
+  leadKm: number;
+  freightRate: number;
+  payload: number;
+  bulkagePct: number;
+}
+
+interface SectionDimsV2 {
+  invertClearWidthMm: number;
+  wallHeightMm: number;
+  wallThickMm: number;
+  invertSlabThickMm: number;
+  coverSlabThickMm: number;
+  pccDepthMm: number;
+  pccOffsetMm: number;
+  workingSpaceMm: number;
+}
+
+interface SubZoneV2 {
+  id: string;
+  label: string;
+  wallHeightMm: number;
+  lengthM: number;
+}
+
+interface RebarRowV2 {
+  id: string;
+  barType: BarTypeV2;
+  diaMm: number;
+  spacingMm: number;
+  coverMm: number;
+  faceCount: number;
+}
+
+interface FixtureV2 {
+  id: string;
+  name: string;
+  ratePerNos: number;
+  spacingM: number;
+}
+
+interface LocationV2 {
+  id: string;
+  name: string;
+  lengthM: number;
+  section: SectionDimsV2;
+  subZones: SubZoneV2[];
+  caTabs: CATab[];
+  faSource: FASource;
+  admixDosageL: number;
+  admixRatePerL: number;
+  steelRatePerMT: number;
+  steelFabRatePerMT: number;
+  excavRatePerM3: number;
+  backfillRatePerM3: number;
+  rebarRows: RebarRowV2[];
+  fixtures: FixtureV2[];
+  overheadPct: number;
+  marginPct: number;
+  pettyLabourPerRM: number;
+  pccPlacingPerM3: number;
+}
+
+interface ProjectV2 {
+  name: string;
+  preparedBy: string;
+  date: string;
+  contractor: string;
+  structureType: "Drain" | "Box Culvert";
+  pccGrade: string;
+  rccGrade: string;
+  cementBagPrice: number;
+  batchingRatePerM3: number;
+  curingRatePerM3: number;
+  defaultOverheadPct: number;
+  defaultMarginPct: number;
+  defaultPettyLabourPerRM: number;
+  defaultPccPlacingPerM3: number;
+}
+
+interface StateV2 {
+  project: ProjectV2;
+  locations: LocationV2[];
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const MIX_PRESETS: Record<string, { cementKg: number; caKg: number; faKg: number }> = {
+  M10: { cementKg: 220, caKg: 1200, faKg: 800 },
+  M15: { cementKg: 280, caKg: 1180, faKg: 790 },
+  M20: { cementKg: 320, caKg: 1150, faKg: 750 },
+  M25: { cementKg: 380, caKg: 1100, faKg: 700 },
+  M30: { cementKg: 420, caKg: 1080, faKg: 680 },
+  M35: { cementKg: 450, caKg: 1050, faKg: 650 },
+  M40: { cementKg: 480, caKg: 1020, faKg: 620 },
+};
+
+const BAR_TYPE_LABELS: Record<BarTypeV2, string> = {
+  u_bar: "U-Bar (Wall+Invert main)",
+  invert_main: "Invert Main Bar",
+  wall_dist: "Wall Distribution (horiz)",
+  slab_main: "Cover Slab Main Bar",
+  slab_dist: "Cover Slab Distribution",
+};
+
+const DEFAULT_REBAR_ROWS: RebarRowV2[] = [
+  { id: "r1", barType: "u_bar",      diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
+  { id: "r2", barType: "invert_main",diaMm: 10, spacingMm: 200, coverMm: 40, faceCount: 1 },
+  { id: "r3", barType: "wall_dist",  diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 2 },
+  { id: "r4", barType: "slab_main",  diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1 },
+  { id: "r5", barType: "slab_dist",  diaMm: 8,  spacingMm: 200, coverMm: 40, faceCount: 1 },
+];
+
+const DEFAULT_SECTION: SectionDimsV2 = {
+  invertClearWidthMm: 600,
+  wallHeightMm: 900,
+  wallThickMm: 150,
+  invertSlabThickMm: 150,
+  coverSlabThickMm: 150,
+  pccDepthMm: 100,
+  pccOffsetMm: 150,
+  workingSpaceMm: 300,
+};
+
+const DEFAULT_CA_TABS: CATab[] = [
+  { proportion: 60, purchaseRate: 0, uom: "per_mt", leadKm: 0, freightRate: 0, payload: 9 },
+  { proportion: 30, purchaseRate: 0, uom: "per_mt", leadKm: 0, freightRate: 0, payload: 9 },
+  { proportion: 10, purchaseRate: 0, uom: "per_mt", leadKm: 0, freightRate: 0, payload: 9 },
+];
+
+const DEFAULT_FA: FASource = {
+  type: "natural", purchaseRate: 0, uom: "per_mt", leadKm: 0, freightRate: 0, payload: 9, bulkagePct: 12,
+};
+
+function makeDefaultLocation(project: ProjectV2, idx: number): LocationV2 {
+  return {
+    id: `loc_${Date.now()}_${idx}`,
+    name: `Location ${idx + 1}`,
+    lengthM: 100,
+    section: { ...DEFAULT_SECTION },
+    subZones: [],
+    caTabs: DEFAULT_CA_TABS.map(t => ({ ...t })),
+    faSource: { ...DEFAULT_FA },
+    admixDosageL: 0.5,
+    admixRatePerL: 80,
+    steelRatePerMT: 65000,
+    steelFabRatePerMT: 8000,
+    excavRatePerM3: 180,
+    backfillRatePerM3: 80,
+    rebarRows: DEFAULT_REBAR_ROWS.map(r => ({ ...r })),
+    fixtures: [],
+    overheadPct: project.defaultOverheadPct,
+    marginPct: project.defaultMarginPct,
+    pettyLabourPerRM: project.defaultPettyLabourPerRM,
+    pccPlacingPerM3: project.defaultPccPlacingPerM3,
+  };
+}
+
+const DEFAULT_PROJECT: ProjectV2 = {
+  name: "",
+  preparedBy: "",
+  date: new Date().toISOString().split("T")[0],
+  contractor: "",
+  structureType: "Drain",
+  pccGrade: "M15",
+  rccGrade: "M25",
+  cementBagPrice: 380,
+  batchingRatePerM3: 350,
+  curingRatePerM3: 50,
+  defaultOverheadPct: 8,
+  defaultMarginPct: 10,
+  defaultPettyLabourPerRM: 2500,
+  defaultPccPlacingPerM3: 300,
+};
+
+const DEFAULT_STATE: StateV2 = {
+  project: DEFAULT_PROJECT,
+  locations: [],
+};
+
+// ─── Pure Computation ─────────────────────────────────────────────────────────
+
+function toRatePerMT(rate: number, uom: AggUom): number {
+  if (uom === "per_mt") return rate;
+  if (uom === "per_m3") return rate / 1.6;
+  if (uom === "per_cft") return rate / (0.02832 * 1.6);
+  return rate;
+}
+
+function landedPerMT(tab: { purchaseRate: number; uom: AggUom; leadKm: number; freightRate: number; payload: number }): number {
+  const base = toRatePerMT(tab.purchaseRate, tab.uom);
+  const freight = tab.payload > 0 ? (tab.leadKm * 2 * tab.freightRate) / tab.payload : 0;
+  return base + freight;
+}
+
+function concreteMatPerM3(grade: string, project: ProjectV2, loc: LocationV2): number {
+  const mix = MIX_PRESETS[grade] ?? MIX_PRESETS["M25"];
+  const cementCost = (mix.cementKg / 50) * project.cementBagPrice;
+
+  const [tab20, tab10, tab6] = loc.caTabs;
+  const totalCA = mix.caKg;
+  const ca20 = totalCA * (tab20.proportion / 100);
+  const ca10 = totalCA * (tab10.proportion / 100);
+  const ca6  = totalCA * (tab6.proportion  / 100);
+  const caCost = (ca20 / 1000) * landedPerMT(tab20) + (ca10 / 1000) * landedPerMT(tab10) + (ca6 / 1000) * landedPerMT(tab6);
+
+  const faMT = mix.faKg / 1000;
+  const faLanded = landedPerMT(loc.faSource);
+  const bulkMult = (loc.faSource.type === "natural" && loc.faSource.bulkagePct > 0)
+    ? (1 + loc.faSource.bulkagePct / 100) : 1;
+  const faCost = faMT * faLanded * bulkMult;
+
+  const admixCost = loc.admixDosageL * loc.admixRatePerL;
+
+  return cementCost + caCost + faCost + admixCost;
+}
+
+function allIn(direct: number, ohPct: number, mgPct: number): number {
+  const oh = direct * (ohPct / 100);
+  const mg = (direct + oh) * (mgPct / 100);
+  return direct + oh + mg;
+}
+
+interface GeomResult {
+  pccM3perM: number;
+  invertM3perM: number;
+  wallM3perM: number;
+  slabM3perM: number;
+  totalRccM3perM: number;
+  excavM3perM: number;
+  backfillM3perM: number;
+  effectiveLengthM: number;
+}
+
+function computeGeom(loc: LocationV2): GeomResult {
+  const s = loc.section;
+  const subZones = loc.subZones;
+
+  let effectiveWallHMm = s.wallHeightMm;
+  let effectiveLengthM = loc.lengthM;
+  if (subZones.length > 0) {
+    const totalLen = subZones.reduce((a, z) => a + z.lengthM, 0);
+    if (totalLen > 0) {
+      effectiveWallHMm = subZones.reduce((a, z) => a + z.wallHeightMm * z.lengthM, 0) / totalLen;
+      effectiveLengthM = totalLen;
+    }
+  }
+
+  const overallWM = (s.invertClearWidthMm + 2 * s.wallThickMm) / 1000;
+  const invThM  = s.invertSlabThickMm / 1000;
+  const wallThM = s.wallThickMm / 1000;
+  const slabThM = s.coverSlabThickMm / 1000;
+  const wallHM  = effectiveWallHMm / 1000;
+  const pccDepM = s.pccDepthMm / 1000;
+  const pccOffM = s.pccOffsetMm / 1000;
+  const wkSpM   = s.workingSpaceMm / 1000;
+
+  const pccWidthM  = overallWM + 2 * pccOffM;
+  const pccM3perM  = pccWidthM * pccDepM;
+  const invertM3perM = overallWM * invThM;
+  const netWallHM  = Math.max(0, wallHM - invThM);
+  const wallM3perM  = 2 * wallThM * netWallHM;
+  const slabM3perM  = slabThM > 0 ? overallWM * slabThM : 0;
+  const totalRccM3perM = invertM3perM + wallM3perM + slabM3perM;
+
+  const excavDepM = pccDepM + invThM + wallHM + slabThM;
+  const excavWidM = pccWidthM + 2 * wkSpM;
+  const excavM3perM = excavWidM * excavDepM;
+  const backfillM3perM = Math.max(0, excavM3perM - pccM3perM - totalRccM3perM);
+
+  return { pccM3perM, invertM3perM, wallM3perM, slabM3perM, totalRccM3perM, excavM3perM, backfillM3perM, effectiveLengthM };
+}
+
+interface RebarResult {
+  totalKgPerM: number;
+  rows: Array<{ id: string; cutLengthMm: number; nosPerM: number; kgPerM: number }>;
+}
+
+function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[] }): RebarResult {
+  const s = loc.section;
+  const overallWMm = s.invertClearWidthMm + 2 * s.wallThickMm;
+  const wallHMm    = s.wallHeightMm;
+
+  const rows = loc.rebarRows.map(row => {
+    const { barType, diaMm, spacingMm, coverMm, faceCount } = row;
+    const kgPerMBar = diaMm * diaMm / 162;
+    let cutLengthMm = 0;
+    let nosPerM = 0;
+
+    switch (barType) {
+      case "u_bar": {
+        const hooks = 2 * 9 * diaMm;
+        cutLengthMm = 2 * wallHMm + overallWMm - 2 * coverMm + hooks;
+        nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
+        break;
+      }
+      case "invert_main": {
+        cutLengthMm = overallWMm - 2 * coverMm;
+        nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
+        break;
+      }
+      case "wall_dist": {
+        cutLengthMm = 1000;
+        const barsPerFace = (wallHMm - 2 * coverMm) / (spacingMm || 200);
+        nosPerM = faceCount * barsPerFace;
+        break;
+      }
+      case "slab_main": {
+        cutLengthMm = overallWMm - 2 * coverMm;
+        nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
+        break;
+      }
+      case "slab_dist": {
+        cutLengthMm = 1000;
+        nosPerM = spacingMm > 0 ? (overallWMm - 2 * coverMm) / spacingMm : 0;
+        break;
+      }
+    }
+
+    const kgPerM = (cutLengthMm / 1000) * nosPerM * kgPerMBar;
+    return { id: row.id, cutLengthMm, nosPerM, kgPerM };
+  });
+
+  return { totalKgPerM: rows.reduce((s, r) => s + r.kgPerM, 0), rows };
+}
+
+interface LocCostResult {
+  geom: GeomResult;
+  rebar: RebarResult;
+  pccAllInPerM3: number; pccPerM: number;
+  rccAllInPerM3: number;
+  invertPerM: number; wallsPerM: number; slabPerM: number;
+  steelAllInPerMT: number; steelPerM: number;
+  excavAllInPerM3: number; excavPerM: number;
+  backfillAllInPerM3: number; backfillPerM: number;
+  fixtureResults: Array<{ fixture: FixtureV2; nosPerM: number; allInPerNos: number; allInPerM: number }>;
+  pettyPerM: number;
+  totalPerM: number;
+  totalProjectCost: number;
+}
+
+function computeLocCost(loc: LocationV2, project: ProjectV2): LocCostResult {
+  const geom = computeGeom(loc);
+  const rebar = computeRebar(loc);
+  const oh = loc.overheadPct;
+  const mg = loc.marginPct;
+
+  const pccMat = concreteMatPerM3(project.pccGrade, project, loc);
+  const rccMat = concreteMatPerM3(project.rccGrade, project, loc);
+
+  const pccDirect = pccMat + project.batchingRatePerM3 + project.curingRatePerM3 + loc.pccPlacingPerM3;
+  const pccAllInPerM3 = allIn(pccDirect, oh, mg);
+
+  const rccDirect = rccMat + project.batchingRatePerM3 + project.curingRatePerM3;
+  const rccAllInPerM3 = allIn(rccDirect, oh, mg);
+
+  const steelDirectPerMT = loc.steelRatePerMT + loc.steelFabRatePerMT;
+  const steelAllInPerMT = allIn(steelDirectPerMT, oh, mg);
+
+  const excavAllInPerM3 = allIn(loc.excavRatePerM3, oh, mg);
+  const backfillAllInPerM3 = allIn(loc.backfillRatePerM3, oh, mg);
+
+  const pccPerM    = pccAllInPerM3 * geom.pccM3perM;
+  const invertPerM = rccAllInPerM3 * geom.invertM3perM;
+  const wallsPerM  = rccAllInPerM3 * geom.wallM3perM;
+  const slabPerM   = rccAllInPerM3 * geom.slabM3perM;
+  const steelPerM  = (steelAllInPerMT / 1000) * rebar.totalKgPerM;
+  const excavPerM  = excavAllInPerM3 * geom.excavM3perM;
+  const backfillPerM = backfillAllInPerM3 * geom.backfillM3perM;
+
+  const fixtureResults = loc.fixtures.map(f => {
+    const nosPerM = f.spacingM > 0 ? 1 / f.spacingM : 0;
+    const allInPerNos = allIn(f.ratePerNos, oh, mg);
+    return { fixture: f, nosPerM, allInPerNos, allInPerM: allInPerNos * nosPerM };
+  });
+  const fixturesPerM = fixtureResults.reduce((s, f) => s + f.allInPerM, 0);
+
+  const pettyPerM = loc.pettyLabourPerRM;
+  const totalPerM = pccPerM + invertPerM + wallsPerM + slabPerM + steelPerM + excavPerM + backfillPerM + fixturesPerM + pettyPerM;
+
+  return {
+    geom, rebar,
+    pccAllInPerM3, pccPerM,
+    rccAllInPerM3, invertPerM, wallsPerM, slabPerM,
+    steelAllInPerMT, steelPerM,
+    excavAllInPerM3, excavPerM,
+    backfillAllInPerM3, backfillPerM,
+    fixtureResults, pettyPerM,
+    totalPerM,
+    totalProjectCost: totalPerM * geom.effectiveLengthM,
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number, dec = 0): string {
+  if (!isFinite(n)) return "—";
+  return n.toLocaleString("en-IN", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtM(n: number): string { return fmt(n, 2); }
+
+function uid(): string { return `_${Math.random().toString(36).slice(2)}`; }
+
+function NumInput({ label, value, onChange, unit, dec = 0, small = false }: {
+  label?: string; value: number; onChange: (v: number) => void; unit?: string; dec?: number; small?: boolean;
+}) {
+  const [raw, setRaw] = useState<string | null>(null);
+  return (
+    <div className={small ? "" : "space-y-1"}>
+      {label && <Label className="text-xs text-muted-foreground">{label}</Label>}
+      <div className="flex items-center gap-1">
+        <Input
+          className="h-8 text-sm"
+          type="number"
+          value={raw !== null ? raw : (value === 0 ? "" : String(value))}
+          onChange={e => setRaw(e.target.value)}
+          onBlur={() => { const v = parseFloat(raw ?? ""); onChange(isNaN(v) ? 0 : +v.toFixed(dec + 2)); setRaw(null); }}
+          onFocus={e => { setRaw(String(value)); e.target.select(); }}
+          placeholder="0"
+        />
+        {unit && <span className="text-xs text-muted-foreground whitespace-nowrap">{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+function GradeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {Object.keys(MIX_PRESETS).map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function CATabsInput({ tabs, onChange }: { tabs: CATab[]; onChange: (tabs: CATab[]) => void }) {
+  const [active, setActive] = useState(0);
+  const labels = ["20mm", "10mm", "6mm"];
+  const tab = tabs[active];
+  const upd = (field: keyof CATab, val: number | string) => {
+    const next = tabs.map((t, i) => i === active ? { ...t, [field]: val } : t);
+    onChange(next);
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {labels.map((l, i) => (
+          <button key={l} onClick={() => setActive(i)}
+            className={`px-3 py-1 text-xs rounded border transition-colors ${active === i ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <NumInput label="Proportion %" value={tab.proportion} onChange={v => upd("proportion", v)} />
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">UoM</Label>
+          <Select value={tab.uom} onValueChange={v => upd("uom", v as AggUom)}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="per_mt">₹/MT</SelectItem>
+              <SelectItem value="per_m3">₹/m³</SelectItem>
+              <SelectItem value="per_cft">₹/CFT</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <NumInput label="Purchase Rate" value={tab.purchaseRate} onChange={v => upd("purchaseRate", v)} unit="₹" />
+        <NumInput label="Lead" value={tab.leadKm} onChange={v => upd("leadKm", v)} unit="km" />
+        <NumInput label="Freight" value={tab.freightRate} onChange={v => upd("freightRate", v)} unit="₹/MT/km" />
+        <NumInput label="Payload" value={tab.payload} onChange={v => upd("payload", v)} unit="MT" />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Landed: ₹{fmt(landedPerMT(tab), 0)}/MT
+      </p>
+    </div>
+  );
+}
+
+function FAInput({ fa, onChange }: { fa: FASource; onChange: (fa: FASource) => void }) {
+  const upd = (field: keyof FASource, val: unknown) => onChange({ ...fa, [field]: val });
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2 items-center">
+        <Label className="text-xs text-muted-foreground">Type:</Label>
+        {(["natural", "robosand"] as FAType[]).map(t => (
+          <button key={t} onClick={() => upd("type", t)}
+            className={`px-3 py-1 text-xs rounded border transition-colors ${fa.type === t ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
+            {t === "natural" ? "Natural Sand" : "Robosand"}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">UoM</Label>
+          <Select value={fa.uom} onValueChange={v => upd("uom", v as AggUom)}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="per_mt">₹/MT</SelectItem>
+              <SelectItem value="per_m3">₹/m³</SelectItem>
+              <SelectItem value="per_cft">₹/CFT</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <NumInput label="Purchase Rate" value={fa.purchaseRate} onChange={v => upd("purchaseRate", v)} unit="₹" />
+        <NumInput label="Lead" value={fa.leadKm} onChange={v => upd("leadKm", v)} unit="km" />
+        <NumInput label="Freight" value={fa.freightRate} onChange={v => upd("freightRate", v)} unit="₹/MT/km" />
+        <NumInput label="Payload" value={fa.payload} onChange={v => upd("payload", v)} unit="MT" />
+        {fa.type === "natural" && (
+          <NumInput label="Bulkage %" value={fa.bulkagePct} onChange={v => upd("bulkagePct", v)} unit="%" />
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Landed: ₹{fmt(landedPerMT(fa), 0)}/MT{fa.type === "natural" && fa.bulkagePct > 0 ? ` (+${fa.bulkagePct}% bulkage)` : ""}
+      </p>
+    </div>
+  );
+}
+
+function RebarTable({ rows, section, onChange }: {
+  rows: RebarRowV2[]; section: SectionDimsV2;
+  onChange: (rows: RebarRowV2[]) => void;
+}) {
+  const rebar = computeRebar({ section, rebarRows: rows });
+  const rowResultMap = Object.fromEntries(rebar.rows.map(r => [r.id, r]));
+
+  const addRow = () => onChange([...rows, {
+    id: uid(), barType: "u_bar", diaMm: 10, spacingMm: 150, coverMm: 40, faceCount: 1
+  }]);
+  const updRow = (id: string, field: keyof RebarRowV2, val: unknown) =>
+    onChange(rows.map(r => r.id === id ? { ...r, [field]: val } : r));
+  const delRow = (id: string) => onChange(rows.filter(r => r.id !== id));
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-1 pr-2 font-medium text-muted-foreground">Bar Type</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Dia</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Spacing</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cover</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Cut (mm)</th>
+              <th className="text-right py-1 pr-2 font-medium text-muted-foreground">Nos/m</th>
+              <th className="text-right py-1 font-medium text-muted-foreground">kg/m</th>
+              <th className="w-6" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              const res = rowResultMap[row.id];
+              return (
+                <tr key={row.id} className="border-b hover:bg-muted/30">
+                  <td className="py-1 pr-2">
+                    <Select value={row.barType} onValueChange={v => updRow(row.id, "barType", v as BarTypeV2)}>
+                      <SelectTrigger className="h-7 text-xs w-44"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(BAR_TYPE_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
+                    value={row.diaMm} onChange={e => updRow(row.id, "diaMm", +e.target.value)} /></td>
+                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-20 text-right"
+                    value={row.spacingMm} onChange={e => updRow(row.id, "spacingMm", +e.target.value)} /></td>
+                  <td className="pr-2"><Input type="number" className="h-7 text-xs w-16 text-right"
+                    value={row.coverMm} onChange={e => updRow(row.id, "coverMm", +e.target.value)} /></td>
+                  <td className="text-right pr-2 tabular-nums">{res ? fmt(res.cutLengthMm, 0) : "—"}</td>
+                  <td className="text-right pr-2 tabular-nums">{res ? fmtM(res.nosPerM) : "—"}</td>
+                  <td className="text-right tabular-nums font-medium">{res ? fmtM(res.kgPerM) : "—"}</td>
+                  <td className="pl-1">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => delRow(row.id)}>
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t bg-muted/30">
+              <td colSpan={6} className="py-1 text-right pr-2 font-semibold text-xs">Total Steel</td>
+              <td className="text-right font-bold text-xs tabular-nums">{fmtM(rebar.totalKgPerM)} kg/m</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <Button variant="outline" size="sm" onClick={addRow} className="h-7 text-xs gap-1">
+        <Plus className="h-3 w-3" /> Add Bar
+      </Button>
+    </div>
+  );
+}
+
+function FixturesInput({ fixtures, onChange }: { fixtures: FixtureV2[]; onChange: (v: FixtureV2[]) => void }) {
+  const add = () => onChange([...fixtures, { id: uid(), name: "Grating", ratePerNos: 0, spacingM: 1 }]);
+  const upd = (id: string, field: keyof FixtureV2, val: unknown) =>
+    onChange(fixtures.map(f => f.id === id ? { ...f, [field]: val } : f));
+  const del = (id: string) => onChange(fixtures.filter(f => f.id !== id));
+
+  return (
+    <div className="space-y-2">
+      {fixtures.map(f => (
+        <div key={f.id} className="flex items-center gap-2">
+          <Input className="h-7 text-xs flex-1" placeholder="Fixture name"
+            value={f.name} onChange={e => upd(f.id, "name", e.target.value)} />
+          <Input type="number" className="h-7 text-xs w-24" placeholder="Rate ₹/nos"
+            value={f.ratePerNos || ""} onChange={e => upd(f.id, "ratePerNos", +e.target.value)} />
+          <Input type="number" className="h-7 text-xs w-20" placeholder="Spacing m"
+            value={f.spacingM || ""} onChange={e => upd(f.id, "spacingM", +e.target.value)} />
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => del(f.id)}>
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" onClick={add} className="h-7 text-xs gap-1">
+        <Plus className="h-3 w-3" /> Add Fixture
+      </Button>
+    </div>
+  );
+}
+
+function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: {
+  loc: LocationV2; project: ProjectV2; index: number;
+  onUpdate: (loc: LocationV2) => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+}) {
+  const [open, setOpen] = useState(index === 0);
+  const [secTab, setSecTab] = useState<"section" | "aggregates" | "rebar" | "fixtures" | "costs">("section");
+  const cost = computeLocCost(loc, project);
+  const upd = (field: keyof LocationV2, val: unknown) => onUpdate({ ...loc, [field]: val });
+  const updSec = (field: keyof SectionDimsV2, val: number) => onUpdate({ ...loc, section: { ...loc.section, [field]: val } });
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className="border">
+        <CardHeader className="p-3">
+          <div className="flex items-center gap-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+                {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <Input className="h-7 text-sm font-medium flex-1 border-0 p-0 focus-visible:ring-0"
+              value={loc.name} onChange={e => upd("name", e.target.value)} placeholder={`Location ${index + 1}`} />
+            <div className="flex items-center gap-1">
+              <NumInput value={loc.lengthM} onChange={v => upd("lengthM", v)} unit="m" small />
+            </div>
+            <Badge variant="secondary" className="text-xs shrink-0">
+              ₹{fmt(cost.totalPerM, 0)}/m
+            </Badge>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDuplicate} title="Duplicate">
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDelete} title="Delete">
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="p-3 pt-0 space-y-3">
+            {/* Sub-tabs */}
+            <div className="flex flex-wrap gap-1 border-b pb-2">
+              {(["section", "aggregates", "rebar", "fixtures", "costs"] as const).map(t => (
+                <button key={t} onClick={() => setSecTab(t)}
+                  className={`px-3 py-1 text-xs rounded transition-colors ${secTab === t ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {secTab === "section" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <NumInput label="Clear Width (mm)" value={loc.section.invertClearWidthMm} onChange={v => updSec("invertClearWidthMm", v)} />
+                  <NumInput label="Wall Height (mm)" value={loc.section.wallHeightMm} onChange={v => updSec("wallHeightMm", v)} />
+                  <NumInput label="Wall Thick (mm)" value={loc.section.wallThickMm} onChange={v => updSec("wallThickMm", v)} />
+                  <NumInput label="Invert Slab Thick (mm)" value={loc.section.invertSlabThickMm} onChange={v => updSec("invertSlabThickMm", v)} />
+                  <NumInput label="Cover Slab Thick (mm)" value={loc.section.coverSlabThickMm} onChange={v => updSec("coverSlabThickMm", v)} />
+                  <NumInput label="PCC Depth (mm)" value={loc.section.pccDepthMm} onChange={v => updSec("pccDepthMm", v)} />
+                  <NumInput label="PCC Offset (mm)" value={loc.section.pccOffsetMm} onChange={v => updSec("pccOffsetMm", v)} />
+                  <NumInput label="Working Space (mm)" value={loc.section.workingSpaceMm} onChange={v => updSec("workingSpaceMm", v)} />
+                </div>
+                <div className="bg-muted/30 rounded p-3 text-xs space-y-1">
+                  <p className="font-semibold text-muted-foreground mb-1">Computed Volumes (per metre run)</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
+                    {[
+                      ["PCC", fmtM(cost.geom.pccM3perM), "m³/m"],
+                      ["Invert Slab", fmtM(cost.geom.invertM3perM), "m³/m"],
+                      ["Walls", fmtM(cost.geom.wallM3perM), "m³/m"],
+                      ["Cover Slab", fmtM(cost.geom.slabM3perM), "m³/m"],
+                      ["Total RCC", fmtM(cost.geom.totalRccM3perM), "m³/m"],
+                      ["Excavation", fmtM(cost.geom.excavM3perM), "m³/m"],
+                      ["Backfill", fmtM(cost.geom.backfillM3perM), "m³/m"],
+                    ].map(([l, v, u]) => (
+                      <div key={l as string}>
+                        <span className="text-muted-foreground">{l}: </span>
+                        <span className="font-medium">{v} {u}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {secTab === "aggregates" && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium mb-2">Coarse Aggregate</p>
+                  <CATabsInput tabs={loc.caTabs} onChange={tabs => upd("caTabs", tabs)} />
+                </div>
+                <Separator />
+                <div>
+                  <p className="text-sm font-medium mb-2">Fine Aggregate</p>
+                  <FAInput fa={loc.faSource} onChange={fa => upd("faSource", fa)} />
+                </div>
+                <Separator />
+                <div>
+                  <p className="text-sm font-medium mb-2">Admixture</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumInput label="Dosage" value={loc.admixDosageL} onChange={v => upd("admixDosageL", v)} unit="L/m³" dec={2} />
+                    <NumInput label="Rate" value={loc.admixRatePerL} onChange={v => upd("admixRatePerL", v)} unit="₹/L" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {secTab === "rebar" && (
+              <RebarTable rows={loc.rebarRows} section={loc.section} onChange={rows => upd("rebarRows", rows)} />
+            )}
+
+            {secTab === "fixtures" && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Add fixtures like gratings, weepholes, expansion joints etc.</p>
+                <FixturesInput fixtures={loc.fixtures} onChange={f => upd("fixtures", f)} />
+              </div>
+            )}
+
+            {secTab === "costs" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <NumInput label="Steel Supply Rate" value={loc.steelRatePerMT} onChange={v => upd("steelRatePerMT", v)} unit="₹/MT" />
+                  <NumInput label="Steel Fabrication" value={loc.steelFabRatePerMT} onChange={v => upd("steelFabRatePerMT", v)} unit="₹/MT" />
+                  <NumInput label="Excavation Rate" value={loc.excavRatePerM3} onChange={v => upd("excavRatePerM3", v)} unit="₹/m³" />
+                  <NumInput label="Backfill Rate" value={loc.backfillRatePerM3} onChange={v => upd("backfillRatePerM3", v)} unit="₹/m³" />
+                  <NumInput label="PCC Placing Labour" value={loc.pccPlacingPerM3} onChange={v => upd("pccPlacingPerM3", v)} unit="₹/m³" />
+                  <NumInput label="Petty Labour Rate" value={loc.pettyLabourPerRM} onChange={v => upd("pettyLabourPerRM", v)} unit="₹/RM" />
+                  <NumInput label="Overhead %" value={loc.overheadPct} onChange={v => upd("overheadPct", v)} unit="%" />
+                  <NumInput label="Margin %" value={loc.marginPct} onChange={v => upd("marginPct", v)} unit="%" />
+                </div>
+                <div className="bg-muted/30 rounded p-3 text-xs space-y-1">
+                  <p className="font-semibold text-muted-foreground mb-1">Cost Summary</p>
+                  {[
+                    ["PCC", fmt(cost.pccAllInPerM3, 0) + " ₹/m³", fmt(cost.pccPerM, 0) + " ₹/m"],
+                    ["RCC", fmt(cost.rccAllInPerM3, 0) + " ₹/m³", fmt(cost.invertPerM + cost.wallsPerM + cost.slabPerM, 0) + " ₹/m"],
+                    ["Steel", fmt(cost.steelAllInPerMT, 0) + " ₹/MT", fmt(cost.steelPerM, 0) + " ₹/m"],
+                    ["Excavation", fmt(cost.excavAllInPerM3, 0) + " ₹/m³", fmt(cost.excavPerM, 0) + " ₹/m"],
+                    ["Petty Labour", "Contract rate", fmt(cost.pettyPerM, 0) + " ₹/m"],
+                    ["TOTAL", "—", fmt(cost.totalPerM, 0) + " ₹/m"],
+                  ].map(([l, r, c]) => (
+                    <div key={l as string} className="flex justify-between">
+                      <span className="text-muted-foreground">{l}</span>
+                      <span>{r}</span>
+                      <span className="font-medium">{c}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// ─── Rate Analysis Sheet ───────────────────────────────────────────────────────
+
+function RateSheet({ state }: { state: StateV2 }) {
+  const { project, locations } = state;
+  if (locations.length === 0) return (
+    <div className="text-center py-12 text-muted-foreground">
+      <Layers className="w-10 h-10 mx-auto mb-3 opacity-30" />
+      <p>Add at least one location to see the Rate Analysis Sheet.</p>
+    </div>
+  );
+
+  const costs = locations.map(loc => computeLocCost(loc, project));
+  const totalLen = costs.reduce((s, c) => s + c.geom.effectiveLengthM, 0);
+
+  const allFixtureNames = Array.from(new Set(locations.flatMap(l => l.fixtures.map(f => f.name))));
+
+  const wAvg = (vals: number[]) => {
+    if (totalLen === 0) return 0;
+    return costs.reduce((s, c, i) => s + (vals[i] ?? 0) * c.geom.effectiveLengthM, 0) / totalLen;
+  };
+  const wSum = (vals: number[]) => costs.reduce((s, c, i) => s + (vals[i] ?? 0) * c.geom.effectiveLengthM, 0);
+
+  const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0";
+  const td = "text-right p-2 text-xs border-b border-r last:border-r-0 tabular-nums";
+  const tdBold = td + " font-bold";
+  const rowLabel = "p-2 text-xs font-medium border-b border-r whitespace-nowrap";
+
+  const rows: Array<{
+    label: string;
+    unit: string;
+    qty: (c: LocCostResult) => number;
+    rate: (c: LocCostResult) => number;
+    cost: (c: LocCostResult) => number;
+    isSection?: boolean;
+    isSummary?: boolean;
+  }> = [
+    { label: `PCC ${project.pccGrade}`, unit: "m³/m", qty: c => c.geom.pccM3perM, rate: c => c.pccAllInPerM3, cost: c => c.pccPerM },
+    { label: `RCC ${project.rccGrade} — Invert Slab`, unit: "m³/m", qty: c => c.geom.invertM3perM, rate: c => c.rccAllInPerM3, cost: c => c.invertPerM },
+    { label: `RCC ${project.rccGrade} — Side Walls`, unit: "m³/m", qty: c => c.geom.wallM3perM, rate: c => c.rccAllInPerM3, cost: c => c.wallsPerM },
+    ...(locations.some(l => l.section.coverSlabThickMm > 0) ? [
+      { label: `RCC ${project.rccGrade} — Cover Slab`, unit: "m³/m", qty: (c: LocCostResult) => c.geom.slabM3perM, rate: (c: LocCostResult) => c.rccAllInPerM3, cost: (c: LocCostResult) => c.slabPerM },
+    ] : []),
+    { label: "Steel (Supply + Fab)", unit: "kg/m", qty: c => c.rebar.totalKgPerM, rate: c => c.steelAllInPerMT / 1000, cost: c => c.steelPerM },
+    { label: "Excavation", unit: "m³/m", qty: c => c.geom.excavM3perM, rate: c => c.excavAllInPerM3, cost: c => c.excavPerM },
+    { label: "Backfill", unit: "m³/m", qty: c => c.geom.backfillM3perM, rate: c => c.backfillAllInPerM3, cost: c => c.backfillPerM },
+    ...allFixtureNames.map(name => ({
+      label: name,
+      unit: "nos/m",
+      qty: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.nosPerM ?? 0,
+      rate: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.allInPerNos ?? 0,
+      cost: (c: LocCostResult) => c.fixtureResults.find(f => f.fixture.name === name)?.allInPerM ?? 0,
+    })),
+    { label: "Petty Labour (RM contract)", unit: "₹/m", qty: () => 1, rate: c => c.pettyPerM, cost: c => c.pettyPerM },
+    { label: "TOTAL RATE", unit: "₹/m", qty: () => 1, rate: c => c.totalPerM, cost: c => c.totalPerM, isSummary: true },
+    { label: "Length", unit: "m", qty: c => c.geom.effectiveLengthM, rate: () => 1, cost: c => c.geom.effectiveLengthM, isSummary: true },
+    { label: "TOTAL COST", unit: "₹", qty: () => 1, rate: c => c.totalProjectCost, cost: c => c.totalProjectCost, isSummary: true },
+  ];
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="border-collapse border text-sm" style={{ minWidth: `${Math.max(600, 300 + locations.length * 220)}px` }}>
+        <thead>
+          <tr className="bg-muted/50">
+            <th className="p-2 text-left text-xs font-semibold border-b border-r">Item</th>
+            <th className="p-2 text-xs font-semibold text-muted-foreground border-b border-r">Unit</th>
+            {locations.map((l, i) => (
+              <th key={l.id} colSpan={3} className={`${th} text-center`}>
+                {l.name} ({fmtM(costs[i].geom.effectiveLengthM)}m)
+              </th>
+            ))}
+            {locations.length > 1 && (
+              <th colSpan={3} className={`${th} text-center bg-blue-50 dark:bg-blue-950`}>
+                Combined ({fmtM(totalLen)}m)
+              </th>
+            )}
+          </tr>
+          <tr className="bg-muted/20">
+            <th className="p-2 border-b border-r" />
+            <th className="p-2 border-b border-r" />
+            {locations.map(l => (
+              <Fragment key={l.id}>
+                <th className={th}>Qty/m</th>
+                <th className={th}>Rate</th>
+                <th className={th}>₹/m</th>
+              </Fragment>
+            ))}
+            {locations.length > 1 && (
+              <Fragment>
+                <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Qty/m</th>
+                <th className={`${th} bg-blue-50 dark:bg-blue-950`}>Rate</th>
+                <th className={`${th} bg-blue-50 dark:bg-blue-950`}>₹/m</th>
+              </Fragment>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => {
+            const isSummary = row.isSummary;
+            const trCls = isSummary ? "bg-blue-50/50 dark:bg-blue-950/30" : ri % 2 === 0 ? "" : "bg-muted/10";
+            return (
+              <tr key={row.label} className={trCls}>
+                <td className={`${rowLabel} ${isSummary ? "font-bold" : ""}`}>{row.label}</td>
+                <td className="p-2 text-xs text-muted-foreground border-b border-r">{row.unit}</td>
+                {costs.map((c, ci) => {
+                  const q = row.qty(c);
+                  const r = row.rate(c);
+                  const v = row.cost(c);
+                  const noRate = ["Petty Labour (RM contract)", "TOTAL RATE", "Length", "TOTAL COST"].includes(row.label);
+                  return (
+                    <Fragment key={ci}>
+                      <td className={isSummary ? tdBold : td}>{fmtM(q)}</td>
+                      <td className={isSummary ? tdBold : td}>{noRate ? "—" : fmt(r, 0)}</td>
+                      <td className={isSummary ? tdBold : td}>{fmt(v, 0)}</td>
+                    </Fragment>
+                  );
+                })}
+                {locations.length > 1 && (
+                  <>
+                    <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                      {fmtM(wAvg(costs.map(c => row.qty(c))))}
+                    </td>
+                    <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                      {row.label === "Petty Labour (RM contract)" || row.label === "TOTAL RATE" || row.label === "Length" || row.label === "TOTAL COST" ? "—" : fmt(wAvg(costs.map(c => row.rate(c))), 0)}
+                    </td>
+                    <td className={`${isSummary ? tdBold : td} bg-blue-50/30 dark:bg-blue-950/20`}>
+                      {fmt(wSum(costs.map(c => row.cost(c))), 0)}
+                    </td>
+                  </>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+
+export default function ConcreteCalculatorV2() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const role = readEstimatorRole();
+
+  const urlParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const estimateIdParam = urlParams.get("estimateId");
+
+  const [state, setState] = useState<StateV2>(DEFAULT_STATE);
+  const [savedId, setSavedId] = useState<number | null>(estimateIdParam ? parseInt(estimateIdParam) : null);
+  const [dirty, setDirty] = useState(false);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState("setup");
+
+  useEffect(() => {
+    if (!role) setLocation("/estimator-login?returnTo=/concrete-calculator-v2");
+  }, [role]);
+
+  const { data: loadedEst } = useQuery<ConcreteEstimateV2>({
+    queryKey: ["/api/concrete/v2/estimates", savedId],
+    enabled: !!savedId,
+    queryFn: () => fetch(`/api/concrete/v2/estimates/${savedId}`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  useEffect(() => {
+    if (loadedEst?.state) {
+      try {
+        setState(JSON.parse(loadedEst.state));
+        setDirty(false);
+      } catch {}
+    }
+  }, [loadedEst]);
+
+  const { data: allEstimates = [] } = useQuery<ConcreteEstimateV2[]>({
+    queryKey: ["/api/concrete/v2/estimates"],
+    queryFn: () => fetch("/api/concrete/v2/estimates", { credentials: "include" }).then(r => r.json()),
+    enabled: showLoadDialog,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const totalLen = state.locations.reduce((s, l) => s + (l.subZones.length > 0 ? l.subZones.reduce((a, z) => a + z.lengthM, 0) : l.lengthM), 0);
+      const costs = state.locations.map(loc => computeLocCost(loc, state.project));
+      const totalAmt = costs.reduce((s, c) => s + c.totalProjectCost, 0);
+      const payload = {
+        name: state.project.name || "Untitled Estimate",
+        contractor: state.project.contractor || null,
+        structureType: state.project.structureType,
+        state: JSON.stringify(state),
+        totalLengthM: totalLen,
+        totalRmAmt: totalAmt,
+      };
+      const response = savedId
+        ? await apiRequest("PATCH", `/api/concrete/v2/estimates/${savedId}`, payload)
+        : await apiRequest("POST", "/api/concrete/v2/estimates", payload);
+      return response.json() as Promise<ConcreteEstimateV2>;
+    },
+    onSuccess: (data) => {
+      setSavedId(data.id);
+      setDirty(false);
+      qc.invalidateQueries({ queryKey: ["/api/concrete/v2/estimates"] });
+      toast({ title: "Saved", description: "Estimate saved successfully." });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
+  const updProject = useCallback((field: keyof ProjectV2, val: unknown) => {
+    setState(s => ({ ...s, project: { ...s.project, [field]: val } }));
+    setDirty(true);
+  }, []);
+
+  const addLocation = useCallback(() => {
+    setState(s => ({ ...s, locations: [...s.locations, makeDefaultLocation(s.project, s.locations.length)] }));
+    setDirty(true);
+  }, []);
+
+  const updLocation = useCallback((id: string, loc: LocationV2) => {
+    setState(s => ({ ...s, locations: s.locations.map(l => l.id === id ? loc : l) }));
+    setDirty(true);
+  }, []);
+
+  const delLocation = useCallback((id: string) => {
+    setState(s => ({ ...s, locations: s.locations.filter(l => l.id !== id) }));
+    setDirty(true);
+  }, []);
+
+  const dupLocation = useCallback((id: string) => {
+    setState(s => {
+      const src = s.locations.find(l => l.id === id);
+      if (!src) return s;
+      const copy: LocationV2 = { ...JSON.parse(JSON.stringify(src)), id: uid(), name: src.name + " (copy)" };
+      const idx = s.locations.findIndex(l => l.id === id);
+      const next = [...s.locations];
+      next.splice(idx + 1, 0, copy);
+      return { ...s, locations: next };
+    });
+    setDirty(true);
+  }, []);
+
+  const loadEstimate = (est: ConcreteEstimateV2) => {
+    try {
+      setState(JSON.parse(est.state));
+      setSavedId(est.id);
+      setDirty(false);
+      setShowLoadDialog(false);
+    } catch {
+      toast({ title: "Failed to load", variant: "destructive" });
+    }
+  };
+
+  const newEstimate = () => {
+    setState(DEFAULT_STATE);
+    setSavedId(null);
+    setDirty(false);
+  };
+
+  if (!role) return null;
+
+  const totalLen = state.locations.reduce((s, l) => s + (l.subZones.length > 0 ? l.subZones.reduce((a, z) => a + z.lengthM, 0) : l.lengthM), 0);
+  const costs = state.locations.map(loc => computeLocCost(loc, state.project));
+  const totalAmt = costs.reduce((sum, c) => sum + c.totalProjectCost, 0);
+  const blendedRM = totalLen > 0 ? totalAmt / totalLen : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={() => setLocation("/estimator-hub")} className="gap-1">
+          <ArrowLeft className="h-4 w-4" /> Hub
+        </Button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold truncate">
+            {state.project.name || "New Concrete Estimate"} {dirty && <span className="text-muted-foreground text-sm">•</span>}
+          </h1>
+          {state.project.structureType && (
+            <p className="text-sm text-muted-foreground">{state.project.structureType} · {state.project.contractor || "—"}</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowLoadDialog(true)} className="gap-1">
+            <FolderOpen className="h-4 w-4" /> Load
+          </Button>
+          <Button variant="outline" size="sm" onClick={newEstimate} className="gap-1">
+            <Plus className="h-4 w-4" /> New
+          </Button>
+          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="gap-1">
+            <Save className="h-4 w-4" /> {saveMutation.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary bar */}
+      {state.locations.length > 0 && (
+        <div className="flex gap-4 bg-muted/30 rounded-lg p-3 text-sm flex-wrap">
+          <div><span className="text-muted-foreground">Locations: </span><strong>{state.locations.length}</strong></div>
+          <div><span className="text-muted-foreground">Total Length: </span><strong>{fmtM(totalLen)} m</strong></div>
+          <div><span className="text-muted-foreground">Blended Rate: </span><strong>₹{fmt(blendedRM, 0)}/m</strong></div>
+          <div><span className="text-muted-foreground">Total Cost: </span><strong>₹{fmt(totalAmt, 0)}</strong></div>
+        </div>
+      )}
+
+      {/* Load dialog */}
+      {showLoadDialog && (
+        <Card className="border-2 border-primary">
+          <CardHeader className="p-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Load Saved Estimate</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setShowLoadDialog(false)}>✕</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            {allEstimates.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No saved estimates yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {allEstimates.map(est => (
+                  <div key={est.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
+                    <div>
+                      <p className="font-medium text-sm">{est.name}</p>
+                      <p className="text-xs text-muted-foreground">{est.structureType} · {est.contractor || "—"} · {est.totalLengthM ? fmtM(est.totalLengthM) + "m" : "—"}</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => loadEstimate(est)}>Load</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="setup" className="gap-1"><Ruler className="h-3.5 w-3.5" /> Setup</TabsTrigger>
+          <TabsTrigger value="analysis" className="gap-1"><BarChart3 className="h-3.5 w-3.5" /> Rate Analysis</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="setup" className="space-y-4 mt-4">
+          {/* Project Info */}
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Project Setup</CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-xs text-muted-foreground">Estimate Name</Label>
+                  <Input className="h-8 text-sm" value={state.project.name}
+                    onChange={e => updProject("name", e.target.value)} placeholder="e.g. NH-44 Road Drain Ch.0-5km" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Date</Label>
+                  <Input className="h-8 text-sm" type="date" value={state.project.date} onChange={e => updProject("date", e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Prepared By</Label>
+                  <Input className="h-8 text-sm" value={state.project.preparedBy} onChange={e => updProject("preparedBy", e.target.value)} placeholder="Name" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Contractor</Label>
+                  <Input className="h-8 text-sm" value={state.project.contractor} onChange={e => updProject("contractor", e.target.value)} placeholder="Contractor name" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Structure Type</Label>
+                  <Select value={state.project.structureType} onValueChange={v => updProject("structureType", v)}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Drain">Drain</SelectItem>
+                      <SelectItem value="Box Culvert">Box Culvert</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Separator />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">PCC Grade</Label>
+                  <GradeSelect value={state.project.pccGrade} onChange={v => updProject("pccGrade", v)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">RCC Grade</Label>
+                  <GradeSelect value={state.project.rccGrade} onChange={v => updProject("rccGrade", v)} />
+                </div>
+                <NumInput label="Cement Price" value={state.project.cementBagPrice} onChange={v => updProject("cementBagPrice", v)} unit="₹/bag (50kg)" />
+                <NumInput label="Batching Rate" value={state.project.batchingRatePerM3} onChange={v => updProject("batchingRatePerM3", v)} unit="₹/m³" />
+                <NumInput label="Curing Rate" value={state.project.curingRatePerM3} onChange={v => updProject("curingRatePerM3", v)} unit="₹/m³" />
+                <NumInput label="Default OH %" value={state.project.defaultOverheadPct} onChange={v => updProject("defaultOverheadPct", v)} unit="%" />
+                <NumInput label="Default Margin %" value={state.project.defaultMarginPct} onChange={v => updProject("defaultMarginPct", v)} unit="%" />
+                <NumInput label="Default Petty Labour" value={state.project.defaultPettyLabourPerRM} onChange={v => updProject("defaultPettyLabourPerRM", v)} unit="₹/RM" />
+                <NumInput label="Default PCC Placing" value={state.project.defaultPccPlacingPerM3} onChange={v => updProject("defaultPccPlacingPerM3", v)} unit="₹/m³" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Locations */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Locations ({state.locations.length})</h2>
+              <Button size="sm" onClick={addLocation} className="gap-1 h-7 text-xs">
+                <Plus className="h-3.5 w-3.5" /> Add Location
+              </Button>
+            </div>
+            {state.locations.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                <Ruler className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No locations yet — click "Add Location" to begin.</p>
+              </div>
+            )}
+            {state.locations.map((loc, i) => (
+              <LocationCard
+                key={loc.id}
+                loc={loc}
+                project={state.project}
+                index={i}
+                onUpdate={updated => updLocation(loc.id, updated)}
+                onDelete={() => delLocation(loc.id)}
+                onDuplicate={() => dupLocation(loc.id)}
+              />
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analysis" className="mt-4">
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" /> Rate Analysis Sheet
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0">
+              <RateSheet state={state} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
