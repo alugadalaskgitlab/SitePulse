@@ -6,5 +6,6 @@ export const modules: ModuleMap = {
   "./components/mockups/concrete-calc/ConcreteEstimatesList.tsx": () => import("../components/mockups/concrete-calc/ConcreteEstimatesList.tsx"),
   "./components/mockups/concrete-calc/ConcreteScenarios.tsx": () => import("../components/mockups/concrete-calc/ConcreteScenarios.tsx"),
   "./components/mockups/concrete-calc/LoginHub.tsx": () => import("../components/mockups/concrete-calc/LoginHub.tsx"),
+  "./components/mockups/concrete-calc/ReportsTab.tsx": () => import("../components/mockups/concrete-calc/ReportsTab.tsx"),
   "./components/mockups/mix-portal-login/LoginPage.tsx": () => import("../components/mockups/mix-portal-login/LoginPage.tsx")
 };
