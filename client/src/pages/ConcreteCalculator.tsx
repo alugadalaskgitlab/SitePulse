@@ -1193,8 +1193,8 @@ export default function ConcreteCalculator() {
         structureType: s.structureType || null,
         grade: s.grade || null,
         state: JSON.stringify(s),
-        totalCum: s.totalVolume || null,
-        totalAmt: s.totalVolume ? costs.totalWithEsc * s.totalVolume : null,
+        totalCum: effectiveVolume || null,
+        totalAmt: effectiveVolume ? costs.totalWithEsc * effectiveVolume : null,
       };
       const response = savedEstimateId
         ? await apiRequest("PATCH", `/api/concrete-estimates/${savedEstimateId}`, payload)
@@ -1318,6 +1318,18 @@ export default function ConcreteCalculator() {
   const [boqOverwriteConfirm, setBoqOverwriteConfirm] = useState(false);
   const [xlsxPreview, setXlsxPreview] = useState<{ headers: string[]; rows: string[][]; colDesc: number; colUnit: number; colQty: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const costBreakdownRef = useRef<HTMLDivElement>(null);
+
+  function printScopedCard(el: HTMLElement | null) {
+    if (!el) return;
+    const styles = Array.from(document.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style'))
+      .map(s => s.outerHTML).join("\n");
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) { window.print(); return; }
+    win.document.write(`<html><head><meta charset="utf-8"/>${styles}</head><body class="bg-white p-6">${el.outerHTML}</body></html>`);
+    win.document.close();
+    setTimeout(() => { win.print(); win.close(); }, 600);
+  }
 
   function buildStandardDrainBOQ(): BOQItem[] {
     if (!qtoResult) return [];
@@ -4097,13 +4109,14 @@ export default function ConcreteCalculator() {
                       data-testid="btn-bd-pcc"
                     >PCC mode</button>
                     <button
-                      onClick={() => window.print()}
+                      onClick={() => printScopedCard(costBreakdownRef.current)}
                       className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-slate-300 bg-white text-slate-600 hover:border-slate-500 transition-colors"
                       data-testid="btn-bd-print"
                     ><Printer className="w-3 h-3" /> Print</button>
                   </div>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
+                  <div ref={costBreakdownRef}>
                   <table className="text-xs w-full border-separate border-spacing-0 mt-2">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-800/60">
@@ -4162,6 +4175,7 @@ export default function ConcreteCalculator() {
                       </table>
                     </div>
                   )}
+                  </div>
                 </CardContent>
               </Card>
             );
