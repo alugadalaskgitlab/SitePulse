@@ -26,7 +26,7 @@ interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: num
 interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
-interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; clientRate?: number; }
+interface BOQItem { id: string; description: string; qty: number; unit: string; dimL: number; dimW: number; dimD: number; rate: number; clientRate?: number; location?: string; }
 interface BBSRow { id: string; mark: string; dia: number; shape: string; count: number; cutLength: number; overlapN: number; element: string; zoneId: string; countBasis: "spacing" | "manual"; spacingMm: number; supplyLenM?: number; hookMult?: number; hookMm?: number; hookAuto?: boolean; }
 interface IncludedCosts { cement: boolean; ca: boolean; fa: boolean; admix: boolean; batching: boolean; placement: boolean; formwork: boolean; labour: boolean; curing: boolean; steel: boolean; wastage: boolean; overhead: boolean; margin: boolean; }
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
@@ -426,6 +426,8 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
   let totalCost = 0;
   let totalKgPerM = 0;
   const byDia: Record<number, { kg: number; cost: number }> = {};
+  const byZone: Record<string, number> = {};
+  if (qtoCtx) { for (const z of qtoCtx.heightZones) byZone[z.id] = 0; }
 
   const totalLength = qtoCtx?.totalDrainLength ?? 0;
   const spanMm = qtoCtx ? qtoCtx.clearSpanMm + 2 * qtoCtx.wallThickMm : 0;
@@ -508,9 +510,21 @@ function computeBBSSummary(rows: BBSRow[], rates: SteelRates, qtoCtx?: BBSQtoCtx
     if (!byDia[row.dia]) byDia[row.dia] = { kg: 0, cost: 0 };
     byDia[row.dia].kg += rowKg;
     byDia[row.dia].cost += cost;
+    // Per-zone attribution
+    if (qtoCtx && qtoCtx.heightZones.length > 0) {
+      const isZoneSpecificRow = !!row.zoneId && row.zoneId !== "all";
+      if (isZoneSpecificRow) {
+        byZone[row.zoneId] = (byZone[row.zoneId] ?? 0) + rowKg;
+      } else {
+        for (const z of qtoCtx.heightZones) {
+          const frac = totalLength > 0 ? z.length / totalLength : 1 / qtoCtx.heightZones.length;
+          byZone[z.id] = (byZone[z.id] ?? 0) + rowKg * frac;
+        }
+      }
+    }
   });
 
-  return { totalKg, totalCost, byDia, totalKgPerM };
+  return { totalKg, totalCost, byDia, totalKgPerM, byZone };
 }
 
 // Material-only cost (cement+CA+FA+admix) for a given grade, using current rates from state
@@ -630,11 +644,19 @@ function calcDrainQTO(q: QtoState, showTopSlab: boolean) {
   const topPerM = showTopSlab ? overallWidth * ts : 0;
   const pccPerM = pccWidth * pd;
   const excavWidth = pccWidth + 2 * ws;
+  const weepholeDiamM = (q.weepholeDiaMm ?? 100) / 1000;
+  const grOW = (q.gratingOpeningW ?? 200) / 1000;
+  const grOD = (q.gratingOpeningD ?? 100) / 1000;
   const zones = q.heightZones.map(z => {
     const h = z.height / 1000;
     const wallsM3perM = 2 * t * h;
     const rccPerM = wallsM3perM + invertPerM + topPerM;
-    return { ...z, h, wallsM3perM, rccPerM, wallsM3: wallsM3perM * z.length, invertM3: invertPerM * z.length, topM3: topPerM * z.length, pccM3: pccPerM * z.length, totalRCCm3: rccPerM * z.length };
+    const excavDepthZ = h + is_t + pd;
+    const excavVolZ = excavWidth * excavDepthZ * z.length;
+    const weepholesZ = q.weepholesSpacing > 0 ? Math.ceil(z.length / q.weepholesSpacing) : 0;
+    const gratingsZ = q.gratingsSpacing > 0 ? Math.ceil(z.length / q.gratingsSpacing) : 0;
+    const hooksZ = (q.liftingHookSpacingM ?? 0) > 0 ? Math.ceil(z.length / (q.liftingHookSpacingM ?? 2)) : 0;
+    return { ...z, h, wallsM3perM, rccPerM, wallsM3: wallsM3perM * z.length, invertM3: invertPerM * z.length, topM3: topPerM * z.length, pccM3: pccPerM * z.length, totalRCCm3: rccPerM * z.length, excavDepth: excavDepthZ, excavVol: excavVolZ, weepholesCount: weepholesZ, gratingsCount: gratingsZ, liftingHooksCount: hooksZ };
   });
   const totalLength = q.heightZones.reduce((s, z) => s + z.length, 0);
   const totalWalls = zones.reduce((s, z) => s + z.wallsM3, 0);
@@ -642,23 +664,20 @@ function calcDrainQTO(q: QtoState, showTopSlab: boolean) {
   const totalTop = topPerM * totalLength;
   const totalPCC = pccPerM * totalLength;
   // Weephole void deduction — π/4×d²×wallThick×count; subtracted from combined wall volume (both walls)
-  const weepholeDiamM = (q.weepholeDiaMm ?? 100) / 1000;
-  const weepholesCount = q.weepholesSpacing > 0 ? Math.ceil(totalLength / q.weepholesSpacing) : 0;
+  const weepholesCount = zones.reduce((s, z) => s + z.weepholesCount, 0);
   const deductWeephole = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t * weepholesCount;
   // Grating opening deduction (from top slab)
-  const gratingsCount = q.gratingsSpacing > 0 ? Math.ceil(totalLength / q.gratingsSpacing) : 0;
-  const grOW = (q.gratingOpeningW ?? 200) / 1000;
-  const grOD = (q.gratingOpeningD ?? 100) / 1000;
+  const gratingsCount = zones.reduce((s, z) => s + z.gratingsCount, 0);
   const deductGrating = showTopSlab ? grOW * grOD * ts * gratingsCount : 0;
   // Lifting hooks count
-  const liftingHooksCount = (q.liftingHookSpacingM ?? 0) > 0 ? Math.ceil(totalLength / (q.liftingHookSpacingM ?? 2)) : 0;
+  const liftingHooksCount = zones.reduce((s, z) => s + z.liftingHooksCount, 0);
   // Net volumes (gross – deductions)
   const totalWallsNet = Math.max(0, totalWalls - deductWeephole);
   const totalTopNet = Math.max(0, totalTop - deductGrating);
   const totalRCC = totalWallsNet + totalInvert + totalTopNet;
   const avgWallH = totalLength > 0 ? q.heightZones.reduce((s, z) => s + z.height * z.length, 0) / totalLength / 1000 : 0;
   const excavDepth = avgWallH + is_t + pd;
-  const excavVolume = excavWidth * excavDepth * totalLength;
+  const excavVolume = zones.reduce((s, z) => s + z.excavVol, 0);
   const backfillVol = Math.max(0, excavVolume - totalRCC - totalPCC);
   return { zones, totalLength, totalWalls, totalWallsNet, totalInvert, totalTop, totalTopNet, totalRCC, totalPCC, invertPerM, topPerM, pccPerM, excavWidth, excavDepth, excavVolume, backfillVol, gratingsCount, weepholesCount, liftingHooksCount, deductWeephole, deductGrating, avgWallH, overallWidth, pccWidth };
 }
@@ -1297,51 +1316,62 @@ export default function ConcreteCalculator() {
     const r = qtoResult;
     const q = s.qto;
     const eq = q.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
-    // Base rate for concrete elements (exclude steel — tracked as separate BOQ item)
     const rccBaseRate = costs.totalWithEsc - costs.steel;
     const baseMat = computeMaterialCostOnly(s.grade, s);
-
-    // PCC rate: RCC base − steel already removed above; also remove formwork + placement (PCC has no shuttering and no contractor placing)
     const pccMatCost = computeMaterialCostOnly(eq.pcc, s);
     const pccRatePerM3 = Math.max(0, rccBaseRate - costs.formwork - costs.placement - baseMat + pccMatCost);
-
-    // Per-element RCC cost (swap material component, keep all costs including formwork, excluding steel)
     const invertCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.invert, s);
     const wallCostPerM3 = rccBaseRate - baseMat + computeMaterialCostOnly(eq.wall, s);
-    // Top slab: if precast, use precastRatePerM2 ÷ thickness (m) → ₹/m³
     const isPrecast = q.topSlabType === "Precast";
     const tsM = q.topSlabThick / 1000;
-    const topSlabCostPerM3 = isPrecast && tsM > 0
-      ? q.precastRatePerM2 / tsM
-      : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-
-    // Blended RCC rate weighted by net volumes
-    const blendedRCCRate = r.totalRCC > 0
-      ? (wallCostPerM3 * r.totalWallsNet + invertCostPerM3 * r.totalInvert + topSlabCostPerM3 * r.totalTopNet) / r.totalRCC
-      : costs.totalWithEsc;
-
+    const topSlabCostPerM3 = isPrecast && tsM > 0 ? q.precastRatePerM2 / tsM : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
+    const blendedRCCRate = r.totalRCC > 0 ? (wallCostPerM3 * r.totalWallsNet + invertCostPerM3 * r.totalInvert + topSlabCostPerM3 * r.totalTopNet) / r.totalRCC : costs.totalWithEsc;
     const rccLabel = [eq.invert !== eq.wall ? `${eq.invert}/${eq.wall}` : eq.wall, "RCC"].join(" ");
-    const steelMT = parseFloat((bbsSummary.totalKg / 1000).toFixed(3));
     const steelMatRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-    // For BOQ quoting: always include fabrication rate (even if covered by petty contractor internally)
     const steelBOQRate = Math.round(steelMatRateAvg + (s.steelFabRatePerMT ?? 0));
-    // Always produce exactly 7 items in the standard client BOQ order
-    return [
-      // 1. Earthwork — L×W×D populated from QTO geometry
-      { id: uid(), description: "Earthwork Excavation in Foundation Trenches incl. disposal", qty: parseFloat((r.excavVolume).toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate },
-      // 2. PCC bed — pre-computed volume
-      { id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat((r.totalLength * r.pccWidth * (q.pccDepth / 1000)).toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3) },
-      // 3. RCC — combined at blended element-grade rate
-      { id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(r.totalRCC.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate) },
-      // 4. HYSD reinforcement — material + fabrication (all-in client rate)
-      { id: uid(), description: "HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position", qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: steelBOQRate },
-      // 5. Gratings
-      { id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: r.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos },
+    // Per-zone deduction helpers
+    const t = q.wallThickness / 1000;
+    const weepholeDiamM = (q.weepholeDiaMm ?? 100) / 1000;
+    const grOW = (q.gratingOpeningW ?? 200) / 1000;
+    const grOD = (q.gratingOpeningD ?? 100) / 1000;
+    const weepholeDeductPerNos = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t;
+    const gratingDeductPerNos = showTopSlab ? grOW * grOD * tsM : 0;
+    // Check if any zones have location tags (drives flat vs grouped output)
+    const hasLocations = r.zones.some(z => z.location && z.location.trim());
+    const items: BOQItem[] = [];
+    for (const z of r.zones) {
+      const loc = z.location?.trim() || "";
+      const chRange = z.chainageFrom && z.chainageTo ? ` Ch ${z.chainageFrom}–${z.chainageTo}` : (z.length > 0 ? ` L=${z.length}m` : "");
+      const secTag = hasLocations ? `[${z.label}${chRange}] ` : (r.zones.length > 1 ? `[${z.label}${chRange}] ` : "");
+      // Per-zone net RCC
+      const zWallsNet = Math.max(0, z.wallsM3 - weepholeDeductPerNos * z.weepholesCount);
+      const zTopNet = Math.max(0, z.topM3 - gratingDeductPerNos * z.gratingsCount);
+      const zRCCNet = zWallsNet + z.invertM3 + zTopNet;
+      // Per-zone steel from BBS attribution
+      const zSteelKg = bbsSummary.byZone[z.id] ?? 0;
+      const zSteelMT = parseFloat((zSteelKg / 1000).toFixed(3));
+      // 1. Earthwork
+      items.push({ id: uid(), description: `${secTag}Earthwork Excavation in Foundation Trenches incl. disposal`, qty: parseFloat(z.excavVol.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, location: loc });
+      // 2. PCC
+      items.push({ id: uid(), description: `${secTag}${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(z.pccM3.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), location: loc });
+      // 3. RCC
+      items.push({ id: uid(), description: `${secTag}${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(zRCCNet.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), location: loc });
+      // 4. Steel
+      items.push({ id: uid(), description: `${secTag}HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position`, qty: zSteelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: steelBOQRate, location: loc });
+      // 5. Gratings (only if applicable)
+      if (z.gratingsCount > 0) {
+        items.push({ id: uid(), description: `${secTag}Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: z.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, location: loc });
+      }
       // 6. Weepholes
-      { id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: r.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos },
+      if (z.weepholesCount > 0) {
+        items.push({ id: uid(), description: `${secTag}Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: z.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, location: loc });
+      }
       // 7. Lifting Hooks
-      { id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: r.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150 },
-    ];
+      if (z.liftingHooksCount > 0) {
+        items.push({ id: uid(), description: `${secTag}Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: z.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, location: loc });
+      }
+    }
+    return items;
   }
 
   async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -3514,9 +3544,10 @@ export default function ConcreteCalculator() {
                     <table className="w-full text-xs border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-slate-600 uppercase tracking-wide">
-                          <th className="text-left p-2 font-semibold">Zone</th>
+                          <th className="text-left p-2 font-semibold">Section</th>
                           <th className="text-right p-2 font-semibold">H (mm)</th>
                           <th className="text-right p-2 font-semibold">Length (m)</th>
+                          <th className="text-right p-2 font-semibold">Excavation m³</th>
                           <th className="text-right p-2 font-semibold">RCC Walls m³</th>
                           <th className="text-right p-2 font-semibold">Invert Slab m³</th>
                           {showTopSlab && <th className="text-right p-2 font-semibold">Top Slab m³</th>}
@@ -3527,9 +3558,13 @@ export default function ConcreteCalculator() {
                       <tbody>
                         {qtoResult.zones.map(z => (
                           <tr key={z.id} className="border-t border-border/50">
-                            <td className="p-2 font-medium">{z.label}</td>
+                            <td className="p-2 font-medium">
+                              <span>{z.label}</span>
+                              {z.location && <span className="ml-1 text-[10px] text-slate-500">({z.location})</span>}
+                            </td>
                             <td className="p-2 text-right">{z.height}</td>
                             <td className="p-2 text-right">{z.length}</td>
+                            <td className="p-2 text-right text-orange-700 font-medium">{z.excavVol.toFixed(2)}</td>
                             <td className="p-2 text-right">{z.wallsM3.toFixed(2)}</td>
                             <td className="p-2 text-right">{z.invertM3.toFixed(2)}</td>
                             {showTopSlab && <td className="p-2 text-right">{z.topM3.toFixed(2)}</td>}
@@ -3541,6 +3576,7 @@ export default function ConcreteCalculator() {
                       <tfoot>
                         <tr className="border-t-2 border-border bg-muted/20 font-semibold">
                           <td className="p-2 text-xs" colSpan={3}>Total (gross)</td>
+                          <td className="p-2 text-right text-xs text-orange-700">{qtoResult.excavVolume.toFixed(2)}</td>
                           <td className="p-2 text-right text-xs">{qtoResult.totalWalls.toFixed(2)}</td>
                           <td className="p-2 text-right text-xs">{qtoResult.totalInvert.toFixed(2)}</td>
                           {showTopSlab && <td className="p-2 text-right text-xs">{qtoResult.totalTop.toFixed(2)}</td>}
@@ -3549,7 +3585,7 @@ export default function ConcreteCalculator() {
                         </tr>
                         {(qtoResult.deductWeephole > 0 || qtoResult.deductGrating > 0) && (
                           <tr className="border-t border-border/30 text-orange-700 text-xs">
-                            <td className="p-2 italic" colSpan={3}>Deductions</td>
+                            <td className="p-2 italic" colSpan={4}>Deductions</td>
                             <td className="p-2 text-right italic">−{qtoResult.deductWeephole.toFixed(3)} (weepholes)</td>
                             <td className="p-2 text-right text-slate-500">—</td>
                             {showTopSlab && <td className="p-2 text-right italic">−{qtoResult.deductGrating.toFixed(3)} (gratings)</td>}
@@ -3559,6 +3595,7 @@ export default function ConcreteCalculator() {
                         )}
                         <tr className="border-t border-border bg-blue-50 font-bold">
                           <td className="p-2 text-xs text-blue-700" colSpan={3}>Net Total (used in BOQ)</td>
+                          <td className="p-2 text-right text-xs text-orange-700">{qtoResult.excavVolume.toFixed(2)}</td>
                           <td className="p-2 text-right text-xs text-blue-700">{qtoResult.totalWallsNet.toFixed(2)}</td>
                           <td className="p-2 text-right text-xs text-blue-700">{qtoResult.totalInvert.toFixed(2)}</td>
                           {showTopSlab && <td className="p-2 text-right text-xs text-blue-700">{qtoResult.totalTopNet.toFixed(2)}</td>}
@@ -3588,14 +3625,28 @@ export default function ConcreteCalculator() {
                     </div>
                     {qtoResult.gratingsCount > 0 && (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
-                        <p className="text-xs text-slate-600">Gratings</p>
+                        <p className="text-xs text-slate-600">Gratings (total)</p>
                         <p className="text-lg font-bold">{qtoResult.gratingsCount} nos</p>
+                        {qtoResult.zones.length > 1 && (
+                          <div className="mt-1 space-y-0.5">
+                            {qtoResult.zones.filter(z => z.gratingsCount > 0).map(z => (
+                              <p key={z.id} className="text-[10px] text-slate-500">{z.label}: {z.gratingsCount} nos</p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     {qtoResult.weepholesCount > 0 && (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
-                        <p className="text-xs text-slate-600">Weepholes</p>
+                        <p className="text-xs text-slate-600">Weepholes (total)</p>
                         <p className="text-lg font-bold">{qtoResult.weepholesCount} nos</p>
+                        {qtoResult.zones.length > 1 && (
+                          <div className="mt-1 space-y-0.5">
+                            {qtoResult.zones.filter(z => z.weepholesCount > 0).map(z => (
+                              <p key={z.id} className="text-[10px] text-slate-500">{z.label}: {z.weepholesCount} nos</p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3750,72 +3801,104 @@ export default function ConcreteCalculator() {
                 )}
                 {s.boqItems.length === 0 ? (
                   <p className="text-sm text-slate-600">{isDrainType && qtoResult ? 'Use "Load Standard Drain BOQ" to auto-generate from QTO dimensions above, or click "Add Item" to add manually.' : 'Click "Add Item" to add BOQ items.'}</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-muted/40 text-slate-600 uppercase tracking-wide">
-                          <th className="text-left p-2 font-semibold w-6">#</th>
-                          <th className="text-left p-2 font-semibold">Description</th>
-                          <th className="text-right p-2 font-semibold">Qty</th>
-                          <th className="text-right p-2 font-semibold">Unit</th>
-                          <th className="text-right p-2 font-semibold">Rate (₹)</th>
-                          <th className="text-right p-2 font-semibold">Amount</th>
-                          <th className="p-2"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {s.boqItems.map((item, idx) => {
-                          const qty = boqVol(item);
-                          const amount = qty * item.rate;
-                          return (
-                            <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
-                              <td className="p-2 text-slate-500 tabular-nums">{idx + 1}</td>
-                              <td className="p-2">
-                                <div className="space-y-0.5">
-                                  <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value.toUpperCase() })} className="h-8 text-xs w-64 uppercase" />
-                                  {(() => { const cat = getBOQCategory(item.description); return cat ? <Badge variant="outline" className={`text-[10px] px-1 py-0 ${BOQ_CAT_COLORS[cat]}`}>{cat}</Badge> : null; })()}
-                                </div>
-                              </td>
-                              <td className="p-2 text-right">
-                                <Input type="number" value={qty} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0, dimL: 0, dimW: 0, dimD: 0 })} className="h-8 text-sm w-24 text-right" />
-                              </td>
-                              <td className="p-2">
-                                <Select value={item.unit} onValueChange={(v) => updateBOQItem(item.id, { unit: v })}>
-                                  <SelectTrigger className="h-8 text-xs w-16"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="m³">m³</SelectItem>
-                                    <SelectItem value="Cum">Cum</SelectItem>
-                                    <SelectItem value="m²">m²</SelectItem>
-                                    <SelectItem value="m">m</SelectItem>
-                                    <SelectItem value="nos">nos</SelectItem>
-                                    <SelectItem value="No's">No's</SelectItem>
-                                    <SelectItem value="MT">MT</SelectItem>
-                                    <SelectItem value="kg">kg</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              <td className="p-2 text-right">
-                                <Input type="number" value={item.rate} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { rate: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-28 text-right" />
-                              </td>
-                              <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
-                              <td className="p-2">
-                                <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-border bg-muted/20 font-semibold">
-                          <td className="p-2 text-xs" colSpan={5}>Grand Total</td>
-                          <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
+                ) : (() => {
+                  // Determine if location-grouped view applies
+                  const hasLocGroups = s.boqItems.some(item => item.location && item.location.trim());
+                  // Build ordered location list (preserving first-seen order)
+                  const locOrder: string[] = [];
+                  for (const item of s.boqItems) {
+                    const loc = item.location?.trim() || "";
+                    if (!locOrder.includes(loc)) locOrder.push(loc);
+                  }
+                  const renderBOQRow = (item: BOQItem, idx: number) => {
+                    const qty = boqVol(item);
+                    const amount = qty * item.rate;
+                    return (
+                      <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
+                        <td className="p-2 text-slate-500 tabular-nums">{idx + 1}</td>
+                        <td className="p-2">
+                          <div className="space-y-0.5">
+                            <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value.toUpperCase() })} className="h-8 text-xs w-64 uppercase" />
+                            {(() => { const cat = getBOQCategory(item.description); return cat ? <Badge variant="outline" className={`text-[10px] px-1 py-0 ${BOQ_CAT_COLORS[cat]}`}>{cat}</Badge> : null; })()}
+                          </div>
+                        </td>
+                        <td className="p-2 text-right">
+                          <Input type="number" value={qty} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { qty: parseFloat(e.target.value) || 0, dimL: 0, dimW: 0, dimD: 0 })} className="h-8 text-sm w-24 text-right" />
+                        </td>
+                        <td className="p-2">
+                          <Select value={item.unit} onValueChange={(v) => updateBOQItem(item.id, { unit: v })}>
+                            <SelectTrigger className="h-8 text-xs w-16"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="m³">m³</SelectItem>
+                              <SelectItem value="Cum">Cum</SelectItem>
+                              <SelectItem value="m²">m²</SelectItem>
+                              <SelectItem value="m">m</SelectItem>
+                              <SelectItem value="nos">nos</SelectItem>
+                              <SelectItem value="No's">No's</SelectItem>
+                              <SelectItem value="MT">MT</SelectItem>
+                              <SelectItem value="kg">kg</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-2 text-right">
+                          <Input type="number" value={item.rate} onFocus={(e) => e.target.select()} onChange={(e) => updateBOQItem(item.id, { rate: parseFloat(e.target.value) || 0 })} className="h-8 text-sm w-28 text-right" />
+                        </td>
+                        <td className="p-2 text-right font-medium">{fmtR(amount)}</td>
+                        <td className="p-2">
+                          <button onClick={() => removeBOQItem(item.id)} className="text-destructive hover:text-destructive/70"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </td>
+                      </tr>
+                    );
+                  };
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-muted/40 text-slate-600 uppercase tracking-wide">
+                            <th className="text-left p-2 font-semibold w-6">#</th>
+                            <th className="text-left p-2 font-semibold">Description</th>
+                            <th className="text-right p-2 font-semibold">Qty</th>
+                            <th className="text-right p-2 font-semibold">Unit</th>
+                            <th className="text-right p-2 font-semibold">Rate (₹)</th>
+                            <th className="text-right p-2 font-semibold">Amount</th>
+                            <th className="p-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {hasLocGroups ? (() => {
+                            let globalIdx = 0;
+                            return locOrder.map(loc => {
+                              const groupItems = s.boqItems.filter(item => (item.location?.trim() || "") === loc);
+                              const groupAmt = groupItems.reduce((sum, item) => sum + boqVol(item) * item.rate, 0);
+                              return (
+                                <Fragment key={`loc-grp-${loc}`}>
+                                  <tr className="bg-slate-100 dark:bg-slate-800">
+                                    <td colSpan={7} className="p-2 font-semibold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wide">
+                                      {loc || "Unassigned / General"}
+                                    </td>
+                                  </tr>
+                                  {groupItems.map(item => renderBOQRow(item, ++globalIdx))}
+                                  <tr className="border-t border-slate-300 bg-slate-50 dark:bg-slate-900/40 font-semibold text-slate-700 dark:text-slate-300">
+                                    <td colSpan={5} className="p-2 text-xs text-right italic">Sub-total — {loc || "Unassigned"}</td>
+                                    <td className="p-2 text-right text-xs">{fmtR(groupAmt)}</td>
+                                    <td></td>
+                                  </tr>
+                                </Fragment>
+                              );
+                            });
+                          })() : s.boqItems.map((item, idx) => renderBOQRow(item, idx + 1))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-border bg-muted/20 font-semibold">
+                            <td className="p-2 text-xs" colSpan={5}>{hasLocGroups ? "Project Total" : "Grand Total"}</td>
+                            <td className="p-2 text-right text-xs">{fmtR(boqTotalAmt)}</td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
 
@@ -4355,6 +4438,10 @@ export default function ConcreteCalculator() {
               );
             }
             const grandTotal = items.reduce((sum, it) => sum + it.qty * it.rate, 0);
+            const hasLocGroups = items.some(it => it.location && it.location.trim());
+            const locOrder: string[] = [];
+            for (const it of items) { const loc = it.location?.trim() || ""; if (!locOrder.includes(loc)) locOrder.push(loc); }
+            let globalIdx = 0;
             return (
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-card border-b shadow-sm rounded-t-xl">
@@ -4371,7 +4458,31 @@ export default function ConcreteCalculator() {
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((it, i) => (
+                      {hasLocGroups ? locOrder.map(loc => {
+                        const groupItems = items.filter(it => (it.location?.trim() || "") === loc);
+                        const groupAmt = groupItems.reduce((sum, it) => sum + it.qty * it.rate, 0);
+                        return (
+                          <Fragment key={`rpt-loc-${loc}`}>
+                            <tr className="bg-slate-200 dark:bg-slate-700">
+                              <td colSpan={6} className="px-3 py-1.5 font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">{loc || "Unassigned / General"}</td>
+                            </tr>
+                            {groupItems.map(it => (
+                              <tr key={it.id} className="bg-white dark:bg-transparent">
+                                <td className="px-3 py-2">{++globalIdx}</td>
+                                <td className="px-3 py-2 max-w-[280px]">{it.description}</td>
+                                <td className="px-3 py-2 text-right">{it.unit}</td>
+                                <td className="px-3 py-2 text-right">{it.qty.toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right">{fmtR(it.rate)}</td>
+                                <td className="px-3 py-2 text-right font-semibold">{fmtR(it.qty * it.rate)}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-slate-100 dark:bg-slate-700/40 font-semibold">
+                              <td colSpan={5} className="px-3 py-1.5 text-right italic text-slate-600">Sub-total — {loc || "Unassigned"}</td>
+                              <td className="px-3 py-1.5 text-right">{fmtR(groupAmt)}</td>
+                            </tr>
+                          </Fragment>
+                        );
+                      }) : items.map((it, i) => (
                         <tr key={it.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
                           <td className="px-3 py-2">{i + 1}</td>
                           <td className="px-3 py-2 max-w-[280px]">{it.description}</td>
@@ -4382,7 +4493,7 @@ export default function ConcreteCalculator() {
                         </tr>
                       ))}
                       <tr className="bg-slate-100 dark:bg-slate-700/40 font-bold">
-                        <td className="px-3 py-2" colSpan={5}>Grand Total</td>
+                        <td className="px-3 py-2" colSpan={5}>{hasLocGroups ? "Project Total" : "Grand Total"}</td>
                         <td className="px-3 py-2 text-right text-blue-700 dark:text-blue-400">{fmtR(grandTotal)}</td>
                       </tr>
                     </tbody>
