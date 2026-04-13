@@ -41,6 +41,15 @@ function parseChainageM(s: string): number | null {
   const plain = parseFloat(clean);
   return isNaN(plain) ? null : plain;
 }
+function isKmPlusM(s: string): boolean {
+  return /^[Cc][Hh]?\.?\s*\d+\+\d{3}$/.test(s.trim()) || /^\d+\+\d{3}$/.test(s.trim());
+}
+function normalizeHeightZones(zones: HeightZone[]): HeightZone[] {
+  return zones.map(z => ({
+    location: "", chainageFrom: "", chainageTo: "",
+    ...z,
+  }));
+}
 interface ElementGrades { pcc: string; invert: string; wall: string; topSlab: string; }
 interface QtoState {
   clearSpan: number; wallThickness: number; invertSlabThick: number; topSlabThick: number;
@@ -240,6 +249,7 @@ function loadState(): CalcState {
           ...DEFAULT_STATE.qto,
           ...(loaded.qto || {}),
           elementGrades: { ...DEFAULT_STATE.qto.elementGrades, ...(loaded.qto?.elementGrades || {}) },
+          heightZones: normalizeHeightZones(loaded.qto?.heightZones ?? DEFAULT_STATE.qto.heightZones),
         },
         supplyBarLengthM: loaded.supplyBarLengthM ?? 12,
         mixLocked: loaded.mixLocked ?? false,
@@ -948,7 +958,7 @@ export default function ConcreteCalculator() {
       .then((est: ConcreteEstimate) => {
         try {
           const loaded = JSON.parse(est.state);
-          setS((prev) => ({ ...DEFAULT_STATE, ...loaded, qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) } }));
+          setS((prev) => ({ ...DEFAULT_STATE, ...loaded, qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}), heightZones: normalizeHeightZones(loaded.qto?.heightZones ?? DEFAULT_STATE.qto.heightZones) } }));
           setBreakdownGrade(loaded.grade ?? DEFAULT_STATE.grade);
           setBreakdownIsPcc(false);
           setSavedEstimateId(id);
@@ -3375,8 +3385,10 @@ export default function ConcreteCalculator() {
                           </thead>
                           <tbody>
                             {s.qto.heightZones.map((z, zi) => {
-                              const chFrom = parseChainageM(z.chainageFrom ?? "");
-                              const chTo = parseChainageM(z.chainageTo ?? "");
+                              const fromStr = z.chainageFrom ?? "";
+                              const toStr = z.chainageTo ?? "";
+                              const chFrom = isKmPlusM(fromStr) ? parseChainageM(fromStr) : null;
+                              const chTo = isKmPlusM(toStr) ? parseChainageM(toStr) : null;
                               const autoLen = chFrom !== null && chTo !== null && (chTo - chFrom) > 0 ? chTo - chFrom : null;
                               return (
                                 <tr key={z.id} className="border-t border-border/50" data-testid={`qto-zone-row-${z.id}`}>
@@ -3389,8 +3401,8 @@ export default function ConcreteCalculator() {
                                   <td className="p-2">
                                     <Input value={z.chainageFrom ?? ""} onChange={e => {
                                       const val = e.target.value;
-                                      const from = parseChainageM(val);
-                                      const to = parseChainageM(z.chainageTo ?? "");
+                                      const from = isKmPlusM(val) ? parseChainageM(val) : null;
+                                      const to = isKmPlusM(z.chainageTo ?? "") ? parseChainageM(z.chainageTo ?? "") : null;
                                       const newLen = from !== null && to !== null && (to - from) > 0 ? to - from : z.length;
                                       updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, chainageFrom: val, length: newLen } : hz) });
                                     }} className="h-7 text-xs w-full" placeholder="0+000" />
@@ -3398,8 +3410,8 @@ export default function ConcreteCalculator() {
                                   <td className="p-2">
                                     <Input value={z.chainageTo ?? ""} onChange={e => {
                                       const val = e.target.value;
-                                      const from = parseChainageM(z.chainageFrom ?? "");
-                                      const to = parseChainageM(val);
+                                      const from = isKmPlusM(z.chainageFrom ?? "") ? parseChainageM(z.chainageFrom ?? "") : null;
+                                      const to = isKmPlusM(val) ? parseChainageM(val) : null;
                                       const newLen = from !== null && to !== null && (to - from) > 0 ? to - from : z.length;
                                       updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, chainageTo: val, length: newLen } : hz) });
                                     }} className="h-7 text-xs w-full" placeholder="2+500" />
