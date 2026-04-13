@@ -1,3 +1,4 @@
+import React from "react";
 
 const fmt = (n: number) =>
   "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
