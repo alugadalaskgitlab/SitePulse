@@ -1058,8 +1058,13 @@ export default function ConcreteCalculator() {
     return s.clientOfferedRate;
   }, [s.clientOfferedRate, s.clientOfferedRateMode, crossSectionM2]);
 
+  // When QTO-derived volume is available and different from manual entry, override s.totalVolume
+  // so computeCosts uses the correct volume for water curing and other per-m³ calculations.
+  const sForCosts = useMemo((): CalcState =>
+    effectiveVolume > 0 && effectiveVolume !== s.totalVolume ? { ...s, totalVolume: effectiveVolume } : s,
+  [s, effectiveVolume]);
   // Main cost calculation
-  const costs = useMemo(() => computeCosts(s, steelCostPerM3, undefined, undefined, pettyLabourRatePerM3), [s, steelCostPerM3, pettyLabourRatePerM3]);
+  const costs = useMemo(() => computeCosts(sForCosts, steelCostPerM3, undefined, undefined, pettyLabourRatePerM3), [sForCosts, steelCostPerM3, pettyLabourRatePerM3]);
 
   // QTO Per-Metre Rate Card all-in ₹/RM — mirrors the Per-Metre Rate Card in the QTO tab.
   // Includes PCC, all zone RCC, steel from BBS, earthwork, ancillaries.
@@ -3720,8 +3725,10 @@ export default function ConcreteCalculator() {
                 { id: "concrete-rates", label: "Concrete Rates" },
                 { id: "steel-rates", label: "Steel Rates" },
                 { id: "cost-breakdown", label: "Cost Breakdown" },
+                { id: "rate-analysis", label: "Rate Analysis" },
                 { id: "per-metre", label: "Per Metre" },
                 { id: "boq", label: "BOQ" },
+                { id: "quotation", label: "Quotation" },
               ] as const).map(p => (
                 <button
                   key={p.id}
@@ -4020,8 +4027,9 @@ export default function ConcreteCalculator() {
             const bdGrade = breakdownGrade || s.grade;
             const bdIsPcc = breakdownIsPcc;
             const bdGradeLabel = bdIsPcc ? (s.qto?.elementGrades?.pcc ?? "M15") : bdGrade;
+            const showRM = crossSectionM2 > 0;
             // Build costs for selected grade
-            const sNoSteel: CalcState = { ...s, wastage: { ...s.wastage, steelCuttingWaste: false, ...(bdIsPcc ? { formworkDamage: false } : {}) } };
+            const sNoSteel: CalcState = { ...sForCosts, wastage: { ...s.wastage, steelCuttingWaste: false, ...(bdIsPcc ? { formworkDamage: false } : {}) } };
             if (bdIsPcc) {
               const pccGradeKey = s.qto?.elementGrades?.pcc ?? "M15";
               const pccMix = MIX_PRESETS[pccGradeKey] ?? MIX_PRESETS["M15"];
@@ -4059,6 +4067,12 @@ export default function ConcreteCalculator() {
               { label: `Margin (${s.marginPct}%)`, val: bdMg, indent: true },
               { label: `Total ₹/m³ (${bdGradeLabel})`, val: bdTotal, isSub: true, bold: true },
             ];
+            // Location-wise cost summary when Rate Blender variants exist
+            const locVars = s.locationVariants ?? [];
+            const locCalcsBd = locVars.length > 0 ? locVars.map(loc => ({
+              loc,
+              costs: computeCosts(sNoSteel, 0, loc.caSources, loc.faOverride, bdIsPcc ? 0 : pettyLabourRatePerM3),
+            })) : [];
             return (
               <Card>
                 <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
@@ -4082,6 +4096,11 @@ export default function ConcreteCalculator() {
                       className={`px-2 py-1 text-xs rounded border transition-colors ${bdIsPcc ? "bg-orange-100 border-orange-400 text-orange-800" : "bg-white border-slate-300 text-slate-600 hover:border-slate-500"}`}
                       data-testid="btn-bd-pcc"
                     >PCC mode</button>
+                    <button
+                      onClick={() => window.print()}
+                      className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-slate-300 bg-white text-slate-600 hover:border-slate-500 transition-colors"
+                      data-testid="btn-bd-print"
+                    ><Printer className="w-3 h-3" /> Print</button>
                   </div>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
@@ -4090,6 +4109,7 @@ export default function ConcreteCalculator() {
                       <tr className="bg-slate-50 dark:bg-slate-800/60">
                         <th className="text-left px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">Component</th>
                         <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">₹ / m³</th>
+                        {showRM && <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">₹ / RM</th>}
                         <th className="text-right px-3 py-2 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200">%</th>
                       </tr>
                     </thead>
@@ -4101,19 +4121,54 @@ export default function ConcreteCalculator() {
                           <tr key={i} className={r.bold ? "bg-blue-50/80 dark:bg-blue-900/15 font-bold" : r.isSub ? "bg-slate-100 dark:bg-slate-700/40 font-semibold" : (i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-slate-800/20")}>
                             <td className={`px-3 py-1.5 ${r.indent ? "pl-6 text-slate-700 dark:text-slate-300" : ""}`}>{r.label}</td>
                             <td className="px-3 py-1.5 text-right font-mono">{r.val > 0 ? fmtR(r.val) : "—"}</td>
+                            {showRM && <td className="px-3 py-1.5 text-right font-mono text-violet-700">{r.val > 0 ? fmtR(r.val * crossSectionM2) : "—"}</td>}
                             <td className="px-3 py-1.5 text-right text-slate-600">{r.isSub && r.val > 0 ? `${pct.toFixed(0)}%` : ""}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                  {/* Location-wise cost summary — shown when Rate Blender locations exist */}
+                  {locCalcsBd.length > 0 && (
+                    <div className="mt-5">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">Location-wise Cost Summary</p>
+                      <table className="text-xs w-full border-separate border-spacing-0">
+                        <thead>
+                          <tr className="bg-violet-50 dark:bg-violet-900/20">
+                            <th className="text-left px-3 py-2 font-semibold text-violet-800 dark:text-violet-300 border-b border-violet-200">Location</th>
+                            <th className="text-right px-3 py-2 font-semibold text-violet-800 dark:text-violet-300 border-b border-violet-200">Length (m)</th>
+                            <th className="text-right px-3 py-2 font-semibold text-violet-800 dark:text-violet-300 border-b border-violet-200">Direct Cost</th>
+                            <th className="text-right px-3 py-2 font-semibold text-violet-800 dark:text-violet-300 border-b border-violet-200">Total ₹/m³</th>
+                            {showRM && <th className="text-right px-3 py-2 font-semibold text-violet-800 dark:text-violet-300 border-b border-violet-200">Total ₹/RM</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {locCalcsBd.map((lc, i) => {
+                            const lDirect = lc.costs.cement + lc.costs.ca + lc.costs.fa + lc.costs.admix + lc.costs.batching + lc.costs.placement + lc.costs.formwork + lc.costs.curing + lc.costs.labour + lc.costs.wastage;
+                            const lOH = lDirect * (s.overheadPct / 100);
+                            const lMg = (lDirect + lOH) * (s.marginPct / 100);
+                            const lTotal = lDirect + lOH + lMg;
+                            return (
+                              <tr key={i} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-violet-50/30 dark:bg-violet-900/10"}>
+                                <td className="px-3 py-1.5 font-medium text-slate-800 dark:text-slate-200">{lc.loc.name || `Location ${i + 1}`}</td>
+                                <td className="px-3 py-1.5 text-right">{lc.loc.lengthM.toLocaleString()}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{fmtR(lDirect)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(lTotal)}</td>
+                                {showRM && <td className="px-3 py-1.5 text-right font-mono text-violet-700">{fmtR(lTotal * crossSectionM2)}</td>}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
           })()}
 
-          {/* ── Rate Analysis (hidden — complex zone analysis) ── */}
-          {false && (() => {
+          {/* ── Rate Analysis ── */}
+          {rptSections.has("rate-analysis") && (() => {
             const ecd = elementCostBreakdown;
             if (!ecd) {
               return (
@@ -4436,7 +4491,7 @@ export default function ConcreteCalculator() {
           })()}
 
           {/* ── Quotation ── */}
-          {false && (() => {
+          {rptSections.has("quotation") && (() => {
             const items = s.boqItems ?? [];
             if (items.length === 0) {
               return (
