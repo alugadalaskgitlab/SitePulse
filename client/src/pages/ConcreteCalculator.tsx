@@ -3802,20 +3802,21 @@ export default function ConcreteCalculator() {
                 {s.boqItems.length === 0 ? (
                   <p className="text-sm text-slate-600">{isDrainType && qtoResult ? 'Use "Load Standard Drain BOQ" to auto-generate from QTO dimensions above, or click "Add Item" to add manually.' : 'Click "Add Item" to add BOQ items.'}</p>
                 ) : (() => {
-                  // Determine if location-grouped view applies
-                  const hasLocGroups = s.boqItems.some(item => item.location && item.location.trim());
                   // Build ordered location list (preserving first-seen order)
                   const locOrder: string[] = [];
                   for (const item of s.boqItems) {
                     const loc = item.location?.trim() || "";
                     if (!locOrder.includes(loc)) locOrder.push(loc);
                   }
+                  // Grouping applies only when 2+ distinct non-empty locations exist
+                  const nonEmptyLocs = locOrder.filter(l => l !== "");
+                  const hasLocGroups = nonEmptyLocs.length > 1;
                   const renderBOQRow = (item: BOQItem, idx: number) => {
                     const qty = boqVol(item);
                     const amount = qty * item.rate;
                     return (
                       <tr key={item.id} className="border-t border-border/50" data-testid={`boq-row-${item.id}`}>
-                        <td className="p-2 text-slate-500 tabular-nums">{idx + 1}</td>
+                        <td className="p-2 text-slate-500 tabular-nums">{idx}</td>
                         <td className="p-2">
                           <div className="space-y-0.5">
                             <Input value={item.description} onChange={(e) => updateBOQItem(item.id, { description: e.target.value.toUpperCase() })} className="h-8 text-xs w-64 uppercase" />
@@ -3874,12 +3875,12 @@ export default function ConcreteCalculator() {
                                 <Fragment key={`loc-grp-${loc}`}>
                                   <tr className="bg-slate-100 dark:bg-slate-800">
                                     <td colSpan={7} className="p-2 font-semibold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wide">
-                                      {loc || "Unassigned / General"}
+                                      {loc || "All Locations / General"}
                                     </td>
                                   </tr>
                                   {groupItems.map(item => renderBOQRow(item, ++globalIdx))}
                                   <tr className="border-t border-slate-300 bg-slate-50 dark:bg-slate-900/40 font-semibold text-slate-700 dark:text-slate-300">
-                                    <td colSpan={5} className="p-2 text-xs text-right italic">Sub-total — {loc || "Unassigned"}</td>
+                                    <td colSpan={5} className="p-2 text-xs text-right italic">Sub-total — {loc || "All Locations"}</td>
                                     <td className="p-2 text-right text-xs">{fmtR(groupAmt)}</td>
                                     <td></td>
                                   </tr>
@@ -4438,9 +4439,10 @@ export default function ConcreteCalculator() {
               );
             }
             const grandTotal = items.reduce((sum, it) => sum + it.qty * it.rate, 0);
-            const hasLocGroups = items.some(it => it.location && it.location.trim());
             const locOrder: string[] = [];
             for (const it of items) { const loc = it.location?.trim() || ""; if (!locOrder.includes(loc)) locOrder.push(loc); }
+            const nonEmptyLocsR = locOrder.filter(l => l !== "");
+            const hasLocGroups = nonEmptyLocsR.length > 1;
             let globalIdx = 0;
             return (
               <Card>
@@ -4464,7 +4466,7 @@ export default function ConcreteCalculator() {
                         return (
                           <Fragment key={`rpt-loc-${loc}`}>
                             <tr className="bg-slate-200 dark:bg-slate-700">
-                              <td colSpan={6} className="px-3 py-1.5 font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">{loc || "Unassigned / General"}</td>
+                              <td colSpan={6} className="px-3 py-1.5 font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">{loc || "All Locations / General"}</td>
                             </tr>
                             {groupItems.map(it => (
                               <tr key={it.id} className="bg-white dark:bg-transparent">
@@ -4477,7 +4479,7 @@ export default function ConcreteCalculator() {
                               </tr>
                             ))}
                             <tr className="bg-slate-100 dark:bg-slate-700/40 font-semibold">
-                              <td colSpan={5} className="px-3 py-1.5 text-right italic text-slate-600">Sub-total — {loc || "Unassigned"}</td>
+                              <td colSpan={5} className="px-3 py-1.5 text-right italic text-slate-600">Sub-total — {loc || "All Locations"}</td>
                               <td className="px-3 py-1.5 text-right">{fmtR(groupAmt)}</td>
                             </tr>
                           </Fragment>
