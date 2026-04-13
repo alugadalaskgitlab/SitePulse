@@ -3804,11 +3804,23 @@ export default function ConcreteCalculator() {
               return tableRows;
             }
 
-            // Main grade costs — recompute from scratch with steel forced to 0 and steel-cutting-waste disabled
-            // This ensures overhead and margin are derived from a concrete-only direct base (no steel contamination)
-            const sNoSteel: CalcState = { ...s, wastage: { ...s.wastage, steelCuttingWaste: false } };
-            const mainCosts = computeCosts(sNoSteel, 0, undefined, undefined, pettyLabourRatePerM3);
-            const mainRows = buildConcGradeTable(s.grade, true, mainCosts);
+            // Helper: compute concrete-only costs for any grade
+            function costsForGradeKey(gradeKey: string, withFormwork: boolean): CostBreakdown {
+              const mix = MIX_PRESETS[gradeKey] ?? MIX_PRESETS[s.grade];
+              const st: CalcState = {
+                ...sForCosts,
+                mix,
+                wastage: { ...s.wastage, steelCuttingWaste: false, ...(withFormwork ? {} : { formworkDamage: false }) },
+                ...(withFormwork ? {} : { pettyLabour: { ...s.pettyLabour, enabled: false } }),
+              };
+              return computeCosts(st, 0, undefined, undefined, withFormwork ? pettyLabourRatePerM3 : undefined);
+            }
+
+            // Determine which grade to show for the "main" (RCC) card
+            // When rptGrade is "all" → use active mix design grade; otherwise use the filter selection
+            const displayGrade = rptGrade === "all" ? s.grade : rptGrade;
+            const mainCosts = costsForGradeKey(displayGrade, true);
+            const mainRows = buildConcGradeTable(displayGrade, true, mainCosts);
 
             // PCC grade (only if pccDepth > 0)
             const hasPCC = (s.qto?.pccDepth ?? 0) > 0;
@@ -3817,10 +3829,7 @@ export default function ConcreteCalculator() {
             if (hasPCC) {
               // Use the canonical PCC rate computation (bottom-up, includes pccPlacingRate, no formwork, no steel)
               const pccPlacing = (s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm") ? 0 : (s.pccPlacingRatePerM3 ?? 0);
-              // Build a detailed cost breakdown for display (no petty labour, no steel, no formwork, no formwork-damage wastage)
-              const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
-              const pccState: CalcState = { ...s, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
-              const rawPcc = computeCosts(pccState, 0);
+              const rawPcc = costsForGradeKey(pccGrade, false);
               const pccDirect = rawPcc.cement + rawPcc.ca + rawPcc.fa + rawPcc.admix + rawPcc.batching + pccPlacing + rawPcc.curing + rawPcc.wastage;
               const pccOH = pccDirect * (s.overheadPct / 100);
               const pccMg = (pccDirect + pccOH) * (s.marginPct / 100);
@@ -3862,24 +3871,21 @@ export default function ConcreteCalculator() {
               </table>
             );
 
-            const showMain = rptGrade === "all" || rptGrade === s.grade;
             const showPcc = hasPCC && pccRows.length > 0 && (rptGrade === "all" || rptGrade === pccGrade);
             return (
               <div className="space-y-4">
-                {showMain && (
-                  <Card>
-                    <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rate Analysis — {s.grade}</CardTitle>
-                        <p className="text-xs text-slate-600 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for the active concrete grade.</p>
-                      </div>
-                      <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                      {renderTable(mainRows)}
-                    </CardContent>
-                  </Card>
-                )}
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rate Analysis — {displayGrade}{displayGrade !== s.grade ? <span className="ml-1 text-xs font-normal text-amber-600">(mix design: {s.grade})</span> : ""}</CardTitle>
+                      <p className="text-xs text-slate-600 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for {displayGrade}.</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    {renderTable(mainRows)}
+                  </CardContent>
+                </Card>
                 {showPcc && (
                   <Card>
                     <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
@@ -3888,13 +3894,6 @@ export default function ConcreteCalculator() {
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
                       {renderTable(pccRows)}
-                    </CardContent>
-                  </Card>
-                )}
-                {!showMain && !showPcc && (
-                  <Card>
-                    <CardContent className="px-5 py-6 text-center text-slate-500 text-sm">
-                      No concrete rates to show for grade <b>{rptGrade}</b>. The active grade is <b>{s.grade}</b>{hasPCC ? ` and PCC is ${pccGrade}` : ""}.
                     </CardContent>
                   </Card>
                 )}
