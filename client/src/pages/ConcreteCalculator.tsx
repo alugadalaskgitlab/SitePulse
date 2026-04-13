@@ -590,6 +590,39 @@ function numInput(label: string, value: number, onChange: (v: number) => void, o
 }
 
 function fmtR(v: number) { return "₹" + Math.round(v).toLocaleString("en-IN"); }
+
+// ─── Shared filter dropdown for Reports tab ────────────────────────────────────
+function RptFilter({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {label && <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{label}:</span>}
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-7 text-xs min-w-[130px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          {options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+function inferBoqCategory(desc: string): string {
+  const d = (desc ?? "").toLowerCase();
+  if (/excavat|backfill|earthwork|earth work/.test(d)) return "Earthwork";
+  if (/steel|rebar|reinfor|bbs/.test(d)) return "Steel";
+  if (/formwork|shuttering|centering/.test(d)) return "Formwork";
+  if (/pcc|plain cement|levelling/.test(d)) return "PCC";
+  if (/concrete|rcc|m10|m15|m20|m25|m30|m35|m40/.test(d)) return "Concrete";
+  if (/grat|weep|hook|fixture|fitting/.test(d)) return "Fixtures";
+  if (/curing|membrane|waterproof/.test(d)) return "Curing";
+  if (/survey|overhead|project|mob|demob/.test(d)) return "Overhead";
+  return "";
+}
 function fmtPct(v: number) { return v.toFixed(1) + "%"; }
 function uid() { return Math.random().toString(36).slice(2, 8); }
 function aggUomLabel(uom: AggUoM | undefined): string {
@@ -912,6 +945,12 @@ export default function ConcreteCalculator() {
   });
   const [activeAnalysisTab, setActiveAnalysisTab] = useState("price-impact");
   const [rptGrade, setRptGrade] = useState<string>(() => s.grade);
+  const [rptZone, setRptZone] = useState<string>("all");
+  const [rptDia, setRptDia] = useState<string>("all");
+  const [rptElem, setRptElem] = useState<string>("all");
+  const [rptBqLoc, setRptBqLoc] = useState<string>("all");
+  const [rptBqCat, setRptBqCat] = useState<string>("all");
+  const [rptFxItem, setRptFxItem] = useState<string>("all");
   const [expandedQuotRows, setExpandedQuotRows] = useState<Set<string>>(new Set());
   function toggleQuotRow(id: string) {
     setExpandedQuotRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -1018,6 +1057,19 @@ export default function ConcreteCalculator() {
     heightZones: s.qto.heightZones, totalDrainLength: qtoResult.totalLength,
   } : undefined, [isDrainType, qtoResult, s.qto.clearSpan, s.qto.wallThickness, s.qto.heightZones]);
   const bbsSummary = useMemo(() => computeBBSSummary(s.bbsRows, s.steelRates, qtoCtxForBBS, s.supplyBarLengthM ?? 12), [s.bbsRows, s.steelRates, qtoCtxForBBS, s.supplyBarLengthM]);
+  // Zone-filtered BBS summary for Reports tab
+  const rptZoneBbsSummary = useMemo(() => {
+    if (rptZone === "all" || !qtoCtxForBBS) return bbsSummary;
+    const selZ = s.qto.heightZones.find(z => z.id === rptZone);
+    if (!selZ) return bbsSummary;
+    const filtered = s.bbsRows.filter(r => r.zoneId === rptZone || r.zoneId === "all" || !r.zoneId);
+    const ctx: BBSQtoCtx = { clearSpanMm: s.qto.clearSpan, wallThickMm: s.qto.wallThickness, heightZones: [selZ], totalDrainLength: selZ.length };
+    return computeBBSSummary(filtered, s.steelRates, ctx, s.supplyBarLengthM ?? 12);
+  }, [rptZone, bbsSummary, qtoCtxForBBS, s.bbsRows, s.steelRates, s.qto, s.supplyBarLengthM]);
+  const zoneOpts = useMemo(() => (qtoResult?.zones ?? []).map(z => ({
+    value: z.id,
+    label: [z.location, z.label].filter(Boolean).join(" · ") || z.id,
+  })), [qtoResult]);
   // Effective volume: auto-derived from QTO when available; falls back to manual totalVolume
   const effectiveVolume = (qtoResult?.totalRCC ?? 0) > 0 ? qtoResult!.totalRCC : s.totalVolume;
   const steelMatCostPerM3 = useMemo(() => effectiveVolume > 0 ? bbsSummary.totalCost / effectiveVolume : 0, [bbsSummary.totalCost, effectiveVolume]);
@@ -3712,51 +3764,59 @@ export default function ConcreteCalculator() {
 
         {/* ══════════════ TAB: REPORTS ══════════════ */}
         <TabsContent value="reports">
-          {/* ── Filter Card ── */}
-          <Card className="mb-6">
-            <CardHeader className="pb-3 pt-4">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Filter className="w-4 h-4" /> Report Filters
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4 items-end">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Concrete Grade</Label>
-                  <Select value={rptGrade} onValueChange={setRptGrade}>
-                    <SelectTrigger className="w-28 h-8 text-xs" data-testid="select-rpt-grade">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.keys(MIX_PRESETS).map(g => (
-                        <SelectItem key={g} value={g}>{g}{g === s.grade ? " ★" : ""}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="print:hidden"
-                  onClick={() => window.print()}
-                  data-testid="btn-print-report"
-                >
-                  <Printer className="w-4 h-4 mr-1.5" /> Print
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          {/* ── Header ── */}
+          <div className="flex items-center justify-between mb-4 print:hidden">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide">Rate Analysis Reports</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{s.estimateName || "Untitled"} · {s.structureType}</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => window.print()} data-testid="btn-print-report">
+              <Printer className="w-3.5 h-3.5 mr-1" /> Print
+            </Button>
+          </div>
+
+          {/* Global zone filter */}
+          {s.qto.heightZones.length > 0 && (
+            <div className="mb-5 flex flex-wrap gap-3 items-center bg-muted/40 border rounded-lg px-4 py-2.5 print:hidden">
+              <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium text-muted-foreground">Zone filter (applies to all cards):</span>
+              <RptFilter label="" value={rptZone} onChange={v => { setRptZone(v); setRptDia("all"); }}
+                options={s.qto.heightZones.map(z => ({
+                  value: z.id,
+                  label: [z.location, z.label].filter(Boolean).join(" · ") || z.id,
+                }))} />
+            </div>
+          )}
 
           <div className="space-y-6">
-            {/* ── Section 1: Concrete Rate Analysis ── */}
+            {/* ── A. CONCRETE RATE ANALYSIS ── */}
             {(() => {
-              const displayGrade = rptGrade || s.grade;
-              const mix = MIX_PRESETS[displayGrade] ?? MIX_PRESETS[s.grade];
-              const stateForGrade = { ...sForCosts, mix, wastage: { ...s.wastage, steelCuttingWaste: false } };
-              const c = computeCosts(stateForGrade, 0, undefined, undefined, pettyLabourRatePerM3);
+              const eq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
+              const ELEM_GRADE: Record<string, string> = { invert: eq.invert, walls: eq.wall, topSlab: eq.topSlab, pcc: eq.pcc };
+              const ELEM_LABEL: Record<string, string> = { invert: "Invert Slab", walls: "Walls", topSlab: "Top Slab", pcc: "PCC Bed" };
+              const ELEM_OPTS = [
+                { value: "invert", label: `Invert Slab (${eq.invert})` },
+                { value: "walls", label: `Walls (${eq.wall})` },
+                ...(s.qto.isCovered || isBoxCulvert ? [{ value: "topSlab", label: `Top Slab (${eq.topSlab})` }] : []),
+                ...((s.qto.pccDepth ?? 0) > 0 ? [{ value: "pcc", label: `PCC Bed (${eq.pcc})` }] : []),
+              ];
+              const activeGrade = (rptElem !== "all" && ELEM_GRADE[rptElem]) ? ELEM_GRADE[rptElem] : (rptGrade || s.grade);
+              const activeMix = MIX_PRESETS[activeGrade] ?? MIX_PRESETS[s.grade];
+              const activeState = { ...sForCosts, mix: activeMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+              const c = computeCosts(activeState, 0, undefined, undefined, rptElem !== "pcc" ? pettyLabourRatePerM3 : 0);
               const rawMat = c.cement + c.ca + c.fa + c.admix;
               const plantSub = c.batching + c.placement + c.formwork + c.curing + (c.labour ?? 0);
               const direct = rawMat + plantSub + c.wastage;
+              // Element vol/RM context
+              const selZoneA = rptZone !== "all" ? qtoResult?.zones.find(z => z.id === rptZone) : null;
+              let activeElemVolRM = 0;
+              if (rptElem !== "all" && qtoResult) {
+                if (rptElem === "invert") activeElemVolRM = qtoResult.invertPerM;
+                else if (rptElem === "walls") activeElemVolRM = selZoneA ? selZoneA.wallsM3perM : (qtoResult.totalLength > 0 ? qtoResult.totalWallsNet / qtoResult.totalLength : 0);
+                else if (rptElem === "topSlab") activeElemVolRM = qtoResult.topPerM;
+                else if (rptElem === "pcc") activeElemVolRM = qtoResult.pccPerM;
+              }
+              const rmAreaA = activeElemVolRM > 0 ? activeElemVolRM : crossSectionM2;
               const rows: { label: string; val: number; indent?: boolean; isSub?: boolean; bold?: boolean }[] = [
                 { label: "Cement", val: c.cement, indent: true },
                 { label: "Coarse Aggregate", val: c.ca, indent: true },
@@ -3773,22 +3833,27 @@ export default function ConcreteCalculator() {
                 { label: "Direct Cost", val: direct, isSub: true },
                 { label: `Overhead (${s.overheadPct}%)`, val: c.overhead, indent: true },
                 { label: `Margin (${s.marginPct}%)`, val: c.margin, indent: true },
-                { label: `Total — ${displayGrade}`, val: c.total, isSub: true, bold: true },
+                { label: `Total — ${activeGrade}`, val: c.total, isSub: true, bold: true },
               ];
               return (
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <CardTitle className="text-sm font-semibold uppercase tracking-wide">
-                        Concrete Rate Analysis — {displayGrade}
-                      </CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Component breakdown for {displayGrade} concrete{displayGrade !== s.grade ? ` (active grade: ${s.grade})` : ""}.
-                      </p>
+                  <CardHeader className="pb-3 pt-4 px-5">
+                    <div className="flex flex-row items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <CardTitle className="text-sm font-semibold uppercase tracking-wide">Concrete Rate Analysis</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {activeGrade}{rptElem !== "all" ? ` · ${ELEM_LABEL[rptElem] ?? rptElem}` : ""}{selZoneA ? ` · ${[selZoneA.location, selZoneA.label].filter(Boolean).join(" ")}` : ""}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>
+                        <Printer className="w-3.5 h-3.5 mr-1" /> Print
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>
-                      <Printer className="w-3.5 h-3.5 mr-1" /> Print
-                    </Button>
+                    <div className="flex flex-wrap gap-3 mt-2 print:hidden">
+                      <RptFilter label="Grade" value={rptGrade || s.grade} onChange={(v) => { setRptGrade(v); setRptElem("all"); }}
+                        options={Object.keys(MIX_PRESETS).map(g => ({ value: g, label: g + (g === s.grade ? " ★" : "") }))} />
+                      <RptFilter label="Element" value={rptElem} onChange={setRptElem} options={ELEM_OPTS} />
+                    </div>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
                     <table className="text-xs w-full border-separate border-spacing-0">
@@ -3796,7 +3861,7 @@ export default function ConcreteCalculator() {
                         <tr className="bg-muted/50">
                           <th className="text-left px-3 py-2 font-semibold border-b">Component</th>
                           <th className="text-right px-3 py-2 font-semibold border-b">₹ / m³</th>
-                          {crossSectionM2 > 0 && <th className="text-right px-3 py-2 font-semibold border-b">₹ / RM</th>}
+                          {rmAreaA > 0 && <th className="text-right px-3 py-2 font-semibold border-b">₹ / RM</th>}
                           <th className="text-right px-3 py-2 font-semibold border-b">% of Total</th>
                         </tr>
                       </thead>
@@ -3804,29 +3869,19 @@ export default function ConcreteCalculator() {
                         {rows.map((r, i) => {
                           const pct = c.total > 0 ? (r.val / c.total) * 100 : 0;
                           return (
-                            <tr key={i} className={
-                              r.bold ? "bg-blue-50/80 dark:bg-blue-900/20 font-bold" :
-                              r.isSub ? "bg-muted/60 font-semibold" :
-                              i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"
-                            }>
+                            <tr key={i} className={r.bold ? "bg-blue-50/80 dark:bg-blue-900/20 font-bold" : r.isSub ? "bg-muted/60 font-semibold" : i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
                               <td className={`px-3 py-1.5 ${r.indent ? "pl-6 text-muted-foreground" : ""}`}>{r.label}</td>
                               <td className="px-3 py-1.5 text-right font-mono">{r.val > 0 ? fmtR(r.val) : "—"}</td>
-                              {crossSectionM2 > 0 && (
-                                <td className="px-3 py-1.5 text-right font-mono text-violet-700 dark:text-violet-400">
-                                  {r.val > 0 ? fmtR(r.val * crossSectionM2) : "—"}
-                                </td>
-                              )}
-                              <td className="px-3 py-1.5 text-right text-muted-foreground">
-                                {(r.isSub || r.bold) && r.val > 0 ? `${pct.toFixed(0)}%` : ""}
-                              </td>
+                              {rmAreaA > 0 && <td className="px-3 py-1.5 text-right font-mono text-violet-700 dark:text-violet-400">{r.val > 0 ? fmtR(r.val * rmAreaA) : "—"}</td>}
+                              <td className="px-3 py-1.5 text-right text-muted-foreground">{(r.isSub || r.bold) && r.val > 0 ? `${pct.toFixed(0)}%` : ""}</td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
-                    {crossSectionM2 > 0 && (
+                    {rmAreaA > 0 && (
                       <p className="text-[10px] text-muted-foreground mt-2">
-                        ₹/RM column uses cross-section area {crossSectionM2.toFixed(3)} m² from QTO.
+                        ₹/RM: {rptElem !== "all" ? `${activeElemVolRM.toFixed(3)} m³/RM for ${ELEM_LABEL[rptElem] ?? rptElem}` : `cross-section ${crossSectionM2.toFixed(3)} m²`}{selZoneA ? ` in ${[selZoneA.location, selZoneA.label].filter(Boolean).join(" ")}` : ""}.
                       </p>
                     )}
                   </CardContent>
@@ -3834,12 +3889,11 @@ export default function ConcreteCalculator() {
               );
             })()}
 
-            {/* ── Section 2: PCC Bed Rate (conditional) ── */}
+            {/* ── B. PCC BED RATE ── */}
             {(s.qto?.pccDepth ?? 0) > 0 && (() => {
               const pccGrade = s.qto?.elementGrades?.pcc ?? "M15";
               const pccMix = MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"];
-              const isPettyRmPerM = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
-              const pccPlacing = isPettyRmPerM ? 0 : (s.pccPlacingRatePerM3 ?? 0);
+              const pccPlacing = s.pccPlacingRatePerM3 ?? 0;
               const pccState: CalcState = { ...sForCosts, mix: pccMix, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false }, pettyLabour: { ...s.pettyLabour, enabled: false } };
               const pc = computeCosts(pccState, 0);
               const rawMat = pc.cement + pc.ca + pc.fa + pc.admix;
@@ -3855,7 +3909,7 @@ export default function ConcreteCalculator() {
                 { label: "Admixture", val: pc.admix, indent: true },
                 { label: "Raw Materials", val: rawMat, isSub: true },
                 { label: "Batching", val: pc.batching, indent: true },
-                { label: "Placing (blinding)", val: pccPlacing, indent: true },
+                { label: "PCC Laying Rate", val: pccPlacing, indent: true },
                 { label: "Curing", val: pc.curing, indent: true },
                 { label: "Plant & Placing", val: plantSub, isSub: true },
                 { label: "Direct Cost", val: direct, isSub: true },
@@ -3902,124 +3956,233 @@ export default function ConcreteCalculator() {
               );
             })()}
 
-            {/* ── Section 3: Steel Rate Analysis (conditional) ── */}
+            {/* ── C. REINFORCEMENT BARS — ALL DIMENSIONS ── */}
             {bbsSummary.totalKg > 0 && (() => {
-              const steelFab = s.steelFabRatePerMT ?? 0;
-              const fabIsBOQOnly = s.pettyLabour?.enabled && s.pettyLabour?.contractorBBS;
-              const diaRows = ([8, 10, 12, 16, 20, 25] as const)
-                .map(dia => {
-                  const key = `r${dia}` as keyof SteelRates;
-                  const purchRate = s.steelRates[key];
-                  const kg = bbsSummary.byDia[dia]?.kg ?? 0;
-                  const purchCost = kg * purchRate / 1000;
-                  const fabCost = fabIsBOQOnly ? 0 : kg * steelFab / 1000;
-                  return { dia, purchRate, kg, purchCost, fabCost };
-                })
-                .filter(r => r.kg > 0);
-              const totalKg = bbsSummary.totalKg;
-              const avgPurchPerMT = totalKg > 0 ? bbsSummary.totalCost / (totalKg / 1000) : 0;
-              const kgPerM3 = effectiveVolume > 0 ? totalKg / effectiveVolume : 0;
-              const wasteEnabled = s.wastage.steelCuttingWaste && totalKg > 0;
-              const directPerMT = avgPurchPerMT + steelFab;
-              const wastePerMT = wasteEnabled ? directPerMT * (s.wastage.steelCuttingPct / 100) : 0;
-              const directWastePerMT = directPerMT + wastePerMT;
-              const ohPerMT = directWastePerMT * (s.overheadPct / 100);
-              const mgPerMT = (directWastePerMT + ohPerMT) * (s.marginPct / 100);
-              const totalPerMT = directWastePerMT + ohPerMT + mgPerMT;
-              const toM3 = (perMT: number) => kgPerM3 > 0 ? perMT * kgPerM3 / 1000 : 0;
+              const steelFab = (s.pettyLabour?.enabled && s.pettyLabour?.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+              const summary = rptZoneBbsSummary;
+              const totalKg = summary.totalKg;
+              const selZoneC = rptZone !== "all" ? qtoResult?.zones.find(z => z.id === rptZone) : null;
+              const zoneLen = selZoneC ? selZoneC.length : (qtoResult?.totalLength ?? 0);
+              const kgPerM3Global = effectiveVolume > 0 ? bbsSummary.totalKg / effectiveVolume : 0;
+              const diaRateMap: Record<number, number> = {
+                8: s.steelRates.r8, 10: s.steelRates.r10, 12: s.steelRates.r12,
+                16: s.steelRates.r16, 20: s.steelRates.r20, 25: s.steelRates.r25,
+              };
+              const activeDias = (DIA_SIZES as number[]).filter(d => (summary.byDia[d]?.kg ?? 0) > 0);
+              const displayDias = rptDia === "all" ? activeDias : activeDias.filter(d => d === Number(rptDia));
+              const avgPurchPerMT = totalKg > 0 ? summary.totalCost / (totalKg / 1000) : 0;
+              const wasteAdj = s.wastage.steelCuttingWaste ? (1 + (s.wastage.steelCuttingPct ?? 0) / 100) : 1;
+              const oh = s.overheadPct / 100; const mg = s.marginPct / 100;
               return (
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <CardTitle className="text-sm font-semibold uppercase tracking-wide">Steel Rate Analysis</CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5">BBS purchase + fabrication + wastage + overhead + margin.</p>
-                    </div>
-                    <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>
-                      <Printer className="w-3.5 h-3.5 mr-1" /> Print
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4 space-y-5 overflow-x-auto">
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Per Diameter</p>
-                      <table className="text-xs w-full min-w-[480px] border-separate border-spacing-0">
-                        <thead>
-                          <tr className="bg-muted/50">
-                            {(["Dia (mm)", "Purchase ₹/MT", "Weight (kg)", "Purchase ₹", ...(!fabIsBOQOnly ? ["Fab ₹"] : []), "Total ₹"] as string[]).map(h => (
-                              <th key={h} className={`px-3 py-2 font-semibold border-b ${h === "Dia (mm)" ? "text-left" : "text-right"}`}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {diaRows.map((r, i) => (
-                            <tr key={r.dia} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
-                              <td className="px-3 py-1.5 font-medium">Ø{r.dia}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(r.purchRate)}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{r.kg.toFixed(1)}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(r.purchCost)}</td>
-                              {!fabIsBOQOnly && <td className="px-3 py-1.5 text-right font-mono">{fmtR(r.fabCost)}</td>}
-                              <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(r.purchCost + r.fabCost)}</td>
-                            </tr>
-                          ))}
-                          <tr className="bg-blue-50/80 dark:bg-blue-900/20 font-bold">
-                            <td className="px-3 py-1.5">Total</td>
-                            <td className="px-3 py-1.5 text-right font-mono text-[11px]">{fmtR(avgPurchPerMT)}/MT avg</td>
-                            <td className="px-3 py-1.5 text-right font-mono">{totalKg.toFixed(1)}</td>
-                            <td className="px-3 py-1.5 text-right font-mono">{fmtR(bbsSummary.totalCost)}</td>
-                            {!fabIsBOQOnly && <td className="px-3 py-1.5 text-right font-mono">{fmtR(steelFab * totalKg / 1000)}</td>}
-                            <td className="px-3 py-1.5 text-right font-mono">{fmtR(bbsSummary.totalCost + (fabIsBOQOnly ? 0 : steelFab * totalKg / 1000))}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Rate Analysis Summary</p>
-                      <table className="text-xs w-full min-w-[340px] border-separate border-spacing-0">
-                        <thead>
-                          <tr className="bg-muted/50">
-                            <th className="text-left px-3 py-2 font-semibold border-b">Component</th>
-                            <th className="text-right px-3 py-2 font-semibold border-b">₹ / MT</th>
-                            {kgPerM3 > 0 && <th className="text-right px-3 py-2 font-semibold border-b">₹ / m³</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {([
-                            { label: "Weighted Avg Purchase", perMT: avgPurchPerMT },
-                            { label: `Fabrication${fabIsBOQOnly ? " (BOQ rate only)" : ""}`, perMT: steelFab },
-                            { label: "Direct Steel Sub-total", perMT: directPerMT, isSub: true },
-                            ...(wasteEnabled ? [{ label: `Cutting Wastage (${s.wastage.steelCuttingPct}%)`, perMT: wastePerMT }] : []),
-                            ...(wasteEnabled ? [{ label: "With Wastage", perMT: directWastePerMT, isSub: true }] : []),
-                            { label: `Overhead (${s.overheadPct}%)`, perMT: ohPerMT },
-                            { label: `Margin (${s.marginPct}%)`, perMT: mgPerMT },
-                            { label: "Total ₹ / MT", perMT: totalPerMT, isSub: true, bold: true },
-                          ] as { label: string; perMT: number; isSub?: boolean; bold?: boolean }[]).map((r, i) => (
-                            <tr key={i} className={
-                              r.bold ? "bg-blue-50/80 dark:bg-blue-900/20 font-bold" :
-                              r.isSub ? "bg-muted/60 font-semibold" :
-                              i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"
-                            }>
-                              <td className="px-3 py-1.5">{r.label}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{r.perMT > 0 ? fmtR(r.perMT) : "—"}</td>
-                              {kgPerM3 > 0 && (
-                                <td className="px-3 py-1.5 text-right font-mono text-violet-700 dark:text-violet-400">
-                                  {r.perMT > 0 ? fmtR(toM3(r.perMT)) : "—"}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {kgPerM3 > 0 && (
-                        <p className="text-[10px] text-muted-foreground mt-2">
-                          Based on {kgPerM3.toFixed(2)} kg/m³ from BBS · Volume: {effectiveVolume.toFixed(3)} m³
+                  <CardHeader className="pb-3 pt-4 px-5">
+                    <div className="flex flex-row items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <CardTitle className="text-sm font-semibold uppercase tracking-wide">Reinforcement Bars — All Dimensions</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {selZoneC ? `Zone: ${[selZoneC.location, selZoneC.label].filter(Boolean).join(" ")} · ` : "All zones · "}
+                          {rptDia !== "all" ? `Ø${rptDia} mm only` : `${activeDias.length} dia${activeDias.length !== 1 ? "s" : ""}`}
                         </p>
-                      )}
+                      </div>
                     </div>
+                    <div className="flex flex-wrap gap-3 mt-2 print:hidden">
+                      <RptFilter label="Zone" value={rptZone} onChange={setRptZone} options={zoneOpts} />
+                      <RptFilter label="Dia (mm)" value={rptDia} onChange={setRptDia}
+                        options={DIA_SIZES.map(d => ({ value: String(d), label: `Ø${d} mm` }))} />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 overflow-x-auto">
+                    {displayDias.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-4 text-center">No reinforcement for selected filter.</p>
+                    ) : (
+                      <>
+                        <table className="text-xs w-full min-w-[540px] border-separate border-spacing-0">
+                          <thead>
+                            <tr className="bg-muted/50">
+                              {(["Dia", "Wt/m (kg)", "Qty (kg)", "₹/MT", "Purch ₹", ...(steelFab > 0 ? ["Fab ₹"] : []), "Total ₹", ...(zoneLen > 0 ? ["₹/RM"] : []), "kg/m³"] as string[]).map(h => (
+                                <th key={h} className={`px-3 py-2 font-semibold border-b ${h === "Dia" ? "text-left" : "text-right"}`}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {displayDias.map((d, i) => {
+                              const wtPerM = (d * d) / 162;
+                              const kg = summary.byDia[d]?.kg ?? 0;
+                              const purchRate = diaRateMap[d] ?? 0;
+                              const purchCost = kg * purchRate / 1000;
+                              const fabCost = steelFab * kg / 1000;
+                              const kgPerRM = zoneLen > 0 ? kg / zoneLen : 0;
+                              const rateRM = kgPerRM * (purchRate + steelFab) / 1000;
+                              const zoneVolM3 = selZoneC
+                                ? ((selZoneC.invertM3 ?? 0) + (selZoneC.wallsM3 ?? 0) + (selZoneC.topM3 ?? 0))
+                                : effectiveVolume;
+                              const kgPerM3D = zoneVolM3 > 0 ? kg / zoneVolM3 : 0;
+                              return (
+                                <tr key={d} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
+                                  <td className="px-3 py-1.5 font-medium">Ø{d}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono">{wtPerM.toFixed(3)}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono">{kg.toFixed(1)}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono">{fmtR(purchRate)}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono">{fmtR(purchCost)}</td>
+                                  {steelFab > 0 && <td className="px-3 py-1.5 text-right font-mono">{fmtR(fabCost)}</td>}
+                                  <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(purchCost + fabCost)}</td>
+                                  {zoneLen > 0 && <td className="px-3 py-1.5 text-right font-mono text-violet-700 dark:text-violet-400">{rateRM > 0 ? fmtR(rateRM) : "—"}</td>}
+                                  <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{kgPerM3D > 0 ? kgPerM3D.toFixed(2) : "—"}</td>
+                                </tr>
+                              );
+                            })}
+                            {displayDias.length > 1 && (() => {
+                              const totKg = displayDias.reduce((s, d) => s + (summary.byDia[d]?.kg ?? 0), 0);
+                              const totPurch = displayDias.reduce((s, d) => s + (summary.byDia[d]?.kg ?? 0) * (diaRateMap[d] ?? 0) / 1000, 0);
+                              const totFab = steelFab * totKg / 1000;
+                              const totRM = zoneLen > 0 ? (totKg / zoneLen) * (avgPurchPerMT + steelFab) / 1000 : 0;
+                              return (
+                                <tr className="bg-blue-50/80 dark:bg-blue-900/20 font-bold">
+                                  <td className="px-3 py-1.5" colSpan={2}>Total</td>
+                                  <td className="px-3 py-1.5 text-right font-mono">{totKg.toFixed(1)}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono text-[11px]">{fmtR(avgPurchPerMT)}/MT</td>
+                                  <td className="px-3 py-1.5 text-right font-mono">{fmtR(totPurch)}</td>
+                                  {steelFab > 0 && <td className="px-3 py-1.5 text-right font-mono">{fmtR(totFab)}</td>}
+                                  <td className="px-3 py-1.5 text-right font-mono">{fmtR(totPurch + totFab)}</td>
+                                  {zoneLen > 0 && <td className="px-3 py-1.5 text-right font-mono text-violet-700 dark:text-violet-400">{totRM > 0 ? fmtR(totRM) : "—"}</td>}
+                                  <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{kgPerM3Global > 0 ? kgPerM3Global.toFixed(2) : "—"}</td>
+                                </tr>
+                              );
+                            })()}
+                          </tbody>
+                        </table>
+                        {zoneLen > 0 && (
+                          <p className="text-[10px] text-muted-foreground mt-2">
+                            ₹/RM based on {zoneLen.toFixed(0)} m{selZoneC ? ` (${[selZoneC.location, selZoneC.label].filter(Boolean).join(" ")})` : " total"}.
+                          </p>
+                        )}
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               );
             })()}
 
-            {/* ── Section 4: Per-Metre Rate Card (conditional) ── */}
+            {/* ── D. EARTHWORK PER ZONE ── */}
+            {isDrainType && qtoResult && qtoResult.zones.length > 0 && (() => {
+              const selZoneD = rptZone !== "all" ? qtoResult.zones.find(z => z.id === rptZone) : null;
+              const displayZonesD = selZoneD ? [selZoneD] : qtoResult.zones;
+              return (
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wide">Earthwork</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Excavation & backfill per running metre per zone.</p>
+                    <div className="flex flex-wrap gap-3 mt-2 print:hidden">
+                      <RptFilter label="Zone" value={rptZone} onChange={setRptZone} options={zoneOpts} />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 overflow-x-auto">
+                    <table className="text-xs w-full min-w-[480px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-muted/50">
+                          {["Zone", "Length (m)", "Excav m³/RM", "Backfill m³/RM", `Excav ₹/RM (${fmtR(s.qto.excavationRate)}/m³)`, `Backfill ₹/RM (${fmtR(s.qto.backfillRate)}/m³)`, "Total ₹/RM"].map(h => (
+                            <th key={h} className={`px-3 py-2 font-semibold border-b ${h === "Zone" ? "text-left" : "text-right"}`}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayZonesD.map((z, i) => {
+                          const excavPerRM = z.length > 0 ? z.excavVol / z.length : 0;
+                          const bkfM3 = Math.max(0, z.excavVol - z.totalRCCm3 - z.pccM3);
+                          const bkfPerRM = z.length > 0 ? bkfM3 / z.length : 0;
+                          const excCost = excavPerRM * s.qto.excavationRate;
+                          const bkfCost = bkfPerRM * s.qto.backfillRate;
+                          return (
+                            <tr key={z.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
+                              <td className="px-3 py-1.5">{[z.location, z.label].filter(Boolean).join(" ") || `Zone ${i + 1}`}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{z.length.toFixed(0)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{excavPerRM.toFixed(3)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{bkfPerRM.toFixed(3)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(excCost)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(bkfCost)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(excCost + bkfCost)}</td>
+                            </tr>
+                          );
+                        })}
+                        {displayZonesD.length > 1 && (() => {
+                          const totExcRM = qtoResult.totalLength > 0 ? qtoResult.excavVolume / qtoResult.totalLength : 0;
+                          const totBkfRM = qtoResult.totalLength > 0 ? qtoResult.backfillVol / qtoResult.totalLength : 0;
+                          return (
+                            <tr className="bg-blue-50/80 dark:bg-blue-900/20 font-bold">
+                              <td className="px-3 py-1.5">Combined</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{qtoResult.totalLength.toFixed(0)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{totExcRM.toFixed(3)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{totBkfRM.toFixed(3)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(totExcRM * s.qto.excavationRate)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(totBkfRM * s.qto.backfillRate)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{fmtR((totExcRM * s.qto.excavationRate) + (totBkfRM * s.qto.backfillRate))}</td>
+                            </tr>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* ── E. FIXTURES PER ZONE ── */}
+            {isDrainType && qtoResult && qtoResult.zones.length > 0 && (qtoResult.gratingsCount > 0 || qtoResult.weepholesCount > 0 || qtoResult.liftingHooksCount > 0) && (() => {
+              const selZoneE = rptZone !== "all" ? qtoResult.zones.find(z => z.id === rptZone) : null;
+              const displayZonesE = selZoneE ? [selZoneE] : qtoResult.zones;
+              type FxItem = { id: string; label: string; spacing: number; rate: number; countFn: (z: typeof qtoResult.zones[0]) => number };
+              const FX_ITEMS: FxItem[] = [
+                ...(qtoResult.weepholesCount > 0 ? [{ id: "weep", label: "Weepholes", spacing: s.qto.weepholesSpacing, rate: s.qto.weepholeRatePerNos, countFn: (z: typeof qtoResult.zones[0]) => z.weepholesCount }] : []),
+                ...(qtoResult.gratingsCount > 0 ? [{ id: "grat", label: "Gratings", spacing: s.qto.gratingsSpacing, rate: s.qto.gratingRatePerNos, countFn: (z: typeof qtoResult.zones[0]) => z.gratingsCount }] : []),
+                ...(qtoResult.liftingHooksCount > 0 ? [{ id: "hook", label: "Lifting Hooks", spacing: s.qto.liftingHookSpacingM ?? 0, rate: s.qto.liftingHookRatePerNos ?? 0, countFn: (z: typeof qtoResult.zones[0]) => z.liftingHooksCount }] : []),
+              ];
+              const displayFx = rptFxItem === "all" ? FX_ITEMS : FX_ITEMS.filter(f => f.id === rptFxItem);
+              return (
+                <Card>
+                  <CardHeader className="pb-3 pt-4 px-5">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wide">Fixtures</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Gratings, weepholes, and lifting hooks per zone.</p>
+                    <div className="flex flex-wrap gap-3 mt-2 print:hidden">
+                      <RptFilter label="Zone" value={rptZone} onChange={setRptZone} options={zoneOpts} />
+                      <RptFilter label="Item" value={rptFxItem} onChange={setRptFxItem}
+                        options={FX_ITEMS.map(f => ({ value: f.id, label: f.label }))} />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 overflow-x-auto">
+                    <table className="text-xs w-full min-w-[480px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-muted/50">
+                          {["Zone / Item", "Spacing (m)", "Count", "/RM", "Unit Rate ₹", "₹/RM"].map(h => (
+                            <th key={h} className={`px-3 py-2 font-semibold border-b ${h === "Zone / Item" ? "text-left" : "text-right"}`}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayZonesE.flatMap((z, zi) =>
+                          displayFx.map((fx, fi) => {
+                            const cnt = fx.countFn(z);
+                            const perRM = z.length > 0 ? cnt / z.length : 0;
+                            const rateRM = fx.spacing > 0 ? fx.rate / fx.spacing : 0;
+                            return (
+                              <tr key={`${z.id}-${fx.id}`} className={(zi * displayFx.length + fi) % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
+                                <td className="px-3 py-1.5">{[z.location, z.label].filter(Boolean).join(" ") || `Zone ${zi + 1}`} · <span className="text-muted-foreground">{fx.label}</span></td>
+                                <td className="px-3 py-1.5 text-right font-mono">{fx.spacing > 0 ? fx.spacing.toFixed(1) : "—"}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{cnt}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{perRM.toFixed(2)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{fmtR(fx.rate)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(rateRM)}</td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* ── F. PER-METRE RATE CARD ── */}
             {((isDrainType && qtoResult && qtoResult.zones.length > 0) || (isBridgeType && bridgeQtoResult)) && (() => {
               if (isBridgeType && bridgeQtoResult) {
                 const bEq = s.qto.elementGrades ?? { pcc: "M15", invert: "M25", wall: "M25", topSlab: "M25" };
@@ -4092,15 +4255,15 @@ export default function ConcreteCalculator() {
               const topSlabCostPerM3 = (s.qto.topSlabType === "Precast" && tsM > 0)
                 ? s.qto.precastRatePerM2 / tsM
                 : rccBaseRate - baseMat + computeMaterialCostOnly(eq.topSlab, s);
-              const isPettyRmPerM = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
-              const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, isPettyRmPerM ? 0 : (s.pccPlacingRatePerM3 ?? 0));
-              const steelRateAvg = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
-              const steelFabForCard = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
-              const bwPerM = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
-              const lhPerM = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
-              const steelPerM = bbsSummary.totalKgPerM * ((steelRateAvg + steelFabForCard) / 1000);
-              const gratingPerM = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
-              const weepholePerM = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
+              const isPettyRmPerMF = s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm";
+              const pccCostPerM3 = computePccRatePerM3(s, eq.pcc, isPettyRmPerMF ? 0 : (s.pccPlacingRatePerM3 ?? 0));
+              const steelRateAvgF = bbsSummary.totalKg > 0 ? bbsSummary.totalCost / (bbsSummary.totalKg / 1000) : s.steelRates.r12;
+              const steelFabForCardF = (s.pettyLabour.enabled && s.pettyLabour.contractorBBS) ? 0 : (s.steelFabRatePerMT ?? 0);
+              const bwPerMF = bbsSummary.totalKgPerM * ((s.qto.bindingWireKgPerMT ?? 10) / 1000) * (s.qto.bindingWireRatePerKg ?? 85);
+              const lhPerMF = (s.qto.liftingHookSpacingM ?? 0) > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / (s.qto.liftingHookSpacingM ?? 2) : 0;
+              const steelPerMF = bbsSummary.totalKgPerM * ((steelRateAvgF + steelFabForCardF) / 1000);
+              const gratingPerMF = s.qto.gratingsSpacing > 0 ? s.qto.gratingRatePerNos / s.qto.gratingsSpacing : 0;
+              const weepholePerMF = s.qto.weepholesSpacing > 0 ? s.qto.weepholeRatePerNos / s.qto.weepholesSpacing : 0;
               function renderPerMTable(zoneWalls: number, zoneTotalLen: number, zoneLabel: string, wallBasis: "gross" | "net" = "gross", topVolOverride?: number) {
                 const wallVol = zoneTotalLen > 0 ? zoneWalls / zoneTotalLen : 0;
                 const invertVol = qtoResult!.invertPerM;
@@ -4116,8 +4279,8 @@ export default function ConcreteCalculator() {
                 const excC = excVol * s.qto.excavationRate;
                 const bkfC = bkfVol * s.qto.backfillRate;
                 const earthSub = excC + bkfC;
-                const ancC = gratingPerM + weepholePerM;
-                const grdTotal = concSub + earthSub + steelPerM + bwPerM + lhPerM + ancC;
+                const ancC = gratingPerMF + weepholePerMF;
+                const grdTotal = concSub + earthSub + steelPerMF + bwPerMF + lhPerMF + ancC;
                 const pMRows: { label: string; qty: string; unit: string; rate: string; costPerM: number; isSub?: boolean }[] = [
                   { label: `PCC ${eq.pcc} Bed`, qty: pccVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(pccCostPerM3)}/m³`, costPerM: pccC },
                   { label: `Invert Slab (${eq.invert})`, qty: invertVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(invertCostPerM3)}/m³`, costPerM: invC },
@@ -4127,9 +4290,9 @@ export default function ConcreteCalculator() {
                   { label: "Excavation", qty: excVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(s.qto.excavationRate)}/m³`, costPerM: excC },
                   { label: "Backfill", qty: bkfVol.toFixed(3), unit: "m³/RM", rate: `${fmtR(s.qto.backfillRate)}/m³`, costPerM: bkfC },
                   { label: "Earthwork Sub-total", qty: "", unit: "", rate: "", costPerM: earthSub, isSub: true },
-                  { label: "Steel (BBS)", qty: (bbsSummary.totalKgPerM / 1000).toFixed(4), unit: "MT/RM", rate: `${fmtR(steelRateAvg + steelFabForCard)}/MT`, costPerM: steelPerM },
-                  ...(bwPerM > 0 ? [{ label: "Binding Wire", qty: "", unit: "", rate: "", costPerM: bwPerM }] : []),
-                  ...(lhPerM > 0 ? [{ label: "Lifting Hooks", qty: "", unit: "", rate: "", costPerM: lhPerM }] : []),
+                  { label: "Steel (BBS)", qty: (bbsSummary.totalKgPerM / 1000).toFixed(4), unit: "MT/RM", rate: `${fmtR(steelRateAvgF + steelFabForCardF)}/MT`, costPerM: steelPerMF },
+                  ...(bwPerMF > 0 ? [{ label: "Binding Wire", qty: "", unit: "", rate: "", costPerM: bwPerMF }] : []),
+                  ...(lhPerMF > 0 ? [{ label: "Lifting Hooks", qty: "", unit: "", rate: "", costPerM: lhPerMF }] : []),
                   ...(ancC > 0 ? [{ label: "Gratings & Weepholes", qty: "", unit: "", rate: "", costPerM: ancC }] : []),
                   { label: "Grand Total ₹/RM", qty: "", unit: "", rate: "", costPerM: grdTotal, isSub: true },
                 ];
@@ -4177,77 +4340,105 @@ export default function ConcreteCalculator() {
                   </div>
                 );
               }
-              const hasMultiZone = qtoResult.zones.length > 1;
+              const selZoneF = rptZone !== "all" ? qtoResult.zones.find(z => z.id === rptZone) : null;
               return (
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <CardTitle className="text-sm font-semibold uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5">All-in cost per running metre — concrete, earthwork, steel & ancillaries.</p>
+                  <CardHeader className="pb-3 pt-4 px-5">
+                    <div className="flex flex-row items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <CardTitle className="text-sm font-semibold uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          All-in cost per RM — concrete, earthwork, steel & ancillaries
+                          {selZoneF ? ` · ${[selZoneF.location, selZoneF.label].filter(Boolean).join(" ")}` : ""}.
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>
+                        <Printer className="w-3.5 h-3.5 mr-1" /> Print
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>
-                      <Printer className="w-3.5 h-3.5 mr-1" /> Print
-                    </Button>
+                    <div className="flex flex-wrap gap-3 mt-2 print:hidden">
+                      <RptFilter label="Zone" value={rptZone} onChange={setRptZone} options={zoneOpts} />
+                    </div>
                   </CardHeader>
                   <CardContent className="px-4 pb-4">
-                    {hasMultiZone && (
-                      <div className="mb-4">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Per Zone</p>
-                        {qtoResult.zones.map(z => renderPerMTable(z.wallsM3, z.length, `${z.label} (${z.length} m)`, "gross"))}
-                        <div className="border-t pt-4 mt-2">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                            Combined ({qtoResult.totalLength.toFixed(0)} m)
-                          </p>
-                          {renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net", qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0)}
-                        </div>
-                      </div>
-                    )}
-                    {!hasMultiZone && renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net", qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0)}
+                    {selZoneF
+                      ? renderPerMTable(selZoneF.wallsM3, selZoneF.length, `${selZoneF.location ?? ""} ${selZoneF.label}`.trim(), "gross")
+                      : renderPerMTable(qtoResult.totalWallsNet, qtoResult.totalLength, "Combined", "net", qtoResult.totalLength > 0 ? qtoResult.totalTopNet / qtoResult.totalLength : 0)
+                    }
                   </CardContent>
                 </Card>
               );
             })()}
 
-            {/* ── Section 5: BOQ Summary (conditional) ── */}
+            {/* ── G. BOQ SUMMARY ── */}
             {(s.boqItems?.length ?? 0) > 0 && (() => {
-              const totalAmt = s.boqItems.reduce((sum, it) => sum + boqVol(it) * it.rate, 0);
+              const allLocs = Array.from(new Set(s.boqItems.map(it => it.location).filter(Boolean))) as string[];
+              const allCats = Array.from(new Set(s.boqItems.map(it => inferBoqCategory(it.description)).filter(Boolean))) as string[];
+              const filtered = s.boqItems.filter(it => {
+                if (rptBqLoc !== "all" && (it.location ?? "") !== rptBqLoc) return false;
+                if (rptBqCat !== "all" && inferBoqCategory(it.description) !== rptBqCat) return false;
+                return true;
+              });
+              const totalAmt = filtered.reduce((sum, it) => sum + boqVol(it) * it.rate, 0);
+              const grandAmt = s.boqItems.reduce((sum, it) => sum + boqVol(it) * it.rate, 0);
               return (
                 <Card>
                   <CardHeader className="pb-3 pt-4 px-5">
                     <CardTitle className="text-sm font-semibold uppercase tracking-wide">BOQ Summary</CardTitle>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {s.boqItems.length} item{s.boqItems.length !== 1 ? "s" : ""} · Total: {fmtR(totalAmt)}
+                      {filtered.length} of {s.boqItems.length} item{s.boqItems.length !== 1 ? "s" : ""} · Filtered: {fmtR(totalAmt)} / Grand: {fmtR(grandAmt)}
                     </p>
+                    {(allLocs.length > 0 || allCats.length > 0) && (
+                      <div className="flex flex-wrap gap-3 mt-2 print:hidden">
+                        {allLocs.length > 0 && (
+                          <RptFilter label="Location" value={rptBqLoc} onChange={setRptBqLoc}
+                            options={allLocs.map(l => ({ value: l, label: l }))} />
+                        )}
+                        {allCats.length > 0 && (
+                          <RptFilter label="Category" value={rptBqCat} onChange={setRptBqCat}
+                            options={allCats.map(c => ({ value: c, label: c }))} />
+                        )}
+                      </div>
+                    )}
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
-                    <table className="text-xs w-full border-separate border-spacing-0">
-                      <thead>
-                        <tr className="bg-muted/50">
-                          {["Description", "Qty", "Unit", "Rate ₹", "Amount ₹"].map(h => (
-                            <th key={h} className={`px-3 py-2 font-semibold border-b ${h === "Description" ? "text-left" : "text-right"}`}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {s.boqItems.map((it, i) => {
-                          const vol = boqVol(it);
-                          const amt = vol * it.rate;
-                          return (
-                            <tr key={it.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
-                              <td className="px-3 py-1.5">{it.description || `Item ${i + 1}`}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{vol.toFixed(3)}</td>
-                              <td className="px-3 py-1.5 text-right text-muted-foreground">{it.unit || "m³"}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{fmtR(it.rate)}</td>
-                              <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(amt)}</td>
-                            </tr>
-                          );
-                        })}
-                        <tr className="bg-blue-50/80 dark:bg-blue-900/20 font-bold">
-                          <td className="px-3 py-1.5" colSpan={4}>Total</td>
-                          <td className="px-3 py-1.5 text-right font-mono">{fmtR(totalAmt)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    {filtered.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-4 text-center">No BOQ items match the selected filters.</p>
+                    ) : (
+                      <table className="text-xs w-full border-separate border-spacing-0">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            {["Description", ...(allLocs.length > 0 ? ["Location"] : []), ...(allCats.length > 0 ? ["Category"] : []), "Qty", "Unit", "Rate ₹", "Amount ₹"].map(h => (
+                              <th key={h} className={`px-3 py-2 font-semibold border-b ${h === "Description" || h === "Location" || h === "Category" ? "text-left" : "text-right"}`}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((it, i) => {
+                            const vol = boqVol(it);
+                            const amt = vol * it.rate;
+                            const cat = inferBoqCategory(it.description);
+                            return (
+                              <tr key={it.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
+                                <td className="px-3 py-1.5">{it.description || `Item ${i + 1}`}</td>
+                                {allLocs.length > 0 && <td className="px-3 py-1.5 text-muted-foreground text-[11px]">{it.location || "—"}</td>}
+                                {allCats.length > 0 && <td className="px-3 py-1.5 text-muted-foreground text-[11px]">{cat || "—"}</td>}
+                                <td className="px-3 py-1.5 text-right font-mono">{vol.toFixed(3)}</td>
+                                <td className="px-3 py-1.5 text-right text-muted-foreground">{it.unit || "m³"}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{fmtR(it.rate)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold">{fmtR(amt)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-blue-50/80 dark:bg-blue-900/20 font-bold">
+                            <td className="px-3 py-1.5" colSpan={1 + (allLocs.length > 0 ? 1 : 0) + (allCats.length > 0 ? 1 : 0) + 3}>
+                              {filtered.length < s.boqItems.length ? `Filtered Total (${filtered.length} items)` : "Total"}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono">{fmtR(totalAmt)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    )}
                   </CardContent>
                 </Card>
               );
