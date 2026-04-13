@@ -1340,7 +1340,9 @@ export default function ConcreteCalculator() {
     const hasLocations = r.zones.some(z => z.location && z.location.trim());
     const items: BOQItem[] = [];
     for (const z of r.zones) {
-      const loc = z.location?.trim() || "";
+      const locRaw = z.location?.trim() || "";
+      // Section items with no location go to "Unassigned" group (distinct from "" = "All Locations / General")
+      const loc = locRaw || "__unassigned__";
       const chRange = z.chainageFrom && z.chainageTo ? ` Ch ${z.chainageFrom}–${z.chainageTo}` : (z.length > 0 ? ` L=${z.length}m` : "");
       const secTag = hasLocations ? `[${z.label}${chRange}] ` : (r.zones.length > 1 ? `[${z.label}${chRange}] ` : "");
       // Per-zone net RCC
@@ -3615,9 +3617,9 @@ export default function ConcreteCalculator() {
                       <p className="text-lg font-bold">{qtoResult.totalPCC.toFixed(2)} m³</p>
                     </div>
                     <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2">
-                      <p className="text-xs text-slate-600">Excavation (approx)</p>
+                      <p className="text-xs text-slate-600">Excavation (per-section sum)</p>
                       <p className="text-lg font-bold text-orange-700">{qtoResult.excavVolume.toFixed(2)} m³</p>
-                      <p className="text-xs text-slate-600">{qtoResult.excavWidth.toFixed(2)}m wide × avg {qtoResult.excavDepth.toFixed(2)}m deep</p>
+                      <p className="text-xs text-slate-600">{qtoResult.excavWidth.toFixed(2)}m wide, avg depth {qtoResult.excavDepth.toFixed(2)}m</p>
                     </div>
                     <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
                       <p className="text-xs text-slate-600">Backfill (approx)</p>
@@ -3660,7 +3662,7 @@ export default function ConcreteCalculator() {
                       <p>Invert Slab = (span + 2t) × is × L</p>
                       {showTopSlab && <p>Top Slab   = (span + 2t) × ts × L</p>}
                       <p>PCC Bed    = (span + 2t + 2×offset) × pd × L</p>
-                      <p>Excavation = (pccWidth + 2×ws) × (avgH + is + pd) × totalL</p>
+                      <p>Excavation = Σ zones: (pccWidth + 2×ws) × (H + is + pd) × L (per-section)</p>
                     </div>
                   )}
                 </CardContent>
@@ -3803,14 +3805,16 @@ export default function ConcreteCalculator() {
                   <p className="text-sm text-slate-600">{isDrainType && qtoResult ? 'Use "Load Standard Drain BOQ" to auto-generate from QTO dimensions above, or click "Add Item" to add manually.' : 'Click "Add Item" to add BOQ items.'}</p>
                 ) : (() => {
                   // Build ordered location list (preserving first-seen order)
+                  // "" = "All Locations / General" (manually added)
+                  // "__unassigned__" = section items with no location tag
+                  // any other string = actual location name
                   const locOrder: string[] = [];
                   for (const item of s.boqItems) {
                     const loc = item.location?.trim() || "";
                     if (!locOrder.includes(loc)) locOrder.push(loc);
                   }
-                  // Grouping applies only when 2+ distinct non-empty locations exist
-                  const nonEmptyLocs = locOrder.filter(l => l !== "");
-                  const hasLocGroups = nonEmptyLocs.length > 1;
+                  // Grouping applies only when 2+ distinct effective groups exist
+                  const hasLocGroups = locOrder.length > 1;
                   const renderBOQRow = (item: BOQItem, idx: number) => {
                     const qty = boqVol(item);
                     const amount = qty * item.rate;
@@ -3875,12 +3879,12 @@ export default function ConcreteCalculator() {
                                 <Fragment key={`loc-grp-${loc}`}>
                                   <tr className="bg-slate-100 dark:bg-slate-800">
                                     <td colSpan={7} className="p-2 font-semibold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wide">
-                                      {loc || "All Locations / General"}
+                                      {loc === "__unassigned__" ? "Unassigned" : loc || "All Locations / General"}
                                     </td>
                                   </tr>
                                   {groupItems.map(item => renderBOQRow(item, ++globalIdx))}
                                   <tr className="border-t border-slate-300 bg-slate-50 dark:bg-slate-900/40 font-semibold text-slate-700 dark:text-slate-300">
-                                    <td colSpan={5} className="p-2 text-xs text-right italic">Sub-total — {loc || "All Locations"}</td>
+                                    <td colSpan={5} className="p-2 text-xs text-right italic">Sub-total — {loc === "__unassigned__" ? "Unassigned" : loc || "All Locations"}</td>
                                     <td className="p-2 text-right text-xs">{fmtR(groupAmt)}</td>
                                     <td></td>
                                   </tr>
@@ -4441,8 +4445,8 @@ export default function ConcreteCalculator() {
             const grandTotal = items.reduce((sum, it) => sum + it.qty * it.rate, 0);
             const locOrder: string[] = [];
             for (const it of items) { const loc = it.location?.trim() || ""; if (!locOrder.includes(loc)) locOrder.push(loc); }
-            const nonEmptyLocsR = locOrder.filter(l => l !== "");
-            const hasLocGroups = nonEmptyLocsR.length > 1;
+            // "" = "All Locations / General", "__unassigned__" = section items with no location, other = actual location name
+            const hasLocGroups = locOrder.length > 1;
             let globalIdx = 0;
             return (
               <Card>
@@ -4466,7 +4470,7 @@ export default function ConcreteCalculator() {
                         return (
                           <Fragment key={`rpt-loc-${loc}`}>
                             <tr className="bg-slate-200 dark:bg-slate-700">
-                              <td colSpan={6} className="px-3 py-1.5 font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">{loc || "All Locations / General"}</td>
+                              <td colSpan={6} className="px-3 py-1.5 font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">{loc === "__unassigned__" ? "Unassigned" : loc || "All Locations / General"}</td>
                             </tr>
                             {groupItems.map(it => (
                               <tr key={it.id} className="bg-white dark:bg-transparent">
@@ -4479,7 +4483,7 @@ export default function ConcreteCalculator() {
                               </tr>
                             ))}
                             <tr className="bg-slate-100 dark:bg-slate-700/40 font-semibold">
-                              <td colSpan={5} className="px-3 py-1.5 text-right italic text-slate-600">Sub-total — {loc || "All Locations"}</td>
+                              <td colSpan={5} className="px-3 py-1.5 text-right italic text-slate-600">Sub-total — {loc === "__unassigned__" ? "Unassigned" : loc || "All Locations"}</td>
                               <td className="px-3 py-1.5 text-right">{fmtR(groupAmt)}</td>
                             </tr>
                           </Fragment>
