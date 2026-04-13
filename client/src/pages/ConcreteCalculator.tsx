@@ -1336,43 +1336,54 @@ export default function ConcreteCalculator() {
     const grOD = (q.gratingOpeningD ?? 100) / 1000;
     const weepholeDeductPerNos = (Math.PI / 4) * weepholeDiamM * weepholeDiamM * t;
     const gratingDeductPerNos = showTopSlab ? grOW * grOD * tsM : 0;
-    // Check if any zones have location tags (drives flat vs grouped output)
-    const hasLocations = r.zones.some(z => z.location && z.location.trim());
-    const items: BOQItem[] = [];
+    // Group zones by location — BOQ is location-wise, not section-wise
+    // Each unique location yields one consolidated set of BOQ items with aggregated quantities.
+    // Zones with no location go to "__unassigned__" (distinct from "" = manually-added general items).
+    const locOrder: string[] = [];
+    const locZonesMap: Record<string, typeof r.zones> = {};
     for (const z of r.zones) {
-      const locRaw = z.location?.trim() || "";
-      // Section items with no location go to "Unassigned" group (distinct from "" = "All Locations / General")
-      const loc = locRaw || "__unassigned__";
-      const chRange = z.chainageFrom && z.chainageTo ? ` Ch ${z.chainageFrom}–${z.chainageTo}` : (z.length > 0 ? ` L=${z.length}m` : "");
-      // Always include section tag in auto-generated descriptions so each row is self-contained with chainage info.
-      // For single-zone, no-location projects, the tag is still added for traceability.
-      const secTag = `[${z.label}${chRange}] `;
-      // Per-zone net RCC
-      const zWallsNet = Math.max(0, z.wallsM3 - weepholeDeductPerNos * z.weepholesCount);
-      const zTopNet = Math.max(0, z.topM3 - gratingDeductPerNos * z.gratingsCount);
-      const zRCCNet = zWallsNet + z.invertM3 + zTopNet;
-      // Per-zone steel from BBS attribution
-      const zSteelKg = bbsSummary.byZone[z.id] ?? 0;
-      const zSteelMT = parseFloat((zSteelKg / 1000).toFixed(3));
+      const loc = z.location?.trim() || "__unassigned__";
+      if (!locOrder.includes(loc)) locOrder.push(loc);
+      if (!locZonesMap[loc]) locZonesMap[loc] = [];
+      locZonesMap[loc].push(z);
+    }
+    const items: BOQItem[] = [];
+    for (const loc of locOrder) {
+      const zones = locZonesMap[loc];
+      // Aggregate quantities across all zones in this location group
+      let excavVolSum = 0, pccM3Sum = 0, rccNetSum = 0, steelKgSum = 0;
+      let gratingsSum = 0, weepholesSum = 0, hooksSum = 0;
+      for (const z of zones) {
+        const zWallsNet = Math.max(0, z.wallsM3 - weepholeDeductPerNos * z.weepholesCount);
+        const zTopNet = Math.max(0, z.topM3 - gratingDeductPerNos * z.gratingsCount);
+        excavVolSum += z.excavVol;
+        pccM3Sum += z.pccM3;
+        rccNetSum += zWallsNet + z.invertM3 + zTopNet;
+        steelKgSum += bbsSummary.byZone[z.id] ?? 0;
+        gratingsSum += z.gratingsCount;
+        weepholesSum += z.weepholesCount;
+        hooksSum += z.liftingHooksCount;
+      }
+      const steelMT = parseFloat((steelKgSum / 1000).toFixed(3));
       // 1. Earthwork
-      items.push({ id: uid(), description: `${secTag}Earthwork Excavation in Foundation Trenches incl. disposal`, qty: parseFloat(z.excavVol.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, location: loc });
+      items.push({ id: uid(), description: `Earthwork Excavation in Foundation Trenches incl. disposal`, qty: parseFloat(excavVolSum.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: q.excavationRate, location: loc });
       // 2. PCC
-      items.push({ id: uid(), description: `${secTag}${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(z.pccM3.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), location: loc });
+      items.push({ id: uid(), description: `${eq.pcc} PCC in Foundation, ${q.pccDepth}mm thick (${q.pccOffset}mm offset each side)`, qty: parseFloat(pccM3Sum.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(pccRatePerM3), location: loc });
       // 3. RCC
-      items.push({ id: uid(), description: `${secTag}${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(zRCCNet.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), location: loc });
+      items.push({ id: uid(), description: `${rccLabel} in Raft Foundation, Both Side Walls${showTopSlab ? " & Top Slab" : ""} incl. Centering, Shuttering & Vibration`, qty: parseFloat(rccNetSum.toFixed(2)), unit: "Cum", dimL: 0, dimW: 0, dimD: 0, rate: Math.round(blendedRCCRate), location: loc });
       // 4. Steel
-      items.push({ id: uid(), description: `${secTag}HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position`, qty: zSteelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: steelBOQRate, location: loc });
-      // 5. Gratings (only if applicable)
-      if (z.gratingsCount > 0) {
-        items.push({ id: uid(), description: `${secTag}Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: z.gratingsCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, location: loc });
+      items.push({ id: uid(), description: `HYSD Bar Reinforcements of Various Dia incl. Cutting, Bending & Placing in Position`, qty: steelMT, unit: "MT", dimL: 0, dimW: 0, dimD: 0, rate: steelBOQRate, location: loc });
+      // 5. Gratings (only if any in this location)
+      if (gratingsSum > 0) {
+        items.push({ id: uid(), description: `Supply & Fixing MS Grating ${q.gratingOpeningW ?? 200}×${q.gratingOpeningD ?? 100}mm Opening @ ${q.gratingsSpacing}m c/c`, qty: gratingsSum, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.gratingRatePerNos, location: loc });
       }
       // 6. Weepholes
-      if (z.weepholesCount > 0) {
-        items.push({ id: uid(), description: `${secTag}Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: z.weepholesCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, location: loc });
+      if (weepholesSum > 0) {
+        items.push({ id: uid(), description: `Supply & Fixing Weepholes ${q.weepholeDiaMm ?? 100}mm dia @ ${q.weepholesSpacing}m c/c interval`, qty: weepholesSum, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.weepholeRatePerNos, location: loc });
       }
       // 7. Lifting Hooks
-      if (z.liftingHooksCount > 0) {
-        items.push({ id: uid(), description: `${secTag}Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: z.liftingHooksCount, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, location: loc });
+      if (hooksSum > 0) {
+        items.push({ id: uid(), description: `Supply & Fixing Lifting Hooks ${q.liftingHookDia ?? 12}φ @ ${q.liftingHookSpacingM ?? 2}m c/c`, qty: hooksSum, unit: "No's", dimL: 0, dimW: 0, dimD: 0, rate: q.liftingHookRatePerNos ?? 150, location: loc });
       }
     }
     return items;
@@ -1556,7 +1567,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ①: Project Info */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">① Project Info</CardTitle>
                   <HelpBtn id="proj-info" />
                 </CardHeader>
@@ -1609,13 +1620,33 @@ export default function ConcreteCalculator() {
                       <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Date</Label>
                       <Input type="date" value={s.date} onChange={(e) => update({ date: e.target.value })} className="mt-1 h-9 text-sm" />
                     </div>
+                    {qtoResult && (
+                      <div className="col-span-2 flex flex-wrap gap-2 pt-1">
+                        <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-800 rounded-md px-3 py-1.5 text-xs">
+                          <span className="font-medium">RCC</span>
+                          <span className="font-bold">{qtoResult.totalRCC.toFixed(2)} m³</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 text-stone-700 rounded-md px-3 py-1.5 text-xs">
+                          <span className="font-medium">PCC</span>
+                          <span className="font-bold">{qtoResult.totalPCC.toFixed(2)} m³</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md px-3 py-1.5 text-xs">
+                          <span className="font-medium">Steel</span>
+                          <span className="font-bold">{(bbsSummary.totalKg / 1000).toFixed(3)} MT</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-md px-3 py-1.5 text-xs">
+                          <span className="font-medium">Excavation</span>
+                          <span className="font-bold">{qtoResult.excavVolume.toFixed(2)} m³</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
 
               {/* Section ②: Mix Design */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">② Concrete Mix Design (IS:456)</CardTitle>
                   <div className="flex items-center gap-2">
                     <button
@@ -1675,7 +1706,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ③: Raw Materials */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">③ Raw Materials</CardTitle>
                   <HelpBtn id="raw-materials" />
                 </CardHeader>
@@ -1851,7 +1882,7 @@ export default function ConcreteCalculator() {
 
               {/* Location Variants Card */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-violet-500" /> Location Variants — Rate Blender
@@ -2024,7 +2055,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ④: Batching Equipment */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <div className="flex items-center">
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">④ Batching Equipment</CardTitle>
                     <HelpBtn id="batching" />
@@ -2120,7 +2151,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑤: Placement */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">⑤ Concrete Placement</CardTitle>
                   <HelpBtn id="placement" />
                 </CardHeader>
@@ -2238,7 +2269,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑥: Formwork & Staging */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">⑥ Formwork & Staging</CardTitle>
                   <HelpBtn id="formwork" />
                 </CardHeader>
@@ -2301,7 +2332,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑦: Curing */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">⑦ Curing</CardTitle>
                   <HelpBtn id="curing" />
                 </CardHeader>
@@ -2384,7 +2415,7 @@ export default function ConcreteCalculator() {
 
               {/* Section ⑧: Labour + Overhead & Margin */}
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">⑧ Labour, Overhead & Margin</CardTitle>
                   <HelpBtn id="overhead" />
                 </CardHeader>
@@ -2411,7 +2442,7 @@ export default function ConcreteCalculator() {
             <div className="lg:col-span-2">
               <div className="sticky top-4 space-y-4">
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                     <div className="flex items-center gap-2 flex-wrap">
                       <CardTitle className="text-sm font-semibold">Rate Breakdown</CardTitle>
                       <Select value={breakdownGrade} onValueChange={v => { setBreakdownGrade(v); setBreakdownIsPcc(false); }}>
@@ -2633,7 +2664,7 @@ export default function ConcreteCalculator() {
 
             {/* BBS Table */}
             <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                 <div className="flex items-center gap-1">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Bar Bending Schedule (BBS)</CardTitle>
@@ -2850,19 +2881,18 @@ export default function ConcreteCalculator() {
                         <tfoot>
                           <tr className="border-t-2 border-border bg-muted/20 font-semibold">
                             <td colSpan={12} className="p-2 text-xs">Total Steel</td>
-                            <td className="p-2 text-right text-xs text-yellow-700">
-                              {bbsSummary.totalKgPerM.toFixed(3)} kg/m
-                              {s.totalVolume > 0 && crossSectionM2 > 0 && (
-                                <span className="ml-1 text-slate-500">({(bbsSummary.totalKgPerM / crossSectionM2).toFixed(1)} kg/m³)</span>
+                            <td className="p-2 text-right text-xs">
+                              <div className="font-bold text-yellow-700">{bbsSummary.totalKgPerM.toFixed(3)} <span className="font-normal text-slate-500">kg/m</span></div>
+                              {crossSectionM2 > 0 && (
+                                <div className="text-slate-500 font-normal">{(bbsSummary.totalKgPerM / crossSectionM2).toFixed(1)} <span>kg/m³</span></div>
                               )}
                             </td>
-                            <td className="p-2 text-right text-xs font-semibold">
-                              {bbsSummary.totalKg.toFixed(1)} kg
-                              {bbsSummary.totalKg >= 100 && (
-                                <span className="ml-1 text-slate-600 dark:text-slate-400">({(bbsSummary.totalKg / 1000).toFixed(3)} MT)</span>
-                              )}
+                            <td className="p-2 text-right text-xs">
+                              <div className="font-bold">{bbsSummary.totalKg.toFixed(1)} <span className="font-normal text-slate-500">kg</span>
+                                {bbsSummary.totalKg >= 100 && <span className="ml-1 text-slate-500 font-normal">({(bbsSummary.totalKg / 1000).toFixed(3)} MT)</span>}
+                              </div>
                               {s.totalVolume > 0 && (
-                                <span className="ml-1 text-slate-500 text-[10px]">= {(bbsSummary.totalKg / s.totalVolume).toFixed(1)} kg/m³</span>
+                                <div className="text-slate-500 font-normal">{(bbsSummary.totalKg / s.totalVolume).toFixed(1)} <span>kg/m³</span></div>
                               )}
                             </td>
                             <td></td>
@@ -3151,7 +3181,7 @@ export default function ConcreteCalculator() {
 
             {/* Wastage & Risk */}
             <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                 <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Wastage & Risk Allowances</CardTitle>
                 <HelpBtn id="wastage" />
               </CardHeader>
@@ -3254,7 +3284,7 @@ export default function ConcreteCalculator() {
 
             {/* Structure Dimensions */}
             <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                 <div>
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Structure Dimensions</CardTitle>
                   <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5">Dimensions drive volume calculations below. Structure type is set in ① Project Info (Calculator tab).</p>
@@ -3533,7 +3563,7 @@ export default function ConcreteCalculator() {
             {/* Volume Summary — Drain / Box Culvert */}
             {isDrainType && qtoResult && (
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Volume Summary</CardTitle>
                     <p className="text-sm text-slate-600 mt-0.5">Walls = 2·t·H·L | Invert/Top = (span+2t)·slab·L | PCC = (span+2t+2·offset)·d·L</p>
@@ -3674,7 +3704,7 @@ export default function ConcreteCalculator() {
             {/* Volume Summary — Bridge / Retaining Wall */}
             {isBridgeType && bridgeQtoResult && (
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-start justify-between gap-3 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Volume Summary (per metre run)</CardTitle>
                   <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
                     onClick={() => { update({ totalVolume: parseFloat(bridgeQtoResult.totalRCCperM.toFixed(2)) }); toast({ title: "Volume updated (per m run)" }); }}>
@@ -3695,7 +3725,7 @@ export default function ConcreteCalculator() {
             {/* Earthwork & PCC Rates for BOQ */}
             {isDrainType && (
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Earthwork & Ancillary Rates</CardTitle>
                   <p className="text-sm text-slate-600 mt-0.5">Used when generating the Standard Drain BOQ and Per-Metre Rate Card.</p>
                 </CardHeader>
@@ -3723,7 +3753,7 @@ export default function ConcreteCalculator() {
 
             {/* BOQ Estimator */}
             <Card>
-              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between gap-2 flex-wrap sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+              <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between gap-2 flex-wrap sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                 <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">BOQ Estimator</CardTitle>
                 <div className="flex items-center gap-2 flex-wrap">
                   {isDrainType && qtoResult && (
@@ -4030,7 +4060,7 @@ export default function ConcreteCalculator() {
             return (
               <div className="space-y-4">
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rate Analysis — {s.grade}</CardTitle>
                       <p className="text-xs text-slate-600 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for the active concrete grade.</p>
@@ -4043,7 +4073,7 @@ export default function ConcreteCalculator() {
                 </Card>
                 {hasPCC && pccRows.length > 0 && (
                   <Card>
-                    <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                    <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">PCC Bed — {pccGrade}</CardTitle>
                       <p className="text-xs text-slate-600 mt-0.5">PCC rate excludes formwork and placement — blinding coat only.</p>
                     </CardHeader>
@@ -4099,7 +4129,7 @@ export default function ConcreteCalculator() {
             return (
               <div className="space-y-4">
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rate Analysis</CardTitle>
                       <p className="text-xs text-slate-600 mt-0.5">Purchase rate + fabrication + wastage + OH + margin per diameter and summary.</p>
@@ -4243,7 +4273,7 @@ export default function ConcreteCalculator() {
                 const bConcretePerM = bridgeQtoResult.stemVol * bStemCostPerM3 + bridgeQtoResult.baseVol * bFootCostPerM3;
                 return (
                   <Card>
-                    <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                    <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                       <div>
                         <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
                         <p className="text-xs text-slate-600 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
@@ -4408,7 +4438,7 @@ export default function ConcreteCalculator() {
 
             return (
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                   <div>
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
                     <p className="text-xs text-slate-600 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
@@ -4452,7 +4482,7 @@ export default function ConcreteCalculator() {
             let globalIdx = 0;
             return (
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">BOQ — Bill of Quantities</CardTitle>
                   <p className="text-xs text-slate-600 mt-0.5">{items.length} item(s) — our estimated rates.</p>
                 </CardHeader>
@@ -4542,7 +4572,7 @@ export default function ConcreteCalculator() {
             return (
               <div className="space-y-4">
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl flex flex-row items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Quotation — Client Rate vs Our Cost</CardTitle>
                       <p className="text-xs text-slate-600 mt-0.5">Enter client's offered rate per item to compute margin.</p>
@@ -4748,7 +4778,7 @@ export default function ConcreteCalculator() {
 
                 {/* Variables table */}
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                  <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                     <CardTitle className="text-sm font-semibold">Sensitivity Variables (ranked by 10% impact)</CardTitle>
                     <HelpBtn id="price-impact" />
                   </CardHeader>
@@ -4855,7 +4885,7 @@ export default function ConcreteCalculator() {
             {/* ── Compare Scenarios ── */}
             <TabsContent value="compare">
               <Card>
-                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                   <div className="flex items-center">
                     <CardTitle className="text-sm font-semibold">Scenario Comparison</CardTitle>
                     <HelpBtn id="compare" />
@@ -5063,7 +5093,7 @@ export default function ConcreteCalculator() {
             <TabsContent value="rate-client-offer">
               <div className="space-y-4">
                 <Card>
-                  <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                  <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                     <CardTitle className="text-sm font-semibold">Rate vs Client Offer</CardTitle>
                     <p className="text-sm text-slate-600 mt-0.5">Enter the client's offered rate to compute margin against your cost estimate.</p>
                   </CardHeader>
@@ -5216,7 +5246,7 @@ export default function ConcreteCalculator() {
 
                     {/* Location table */}
                     <Card>
-                      <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                      <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center justify-between sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                         <CardTitle className="text-sm font-semibold">Location Cost Breakdown</CardTitle>
                         <HelpBtn id="rate-blender" />
                       </CardHeader>
@@ -5284,7 +5314,7 @@ export default function ConcreteCalculator() {
 
                     {/* Markup & quoted rate */}
                     <Card>
-                      <CardHeader className="pb-3 pt-4 px-5 sticky top-14 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
+                      <CardHeader className="pb-3 pt-4 px-5 sticky top-24 z-10 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-200 dark:border-sky-800/40 shadow-sm rounded-t-xl">
                         <CardTitle className="text-sm font-semibold">Quote Rate Builder</CardTitle>
                       </CardHeader>
                       <CardContent className="px-5 pb-5">
