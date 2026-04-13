@@ -37,7 +37,7 @@ export default function EstimatorHub() {
         </div>
 
         {/* Calculator tiles */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+        <div className={`grid grid-cols-1 ${role !== "manager" ? "md:grid-cols-2" : ""} gap-8 mb-10`}>
           {/* Bituminous Mix Calculator */}
           <Card className="border-2 hover:border-amber-400 transition-all hover:shadow-md">
             <CardContent className="p-8 flex flex-col items-center text-center">
@@ -77,8 +77,8 @@ export default function EstimatorHub() {
             </CardContent>
           </Card>
 
-          {/* Concrete Rate Calculator v2 */}
-          <Card className="border-2 hover:border-blue-400 transition-all hover:shadow-md">
+          {/* Concrete Rate Calculator v2 — admin only */}
+          {role !== "manager" && <Card className="border-2 hover:border-blue-400 transition-all hover:shadow-md">
             <CardContent className="p-8 flex flex-col items-center text-center">
               <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-5">
                 <Building2 className="w-8 h-8 text-blue-600" />
@@ -114,7 +114,7 @@ export default function EstimatorHub() {
                 </a>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
         </div>
 
         {/* Footer */}

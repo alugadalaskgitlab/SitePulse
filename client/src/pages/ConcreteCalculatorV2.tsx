@@ -1706,6 +1706,7 @@ export default function ConcreteCalculatorV2() {
 
   useEffect(() => {
     if (!role) setLocation("/estimator-login?returnTo=/concrete-calculator-v2");
+    if (role === "manager") setLocation("/estimator-hub");
   }, [role]);
 
   const { data: loadedEst } = useQuery<ConcreteEstimateV2>({
