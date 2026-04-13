@@ -32,7 +32,15 @@ interface IncludedCosts { cement: boolean; ca: boolean; fa: boolean; admix: bool
 interface SteelRates { r8: number; r10: number; r12: number; r16: number; r20: number; r25: number; }
 interface WastageFlags { sandBulkage: boolean; cementWastage: boolean; cementWastagePct: number; steelCuttingWaste: boolean; steelCuttingPct: number; formworkDamage: boolean; formworkDamageReduction: number; curingWaterLoss: boolean; curingWaterLossPct: number; }
 interface Scenario { id: string; name: string; changes: Record<string, number>; rates?: Record<string, number>; }
-interface HeightZone { id: string; label: string; height: number; length: number; }
+interface HeightZone { id: string; label: string; location: string; chainageFrom: string; chainageTo: string; height: number; length: number; }
+
+function parseChainageM(s: string): number | null {
+  const clean = s.trim().replace(/^[Cc][Hh]\.?\s*/, "");
+  const m = clean.match(/^(\d+)\+(\d{3})$/);
+  if (m) return parseInt(m[1]) * 1000 + parseInt(m[2]);
+  const plain = parseFloat(clean);
+  return isNaN(plain) ? null : plain;
+}
 interface ElementGrades { pcc: string; invert: string; wall: string; topSlab: string; }
 interface QtoState {
   clearSpan: number; wallThickness: number; invertSlabThick: number; topSlabThick: number;
@@ -1484,7 +1492,7 @@ export default function ConcreteCalculator() {
 
       {/* ── Main tabs ── */}
       <Tabs value={activeMainTab} onValueChange={(v) => { setActiveMainTab(v); try { localStorage.setItem("cc_active_tab", v); } catch {} }}>
-        <TabsList className="mb-4">
+        <TabsList className="sticky top-14 z-20 w-full justify-start rounded-none border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 mb-4 overflow-x-auto flex-nowrap">
           <TabsTrigger value="calculator" data-testid="tab-calculator">Calculator</TabsTrigger>
           <TabsTrigger value="bbs" data-testid="tab-bbs">BBS & Wastage</TabsTrigger>
           <TabsTrigger value="qto-boq" data-testid="tab-qto-boq"><Building2 className="w-3.5 h-3.5 mr-1" />Dimensions & QTO</TabsTrigger>
@@ -2878,14 +2886,14 @@ export default function ConcreteCalculator() {
                         const zTopM3 = showTopSlab ? qtoResult.topPerM * zLen : 0;
                         const zRccM3 = zWallM3 + zInvertM3 + zTopM3;
 
+                        const sectionLabel = s.qto.heightZones.find(hz => hz.id === zone.id)?.label ?? `H=${(zone.h * 1000).toFixed(0)}mm`;
                         return {
                           id: zone.id,
-                          label: `H = ${(zone.h * 1000).toFixed(0)} mm`,
+                          sectionLabel,
+                          heightMm: zone.h * 1000,
                           length: zLen,
                           kg: zKg,
                           kgPerM: zLen > 0 ? zKg / zLen : 0,
-                          kgPerM3: zRccM3 > 0 ? zKg / zRccM3 : 0,
-                          rccM3: zRccM3,
                         };
                       });
 
@@ -2893,44 +2901,39 @@ export default function ConcreteCalculator() {
 
                       return (
                         <div className="mt-5 pt-4 border-t border-border/60">
-                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Zone-Wise Steel Summary</p>
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Section-Wise Steel Summary</p>
                           <p className="text-xs text-slate-500 mb-3">
-                            Steel breakdown per depth zone — wall bars use each zone's actual height for count calculation.
+                            Steel breakdown per drain section — wall bars use each section's actual height for count.
                           </p>
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs border-separate border-spacing-0">
                               <thead>
                                 <tr className="bg-slate-50 dark:bg-slate-800/60">
-                                  <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200 rounded-tl">Depth Zone</th>
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600 border-b border-slate-200 rounded-tl">Section</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">H (mm)</th>
                                   <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">Length (m)</th>
-                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">RCC Vol (m³)</th>
                                   <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">Steel (kg)</th>
-                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200">kg / m</th>
-                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200 rounded-tr">kg / m³</th>
+                                  <th className="text-right px-3 py-2 font-semibold text-slate-600 border-b border-slate-200 rounded-tr">kg / m</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {zoneSummary.map((z, i) => (
                                   <tr key={z.id} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/50 dark:bg-slate-800/20"}>
-                                    <td className="px-3 py-1.5 font-medium text-slate-700">{z.label}</td>
+                                    <td className="px-3 py-1.5 font-medium text-slate-700">{z.sectionLabel}</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-500">{z.heightMm.toFixed(0)}</td>
                                     <td className="px-3 py-1.5 text-right text-slate-600">{z.length.toFixed(0)}</td>
-                                    <td className="px-3 py-1.5 text-right text-slate-600">{z.rccM3.toFixed(2)}</td>
                                     <td className="px-3 py-1.5 text-right font-mono font-semibold text-amber-700">{z.kg.toFixed(1)}</td>
                                     <td className="px-3 py-1.5 text-right font-mono text-slate-700">{z.kgPerM.toFixed(2)}</td>
-                                    <td className="px-3 py-1.5 text-right font-mono text-slate-700">{z.kgPerM3.toFixed(1)}</td>
                                   </tr>
                                 ))}
                               </tbody>
                               <tfoot>
                                 <tr className="border-t-2 border-slate-300 bg-amber-50/60 dark:bg-amber-900/10 font-semibold">
                                   <td className="px-3 py-2 text-slate-700">Total</td>
+                                  <td className="px-3 py-2 text-right text-slate-500">—</td>
                                   <td className="px-3 py-2 text-right text-slate-600">{totalLen.toFixed(0)}</td>
-                                  <td className="px-3 py-2 text-right text-slate-600">{zoneSummary.reduce((s, z) => s + z.rccM3, 0).toFixed(2)}</td>
                                   <td className="px-3 py-2 text-right font-mono text-amber-700">{totalKgCheck.toFixed(1)}</td>
                                   <td className="px-3 py-2 text-right font-mono text-slate-600">{totalLen > 0 ? (totalKgCheck / totalLen).toFixed(2) : "—"}</td>
-                                  <td className="px-3 py-2 text-right font-mono text-slate-600">
-                                    {zoneSummary.reduce((s, z) => s + z.rccM3, 0) > 0 ? (totalKgCheck / zoneSummary.reduce((s, z) => s + z.rccM3, 0)).toFixed(1) : "—"}
-                                  </td>
                                 </tr>
                               </tfoot>
                             </table>
@@ -3032,6 +3035,70 @@ export default function ConcreteCalculator() {
                           {steelFabPerM3 > 0 && <span className="text-xs font-normal text-slate-500 ml-2">incl. fab ₹{fmtR(steelFabPerM3)}/m³</span>}
                         </div>
                       </div>
+
+                      {/* Ancillary Steel — Binding Wire & Lifting Hooks */}
+                      {isDrainType && (
+                        <div className="mt-5 pt-4 border-t border-dashed border-border">
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Ancillary Steel Items</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                            {numInput("Binding Wire (kg/MT steel)", s.qto.bindingWireKgPerMT ?? 10, v => updateQto({ bindingWireKgPerMT: v }))}
+                            {numInput("Binding Wire Rate (₹/kg)", s.qto.bindingWireRatePerKg ?? 85, v => updateQto({ bindingWireRatePerKg: v }))}
+                            {numInput("Lifting Hook Dia (mm)", s.qto.liftingHookDia ?? 12, v => updateQto({ liftingHookDia: v }))}
+                            {numInput("Lifting Hook Spacing (m)", s.qto.liftingHookSpacingM ?? 2, v => updateQto({ liftingHookSpacingM: v }))}
+                            {numInput("Lifting Hook Rate (₹/nos)", s.qto.liftingHookRatePerNos ?? 150, v => updateQto({ liftingHookRatePerNos: v }))}
+                          </div>
+                          {(() => {
+                            const totalSteelMT = bbsSummary.totalKg / 1000;
+                            const bwKgPerMT = s.qto.bindingWireKgPerMT ?? 10;
+                            const bwRate = s.qto.bindingWireRatePerKg ?? 85;
+                            const bwKg = totalSteelMT * bwKgPerMT;
+                            const bwCost = bwKg * bwRate;
+                            const lhSp = s.qto.liftingHookSpacingM ?? 2;
+                            const drainLen = qtoResult?.totalLength ?? 0;
+                            const lhCount = lhSp > 0 && drainLen > 0 ? Math.ceil(drainLen / lhSp) : 0;
+                            const lhDia = s.qto.liftingHookDia ?? 12;
+                            const lhUnitKg = (lhDia * lhDia / 162) * 0.6;
+                            const lhTotalKg = lhCount * lhUnitKg;
+                            const lhCost = lhCount * (s.qto.liftingHookRatePerNos ?? 150);
+                            return (
+                              <table className="w-full text-xs border-separate border-spacing-0">
+                                <thead>
+                                  <tr className="bg-slate-50 dark:bg-slate-800/60">
+                                    <th className="text-left px-3 py-1.5 font-semibold text-slate-600 border-b border-slate-200">Item</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold text-slate-600 border-b border-slate-200">Qty</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold text-slate-600 border-b border-slate-200">Wt (kg)</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold text-slate-600 border-b border-slate-200">Cost (₹)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr className="bg-white dark:bg-transparent">
+                                    <td className="px-3 py-1.5 text-slate-700">Binding Wire ({bwKgPerMT} kg/MT × {totalSteelMT.toFixed(3)} MT)</td>
+                                    <td className="px-3 py-1.5 text-right text-slate-500">{bwKg.toFixed(1)} kg</td>
+                                    <td className="px-3 py-1.5 text-right font-mono text-slate-700">{bwKg.toFixed(1)}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono font-semibold text-amber-700">{fmtR(bwCost)}</td>
+                                  </tr>
+                                  {lhCount > 0 && (
+                                    <tr className="bg-slate-50/50 dark:bg-slate-800/20">
+                                      <td className="px-3 py-1.5 text-slate-700">Lifting Hooks (Ø{lhDia}mm @ {lhSp}m c/c — {drainLen.toFixed(0)}m drain)</td>
+                                      <td className="px-3 py-1.5 text-right text-slate-500">{lhCount} nos</td>
+                                      <td className="px-3 py-1.5 text-right font-mono text-slate-700">{lhTotalKg.toFixed(1)}</td>
+                                      <td className="px-3 py-1.5 text-right font-mono font-semibold text-amber-700">{fmtR(lhCost)}</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t-2 border-slate-300 bg-amber-50/60 dark:bg-amber-900/10 font-semibold">
+                                    <td className="px-3 py-2 text-slate-700">Ancillary Total</td>
+                                    <td className="px-3 py-2"></td>
+                                    <td className="px-3 py-2 text-right font-mono text-slate-600">{(bwKg + lhTotalKg).toFixed(1)}</td>
+                                    <td className="px-3 py-2 text-right font-mono text-amber-700">{fmtR(bwCost + lhCost)}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -3278,45 +3345,93 @@ export default function ConcreteCalculator() {
 
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Height Zones (wall height per road-reach)</p>
+                        <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Drain Sections (section ID, location, chainage & depth)</p>
                         <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="btn-add-height-zone"
-                          onClick={() => updateQto({ heightZones: [...s.qto.heightZones, { id: uid(), label: `Zone ${s.qto.heightZones.length + 1}`, height: 1000, length: 100 }] })}>
-                          <Plus className="w-3 h-3 mr-1" /> Add Zone
+                          onClick={() => updateQto({ heightZones: [...s.qto.heightZones, { id: uid(), label: `D${s.qto.heightZones.length + 1}`, location: "", chainageFrom: "", chainageTo: "", height: 1000, length: 100 }] })}>
+                          <Plus className="w-3 h-3 mr-1" /> Add Section
                         </Button>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-xs border-collapse">
+                        <table className="w-full text-xs border-collapse min-w-[640px]">
+                          <colgroup>
+                            <col className="w-[10%]" />
+                            <col className="w-[18%]" />
+                            <col className="w-[14%]" />
+                            <col className="w-[14%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[14%]" />
+                            <col className="w-[4%]" />
+                          </colgroup>
                           <thead>
                             <tr className="bg-muted/40 text-slate-600 uppercase tracking-wide">
-                              <th className="text-left p-2 font-semibold">Zone Label</th>
-                              <th className="text-right p-2 font-semibold">Wall Height (mm)</th>
-                              <th className="text-right p-2 font-semibold">Road Length (m)</th>
+                              <th className="text-left p-2 font-semibold">Section</th>
+                              <th className="text-left p-2 font-semibold">Location</th>
+                              <th className="text-left p-2 font-semibold">Ch. From</th>
+                              <th className="text-left p-2 font-semibold">Ch. To</th>
+                              <th className="text-right p-2 font-semibold">H (mm)</th>
+                              <th className="text-right p-2 font-semibold">Length (m)</th>
                               <th className="p-2"></th>
                             </tr>
                           </thead>
                           <tbody>
-                            {s.qto.heightZones.map((z, zi) => (
-                              <tr key={z.id} className="border-t border-border/50" data-testid={`qto-zone-row-${z.id}`}>
-                                <td className="p-2">
-                                  <Input value={z.label} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, label: e.target.value.toUpperCase() } : hz) })} className="h-7 text-xs w-28 uppercase" />
-                                </td>
-                                <td className="p-2 text-right">
-                                  <Input type="number" value={z.height} onFocus={(e) => e.target.select()} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, height: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-sm w-28 text-right" />
-                                </td>
-                                <td className="p-2 text-right">
-                                  <Input type="number" value={z.length} onFocus={(e) => e.target.select()} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, length: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-sm w-28 text-right" />
-                                </td>
-                                <td className="p-2">
-                                  <button onClick={() => updateQto({ heightZones: s.qto.heightZones.filter((_, i) => i !== zi) })} className="text-destructive hover:text-destructive/70" data-testid={`btn-remove-zone-${z.id}`}>
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                            {s.qto.heightZones.map((z, zi) => {
+                              const chFrom = parseChainageM(z.chainageFrom ?? "");
+                              const chTo = parseChainageM(z.chainageTo ?? "");
+                              const autoLen = chFrom !== null && chTo !== null && (chTo - chFrom) > 0 ? chTo - chFrom : null;
+                              return (
+                                <tr key={z.id} className="border-t border-border/50" data-testid={`qto-zone-row-${z.id}`}>
+                                  <td className="p-2">
+                                    <Input value={z.label} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, label: e.target.value.toUpperCase() } : hz) })} className="h-7 text-xs uppercase w-full" placeholder="D1" />
+                                  </td>
+                                  <td className="p-2">
+                                    <Input value={z.location ?? ""} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, location: e.target.value } : hz) })} className="h-7 text-xs w-full" placeholder="e.g. Telangana" />
+                                  </td>
+                                  <td className="p-2">
+                                    <Input value={z.chainageFrom ?? ""} onChange={e => {
+                                      const val = e.target.value;
+                                      const from = parseChainageM(val);
+                                      const to = parseChainageM(z.chainageTo ?? "");
+                                      const newLen = from !== null && to !== null && (to - from) > 0 ? to - from : z.length;
+                                      updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, chainageFrom: val, length: newLen } : hz) });
+                                    }} className="h-7 text-xs w-full" placeholder="0+000" />
+                                  </td>
+                                  <td className="p-2">
+                                    <Input value={z.chainageTo ?? ""} onChange={e => {
+                                      const val = e.target.value;
+                                      const from = parseChainageM(z.chainageFrom ?? "");
+                                      const to = parseChainageM(val);
+                                      const newLen = from !== null && to !== null && (to - from) > 0 ? to - from : z.length;
+                                      updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, chainageTo: val, length: newLen } : hz) });
+                                    }} className="h-7 text-xs w-full" placeholder="2+500" />
+                                  </td>
+                                  <td className="p-2 text-right">
+                                    <Input type="number" value={z.height} onFocus={(e) => e.target.select()} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, height: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-xs text-right w-full" />
+                                  </td>
+                                  <td className="p-2 text-right">
+                                    {autoLen !== null ? (
+                                      <div className="flex items-center justify-end gap-1">
+                                        <span className="font-mono text-slate-700">{autoLen.toLocaleString()}</span>
+                                        <span className="text-[10px] bg-blue-100 text-blue-700 rounded px-1">auto</span>
+                                      </div>
+                                    ) : (
+                                      <Input type="number" value={z.length} onFocus={(e) => e.target.select()} onChange={e => updateQto({ heightZones: s.qto.heightZones.map((hz, i) => i === zi ? { ...hz, length: parseFloat(e.target.value) || 0 } : hz) })} className="h-7 text-xs text-right w-full" />
+                                    )}
+                                  </td>
+                                  <td className="p-2">
+                                    <button onClick={() => updateQto({ heightZones: s.qto.heightZones.filter((_, i) => i !== zi) })} className="text-destructive hover:text-destructive/70" data-testid={`btn-remove-zone-${z.id}`}>
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                           <tfoot>
                             <tr className="border-t-2 border-border bg-muted/20 font-semibold text-xs">
                               <td className="p-2">Total</td>
+                              <td className="p-2"></td>
+                              <td className="p-2"></td>
+                              <td className="p-2"></td>
                               <td className="p-2 text-right text-slate-500">—</td>
                               <td className="p-2 text-right">{s.qto.heightZones.reduce((sum, z) => sum + z.length, 0).toLocaleString()} m</td>
                               <td></td>
@@ -3532,28 +3647,9 @@ export default function ConcreteCalculator() {
                       {numInput("Grating Opening D (mm)", s.qto.gratingOpeningD ?? 100, v => updateQto({ gratingOpeningD: v }))}
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">Binding Wire & Lifting Hooks</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                      {numInput("Binding Wire (kg/MT steel)", s.qto.bindingWireKgPerMT ?? 10, v => updateQto({ bindingWireKgPerMT: v }))}
-                      {numInput("Binding Wire Rate (₹/kg)", s.qto.bindingWireRatePerKg ?? 85, v => updateQto({ bindingWireRatePerKg: v }))}
-                      {numInput("Lifting Hook Dia (mm)", s.qto.liftingHookDia ?? 12, v => updateQto({ liftingHookDia: v }))}
-                      {numInput("Lifting Hook Spacing (m)", s.qto.liftingHookSpacingM ?? 2, v => updateQto({ liftingHookSpacingM: v }))}
-                      {numInput("Lifting Hook Rate (₹/nos)", s.qto.liftingHookRatePerNos ?? 150, v => updateQto({ liftingHookRatePerNos: v }))}
-                      {(() => {
-                        const lhSp = s.qto.liftingHookSpacingM ?? 2;
-                        const lhCount = lhSp > 0 && qtoResult ? Math.ceil(qtoResult.totalLength / lhSp) : 0;
-                        const lhRm = lhSp > 0 ? (s.qto.liftingHookRatePerNos ?? 150) / lhSp : 0;
-                        return lhCount > 0 ? (
-                          <div className="flex flex-col justify-center bg-slate-50 dark:bg-slate-800 rounded-lg border px-3 py-2">
-                            <p className="text-sm text-slate-600">Computed Count</p>
-                            <p className="font-bold text-sm">{lhCount} nos</p>
-                            <p className="text-sm font-semibold text-slate-700">{fmtR(lhRm)}/RM</p>
-                          </div>
-                        ) : null;
-                      })()}
-                    </div>
-                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                    Binding wire and lifting hook inputs have moved to the <strong>BBS & Wastage</strong> tab → Ancillary Steel Items section.
+                  </p>
                 </CardContent>
               </Card>
             )}
