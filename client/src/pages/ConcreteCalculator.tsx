@@ -1344,7 +1344,9 @@ export default function ConcreteCalculator() {
       // Section items with no location go to "Unassigned" group (distinct from "" = "All Locations / General")
       const loc = locRaw || "__unassigned__";
       const chRange = z.chainageFrom && z.chainageTo ? ` Ch ${z.chainageFrom}–${z.chainageTo}` : (z.length > 0 ? ` L=${z.length}m` : "");
-      const secTag = hasLocations ? `[${z.label}${chRange}] ` : (r.zones.length > 1 ? `[${z.label}${chRange}] ` : "");
+      // Always include section tag in auto-generated descriptions so each row is self-contained with chainage info.
+      // For single-zone, no-location projects, the tag is still added for traceability.
+      const secTag = `[${z.label}${chRange}] `;
       // Per-zone net RCC
       const zWallsNet = Math.max(0, z.wallsM3 - weepholeDeductPerNos * z.weepholesCount);
       const zTopNet = Math.max(0, z.topM3 - gratingDeductPerNos * z.gratingsCount);
