@@ -2287,21 +2287,20 @@ export default function ConcreteCalculator() {
                   </div>
 
                   {/* PCC Placing Rate — separate from RCC pump placement */}
-                  {!(s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm") && (
-                    <div className="mt-4 pt-4 border-t border-border/60">
-                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">PCC Placing Rate</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                        Labour/equipment cost for placing PCC (blinding concrete). Applied separately from RCC pump placement.
-                        {s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_m3" && " (Petty labour contract covers RCC only — enter PCC placing separately.)"}
-                      </p>
-                      <div className="flex items-end gap-3 flex-wrap">
-                        {numInput("PCC Placing Rate (₹/m³)", s.pccPlacingRatePerM3 ?? 0, (v) => update({ pccPlacingRatePerM3: v }), { testId: "input-pcc-placing-rate" })}
-                        <div className="flex items-end pb-1 text-sm text-slate-600 dark:text-slate-400">
-                          included in PCC ₹/m³ rate analysis
-                        </div>
+                  <div className="mt-4 pt-4 border-t border-border/60">
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">PCC Placing Rate</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                      Labour/equipment cost for placing PCC blinding concrete. Applied separately from RCC pump/placement.
+                      {s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_m3" && " Petty labour contract covers RCC only — PCC placing entered here."}
+                      {s.pettyLabour.enabled && s.pettyLabour.rateUnit === "per_rm" && " Note: petty labour is per-RM mode — PCC placement is assumed included in the RM rate and this field is not applied to the per-RM card."}
+                    </p>
+                    <div className="flex items-end gap-3 flex-wrap">
+                      {numInput("PCC Placing Rate (₹/m³)", s.pccPlacingRatePerM3 ?? 0, (v) => update({ pccPlacingRatePerM3: v }), { testId: "input-pcc-placing-rate" })}
+                      <div className="flex items-end pb-1 text-sm text-slate-600 dark:text-slate-400">
+                        used in PCC Bed rate (Reports → Section B)
                       </div>
                     </div>
-                  )}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -3800,13 +3799,8 @@ export default function ConcreteCalculator() {
                 ...(s.qto.isCovered || isBoxCulvert ? [{ value: "topSlab", label: `Top Slab (${eq.topSlab})` }] : []),
                 ...((s.qto.pccDepth ?? 0) > 0 ? [{ value: "pcc", label: `PCC Bed (${eq.pcc})` }] : []),
               ];
-              const activeGrade = (rptElem !== "all" && ELEM_GRADE[rptElem]) ? ELEM_GRADE[rptElem] : (rptGrade || s.grade);
+              const activeGrade = rptGrade || s.grade;
               const activeMix = MIX_PRESETS[activeGrade] ?? MIX_PRESETS[s.grade];
-              const activeState = { ...sForCosts, mix: activeMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
-              const c = computeCosts(activeState, 0, undefined, undefined, rptElem !== "pcc" ? pettyLabourRatePerM3 : 0);
-              const rawMat = c.cement + c.ca + c.fa + c.admix;
-              const plantSub = c.batching + c.placement + c.formwork + c.curing + (c.labour ?? 0);
-              const direct = rawMat + plantSub + c.wastage;
               // Element vol/RM context
               const selZoneA = rptZone !== "all" ? qtoResult?.zones.find(z => z.id === rptZone) : null;
               let activeElemVolRM = 0;
@@ -3817,24 +3811,64 @@ export default function ConcreteCalculator() {
                 else if (rptElem === "pcc") activeElemVolRM = qtoResult.pccPerM;
               }
               const rmAreaA = activeElemVolRM > 0 ? activeElemVolRM : crossSectionM2;
-              const rows: { label: string; val: number; indent?: boolean; isSub?: boolean; bold?: boolean }[] = [
-                { label: "Cement", val: c.cement, indent: true },
-                { label: "Coarse Aggregate", val: c.ca, indent: true },
-                { label: "Fine Aggregate", val: c.fa, indent: true },
-                { label: "Admixture", val: c.admix, indent: true },
-                { label: "Raw Materials", val: rawMat, isSub: true },
-                { label: "Batching Plant", val: c.batching, indent: true },
-                { label: "Placement", val: c.placement, indent: true },
-                ...((c.labour ?? 0) > 0 ? [{ label: "Petty Labour", val: c.labour ?? 0, indent: true }] : []),
-                { label: "Formwork & Staging", val: c.formwork, indent: true },
-                { label: "Curing", val: c.curing, indent: true },
-                { label: "Plant & Placing", val: plantSub, isSub: true },
-                ...(c.wastage > 0 ? [{ label: "Wastage Allowance", val: c.wastage, indent: true }] : []),
-                { label: "Direct Cost", val: direct, isSub: true },
-                { label: `Overhead (${s.overheadPct}%)`, val: c.overhead, indent: true },
-                { label: `Margin (${s.marginPct}%)`, val: c.margin, indent: true },
-                { label: `Total — ${activeGrade}`, val: c.total, isSub: true, bold: true },
-              ];
+
+              // PCC element uses its own breakdown (pccPlacingRatePerM3, no petty labour, no labour)
+              type RptRow = { label: string; val: number; indent?: boolean; isSub?: boolean; bold?: boolean };
+              let rows: RptRow[];
+              let displayTotal: number;
+              if (rptElem === "pcc") {
+                const pccStateR: CalcState = { ...sForCosts, mix: activeMix, wastage: { ...s.wastage, steelCuttingWaste: false, formworkDamage: false }, pettyLabour: { ...s.pettyLabour, enabled: false }, labourRatePerM3: 0 };
+                const cP = computeCosts(pccStateR, 0);
+                const pccLaying = s.pccPlacingRatePerM3 ?? 0;
+                const rawMatP = cP.cement + cP.ca + cP.fa + cP.admix;
+                const plantSubP = cP.batching + pccLaying + cP.curing;
+                const directP = rawMatP + plantSubP + cP.wastage;
+                const ohP = directP * (s.overheadPct / 100);
+                const mgP = (directP + ohP) * (s.marginPct / 100);
+                displayTotal = (directP + ohP + mgP) * (1 + s.escalationPct / 100);
+                rows = [
+                  { label: "Cement", val: cP.cement, indent: true },
+                  { label: "Coarse Aggregate", val: cP.ca, indent: true },
+                  { label: "Fine Aggregate", val: cP.fa, indent: true },
+                  { label: "Admixture", val: cP.admix, indent: true },
+                  { label: "Raw Materials", val: rawMatP, isSub: true },
+                  { label: "Batching Plant", val: cP.batching, indent: true },
+                  { label: "PCC Laying", val: pccLaying, indent: true },
+                  { label: "Curing", val: cP.curing, indent: true },
+                  { label: "Plant & Placing", val: plantSubP, isSub: true },
+                  ...(cP.wastage > 0 ? [{ label: "Wastage Allowance", val: cP.wastage, indent: true }] : []),
+                  { label: "Direct Cost", val: directP, isSub: true },
+                  { label: `Overhead (${s.overheadPct}%)`, val: ohP, indent: true },
+                  { label: `Margin (${s.marginPct}%)`, val: mgP, indent: true },
+                  { label: `Total — ${activeGrade}`, val: displayTotal, isSub: true, bold: true },
+                ];
+              } else {
+                const activeState = { ...sForCosts, mix: activeMix, wastage: { ...s.wastage, steelCuttingWaste: false } };
+                const c = computeCosts(activeState, 0, undefined, undefined, pettyLabourRatePerM3);
+                const rawMat = c.cement + c.ca + c.fa + c.admix;
+                const plantSub = c.batching + c.placement + c.formwork + c.curing + (c.labour ?? 0);
+                const direct = rawMat + plantSub + c.wastage;
+                displayTotal = c.total;
+                const placementLabel = pettyLabourRatePerM3 !== undefined ? "Petty Labour (Placing)" : "Placement";
+                rows = [
+                  { label: "Cement", val: c.cement, indent: true },
+                  { label: "Coarse Aggregate", val: c.ca, indent: true },
+                  { label: "Fine Aggregate", val: c.fa, indent: true },
+                  { label: "Admixture", val: c.admix, indent: true },
+                  { label: "Raw Materials", val: rawMat, isSub: true },
+                  { label: "Batching Plant", val: c.batching, indent: true },
+                  { label: placementLabel, val: c.placement, indent: true },
+                  ...((c.labour ?? 0) > 0 ? [{ label: "Labour", val: c.labour ?? 0, indent: true }] : []),
+                  { label: "Formwork & Staging", val: c.formwork, indent: true },
+                  { label: "Curing", val: c.curing, indent: true },
+                  { label: "Plant & Placing", val: plantSub, isSub: true },
+                  ...(c.wastage > 0 ? [{ label: "Wastage Allowance", val: c.wastage, indent: true }] : []),
+                  { label: "Direct Cost", val: direct, isSub: true },
+                  { label: `Overhead (${s.overheadPct}%)`, val: c.overhead, indent: true },
+                  { label: `Margin (${s.marginPct}%)`, val: c.margin, indent: true },
+                  { label: `Total — ${activeGrade}`, val: c.total, isSub: true, bold: true },
+                ];
+              }
               return (
                 <Card>
                   <CardHeader className="pb-3 pt-4 px-5">
@@ -3852,7 +3886,7 @@ export default function ConcreteCalculator() {
                     <div className="flex flex-wrap gap-3 mt-2 print:hidden">
                       <RptFilter label="Grade" value={rptGrade || s.grade} onChange={(v) => { setRptGrade(v); setRptElem("all"); }}
                         options={Object.keys(MIX_PRESETS).map(g => ({ value: g, label: g + (g === s.grade ? " ★" : "") }))} />
-                      <RptFilter label="Element" value={rptElem} onChange={setRptElem} options={ELEM_OPTS} />
+                      <RptFilter label="Element" value={rptElem} onChange={(v) => { setRptElem(v); if (v !== "all") setRptGrade(ELEM_GRADE[v] ?? (rptGrade || s.grade)); }} options={ELEM_OPTS} />
                     </div>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
@@ -3867,7 +3901,7 @@ export default function ConcreteCalculator() {
                       </thead>
                       <tbody>
                         {rows.map((r, i) => {
-                          const pct = c.total > 0 ? (r.val / c.total) * 100 : 0;
+                          const pct = displayTotal > 0 ? (r.val / displayTotal) * 100 : 0;
                           return (
                             <tr key={i} className={r.bold ? "bg-blue-50/80 dark:bg-blue-900/20 font-bold" : r.isSub ? "bg-muted/60 font-semibold" : i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/40 dark:bg-transparent"}>
                               <td className={`px-3 py-1.5 ${r.indent ? "pl-6 text-muted-foreground" : ""}`}>{r.label}</td>
