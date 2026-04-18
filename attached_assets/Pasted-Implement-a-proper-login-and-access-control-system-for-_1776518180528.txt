@@ -1,0 +1,211 @@
+Implement a proper login and access-control system for the full Site Report app. Keep it practical, readable, and easy to manage. The app is still stabilising, so access must be tightly controllable to prevent wrong entries, unwanted edits/deletes, and accidental UI/data issues.
+
+GOAL
+Create a login-based access system where Admin can control:
+1. which modules a user can access
+2. what actions the user can perform inside each module
+
+This must work for the whole Site Report app.
+
+IMPORTANT PRINCIPLES
+- Keep UI clean and simple
+- Do not show role hierarchy language everywhere
+- Do not display things like “edited by manager” or “verified by manager”
+- Use neutral labels such as:
+  - Created by
+  - Edited by
+  - Verified by
+  - Last updated by
+- Even if a user is internally assigned a role like Manager or Project Lead, the UI should not repeatedly show the role title in activity labels
+
+PART 1 — LOGIN SYSTEM
+
+Add a proper login page for all users.
+
+Required fields:
+- Username or Email
+- Password
+
+Behavior:
+- User must log in before accessing app
+- After login, user should land only in modules they are allowed to access
+- If session expires or user logs out, go back to login page
+
+Keep login screen clean and readable.
+
+PART 2 — USERS AND ROLES
+
+Support at least these internal roles:
+- Admin
+- Project Lead
+- Site Engineer
+- Viewer
+
+IMPORTANT:
+The role is only the starting point. Actual control must come from module permissions + action permissions.
+
+For KV Babu, I want to be able to decide exactly what he can do, module by module and action by action.
+
+PART 3 — MODULE ACCESS CONTROL
+
+Admin must be able to decide which modules each user can access.
+
+Examples of modules:
+- Site Reports
+- Material Receipts
+- Equipment Log
+- Labour / Attendance
+- Plant Production
+- DPR Upload
+- Admin Reports
+- Mix Rate Calculator
+- User Management
+- Any other existing app modules
+
+Behavior:
+- If user does not have access to a module, do not show that module in dashboard/navigation
+- Do not show disabled modules if avoidable
+- Better to hide unavailable modules completely
+
+PART 4 — ACTION-LEVEL PERMISSIONS PER MODULE
+
+For each user and each module, Admin must be able to control these actions separately:
+
+- View
+- Add / Create
+- Edit
+- Delete
+- Verify / Approve
+- Export
+- Print
+
+This is very important.
+
+Example:
+KV Babu may be allowed in a module to:
+- View = yes
+- Add = yes
+- Edit = yes
+- Delete = no
+- Verify = yes
+- Export = yes
+- Print = yes
+
+Another module may have different permissions.
+
+Do not hardcode Manager or Project Lead permissions only by role. Admin must be able to configure them.
+
+PART 5 — ADMIN PERMISSION MANAGEMENT SCREEN
+
+Create a clean Admin-only screen for managing users and permissions.
+
+Admin should be able to:
+- create user
+- assign role
+- activate/deactivate user
+- choose module access
+- choose action permissions inside each module
+
+Suggested UI:
+For each user, show modules with checkboxes/toggles for:
+- View
+- Add
+- Edit
+- Delete
+- Verify
+- Export
+- Print
+
+Keep this screen neat and readable.
+
+PART 6 — SPECIAL NEED FOR CURRENT STAGE
+
+Because the app is still stabilising, permissions must help prevent accidental data or UI issues.
+
+Required behavior:
+- users without Edit permission cannot edit
+- users without Delete permission cannot delete
+- users without Verify permission cannot verify
+- users without Export permission cannot export
+- users without Print permission cannot print
+
+If a user somehow reaches a restricted action by URL or button logic, block the action safely.
+
+PART 7 — NEUTRAL ACTIVITY LABELS
+
+Change visible labels across the app.
+
+Do NOT show:
+- edited by manager
+- verified by manager
+- manager does not have permission
+
+Instead use:
+- Edited by: [Name]
+- Verified by: [Name]
+- Last updated by: [Name]
+- Access restricted
+- You do not have permission for this action
+
+Keep wording respectful and neutral.
+
+PART 8 — KV BABU CASE
+
+For KV Babu, I will manually decide permissions module by module.
+So the system must NOT force a rigid restriction just because of role.
+
+Even if role is Project Lead or Manager, Admin must still be able to individually allow or restrict:
+- create
+- edit
+- delete
+- verify
+- export
+- print
+
+This flexibility is required.
+
+PART 9 — SAFE DELETE / EDIT BEHAVIOR
+
+If possible, keep delete behavior safe:
+- either soft delete
+- or confirm before delete
+- or restrict delete strongly unless permission is explicitly enabled
+
+This is important while the app/database/UI are still stabilising.
+
+PART 10 — SESSION / LOGOUT
+
+Add:
+- manual logout button
+- on logout, return to login page
+
+If feasible and clean, also make session reasonably safe so unauthorized persistence does not happen.
+
+PART 11 — UI / READABILITY
+
+- Keep fonts readable
+- Avoid tiny or faint permission labels
+- Avoid clutter
+- Keep dashboard and permission screens simple
+- Use clean checkbox/toggle layout
+- Do not over-design
+
+PART 12 — ACCEPTANCE CHECKLIST
+
+1. App requires login before access.
+2. Admin can create users.
+3. Admin can assign internal role.
+4. Admin can control module visibility per user.
+5. Admin can control View/Add/Edit/Delete/Verify/Export/Print per module per user.
+6. Hidden modules are not shown to unauthorized users.
+7. Restricted actions are blocked safely.
+8. Activity labels are neutral (“Edited by”, “Verified by”, etc.), not role-based.
+9. KV Babu can be given custom permissions independent of rigid role assumptions.
+10. Logout works and returns user to login page.
+
+After implementing, confirm:
+- what user/permission model is used
+- how module access is stored
+- how action permissions are enforced
+- which screens are Admin-only
+- how neutral activity labels are handled
