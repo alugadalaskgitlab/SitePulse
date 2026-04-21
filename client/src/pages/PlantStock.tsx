@@ -1082,7 +1082,9 @@ export default function PlantStock() {
                               </span>
                             </td>
                             <td className="py-3 px-2 text-right">
-                              {hasConversion ? (
+                              {dateFrom && balanceAsOfLoading ? (
+                                <div className="h-4 w-16 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto animate-pulse" data-testid={`skeleton-opening-${idx}`} />
+                              ) : hasConversion ? (
                                 <span title={`${item.openingStock.toFixed(3)} ${item.uom}`}>
                                   {item.convertedOpening?.toFixed(3)}
                                 </span>
