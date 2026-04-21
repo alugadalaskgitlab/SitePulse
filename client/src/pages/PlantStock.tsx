@@ -18,6 +18,14 @@ import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 
+type StockBalanceAsOf = {
+  materialId: number;
+  partyId: number | null;
+  uom: string;
+  totalIn: number;
+  totalOut: number;
+};
+
 export default function PlantStock() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
@@ -91,13 +99,30 @@ export default function PlantStock() {
     return `/api/plant-module/stock-ledger-all?${params.toString()}`;
   };
 
+  // Balance-as-of URL: aggregate query returning per-(material,party,uom) sums up to dateFrom
+  const buildBalanceAsOfUrl = () => {
+    if (!dateFrom) return null;
+    const params = new URLSearchParams({ date: dateFrom });
+    if (selectedPartyId !== "all") params.set("partyId", selectedPartyId);
+    if (selectedMaterialId !== "all") params.set("materialId", selectedMaterialId);
+    return `/api/plant-module/stock-balance-as-of?${params.toString()}`;
+  };
+
   const { data: ledger, isLoading: ledgerLoading } = useQuery<StockLedgerEntry[]>({ 
     queryKey: [buildLedgerUrl()] 
   });
 
-  // All-time ledger for Current Balances calculation
+  // All-time ledger for Current Balances tab — only fetched when that tab is active
   const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<StockLedgerEntry[]>({ 
-    queryKey: [buildAllTimeLedgerUrl()] 
+    queryKey: [buildAllTimeLedgerUrl()],
+    enabled: activeTab === "balances",
+  });
+
+  // Aggregate opening-balance query — used instead of full allTimeLedger when dateFrom is set
+  const balanceAsOfUrl = buildBalanceAsOfUrl();
+  const { data: balanceAsOf, isLoading: balanceAsOfLoading } = useQuery<StockBalanceAsOf[]>({
+    queryKey: [balanceAsOfUrl],
+    enabled: !!balanceAsOfUrl,
   });
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
@@ -157,20 +182,20 @@ export default function PlantStock() {
     // Round to avoid floating-point accumulation errors (e.g. 1.14e-13 instead of 0)
     const roundBalance = (val: number) => Math.round(val * 1e9) / 1e9;
     
-    // When a date filter is applied, seed running balances from all-time ledger entries
-    // BEFORE dateFrom so the filtered view starts with the correct opening balance.
+    // When a date filter is applied, seed running balances from the balance-as-of aggregate
+    // (server-side SUM query). Returns zeros until the aggregate resolves, then updates.
     const groupBalances: Record<string, number> = {};
 
-    if (dateFrom && allTimeLedger) {
-      const preFilterEntries = allTimeLedger.filter(
-        e => e.transactionType !== 'equipment_issue' && e.date < dateFrom
-      );
-      preFilterEntries.forEach(entry => {
-        const key = `${entry.materialId}-${entry.partyId ?? 0}`;
+    if (dateFrom && balanceAsOf) {
+      // Use the efficient server-side aggregate — one row per (material, party, uom)
+      balanceAsOf.forEach(row => {
+        const key = `${row.materialId}-${row.partyId ?? 0}`;
         if (groupBalances[key] === undefined) groupBalances[key] = 0;
-        const cin = getConvertedQty(entry, entry.quantityIn);
-        const cout = getConvertedQty(entry, entry.quantityOut);
-        groupBalances[key] = roundBalance(groupBalances[key] + cin - cout);
+        const material = materials?.find(m => m.id === row.materialId);
+        const factor = (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom &&
+          row.uom?.toUpperCase() === material.conversionFromUom.toUpperCase())
+          ? material.conversionFactor : 1;
+        groupBalances[key] = roundBalance(groupBalances[key] + (row.totalIn * factor) - (row.totalOut * factor));
       });
     }
 
@@ -178,7 +203,7 @@ export default function PlantStock() {
     // ledger table always shows a "B/F" line when a date filter is active.
     const syntheticRows: (StockLedgerEntry & { calculatedBalance: number; isSynthetic?: boolean })[] = [];
 
-    if (dateFrom) {
+    if (dateFrom && balanceAsOf) {
       const filteredGroups = new Set(sorted.map(e => `${e.materialId}-${e.partyId ?? 0}`));
       for (const key of filteredGroups) {
         const [materialIdStr, partyIdStr] = key.split('-');
@@ -223,7 +248,7 @@ export default function PlantStock() {
 
     // Synthetic rows come first (oldest); they appear last when the display reverses the array
     return [...syntheticRows, ...mainRows];
-  }, [ledger, allTimeLedger, materials, dateFrom]);
+  }, [ledger, balanceAsOf, materials, dateFrom]);
 
   // For display, reverse to show most recent first and filter by transaction type + issuedTo search
   const ledgerForDisplay = useMemo(() => {

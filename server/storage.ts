@@ -139,7 +139,7 @@ import {
   type ConcreteEstimateV2,
   type InsertConcreteEstimateV2,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 
@@ -222,6 +222,7 @@ export interface IStorage {
   
   // Stock Ledger
   getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<StockLedgerEntry[]>;
+  getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number }[]>;
   addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry>;
   
   // Material Issues (issues to sites/parties from central store)
@@ -2479,6 +2480,32 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(stockLedger)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(stockLedger.date));
+  }
+
+  async getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number }[]> {
+    const conditions = [
+      lt(stockLedger.date, date),
+      ne(stockLedger.transactionType, 'equipment_issue'),
+    ];
+    if (filters?.partyId !== undefined) {
+      conditions.push(
+        filters.partyId === null
+          ? sql`${stockLedger.partyId} IS NULL`
+          : eq(stockLedger.partyId, filters.partyId)
+      );
+    }
+    if (filters?.materialId) conditions.push(eq(stockLedger.materialId, filters.materialId));
+
+    return db.select({
+      materialId: stockLedger.materialId,
+      partyId: stockLedger.partyId,
+      uom: stockLedger.uom,
+      totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+      totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+    })
+    .from(stockLedger)
+    .where(and(...conditions))
+    .groupBy(stockLedger.materialId, stockLedger.partyId, stockLedger.uom);
   }
 
   async addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry> {

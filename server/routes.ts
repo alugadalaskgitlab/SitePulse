@@ -1785,6 +1785,24 @@ export async function registerRoutes(
     }
   });
 
+  // Aggregate balance as-of a given date (for efficient opening-balance computation)
+  app.get("/api/plant-module/stock-balance-as-of", async (req, res) => {
+    try {
+      const date = req.query.date as string;
+      if (!date) return res.status(400).json({ message: "date query parameter is required" });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ message: "date must be in YYYY-MM-DD format" });
+      const partyIdRaw = req.query.partyId !== undefined ? Number(req.query.partyId) : undefined;
+      const materialIdRaw = req.query.materialId ? Number(req.query.materialId) : undefined;
+      if (partyIdRaw !== undefined && isNaN(partyIdRaw)) return res.status(400).json({ message: "partyId must be a number" });
+      if (materialIdRaw !== undefined && isNaN(materialIdRaw)) return res.status(400).json({ message: "materialId must be a number" });
+      const filters = { partyId: partyIdRaw, materialId: materialIdRaw };
+      const balances = await storage.getStockBalanceAsOf(date, filters);
+      res.json(balances);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to compute stock balance as-of date" });
+    }
+  });
+
   // ============================================
   // BITUMEN DIP READINGS
   // ============================================
