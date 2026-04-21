@@ -2438,10 +2438,16 @@ export class DatabaseStorage implements IStorage {
     
     const [existing] = await db.select().from(stockBalances).where(condition).limit(1);
     
+    // Round to eliminate floating-point accumulation errors (e.g. 1.14e-13 → 0)
+    const roundBalance = (val: number) => {
+      const rounded = Math.round(val * 1e9) / 1e9;
+      return Math.abs(rounded) < 1e-9 ? 0 : rounded;
+    };
+
     if (existing) {
       const [result] = await db.update(stockBalances)
         .set({ 
-          balance: existing.balance + quantity,
+          balance: roundBalance(existing.balance + quantity),
           lastUpdated: new Date()
         })
         .where(eq(stockBalances.id, existing.id))
@@ -2451,7 +2457,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await db.insert(stockBalances).values({
         partyId,
         materialId,
-        balance: quantity,
+        balance: roundBalance(quantity),
         uom,
       }).returning();
       return result;
@@ -2919,7 +2925,11 @@ export class DatabaseStorage implements IStorage {
       const ledgerEntries = await db.select().from(stockLedger)
         .where(sql`${stockLedger.transactionType} != 'equipment_issue'`);
 
-      // Calculate balance for each material-party combination
+      // Calculate balance for each material-party combination.
+      // All transaction types use (quantityIn - quantityOut) which covers:
+      //   opening, receipt, adjustment → quantityIn set, quantityOut 0
+      //   return                       → quantityIn set (material back in stock)
+      //   dispatch, issue, equipment_usage → quantityOut set, quantityIn 0
       const balanceMap = new Map<string, { materialId: number; partyId: number | null; balance: number; uom: string }>();
 
       for (const entry of ledgerEntries) {
@@ -2939,6 +2949,12 @@ export class DatabaseStorage implements IStorage {
             uom: entry.uom || 'Units',
           });
         }
+      }
+
+      // Round balances to eliminate floating-point accumulation errors (e.g. 1.14e-13 → 0)
+      for (const data of Array.from(balanceMap.values())) {
+        data.balance = Math.round(data.balance * 1e9) / 1e9;
+        if (Math.abs(data.balance) < 1e-9) data.balance = 0;
       }
 
       // Update stock_balances table to match calculated values

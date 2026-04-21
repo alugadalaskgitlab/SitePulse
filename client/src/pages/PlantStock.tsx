@@ -116,12 +116,13 @@ export default function PlantStock() {
         case 'opening': return 1;
         case 'receipt': return 2;
         case 'adjustment': return 3;
-        case 'direct_purchase': return 4;
-        case 'equipment_usage': return 5;
-        case 'dpr_equipment_usage': return 5;
-        case 'issue': return 6;
-        case 'dispatch': return 7;
-        default: return 8;
+        case 'return': return 4;
+        case 'direct_purchase': return 5;
+        case 'equipment_usage': return 6;
+        case 'dpr_equipment_usage': return 6;
+        case 'issue': return 7;
+        case 'dispatch': return 8;
+        default: return 9;
       }
     };
     
@@ -139,11 +140,8 @@ export default function PlantStock() {
       return aCreated.localeCompare(bCreated);
     });
     
-    // Group by material + party for per-group running balance
-    const groupBalances: Record<string, number> = {};
-    
     // Helper to convert quantity based on entry UOM vs material conversion settings
-    const getConvertedQty = (entry: typeof sorted[0], qty: number | null): number => {
+    const getConvertedQty = (entry: StockLedgerEntry, qty: number | null): number => {
       if (!qty) return 0;
       const material = materials?.find(m => m.id === entry.materialId);
       if (!material?.conversionFactor || !material?.conversionFromUom || !material?.conversionToUom) {
@@ -155,41 +153,98 @@ export default function PlantStock() {
       }
       return qty;
     };
+
+    // Round to avoid floating-point accumulation errors (e.g. 1.14e-13 instead of 0)
+    const roundBalance = (val: number) => Math.round(val * 1e9) / 1e9;
     
-    return sorted.map(entry => {
+    // When a date filter is applied, seed running balances from all-time ledger entries
+    // BEFORE dateFrom so the filtered view starts with the correct opening balance.
+    const groupBalances: Record<string, number> = {};
+
+    if (dateFrom && allTimeLedger) {
+      const preFilterEntries = allTimeLedger.filter(
+        e => e.transactionType !== 'equipment_issue' && e.date < dateFrom
+      );
+      preFilterEntries.forEach(entry => {
+        const key = `${entry.materialId}-${entry.partyId ?? 0}`;
+        if (groupBalances[key] === undefined) groupBalances[key] = 0;
+        const cin = getConvertedQty(entry, entry.quantityIn);
+        const cout = getConvertedQty(entry, entry.quantityOut);
+        groupBalances[key] = roundBalance(groupBalances[key] + cin - cout);
+      });
+    }
+
+    // Build synthetic opening-balance rows (one per material+party group) so the
+    // ledger table always shows a "B/F" line when a date filter is active.
+    const syntheticRows: (StockLedgerEntry & { calculatedBalance: number; isSynthetic?: boolean })[] = [];
+
+    if (dateFrom) {
+      const filteredGroups = new Set(sorted.map(e => `${e.materialId}-${e.partyId ?? 0}`));
+      for (const key of filteredGroups) {
+        const [materialIdStr, partyIdStr] = key.split('-');
+        const materialId = Number(materialIdStr);
+        const partyId = Number(partyIdStr) === 0 ? null : Number(partyIdStr);
+        const openingBalance = groupBalances[key] ?? 0;
+        const material = materials?.find(m => m.id === materialId);
+        const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
+        syntheticRows.push({
+          id: -(materialId * 10000 + (partyId ?? 0)),
+          date: dateFrom,
+          partyId,
+          materialId,
+          transactionType: 'opening_balance',
+          referenceId: null,
+          quantityIn: openingBalance >= 0 ? openingBalance : null,
+          quantityOut: openingBalance < 0 ? Math.abs(openingBalance) : null,
+          balanceAfter: openingBalance,
+          uom: targetUom,
+          notes: `Opening balance (B/F) as of ${dateFrom}`,
+          createdAt: null,
+          calculatedBalance: openingBalance,
+          isSynthetic: true,
+        } as StockLedgerEntry & { calculatedBalance: number; isSynthetic?: boolean });
+      }
+    }
+
+    const mainRows = sorted.map(entry => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (groupBalances[key] === undefined) groupBalances[key] = 0;
       
       // Convert quantities before accumulating running balance
       const convertedIn = getConvertedQty(entry, entry.quantityIn);
       const convertedOut = getConvertedQty(entry, entry.quantityOut);
-      groupBalances[key] += convertedIn - convertedOut;
+      groupBalances[key] = roundBalance(groupBalances[key] + convertedIn - convertedOut);
       
       return {
         ...entry,
         calculatedBalance: groupBalances[key]
       };
     });
-  }, [ledger, materials]);
+
+    // Synthetic rows come first (oldest); they appear last when the display reverses the array
+    return [...syntheticRows, ...mainRows];
+  }, [ledger, allTimeLedger, materials, dateFrom]);
 
   // For display, reverse to show most recent first and filter by transaction type + issuedTo search
   const ledgerForDisplay = useMemo(() => {
     let entries = [...processedLedger].reverse();
     if (selectedTransactionType !== "all") {
-      entries = entries.filter(e => e.transactionType === selectedTransactionType);
+      // Always keep synthetic opening_balance rows — they're context, not real transactions
+      entries = entries.filter(e => e.transactionType === selectedTransactionType || e.transactionType === 'opening_balance');
     }
     if (issuedToFilter.trim()) {
       const q = issuedToFilter.trim().toLowerCase();
-      entries = entries.filter(e => (e.notes || "").toLowerCase().includes(q));
+      // Always keep synthetic opening-balance rows for context; apply text filter to real entries only
+      entries = entries.filter(e => e.transactionType === 'opening_balance' || (e.notes || "").toLowerCase().includes(q));
     }
     return entries;
   }, [processedLedger, selectedTransactionType, issuedToFilter]);
 
-  // Calculate totals for filtered ledger data - with UOM conversion
+  // Calculate totals for filtered ledger data - with UOM conversion (exclude synthetic opening_balance rows)
   const ledgerTotals = useMemo(() => {
     if (!ledgerForDisplay?.length || !materials) return { totalIn: 0, totalOut: 0, netChange: 0 };
     
-    return ledgerForDisplay.reduce((acc, entry) => {
+    return ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance').reduce((acc, entry) => {
       const material = materials.find(m => m.id === entry.materialId);
       const convFactor = material?.conversionFactor;
       const convFromUom = material?.conversionFromUom;
@@ -273,13 +328,22 @@ export default function PlantStock() {
         return entryNeedsConversion ? qty * convFactor : qty;
       };
 
+      // Synthetic opening balance row (B/F) prepended when date filter is active
+      if (entry.transactionType === "opening_balance") {
+        const bfBalance = (entry.quantityIn || 0) - (entry.quantityOut || 0);
+        summaryMap[key].openingStock += bfBalance;
+      }
       // Opening stock entries (from Masters -> Opening Stock)
-      if (entry.transactionType === "opening") {
+      else if (entry.transactionType === "opening") {
         summaryMap[key].openingStock += getConvertedQty(entry.quantityIn);
       }
       // Receipts (from Material Receipts) and adjustments
       else if (entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].received += getConvertedQty(entry.quantityIn);
+      }
+      // Returns: materials returned from site back to stock — treated as received (add-back)
+      else if (entry.transactionType === "return") {
+        summaryMap[key].received += getConvertedQty(Math.abs(entry.quantityIn || 0));
       }
       // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
       else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
@@ -289,9 +353,11 @@ export default function PlantStock() {
       // (quantityIn and quantityOut are equal, net effect is zero)
     });
 
-    // Calculate closing balance - no additional conversion needed as we've already normalized
+    // Calculate closing balance - round to eliminate floating-point accumulation errors
     Object.values(summaryMap).forEach((item) => {
-      item.closing = item.openingStock + item.received - item.consumed;
+      const raw = item.openingStock + item.received - item.consumed;
+      item.closing = Math.round(raw * 1e9) / 1e9;
+      if (Math.abs(item.closing) < 1e-9) item.closing = 0;
     });
 
     return Object.values(summaryMap);
@@ -359,9 +425,13 @@ export default function PlantStock() {
         return entryNeedsConversion ? qty * convFactor : qty;
       };
 
-      // Receipts: opening, receipt, adjustment
+      // Receipts: opening, receipt, adjustment, return
       if (entry.transactionType === "opening" || entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
+      }
+      // Returns: material returned from site reduces net issues (adds back to receipts side)
+      if (entry.transactionType === "return") {
+        summaryMap[key].totalReceipts += getConvertedQty(Math.abs(entry.quantityIn || 0));
       }
       // Issues: dispatch, issue, equipment_usage, dpr_equipment_usage
       if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
@@ -371,9 +441,12 @@ export default function PlantStock() {
       // (quantityIn and quantityOut are equal, net effect is zero)
     });
 
-    // Calculate balance - no additional conversion needed as we've already normalized
+    // Calculate balance - round to eliminate floating-point accumulation errors
     Object.values(summaryMap).forEach((item) => {
-      item.balance = item.totalReceipts - item.totalIssues;
+      const rawBalance = item.totalReceipts - item.totalIssues;
+      item.balance = Math.round(rawBalance * 1e9) / 1e9;
+      // Treat sub-epsilon values as exactly 0
+      if (Math.abs(item.balance) < 1e-9) item.balance = 0;
     });
 
     return Object.values(summaryMap);
@@ -457,13 +530,13 @@ export default function PlantStock() {
         UOM: item.uom,
       }));
       
-      const ledgerData = processedLedger.map(entry => {
+      const ledgerData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
         return {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
+          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -572,7 +645,7 @@ export default function PlantStock() {
         }
       };
       
-      const ledgerTableData = processedLedger.map(entry => {
+      const ledgerTableData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
         return [
           entry.date,
@@ -713,7 +786,7 @@ export default function PlantStock() {
               </tr>
             </thead>
             <tbody>
-              ${processedLedger.map(entry => {
+              ${processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
                 const convData = getConvertedEntryData(entry);
                 const notes = entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                   ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
@@ -1045,18 +1118,27 @@ export default function PlantStock() {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-foreground">{b.materialName}</h3>
-                        {b.balance < 10 && (
+                        {b.balance < 0 ? (
+                          <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
+                            NEGATIVE
+                          </span>
+                        ) : b.balance < 10 ? (
                           <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
                             LOW
                           </span>
-                        )}
+                        ) : null}
                       </div>
+                      {b.balance < 0 && (
+                        <p className="text-xs text-red-500 dark:text-red-400 mb-2">
+                          Balance is negative — check for missing receipts or data entry errors.
+                        </p>
+                      )}
                       
                       <div className={`text-2xl font-bold ${b.convertedBalance !== null ? 'mb-1' : 'mb-3'} ${
                         b.balance < 0 ? 'text-red-600 dark:text-red-400' : 
                         b.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
                       }`}>
-                        {b.balance.toFixed(3)} <span className="text-base font-normal text-muted-foreground">{b.uom}</span>
+                        {Math.abs(b.balance) < 1e-9 ? '0.000' : b.balance.toFixed(3)} <span className="text-base font-normal text-muted-foreground">{b.uom}</span>
                       </div>
                       {b.convertedBalance !== null && b.conversionToUom && (
                         <div className="text-sm text-muted-foreground mb-3">
@@ -1137,9 +1219,10 @@ export default function PlantStock() {
                       {ledgerForDisplay.slice(0, 100).map((entry) => {
                         // Use the same helper as exports for consistency
                         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
+                        const isBF = entry.transactionType === 'opening_balance';
                         
                         return (
-                        <tr key={entry.id} className="border-b hover:bg-muted/30">
+                        <tr key={entry.id} className={`border-b ${isBF ? 'bg-amber-50 dark:bg-amber-900/20 font-semibold' : 'hover:bg-muted/30'}`}>
                           <td className="p-3">{entry.date}</td>
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
                           <td className="p-3">
@@ -1152,8 +1235,12 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 text-xs rounded ${
-                              entry.transactionType === 'receipt' || entry.transactionType === 'opening' || entry.transactionType === 'adjustment'
+                              isBF
+                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                                : entry.transactionType === 'receipt' || entry.transactionType === 'opening' || entry.transactionType === 'adjustment'
                                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
+                                : entry.transactionType === 'return'
+                                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
                                 : entry.transactionType === 'issue'
                                 ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                                 : entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage'
@@ -1162,11 +1249,12 @@ export default function PlantStock() {
                                 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
                                 : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}>
-                              {entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType}
+                              {isBF ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType}
                             </span>
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
-                            {entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+                            {isBF ? entry.notes
+                              : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                               ? entry.notes.replace('Diesel issued to ', '')
                               : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
                               ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
@@ -1177,12 +1265,17 @@ export default function PlantStock() {
                               : entry.notes || '-'}
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
-                            {displayIn > 0 ? `${displayIn.toFixed(3)}` : '-'}
+                            {isBF ? (displayBalance >= 0 ? displayBalance.toFixed(3) : '-') : (displayIn > 0 ? `${displayIn.toFixed(3)}` : '-')}
                           </td>
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
-                            {displayOut > 0 ? `${displayOut.toFixed(3)}` : '-'}
+                            {isBF ? (displayBalance < 0 ? Math.abs(displayBalance).toFixed(3) : '-') : (displayOut > 0 ? `${displayOut.toFixed(3)}` : '-')}
                           </td>
-                          <td className="p-3 text-right font-bold">{displayBalance.toFixed(3)} {balanceUom}</td>
+                          <td className={`p-3 text-right font-bold ${displayBalance < -1e-9 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                            {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
+                            {displayBalance < -1e-9 && !isBF && (
+                              <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
+                            )}
+                          </td>
                         </tr>
                         );
                       })}
