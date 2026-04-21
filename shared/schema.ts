@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -397,7 +397,10 @@ export const stockLedger = pgTable("stock_ledger", {
   uom: text("uom"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("stock_ledger_date_idx").on(table.date),
+  dateMaterialPartyIdx: index("stock_ledger_date_material_party_idx").on(table.date, table.materialId, table.partyId),
+}));
 
 // Material Issues (issues to sites/parties from central store)
 export const materialIssues = pgTable("material_issues", {
