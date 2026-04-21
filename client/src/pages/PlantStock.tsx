@@ -1224,7 +1224,7 @@ export default function PlantStock() {
                 <div className="flex justify-center p-8">
                   <Loader2 className="w-6 h-6 animate-spin" />
                 </div>
-              ) : !ledgerForDisplay?.length ? (
+              ) : !ledgerForDisplay?.length && !(dateFrom && balanceAsOfLoading) ? (
                 <p className="text-muted-foreground text-center py-8">No transactions found for this period.</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -1242,7 +1242,24 @@ export default function PlantStock() {
                       </tr>
                     </thead>
                     <tbody>
-                      {ledgerForDisplay.slice(0, 100).map((entry) => {
+                      {dateFrom && balanceAsOfLoading && (
+                        <tr className="border-b bg-amber-50 dark:bg-amber-900/20 animate-pulse">
+                          <td className="p-3"><div className="h-4 w-20 bg-amber-200 dark:bg-amber-800/50 rounded" /></td>
+                          <td className="p-3"><div className="h-4 w-24 bg-amber-200 dark:bg-amber-800/50 rounded" /></td>
+                          <td className="p-3"><div className="h-4 w-16 bg-amber-200 dark:bg-amber-800/50 rounded" /></td>
+                          <td className="p-3"><div className="h-5 w-28 bg-amber-200 dark:bg-amber-800/50 rounded" /></td>
+                          <td className="p-3"><div className="h-4 w-32 bg-amber-200 dark:bg-amber-800/50 rounded" /></td>
+                          <td className="p-3 text-right"><div className="h-4 w-14 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>
+                          <td className="p-3 text-right"><div className="h-4 w-6 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>
+                          <td className="p-3 text-right"><div className="h-4 w-16 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>
+                        </tr>
+                      )}
+                      {ledgerForDisplay.slice(0, 100).filter(entry => {
+                        // Suppress stale opening_balance rows while the fresh balance query is loading
+                        // to prevent transient zero/stale B/F values appearing alongside the skeleton
+                        if (entry.transactionType === 'opening_balance' && dateFrom && balanceAsOfLoading) return false;
+                        return true;
+                      }).map((entry) => {
                         // Use the same helper as exports for consistency
                         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
                         const isBF = entry.transactionType === 'opening_balance';
