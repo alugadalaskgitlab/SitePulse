@@ -165,6 +165,10 @@ export default function PlantLdoFlowMeter() {
     return quantity;
   };
 
+  const allTimeLdoReceiptsL = useMemo(() => {
+    return ldoReceipts.reduce((s, r) => s + convertLdoToL(r.quantity, r.uom), 0);
+  }, [ldoReceipts]);
+
   const ldoReceiptsByDate = useMemo(() => {
     const map: Record<string, number> = {};
     for (const r of ldoReceipts) {
@@ -1259,17 +1263,34 @@ export default function PlantLdoFlowMeter() {
                   <CardContent className="p-4 space-y-1">
                     <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       LDO Received (Receipts)
-                      <span title="Total LDO received from material receipts during the selected period" className="cursor-help"><Info className="w-4 h-4" /></span>
+                      <span title="Total LDO received from material receipts" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{reconciliationData.totalReceiptsL.toFixed(0)} L</div>
-                    {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
-                      <div className="text-base text-muted-foreground">
-                        T1: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | T2: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
-                      </div>
+                    {(reconDateFrom || reconDateTo) ? (
+                      <>
+                        <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{reconciliationData.totalReceiptsL.toFixed(0)} L</div>
+                        {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
+                          <div className="text-base text-muted-foreground">
+                            T1: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | T2: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
+                          </div>
+                        )}
+                        <div className="text-base text-muted-foreground">
+                          {reconDateFrom || "start"} to {reconDateTo || "now"}
+                        </div>
+                        <div className="text-base text-muted-foreground border-t pt-1 mt-1">
+                          All-time total: <span className="font-semibold text-foreground">{allTimeLdoReceiptsL.toFixed(0)} L</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{allTimeLdoReceiptsL.toFixed(0)} L</div>
+                        {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
+                          <div className="text-base text-muted-foreground">
+                            T1: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | T2: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
+                          </div>
+                        )}
+                        <div className="text-base text-muted-foreground">All time</div>
+                      </>
                     )}
-                    <div className="text-base text-muted-foreground">
-                      {reconDateFrom || reconDateTo ? `${reconDateFrom || "start"} to ${reconDateTo || "now"}` : "All time"}
-                    </div>
                   </CardContent>
                 </Card>
 

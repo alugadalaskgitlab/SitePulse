@@ -202,6 +202,10 @@ export default function PlantBitumenStock() {
     return quantity * 1000;
   };
 
+  const allTimeBitumenReceiptsMT = useMemo(() => {
+    return bitumenReceipts.reduce((s, r) => s + convertBitumenToKg(r.quantity, r.uom), 0) / 1000;
+  }, [bitumenReceipts]);
+
   const receiptsByDate = useMemo(() => {
     const map: Record<string, number> = {};
     for (const r of bitumenReceipts) {
@@ -1065,17 +1069,34 @@ export default function PlantBitumenStock() {
                   <CardContent className="p-4 space-y-1">
                     <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
                       Bitumen Received (Receipts)
-                      <span title="Total bitumen received from material receipts during the selected period" className="cursor-help"><Info className="w-4 h-4" /></span>
+                      <span title="Total bitumen received from material receipts" className="cursor-help"><Info className="w-4 h-4" /></span>
                     </div>
-                    <div className="text-2xl font-bold">{reconciliationData.totalReceiptsMT.toFixed(3)} MT</div>
-                    {(reconciliationData.tank1ReceiptsMT > 0 || reconciliationData.tank2ReceiptsMT > 0) && (
-                      <div className="text-base text-muted-foreground">
-                        T1: {reconciliationData.tank1ReceiptsMT.toFixed(3)} MT | T2: {reconciliationData.tank2ReceiptsMT.toFixed(3)} MT
-                      </div>
+                    {(reconDateFrom || reconDateTo) ? (
+                      <>
+                        <div className="text-2xl font-bold">{reconciliationData.totalReceiptsMT.toFixed(3)} MT</div>
+                        {(reconciliationData.tank1ReceiptsMT > 0 || reconciliationData.tank2ReceiptsMT > 0) && (
+                          <div className="text-base text-muted-foreground">
+                            T1: {reconciliationData.tank1ReceiptsMT.toFixed(3)} MT | T2: {reconciliationData.tank2ReceiptsMT.toFixed(3)} MT
+                          </div>
+                        )}
+                        <div className="text-base text-muted-foreground">
+                          {reconDateFrom || "start"} to {reconDateTo || "now"}
+                        </div>
+                        <div className="text-base text-muted-foreground border-t pt-1 mt-1">
+                          All-time total: <span className="font-semibold text-foreground">{allTimeBitumenReceiptsMT.toFixed(3)} MT</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">{allTimeBitumenReceiptsMT.toFixed(3)} MT</div>
+                        {(reconciliationData.tank1ReceiptsMT > 0 || reconciliationData.tank2ReceiptsMT > 0) && (
+                          <div className="text-base text-muted-foreground">
+                            T1: {reconciliationData.tank1ReceiptsMT.toFixed(3)} MT | T2: {reconciliationData.tank2ReceiptsMT.toFixed(3)} MT
+                          </div>
+                        )}
+                        <div className="text-base text-muted-foreground">All time</div>
+                      </>
                     )}
-                    <div className="text-base text-muted-foreground">
-                      {reconDateFrom || reconDateTo ? `${reconDateFrom || "start"} to ${reconDateTo || "now"}` : "All time"}
-                    </div>
                   </CardContent>
                 </Card>
 
