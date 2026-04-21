@@ -15,7 +15,9 @@ export const dprs = pgTable("dprs", {
   submittedAt: text("submitted_at"), // Timestamp when report was submitted (local time format)
   createdAt: timestamp("created_at").defaultNow(),
   isSuperseded: boolean("is_superseded").default(false),
-});
+}, (table) => ({
+  dateIdx: index("dprs_date_idx").on(table.date),
+}));
 
 // Activity Progress
 export const progressEntries = pgTable("progress_entries", {
@@ -121,7 +123,9 @@ export const plantReports = pgTable("plant_reports", {
   siteName: text("site_name").notNull(),
   role: text("role").default("engineer"), // "engineer", "manager", or "admin"
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("plant_reports_date_idx").on(table.date),
+}));
 
 // Plant Production Log
 export const plantProduction = pgTable("plant_production", {
@@ -447,7 +451,9 @@ export const materialReturns = pgTable("material_returns", {
   vehicleNumber: text("vehicle_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("material_returns_date_idx").on(table.date),
+}));
 
 // Site Material Trips (quick entry for real-time material receipt logging at site)
 export const siteMaterialTrips = pgTable("site_material_trips", {
@@ -465,7 +471,9 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   enteredBy: text("entered_by"), // Supervisor name
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("site_material_trips_date_idx").on(table.date),
+}));
 
 // === RELATIONS ===
 
