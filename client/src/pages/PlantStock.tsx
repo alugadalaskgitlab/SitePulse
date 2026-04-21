@@ -968,6 +968,7 @@ export default function PlantStock() {
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
+                  <SelectItem value="return">Return</SelectItem>
                 </SelectContent>
               </Select>
             </div>
