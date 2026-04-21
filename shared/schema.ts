@@ -256,7 +256,9 @@ export const materialReceipts = pgTable("material_receipts", {
   tankNumber: integer("tank_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("material_receipts_date_idx").on(table.date),
+}));
 
 // Truck/Load Dispatch Entry
 export const truckDispatches = pgTable("truck_dispatches", {
@@ -293,7 +295,9 @@ export const truckDispatches = pgTable("truck_dispatches", {
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for truck/tipper
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("truck_dispatches_date_idx").on(table.date),
+}));
 
 // Equipment Usage Entry (with meter readings and diesel tank tracking)
 export const equipmentUsage = pgTable("equipment_usage", {
@@ -339,7 +343,9 @@ export const equipmentUsage = pgTable("equipment_usage", {
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for transport vehicle
   transportDistance: real("transport_distance"), // One-way distance in km for mobilization
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("equipment_usage_date_idx").on(table.date),
+}));
 
 // Generator Diesel Tracking
 export const generatorLogs = pgTable("generator_logs", {
@@ -355,7 +361,9 @@ export const generatorLogs = pgTable("generator_logs", {
   dieselConsumed: real("diesel_consumed"), // opening + issued - closing
   efficiency: real("efficiency"), // Liters/hour
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("generator_logs_date_idx").on(table.date),
+}));
 
 // LDO Consumption Tracking
 export const ldoLogs = pgTable("ldo_logs", {
@@ -371,7 +379,9 @@ export const ldoLogs = pgTable("ldo_logs", {
   expectedLdo: real("expected_ldo"), // tonsProduced * norm (default 6 L/ton)
   variance: real("variance"), // expectedLdo - ldoConsumed
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("ldo_logs_date_idx").on(table.date),
+}));
 
 // Stock Balances (for real-time stock tracking)
 export const stockBalances = pgTable("stock_balances", {
@@ -418,7 +428,9 @@ export const materialIssues = pgTable("material_issues", {
   vehicleNumber: text("vehicle_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dateIdx: index("material_issues_date_idx").on(table.date),
+}));
 
 // Material Returns (returns of issued materials back to plant stock)
 export const materialReturns = pgTable("material_returns", {
