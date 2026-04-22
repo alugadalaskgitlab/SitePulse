@@ -3189,11 +3189,11 @@ export async function registerRoutes(
       }
 
       const getBillTypeLabel = (type: string) => {
-        const map: Record<string, string> = { equipment: "EQUIPMENT HIRE", material: "MATERIAL SUPPLY", transport: "TRANSPORT", all: "ALL", other: "OTHER / MISCELLANEOUS" };
+        const map: Record<string, string> = { equipment: "EQUIPMENT HIRE", material: "MATERIAL SUPPLY", transport: "TRANSPORT", labour: "LABOUR", all: "ALL", other: "OTHER / MISCELLANEOUS" };
         return map[type.toLowerCase()] || type.toUpperCase();
       };
       const getCategoryLabel = (cat: string) => {
-        const map: Record<string, string> = { equipment: "EQUIP", material: "MATL", transport: "TRNS" };
+        const map: Record<string, string> = { equipment: "EQUIP", material: "MATL", transport: "TRNS", labour: "LABOUR" };
         return map[cat] || "OTHER";
       };
       const fmtDate = (dateStr: string | null | undefined) => {
@@ -3342,8 +3342,8 @@ export async function registerRoutes(
         y += rowH;
       };
 
-      const pdfCategories = ["equipment", "material", "transport", "other"];
-      const pdfCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+      const pdfCategories = ["equipment", "material", "transport", "labour", "other"];
+      const pdfCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
       const catAmounts: Record<string, number> = {};
       bill.items.forEach((item: any) => {
         const cat = item.category || "other";
@@ -4223,5 +4223,14 @@ async function seedDatabase() {
     }
   } catch (err) {
     console.error("Startup: Failed to fix bad stock balance entries:", err);
+  }
+
+  try {
+    const labCasingResult = await storage.fixLabourContractorCasing();
+    if (labCasingResult.updated > 0) {
+      console.log(`Startup: Normalised labour contractor casing - updated: ${labCasingResult.updated} rows`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to normalise labour contractor casing:", err);
   }
 }

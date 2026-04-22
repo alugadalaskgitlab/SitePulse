@@ -47,17 +47,19 @@ const BILL_TYPES = [
   { value: "equipment", label: "EQUIPMENT HIRE" },
   { value: "material", label: "MATERIAL SUPPLY" },
   { value: "transport", label: "TRANSPORT" },
+  { value: "labour", label: "LABOUR" },
   { value: "all", label: "All Types (Combined)" },
   { value: "other", label: "OTHER / MISCELLANEOUS" },
 ];
 
-const LINE_ITEM_UNITS = ["HRS", "DAYS", "TRIP", "TRIPS", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "MONTHS", "KM"];
+const LINE_ITEM_UNITS = ["HRS", "DAYS", "TRIP", "TRIPS", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "MONTHS", "KM", "HEAD-DAY"];
 
 function getCategoryBadgeClass(category: string) {
   switch (category) {
     case "equipment": return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-300";
     case "material": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-300";
     case "transport": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-300";
+    case "labour": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-300";
     default: return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400 border-gray-300";
   }
 }
@@ -67,6 +69,7 @@ function getCategoryLabel(category: string) {
     case "equipment": return "EQUIP";
     case "material": return "MATL";
     case "transport": return "TRNS";
+    case "labour": return "LABOUR";
     default: return "OTHER";
   }
 }
@@ -558,7 +561,7 @@ export default function VendorBills() {
       } catch (_e) {
       }
 
-      const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, other: 3 };
+      const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, labour: 3, other: 4 };
       mapped.sort((a, b) => {
         const catA = categoryOrder[a.category] ?? 3;
         const catB = categoryOrder[b.category] ?? 3;
@@ -572,12 +575,13 @@ export default function VendorBills() {
   };
 
   const getDefaultCategory = () => {
-    if (billType === "transport" || billType === "equipment" || billType === "material") return billType;
+    if (billType === "transport" || billType === "equipment" || billType === "material" || billType === "labour") return billType;
     return "other";
   };
 
   const getDefaultUnit = () => {
     if (billType === "transport") return "TRIP";
+    if (billType === "labour") return "HEAD-DAY";
     return "HRS";
   };
 
@@ -1010,8 +1014,8 @@ export default function VendorBills() {
     const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
     const catSubs = computeCategorySubTotals(bill.items);
     const shouldGroup = catSubs.length > 1;
-    const printCategories = ["equipment", "material", "transport", "other"];
-    const printCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+    const printCategories = ["equipment", "material", "transport", "labour", "other"];
+    const printCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
     const colCount = hasLeadDistance ? 9 : 8;
     const labelColCount = hasLeadDistance ? 8 : 7;
 
@@ -1233,8 +1237,8 @@ export default function VendorBills() {
                 <Label className="text-xs uppercase">Bill Type</Label>
                 <Select value={billType} onValueChange={(val) => {
                   setBillType(val);
-                  const newCat = (val === "transport" || val === "equipment" || val === "material") ? val : "other";
-                  const newUnit = val === "transport" ? "TRIP" : undefined;
+                  const newCat = (val === "transport" || val === "equipment" || val === "material" || val === "labour") ? val : "other";
+                  const newUnit = val === "transport" ? "TRIP" : val === "labour" ? "HEAD-DAY" : undefined;
                   setLineItems(prev => prev.map(item => {
                     if (item.source === "manual") {
                       const updated = { ...item, category: newCat };
@@ -1432,11 +1436,13 @@ export default function VendorBills() {
               <div className="text-sm text-blue-800 dark:text-blue-200 flex flex-wrap items-center gap-2">
                 <span>
                   {billType === "all"
-                    ? `All billable records for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) — equipment, materials & transport.`
+                    ? `All billable records for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) — equipment, materials, transport & labour.`
                     : billType === "equipment"
                     ? `Equipment usage for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR & Plant records.`
                     : billType === "material"
                     ? `Material receipts for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR & Plant records.`
+                    : billType === "labour"
+                    ? `Labour deployment for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR labour logs (grouped by date, site, category, gender).`
                     : `Transport dispatches for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from truck dispatch records.`}
                 </span>
                 <Button
@@ -1477,8 +1483,8 @@ export default function VendorBills() {
               const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
               const totalColSpan = hasLead ? 10 : 9;
               const labelColSpan = hasLead ? 8 : 7;
-              const categories = ["equipment", "material", "transport", "other"] as const;
-              const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+              const categories = ["equipment", "material", "transport", "labour", "other"] as const;
+              const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
               const shouldGroup = computeCategorySubTotals(lineItems).length > 1;
 
               const renderItemRow = (item: LineItem, idx: number) => (
@@ -1515,6 +1521,7 @@ export default function VendorBills() {
                           <SelectItem value="equipment">EQUIP</SelectItem>
                           <SelectItem value="material">MATL</SelectItem>
                           <SelectItem value="transport">TRNS</SelectItem>
+                          <SelectItem value="labour">LABOUR</SelectItem>
                           <SelectItem value="other">OTHER</SelectItem>
                         </SelectContent>
                       </Select>
@@ -1873,10 +1880,10 @@ export default function VendorBills() {
               <DialogTitle>SET RATES</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {(["equipment", "material", "transport", "other"] as const).map(cat => {
+              {(["equipment", "material", "transport", "labour", "other"] as const).map(cat => {
                 const catGroups = uniqueRateGroups.filter(g => g.category === cat);
                 if (catGroups.length === 0) return null;
-                const catLabel = cat === "equipment" ? "EQUIPMENT" : cat === "material" ? "MATERIAL" : cat === "transport" ? "TRANSPORT" : "OTHER";
+                const catLabel = cat === "equipment" ? "EQUIPMENT" : cat === "material" ? "MATERIAL" : cat === "transport" ? "TRANSPORT" : cat === "labour" ? "LABOUR" : "OTHER";
                 return (
                   <div key={cat} className="space-y-3">
                     <div className="flex items-center gap-2 border-b pb-1">
@@ -2076,8 +2083,8 @@ export default function VendorBills() {
               const labelCols = hasLead ? 7 : 6;
               const catSubs = computeCategorySubTotals(bill.items);
               const shouldGroup = catSubs.length > 1;
-              const categories = ["equipment", "material", "transport", "other"] as const;
-              const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", other: "OTHER" };
+              const categories = ["equipment", "material", "transport", "labour", "other"] as const;
+              const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
 
               const renderDetailRow = (item: any, idx: number) => (
                 <tr key={item.id || idx} className="border-b">

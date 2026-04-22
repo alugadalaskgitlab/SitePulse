@@ -443,6 +443,7 @@ export interface IStorage {
   updateMixEstimate(id: number, data: Partial<InsertMixEstimate>): Promise<MixEstimate | undefined>;
   deleteMixEstimate(id: number): Promise<boolean>;
   fixNullContractorLabels(): Promise<{ updated: number }>;
+  fixLabourContractorCasing(): Promise<{ updated: number }>;
   renameContractor(from: string, to: string): Promise<number>;
   getPriceScenarios(estimateId: number): Promise<PriceScenario[]>;
   getPriceScenario(id: number): Promise<PriceScenario | undefined>;
@@ -6096,10 +6097,68 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    if (bt === "labour" || bt === "all") {
+      const labRows = await db.select({
+        date: dprs.date,
+        category: labourLogs.category,
+        gender: labourLogs.gender,
+        count: labourLogs.count,
+        task: labourLogs.task,
+        site: dprs.site,
+      })
+      .from(labourLogs)
+      .innerJoin(dprs, eq(dprs.id, labourLogs.dprId))
+      .where(and(
+        vendorMatchSql(labourLogs.contractor),
+        gte(dprs.date, periodFrom),
+        lte(dprs.date, periodTo),
+        eq(dprs.isSuperseded, false),
+      ));
+
+      type LabKey = string;
+      const groups = new Map<LabKey, { date: string; site: string; category: string; gender: string | null; count: number; tasks: Map<string, number> }>();
+      for (const row of labRows) {
+        if (!row.count || row.count <= 0) continue;
+        const dateStr = typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0];
+        const cleanSite = row.site ? row.site.replace(/\s*[–-]\s*Edited by .*/i, "").trim().toUpperCase() : "";
+        const cat = (row.category || "UNSKILLED").toUpperCase().trim();
+        const gender = row.gender ? row.gender.toUpperCase().trim() : null;
+        const key = `${dateStr}|${cleanSite}|${cat}|${gender || ""}`;
+        const grp = groups.get(key) || { date: dateStr, site: cleanSite, category: cat, gender, count: 0, tasks: new Map<string, number>() };
+        grp.count += row.count;
+        if (row.task) {
+          const t = row.task.toUpperCase().trim();
+          grp.tasks.set(t, (grp.tasks.get(t) || 0) + row.count);
+        }
+        groups.set(key, grp);
+      }
+
+      for (const grp of groups.values()) {
+        const genderPart = grp.gender ? ` ${grp.gender}` : "";
+        let topTask = "";
+        let topQty = 0;
+        for (const [t, q] of grp.tasks) {
+          if (q > topQty) { topTask = t; topQty = q; }
+        }
+        const taskPart = topTask ? ` - ${topTask}` : "";
+        const desc = `LABOUR ${grp.category}${genderPart}${taskPart}`;
+        const siteLabel = grp.site ? `SITE: ${grp.site}` : "SITE";
+        items.push({
+          date: grp.date,
+          category: "labour",
+          description: desc,
+          qty: grp.count,
+          unit: "HEAD-DAY",
+          source: "auto",
+          siteName: siteLabel,
+        });
+      }
+    }
+
     items.sort((a, b) => {
       const dateComp = (a.date || "").localeCompare(b.date || "");
       if (dateComp !== 0) return dateComp;
-      const catOrder: Record<string, number> = { equipment: 1, material: 2, transport: 3 };
+      const catOrder: Record<string, number> = { equipment: 1, material: 2, transport: 3, labour: 4 };
       return (catOrder[a.category || ""] || 9) - (catOrder[b.category || ""] || 9);
     });
 
@@ -6133,6 +6192,11 @@ export class DatabaseStorage implements IStorage {
       .from(truckDispatches)
       .where(sql`${truckDispatches.ownerName} IS NOT NULL AND ${truckDispatches.ownerName} != ''`);
     for (const r of tdOwners) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    const labContractors = await db.selectDistinct({ name: labourLogs.contractor })
+      .from(labourLogs)
+      .where(sql`${labourLogs.contractor} IS NOT NULL AND ${labourLogs.contractor} != ''`);
+    for (const r of labContractors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
     const billVendors = await db.selectDistinct({ name: vendorBills.vendorName })
       .from(vendorBills)
@@ -6641,6 +6705,24 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    if (bt === "labour" || bt === "all") {
+      const labRows = await db.select({
+        contractor: labourLogs.contractor,
+      })
+      .from(labourLogs)
+      .innerJoin(dprs, eq(dprs.id, labourLogs.dprId))
+      .where(and(
+        sql`${labourLogs.contractor} IS NOT NULL AND ${labourLogs.contractor} != ''`,
+        gte(dprs.date, periodFrom),
+        lte(dprs.date, periodTo),
+        eq(dprs.isSuperseded, false),
+      ));
+
+      for (const row of labRows) {
+        if (row.contractor) addRecord(row.contractor, "labour");
+      }
+    }
+
     const existingBills = await db.select({
       id: vendorBills.id,
       vendorName: vendorBills.vendorName,
@@ -7091,6 +7173,33 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const labCombos = await db.selectDistinct({
+      category: labourLogs.category,
+      gender: labourLogs.gender,
+    })
+    .from(labourLogs)
+    .innerJoin(dprs, eq(dprs.id, labourLogs.dprId))
+    .where(and(
+      vendorMatchSql(labourLogs.contractor),
+      eq(dprs.isSuperseded, false),
+    ));
+
+    for (const row of labCombos) {
+      const cat = (row.category || "UNSKILLED").toUpperCase().trim();
+      const gender = row.gender ? row.gender.toUpperCase().trim() : null;
+      const keySuffix = gender ? `${cat}_${gender}` : cat;
+      const key = `LAB_${keySuffix}`;
+      const labelGender = gender ? ` ${gender}` : "";
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          itemKey: key,
+          itemLabel: `LABOUR ${cat}${labelGender}`,
+          category: "labour",
+          unit: "HEAD-DAY",
+        });
+      }
+    }
+
     const vendorBillConds = vendorVariants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
     const existingBillRows = await db.select({
       category: vendorBillItems.category,
@@ -7283,6 +7392,16 @@ export class DatabaseStorage implements IStorage {
       WHERE contractor IS NULL
         AND TRIM(state::jsonb->'jobs'->0->>'contractor') IS NOT NULL
         AND TRIM(state::jsonb->'jobs'->0->>'contractor') <> ''
+    `);
+    return { updated: result.rowCount ?? 0 };
+  }
+
+  async fixLabourContractorCasing(): Promise<{ updated: number }> {
+    const result = await db.execute(sql`
+      UPDATE labour_logs
+      SET contractor = UPPER(TRIM(contractor))
+      WHERE contractor IS NOT NULL
+        AND contractor <> UPPER(TRIM(contractor))
     `);
     return { updated: result.rowCount ?? 0 };
   }
