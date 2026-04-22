@@ -7417,9 +7417,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(plantShiftLogs.date), desc(plantShiftLogs.shiftCode));
   }
 
-  async getPlantShiftLogByDate(date: string, shiftCode: string = "DAY"): Promise<PlantShiftLogWithDetails | undefined> {
+  async getPlantShiftLogByDate(date: string, shiftCode: string = "DAY", plantName: string = "Main Plant"): Promise<PlantShiftLogWithDetails | undefined> {
     const [header] = await db.select().from(plantShiftLogs)
-      .where(and(eq(plantShiftLogs.date, date), eq(plantShiftLogs.shiftCode, shiftCode)))
+      .where(and(eq(plantShiftLogs.date, date), eq(plantShiftLogs.shiftCode, shiftCode), eq(plantShiftLogs.plantName, plantName)))
       .limit(1);
     if (!header) return undefined;
     const manpower = await db.select().from(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, header.id));
@@ -7761,8 +7761,14 @@ export class DatabaseStorage implements IStorage {
     });
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
 
+    const aggregatesNote = (plantName === "Main Plant")
+      ? null
+      : `Transactional records (dispatches, equipment, generators, receipts) are not yet plant-tagged in source tables; figures shown are date-wide for ${date} and may include other plants.`;
+
     return {
       date,
+      plantName,
+      aggregatesNote,
       shift,
       production: {
         totalLoads,
