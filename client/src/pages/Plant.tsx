@@ -499,7 +499,7 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <Edit className="w-7 h-7 text-blue-700 dark:text-blue-400" />
+              <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Today's Shift Log</h3>

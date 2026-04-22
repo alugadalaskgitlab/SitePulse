@@ -85,6 +85,20 @@ export default function PlantDailyReport() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader><CardTitle>Bitumen Tank Status (from Shift Log)</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div><div className="text-muted-foreground">Tank-1 Temp °C</div><div className="font-medium" data-testid="text-bitumen-tank1-temp">{fmt(data.shift?.bitumenTank1Temp, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-2 Temp °C</div><div className="font-medium" data-testid="text-bitumen-tank2-temp">{fmt(data.shift?.bitumenTank2Temp, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-1 Approx Stock MT</div><div className="font-medium" data-testid="text-bitumen-tank1-stock">{fmt(data.shift?.bitumenTank1StockApproxMt, 2)}</div></div>
+              <div><div className="text-muted-foreground">Tank-2 Approx Stock MT</div><div className="font-medium" data-testid="text-bitumen-tank2-stock">{fmt(data.shift?.bitumenTank2StockApproxMt, 2)}</div></div>
+              <div><div className="text-muted-foreground">Tank-1 Opening Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank1OpeningDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-1 Closing Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank1ClosingDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-2 Opening Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank2OpeningDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-2 Closing Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank2ClosingDip, 1)}</div></div>
+            </CardContent>
+          </Card>
+
           {data.production.byMix?.length > 0 && (
             <Card>
               <CardHeader><CardTitle>Production by Mix</CardTitle></CardHeader>

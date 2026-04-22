@@ -2262,6 +2262,8 @@ export async function registerRoutes(
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
       line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
+      line("Tank 1 Approx Stock (MT)", summary.shift?.bitumenTank1StockApproxMt);
+      line("Tank 2 Approx Stock (MT)", summary.shift?.bitumenTank2StockApproxMt);
       line("Tank 1 Opening Dip (cm)", summary.shift?.bitumenTank1OpeningDip);
       line("Tank 1 Closing Dip (cm)", summary.shift?.bitumenTank1ClosingDip);
       line("Tank 2 Opening Dip (cm)", summary.shift?.bitumenTank2OpeningDip);
