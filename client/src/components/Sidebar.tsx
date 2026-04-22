@@ -4,16 +4,22 @@ import {
   FileText, 
   PlusCircle, 
   Settings,
-  HardHat
+  HardHat,
+  ClipboardList,
+  Factory,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
   const [location] = useLocation();
+  const today = new Date().toISOString().slice(0, 10);
 
   const links = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dpr/new", label: "New Report", icon: PlusCircle },
+    { href: "/plant", label: "Plant Module", icon: Factory },
+    { href: `/plant/shift-log/${today}`, label: "Plant Shift Log", icon: ClipboardList },
+    { href: `/plant/daily-report/${today}`, label: "Daily Plant Report", icon: FileText },
   ];
 
   return (

@@ -7744,17 +7744,44 @@ export class DatabaseStorage implements IStorage {
     }));
     const totalDieselIssued = equipment.reduce((s, e) => s + (e.dieselIssued || 0), 0);
 
-    // Generator logs aggregation + DG efficiency
+    // DG derived efficiency: computed from equipment_usage rows for DG-type
+    // equipment (opening + issued − closing over hours), then compared against
+    // recorded generator_logs.efficiency. Per task spec the derived figure
+    // comes from the equipment-usage tank-balance source of truth.
+    const dgEquipmentIds = new Set(
+      allEquipment.filter(e => (e.equipmentType || "").toLowerCase() === "generator").map(e => e.id)
+    );
+    const dgUsageByName = new Map<string, { consumed: number; hours: number; opening: number | null; issued: number; closing: number | null }>();
+    for (const e of equipment) {
+      if (!dgEquipmentIds.has(e.equipmentId)) continue;
+      const eqp = eqpById.get(e.equipmentId);
+      if (!eqp) continue;
+      const open = e.openingDiesel ?? null;
+      const iss = e.dieselIssued ?? 0;
+      const close = e.closingDiesel ?? null;
+      const hrs = e.hoursOrKmRun ?? 0;
+      const cons = (open != null && close != null) ? Math.max(0, open + iss - close) : 0;
+      const cur = dgUsageByName.get(eqp.name) || { consumed: 0, hours: 0, opening: null, issued: 0, closing: null };
+      cur.consumed += cons;
+      cur.hours += hrs;
+      cur.opening = cur.opening == null ? open : cur.opening;
+      cur.issued += iss;
+      cur.closing = close ?? cur.closing;
+      dgUsageByName.set(eqp.name, cur);
+    }
+
     const generatorSummary = generators.map(g => {
-      const opening = g.openingDiesel ?? null;
-      const issued = g.dieselIssued ?? 0;
-      const closing = g.closingDiesel ?? null;
-      const hrs = g.hoursRun ?? null;
-      const consumed = (opening != null && closing != null) ? Math.max(0, opening + issued - closing) : null;
+      const usage = dgUsageByName.get(g.generatorName);
+      const opening = usage?.opening ?? g.openingDiesel ?? null;
+      const issued = usage?.issued ?? g.dieselIssued ?? 0;
+      const closing = usage?.closing ?? g.closingDiesel ?? null;
+      const hrs = usage?.hours || g.hoursRun || null;
+      const consumed = usage?.consumed ?? ((opening != null && closing != null) ? Math.max(0, opening + issued - closing) : null);
       const lPerHr = (consumed != null && hrs && hrs > 0) ? Math.round((consumed / hrs) * 100) / 100 : null;
       return {
         id: g.id, generatorName: g.generatorName, hoursRun: hrs,
         opening, issued, closing, consumed, lPerHr,
+        derivedSource: usage ? "equipment_usage" : "generator_logs",
         efficiency: g.efficiency ?? null,
       };
     });
