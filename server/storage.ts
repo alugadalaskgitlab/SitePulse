@@ -7495,10 +7495,12 @@ export class DatabaseStorage implements IStorage {
 
       let saved: PlantShiftLog;
       if (existing) {
-        // Snapshot prior version for audit
+        // Snapshot prior version (full: header + manpower + idle) for audit
+        const priorMp = await tx.select().from(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, existing.id));
+        const priorIdle = await tx.select().from(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, existing.id));
         await tx.insert(plantShiftLogVersions).values({
           shiftLogId: existing.id,
-          snapshot: existing as any,
+          snapshot: { header: existing, manpower: priorMp, idleEvents: priorIdle } as any,
           editedBy: editedBy || "operator",
         });
         const [updated] = await tx.update(plantShiftLogs)
@@ -7566,6 +7568,17 @@ export class DatabaseStorage implements IStorage {
     const equipment = await db.select().from(equipmentUsage).where(eq(equipmentUsage.date, date));
     const ldoFlows = await db.select().from(ldoFlowReadings).where(eq(ldoFlowReadings.date, date));
     const bitumenDips = await db.select().from(bitumenDipReadings).where(eq(bitumenDipReadings.date, date));
+    const ldoDips = await db.select().from(ldoDipReadings).where(eq(ldoDipReadings.date, date));
+    const receipts = await db.select().from(materialReceipts).where(eq(materialReceipts.date, date));
+    const generators = await db.select().from(generatorLogs).where(eq(generatorLogs.date, date));
+    const allMixTemplates = await db.select().from(mixTemplates);
+    const allParties = await db.select().from(parties);
+    const allMaterials = await db.select().from(plantMaterials);
+    const allEquipment = await db.select().from(equipmentMaster);
+    const mixById = new Map(allMixTemplates.map(m => [m.id, m]));
+    const partyById = new Map(allParties.map(p => [p.id, p]));
+    const matById = new Map(allMaterials.map(m => [m.id, m]));
+    const eqpById = new Map(allEquipment.map(e => [e.id, e]));
 
     // Production
     const totalLoads = dispatches.length;
@@ -7579,13 +7592,31 @@ export class DatabaseStorage implements IStorage {
     }, 0);
     const actualLdoL = dispatches.reduce((s, d) => s + (d.actualLdoQty ?? d.theoreticalLdoQty ?? 0), 0);
 
-    // LDO derived from shift log opening/closing meters (either tank)
-    const ldoOpeningT1 = shift?.ldoTank1OpeningMeter ?? null;
-    const ldoClosingT1 = shift?.ldoTank1ClosingMeter ?? null;
-    const ldoOpeningT2 = shift?.ldoTank2OpeningMeter ?? null;
-    const ldoClosingT2 = shift?.ldoTank2ClosingMeter ?? null;
-    const ldoConsumedT1 = (ldoOpeningT1 != null && ldoClosingT1 != null) ? Math.max(0, ldoClosingT1 - ldoOpeningT1) : null;
-    const ldoConsumedT2 = (ldoOpeningT2 != null && ldoClosingT2 != null) ? Math.max(0, ldoClosingT2 - ldoOpeningT2) : null;
+    // LDO derived from shift log opening/closing meters (either tank).
+    // Falls back to LDO dip readings (opening − closing) when meter values absent.
+    let ldoConsumedT1: number | null = null;
+    let ldoConsumedT2: number | null = null;
+    let ldoSource: "shift_meter" | "dip_fallback" | "mixed" = "shift_meter";
+    if (shift?.ldoTank1OpeningMeter != null && shift?.ldoTank1ClosingMeter != null) {
+      ldoConsumedT1 = Math.max(0, shift.ldoTank1ClosingMeter - shift.ldoTank1OpeningMeter);
+    } else {
+      const t1Open = ldoDips.find(d => d.tankNumber === 1 && d.readingType === "opening");
+      const t1Close = ldoDips.find(d => d.tankNumber === 1 && d.readingType === "closing");
+      if (t1Open && t1Close && t1Open.volumeLiters != null && t1Close.volumeLiters != null) {
+        ldoConsumedT1 = Math.max(0, t1Open.volumeLiters - t1Close.volumeLiters);
+        ldoSource = ldoSource === "shift_meter" ? "dip_fallback" : "mixed";
+      }
+    }
+    if (shift?.ldoTank2OpeningMeter != null && shift?.ldoTank2ClosingMeter != null) {
+      ldoConsumedT2 = Math.max(0, shift.ldoTank2ClosingMeter - shift.ldoTank2OpeningMeter);
+    } else {
+      const t2Open = ldoDips.find(d => d.tankNumber === 2 && d.readingType === "opening");
+      const t2Close = ldoDips.find(d => d.tankNumber === 2 && d.readingType === "closing");
+      if (t2Open && t2Close && t2Open.volumeLiters != null && t2Close.volumeLiters != null) {
+        ldoConsumedT2 = Math.max(0, t2Open.volumeLiters - t2Close.volumeLiters);
+        ldoSource = ldoSource === "shift_meter" ? "dip_fallback" : "mixed";
+      }
+    }
     const ldoConsumedTotalL = (ldoConsumedT1 || 0) + (ldoConsumedT2 || 0);
 
     // Plant running hours from shift log
@@ -7642,6 +7673,79 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
+    // Productive hours = running hours − idle hours
+    const productiveHours = runningHours != null
+      ? Math.max(0, Math.round((runningHours - totalIdleMinutes / 60) * 100) / 100)
+      : null;
+
+    // Production by mix template
+    const byMixMap = new Map<number, { mixTemplateId: number; mixName: string; mixType: string; loads: number; mt: number }>();
+    for (const d of dispatches) {
+      const m = mixById.get(d.mixTemplateId);
+      const key = d.mixTemplateId;
+      const cur = byMixMap.get(key) || {
+        mixTemplateId: key,
+        mixName: m?.name || `Mix #${key}`,
+        mixType: m?.mixType || "—",
+        loads: 0, mt: 0,
+      };
+      cur.loads += 1;
+      cur.mt += d.loadWeight || 0;
+      byMixMap.set(key, cur);
+    }
+    const productionByMix = Array.from(byMixMap.values()).sort((a, b) => b.mt - a.mt);
+
+    // Dispatch list (compact for report)
+    const dispatchList = dispatches
+      .slice()
+      .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+      .map(d => ({
+        id: d.id,
+        time: d.time,
+        truckNumber: d.truckNumber,
+        partyName: partyById.get(d.partyId)?.name || `Party #${d.partyId}`,
+        mixName: mixById.get(d.mixTemplateId)?.name || `Mix #${d.mixTemplateId}`,
+        loadWeight: d.loadWeight,
+        deliveryLocation: d.deliveryLocation,
+      }));
+
+    // Receipts summary (by material)
+    const receiptsByMaterial = new Map<number, { materialId: number; materialName: string; uom: string; quantity: number; lines: number }>();
+    for (const r of receipts) {
+      const cur = receiptsByMaterial.get(r.materialId) || {
+        materialId: r.materialId,
+        materialName: matById.get(r.materialId)?.name || `Mat #${r.materialId}`,
+        uom: r.uom,
+        quantity: 0, lines: 0,
+      };
+      cur.quantity += r.quantity || 0;
+      cur.lines += 1;
+      receiptsByMaterial.set(r.materialId, cur);
+    }
+    const receiptsSummary = Array.from(receiptsByMaterial.values()).sort((a, b) => a.materialName.localeCompare(b.materialName));
+
+    // Equipment with names + total diesel issued
+    const equipmentEnriched = equipmentSummary.map(e => ({
+      ...e,
+      equipmentName: e.equipmentId ? (eqpById.get(e.equipmentId)?.name || `#${e.equipmentId}`) : null,
+    }));
+    const totalDieselIssued = equipment.reduce((s, e) => s + (e.dieselIssued || 0), 0);
+
+    // Generator logs aggregation + DG efficiency
+    const generatorSummary = generators.map(g => {
+      const opening = g.openingDiesel ?? null;
+      const issued = g.dieselIssued ?? 0;
+      const closing = g.closingDiesel ?? null;
+      const hrs = g.hoursRun ?? null;
+      const consumed = (opening != null && closing != null) ? Math.max(0, opening + issued - closing) : null;
+      const lPerHr = (consumed != null && hrs && hrs > 0) ? Math.round((consumed / hrs) * 100) / 100 : null;
+      return {
+        id: g.id, generatorName: g.generatorName, hoursRun: hrs,
+        opening, issued, closing, consumed, lPerHr,
+      };
+    });
+    const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
+
     return {
       date,
       shift,
@@ -7653,18 +7757,26 @@ export class DatabaseStorage implements IStorage {
         bitumenVarianceMT: actualBitumenMT - theoreticalBitumenMT,
         theoreticalLdoL,
         actualLdoL,
+        byMix: productionByMix,
       },
+      dispatches: dispatchList,
+      receipts: { byMaterial: receiptsSummary, totalLines: receipts.length },
       runningHours,
+      productiveHours,
       ldo: {
         consumedT1L: ldoConsumedT1,
         consumedT2L: ldoConsumedT2,
         consumedTotalL: ldoConsumedTotalL || null,
         lPerHour: ldoLPerHour,
         lPerMT: ldoLPerMT,
+        source: ldoSource,
       },
       bitumenDips,
       ldoFlows,
-      equipment: equipmentSummary,
+      ldoDips,
+      equipment: equipmentEnriched,
+      totalDieselIssued,
+      generators: { items: generatorSummary, totalDieselConsumedL: generatorTotalDieselConsumed },
       manpower: shift?.manpower || [],
       idle: {
         events: shift?.idleEvents || [],

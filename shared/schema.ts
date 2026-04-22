@@ -756,6 +756,7 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   plantStartTime: text("plant_start_time"),
   plantStopTime: text("plant_stop_time"),
   weather: text("weather"),
+  ambientTemp: real("ambient_temp"),
   bitumenTank1Temp: real("bitumen_tank1_temp"),
   bitumenTank2Temp: real("bitumen_tank2_temp"),
   bitumenTank1OpeningDip: real("bitumen_tank1_opening_dip"),

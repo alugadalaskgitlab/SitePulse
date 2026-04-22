@@ -33,6 +33,7 @@ export default function PlantShiftLog() {
   const [plantStartTime, setPlantStartTime] = useState("");
   const [plantStopTime, setPlantStopTime] = useState("");
   const [weather, setWeather] = useState("");
+  const [ambientTemp, setAmbientTemp] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [supervisorName, setSupervisorName] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -78,6 +79,7 @@ export default function PlantShiftLog() {
     setPlantStartTime(existing.plantStartTime || "");
     setPlantStopTime(existing.plantStopTime || "");
     setWeather(existing.weather || "");
+    setAmbientTemp(existing.ambientTemp?.toString() || "");
     setOperatorName(existing.operatorName || "");
     setSupervisorName(existing.supervisorName || "");
     setRemarks(existing.remarks || "");
@@ -107,6 +109,7 @@ export default function PlantShiftLog() {
         plantStartTime: plantStartTime || null,
         plantStopTime: plantStopTime || null,
         weather: weather || null,
+        ambientTemp: numOrNull(ambientTemp),
         operatorName: operatorName || null,
         supervisorName: supervisorName || null,
         remarks: remarks || null,
@@ -220,6 +223,7 @@ export default function PlantShiftLog() {
               <SelectContent>
                 <SelectItem value="DAY">Day</SelectItem>
                 <SelectItem value="NIGHT">Night</SelectItem>
+                <SelectItem value="FULL">Full Day</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -227,7 +231,20 @@ export default function PlantShiftLog() {
           <div><Label>Plant Stop</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
           <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
           <div><Label>Supervisor</Label><Input value={supervisorName} onChange={e => setSupervisorName(e.target.value)} data-testid="input-supervisor" /></div>
-          <div><Label>Weather</Label><Input value={weather} onChange={e => setWeather(e.target.value)} placeholder="Sunny / Rain / Cloudy" data-testid="input-weather" /></div>
+          <div><Label>Weather</Label>
+            <Select value={weather} onValueChange={setWeather}>
+              <SelectTrigger data-testid="select-weather"><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Sunny">Sunny</SelectItem>
+                <SelectItem value="Cloudy">Cloudy</SelectItem>
+                <SelectItem value="Rain">Rain</SelectItem>
+                <SelectItem value="Heavy Rain">Heavy Rain</SelectItem>
+                <SelectItem value="Foggy">Foggy</SelectItem>
+                <SelectItem value="Windy">Windy</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label>Ambient Temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
         </CardContent>
       </Card>
 

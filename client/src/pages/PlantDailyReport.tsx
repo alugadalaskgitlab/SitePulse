@@ -65,9 +65,112 @@ export default function PlantDailyReport() {
               <div><div className="text-muted-foreground">Plant Start</div><div className="font-medium">{data.shift?.plantStartTime || "—"}</div></div>
               <div><div className="text-muted-foreground">Plant Stop</div><div className="font-medium">{data.shift?.plantStopTime || "—"}</div></div>
               <div><div className="text-muted-foreground">Running Hrs</div><div className="font-medium" data-testid="text-running-hours">{fmt(data.runningHours)}</div></div>
+              <div><div className="text-muted-foreground">Productive Hrs</div><div className="font-medium" data-testid="text-productive-hours">{fmt(data.productiveHours)}</div></div>
               <div><div className="text-muted-foreground">Weather</div><div className="font-medium">{data.shift?.weather || "—"}</div></div>
+              <div><div className="text-muted-foreground">Ambient Temp °C</div><div className="font-medium">{fmt(data.shift?.ambientTemp, 1)}</div></div>
             </CardContent>
           </Card>
+
+          {data.production.byMix?.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Production by Mix</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Mix</TableHead><TableHead>Type</TableHead>
+                    <TableHead className="text-right">Loads</TableHead><TableHead className="text-right">MT</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {data.production.byMix.map((m: any, i: number) => (
+                      <TableRow key={i} data-testid={`row-mix-${i}`}>
+                        <TableCell>{m.mixName}</TableCell>
+                        <TableCell><Badge variant="outline">{m.mixType}</Badge></TableCell>
+                        <TableCell className="text-right">{m.loads}</TableCell>
+                        <TableCell className="text-right font-semibold">{m.mt.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {data.dispatches?.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Dispatch List ({data.dispatches.length})</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Time</TableHead><TableHead>Truck</TableHead><TableHead>Party</TableHead>
+                    <TableHead>Mix</TableHead><TableHead className="text-right">MT</TableHead><TableHead>Location</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {data.dispatches.map((d: any) => (
+                      <TableRow key={d.id} data-testid={`row-dispatch-${d.id}`}>
+                        <TableCell>{d.time || "—"}</TableCell>
+                        <TableCell>{d.truckNumber}</TableCell>
+                        <TableCell>{d.partyName}</TableCell>
+                        <TableCell>{d.mixName}</TableCell>
+                        <TableCell className="text-right">{d.loadWeight?.toFixed(2)}</TableCell>
+                        <TableCell>{d.deliveryLocation || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {data.receipts?.byMaterial?.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Material Receipts ({data.receipts.totalLines} lines)</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Material</TableHead><TableHead className="text-right">Qty</TableHead><TableHead>UoM</TableHead><TableHead className="text-right">Lines</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {data.receipts.byMaterial.map((r: any, i: number) => (
+                      <TableRow key={i} data-testid={`row-receipt-${i}`}>
+                        <TableCell>{r.materialName}</TableCell>
+                        <TableCell className="text-right font-semibold">{r.quantity.toFixed(2)}</TableCell>
+                        <TableCell>{r.uom}</TableCell>
+                        <TableCell className="text-right">{r.lines}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {data.generators?.items?.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Generator Logs (Total Diesel: {data.generators.totalDieselConsumedL?.toFixed(1)} L)</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Generator</TableHead><TableHead className="text-right">Hrs</TableHead>
+                    <TableHead className="text-right">Open</TableHead><TableHead className="text-right">Issued</TableHead><TableHead className="text-right">Close</TableHead>
+                    <TableHead className="text-right">Consumed L</TableHead><TableHead className="text-right">L/hr</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {data.generators.items.map((g: any) => (
+                      <TableRow key={g.id} data-testid={`row-generator-${g.id}`}>
+                        <TableCell>{g.generatorName}</TableCell>
+                        <TableCell className="text-right">{fmt(g.hoursRun)}</TableCell>
+                        <TableCell className="text-right">{fmt(g.opening)}</TableCell>
+                        <TableCell className="text-right">{fmt(g.issued)}</TableCell>
+                        <TableCell className="text-right">{fmt(g.closing)}</TableCell>
+                        <TableCell className="text-right font-semibold">{fmt(g.consumed)}</TableCell>
+                        <TableCell className="text-right">{fmt(g.lPerHr)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>Production</CardTitle></CardHeader>
@@ -83,7 +186,7 @@ export default function PlantDailyReport() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>LDO Consumption (Shift Meters)</CardTitle></CardHeader>
+            <CardHeader><CardTitle>LDO Consumption {data.ldo.source && data.ldo.source !== "shift_meter" ? <Badge variant="secondary" className="ml-2">Source: {data.ldo.source}</Badge> : null}</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
               <KV label="Tank 1 Boiler L" value={fmt(data.ldo.consumedT1L, 1)} />
               <KV label="Tank 2 Dryer L" value={fmt(data.ldo.consumedT2L, 1)} />
@@ -94,7 +197,7 @@ export default function PlantDailyReport() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Equipment Usage</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Equipment Usage (Total Diesel Issued: {fmt(data.totalDieselIssued, 1)} L)</CardTitle></CardHeader>
             <CardContent>
               {data.equipment.length === 0 ? <p className="text-sm text-muted-foreground">No equipment logged.</p> : (
                 <Table>

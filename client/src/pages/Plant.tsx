@@ -495,15 +495,15 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </Card>
       </Link>
 
-      <Link href={appendRoleAndTab("/plant/daily-report")}>
-        <Card className="hover-elevate cursor-pointer h-full">
+      <Link href={appendRoleAndTab(`/plant/daily-report/${new Date().toISOString().slice(0, 10)}`)}>
+        <Card className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <FileText className="w-7 h-7 text-green-700 dark:text-green-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Daily Plant Report</h3>
-              <p className="text-sm text-muted-foreground">Consolidated daily view: production, fuel, idle, manpower – with PDF</p>
+              <h3 className="font-semibold text-lg">Today's Daily Plant Report</h3>
+              <p className="text-sm text-muted-foreground">Consolidated view for today – production, fuel, idle, manpower, dispatches, generators – with PDF</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
