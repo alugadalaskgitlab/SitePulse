@@ -459,6 +459,15 @@ export interface IStorage {
   createConcreteEstimateV2(data: InsertConcreteEstimateV2): Promise<ConcreteEstimateV2>;
   updateConcreteEstimateV2(id: number, data: Partial<InsertConcreteEstimateV2>): Promise<ConcreteEstimateV2 | undefined>;
   deleteConcreteEstimateV2(id: number): Promise<boolean>;
+
+  // Plant Shift Log + Daily Plant Report
+  getPlantShiftLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<PlantShiftLog[]>;
+  getPlantShiftLog(id: number): Promise<PlantShiftLogWithDetails | undefined>;
+  getPlantShiftLogByDate(date: string, _shiftCodeIgnored?: string, plantName?: string): Promise<PlantShiftLogWithDetails | undefined>;
+  upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails>;
+  finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined>;
+  deletePlantShiftLog(id: number): Promise<boolean>;
+  getDailyPlantSummary(date: string, plantName?: string): Promise<unknown>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -7437,7 +7446,7 @@ export class DatabaseStorage implements IStorage {
 
   // Idempotent write-through. Deletes all readings tagged sourceShiftLogId=log.id
   // and re-inserts only those entries with non-null values from the shift log.
-  private async _syncShiftLogReadings(tx: any, log: PlantShiftLog): Promise<void> {
+  private async _syncShiftLogReadings(tx: typeof db, log: PlantShiftLog): Promise<void> {
     await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, log.id));
     await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, log.id));
 
@@ -7569,7 +7578,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getDailyPlantSummary(date: string, plantName: string = "Main Plant"): Promise<any> {
+  async getDailyPlantSummary(date: string, plantName: string = "Main Plant"): Promise<unknown> {
     // Pick the relevant log for this (date, plant) regardless of shift code.
     // Preference order: FULL → DAY → NIGHT → first available.
     const allShifts = await db.select().from(plantShiftLogs)
@@ -7609,27 +7618,35 @@ export class DatabaseStorage implements IStorage {
     // Falls back to LDO dip readings (opening − closing) when meter values absent.
     let ldoConsumedT1: number | null = null;
     let ldoConsumedT2: number | null = null;
-    let ldoSource: "shift_meter" | "dip_fallback" | "mixed" = "shift_meter";
+    let t1Source: "shift_meter" | "dip_fallback" | null = null;
+    let t2Source: "shift_meter" | "dip_fallback" | null = null;
     if (shift?.ldoTank1OpeningMeter != null && shift?.ldoTank1ClosingMeter != null) {
       ldoConsumedT1 = Math.max(0, shift.ldoTank1ClosingMeter - shift.ldoTank1OpeningMeter);
+      t1Source = "shift_meter";
     } else {
       const t1Open = ldoDips.find(d => d.tankNumber === 1 && d.readingType === "opening");
       const t1Close = ldoDips.find(d => d.tankNumber === 1 && d.readingType === "closing");
       if (t1Open && t1Close && t1Open.volumeLiters != null && t1Close.volumeLiters != null) {
         ldoConsumedT1 = Math.max(0, t1Open.volumeLiters - t1Close.volumeLiters);
-        ldoSource = ldoSource === "shift_meter" ? "dip_fallback" : "mixed";
+        t1Source = "dip_fallback";
       }
     }
     if (shift?.ldoTank2OpeningMeter != null && shift?.ldoTank2ClosingMeter != null) {
       ldoConsumedT2 = Math.max(0, shift.ldoTank2ClosingMeter - shift.ldoTank2OpeningMeter);
+      t2Source = "shift_meter";
     } else {
       const t2Open = ldoDips.find(d => d.tankNumber === 2 && d.readingType === "opening");
       const t2Close = ldoDips.find(d => d.tankNumber === 2 && d.readingType === "closing");
       if (t2Open && t2Close && t2Open.volumeLiters != null && t2Close.volumeLiters != null) {
         ldoConsumedT2 = Math.max(0, t2Open.volumeLiters - t2Close.volumeLiters);
-        ldoSource = ldoSource === "shift_meter" ? "dip_fallback" : "mixed";
+        t2Source = "dip_fallback";
       }
     }
+    const presentSources = [t1Source, t2Source].filter((s): s is "shift_meter" | "dip_fallback" => s !== null);
+    const uniqueSources = Array.from(new Set(presentSources));
+    const ldoSource: "shift_meter" | "dip_fallback" | "mixed" =
+      uniqueSources.length === 0 ? "shift_meter" :
+      uniqueSources.length === 1 ? uniqueSources[0] : "mixed";
     const ldoConsumedTotalL = (ldoConsumedT1 || 0) + (ldoConsumedT2 || 0);
 
     // Plant running hours from shift log
