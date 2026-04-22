@@ -16,6 +16,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
+import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 
 type StockBalanceAsOf = {
@@ -79,6 +80,9 @@ export default function PlantStock() {
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
+  const { data: allStockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
+    queryKey: ["/api/plant-module/stock-balances"],
+  });
 
   // Filtered ledger URL (with date filter) for Stock Summary and Ledger Details tabs
   const buildLedgerUrl = () => {
@@ -900,6 +904,12 @@ export default function PlantStock() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <NegativeBalanceBannerMulti
+        balances={allStockBalances ?? []}
+        parties={parties}
+        materials={materials}
+        testid="banner-negative-stock"
+      />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href={backLink}>
