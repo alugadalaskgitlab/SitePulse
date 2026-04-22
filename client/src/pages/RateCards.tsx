@@ -47,11 +47,15 @@ const TRANSPORT_MODES = [
   { value: "MONTHLY HIRE", unit: "MONTHS" },
 ];
 
+const LABOUR_CATEGORIES = ["SKILLED", "UNSKILLED", "MASON", "CARPENTER", "FITTER", "HELPER", "OPERATOR", "DRIVER"];
+const LABOUR_GENDERS = ["", "MALE", "FEMALE"];
+
 const getCategoryBadgeClass = (cat: string) => {
   switch (cat) {
     case "equipment": return "bg-blue-600 text-white border-blue-700";
     case "material": return "bg-amber-600 text-white border-amber-700";
     case "transport": return "bg-purple-600 text-white border-purple-700";
+    case "labour": return "bg-pink-600 text-white border-pink-700";
     default: return "bg-gray-500 text-white border-gray-600";
   }
 };
@@ -83,6 +87,10 @@ export default function RateCards() {
   const [showAddTransport, setShowAddTransport] = useState(false);
   const [addTransType, setAddTransType] = useState("");
   const [addTransMode, setAddTransMode] = useState("");
+
+  const [showAddLabour, setShowAddLabour] = useState(false);
+  const [addLabCategory, setAddLabCategory] = useState("");
+  const [addLabGender, setAddLabGender] = useState("");
 
   const { data: vendorNames = [] } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
@@ -260,6 +268,34 @@ export default function RateCards() {
     setShowAddTransport(false);
   };
 
+  const handleAddLabourRow = () => {
+    if (!addLabCategory) {
+      toast({ title: "Select labour category", variant: "destructive" });
+      return;
+    }
+    const cat = addLabCategory.toUpperCase();
+    const gender = addLabGender.toUpperCase();
+    const key = gender ? `LAB_${cat}_${gender}` : `LAB_${cat}`;
+    const label = gender ? `LABOUR ${cat} ${gender}` : `LABOUR ${cat}`;
+    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "labour");
+    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "labour");
+    if (existing || existingManual) {
+      toast({ title: `${label} already exists`, variant: "destructive" });
+      return;
+    }
+    setManualRows(prev => [...prev, {
+      id: `manual_lab_${Date.now()}`,
+      itemKey: key,
+      itemLabel: label,
+      category: "labour",
+      unit: "HEAD-DAY",
+      rate: "",
+    }]);
+    setAddLabCategory("");
+    setAddLabGender("");
+    setShowAddLabour(false);
+  };
+
   const handleSaveAll = () => {
     const discoveredToSave = discoveredItems.map(item => {
       const effectiveUnit = getEffectiveUnit(item);
@@ -320,9 +356,18 @@ export default function RateCards() {
     });
   }, [discoveredItems, searchFilter]);
 
+  const labourItems = useMemo(() => {
+    return discoveredItems.filter(item => {
+      if (item.category !== "labour") return false;
+      if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
+      return true;
+    });
+  }, [discoveredItems, searchFilter]);
+
   const equipmentManualRows = useMemo(() => manualRows.filter(r => r.category === "equipment"), [manualRows]);
   const materialManualRows = useMemo(() => manualRows.filter(r => r.category === "material"), [manualRows]);
   const transportManualRows = useMemo(() => manualRows.filter(r => r.category === "transport"), [manualRows]);
+  const labourManualRows = useMemo(() => manualRows.filter(r => r.category === "labour"), [manualRows]);
 
   const filledCount = useMemo(() => {
     const discoveredFilled = Object.values(rates).filter(r => parseFloat(String(r)) > 0).length;
@@ -693,6 +738,67 @@ export default function RateCards() {
                         </div>
                         <Button size="sm" onClick={handleAddTransportRow} data-testid="button-confirm-add-transport">ADD</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setShowAddTransport(false); setAddTransType(""); setAddTransMode(""); }}>CANCEL</Button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {renderSectionHeader("LABOUR", "labour", labourItems.length + labourManualRows.length, getCategoryBadgeClass("labour"))}
+              {!collapsedSections["labour"] && (
+                <>
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/30">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs">LABOUR CATEGORY [GENDER]</th>
+                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹ / HEAD-DAY)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {labourItems.map((item, idx) => renderItemRow(item, idx))}
+                      {labourManualRows.map((row, idx) => renderManualRow(row, idx))}
+                      {labourItems.length === 0 && labourManualRows.length === 0 && (
+                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No labour items discovered. Use ADD ROW to add manually.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="px-3 py-2 border-t">
+                    <div className="text-[10px] text-muted-foreground mb-1">Rate per head per day. Add gender only if rates differ by gender; otherwise leave blank for combined rate.</div>
+                    {!showAddLabour ? (
+                      <Button variant="outline" size="sm" onClick={() => setShowAddLabour(true)} data-testid="button-add-labour-row">
+                        <Plus className="w-3 h-3 mr-1" /> ADD ROW
+                      </Button>
+                    ) : (
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Labour Category</Label>
+                          <Select value={addLabCategory} onValueChange={setAddLabCategory}>
+                            <SelectTrigger className="w-44 h-8 text-xs" data-testid="select-add-lab-category">
+                              <SelectValue placeholder="Select category..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {LABOUR_CATEGORIES.map(c => (
+                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase">Gender (optional)</Label>
+                          <Select value={addLabGender || "ANY"} onValueChange={(v) => setAddLabGender(v === "ANY" ? "" : v)}>
+                            <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-add-lab-gender">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ANY">ANY (combined)</SelectItem>
+                              <SelectItem value="MALE">MALE</SelectItem>
+                              <SelectItem value="FEMALE">FEMALE</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button size="sm" onClick={handleAddLabourRow} data-testid="button-confirm-add-labour">ADD</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setShowAddLabour(false); setAddLabCategory(""); setAddLabGender(""); }}>CANCEL</Button>
                       </div>
                     )}
                   </div>

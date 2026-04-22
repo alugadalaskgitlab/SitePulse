@@ -210,6 +210,7 @@ export default function VendorBills() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterVendor, setFilterVendor] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
 
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
@@ -1000,9 +1001,14 @@ export default function VendorBills() {
       if (filterDateTo && bill.billDate > filterDateTo) return false;
       if (filterVendor !== "all" && bill.vendorName.toUpperCase() !== filterVendor) return false;
       if (filterStatus !== "all" && bill.status !== filterStatus) return false;
+      if (filterCategory !== "all") {
+        const bt = (bill.billType || "").toLowerCase();
+        const target = filterCategory === "combined" ? "all" : filterCategory;
+        if (bt !== target) return false;
+      }
       return true;
     });
-  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus]);
+  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory]);
 
   const escHtml = (str: string) => {
     const div = document.createElement("div");
@@ -2460,13 +2466,37 @@ export default function VendorBills() {
                 )}
               </div>
             </div>
+            <div>
+              <Label className="text-xs uppercase">Category</Label>
+              <div className="flex items-center gap-1">
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger data-testid="filter-category" className="flex-1">
+                    <SelectValue placeholder="ALL CATEGORIES" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ALL CATEGORIES</SelectItem>
+                    <SelectItem value="equipment">EQUIPMENT</SelectItem>
+                    <SelectItem value="material">MATERIAL</SelectItem>
+                    <SelectItem value="transport">TRANSPORT</SelectItem>
+                    <SelectItem value="labour">LABOUR</SelectItem>
+                    <SelectItem value="combined">ALL TYPES (COMBINED)</SelectItem>
+                    <SelectItem value="other">OTHER</SelectItem>
+                  </SelectContent>
+                </Select>
+                {filterCategory !== "all" && (
+                  <Button size="icon" variant="ghost" onClick={() => setFilterCategory("all")} data-testid="button-clear-category">
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all") && (
+          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all") && (
             <div className="flex justify-end mt-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); }}
+                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); }}
                 data-testid="button-clear-all-filters"
               >
                 <X className="w-3 h-3 mr-1" />
