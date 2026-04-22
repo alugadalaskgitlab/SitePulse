@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -753,10 +753,12 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   shiftCode: text("shift_code").notNull().default("DAY"),
+  plantName: text("plant_name").notNull().default("Main Plant"),
   plantStartTime: text("plant_start_time"),
   plantStopTime: text("plant_stop_time"),
   weather: text("weather"),
   ambientTemp: real("ambient_temp"),
+  bitumenStockApproxMt: real("bitumen_stock_approx_mt"),
   bitumenTank1Temp: real("bitumen_tank1_temp"),
   bitumenTank2Temp: real("bitumen_tank2_temp"),
   bitumenTank1OpeningDip: real("bitumen_tank1_opening_dip"),
@@ -777,6 +779,7 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("plant_shift_logs_date_idx").on(table.date),
+  uniqDateShiftPlant: uniqueIndex("plant_shift_logs_date_shift_plant_uq").on(table.date, table.shiftCode, table.plantName),
 }));
 
 export const plantShiftLogManpower = pgTable("plant_shift_log_manpower", {

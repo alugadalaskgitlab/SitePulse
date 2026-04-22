@@ -178,10 +178,7 @@ export default function PlantDailyReport() {
               <KV label="Loads" value={data.production.totalLoads} testId="text-loads" />
               <KV label="Total MT" value={fmt(data.production.totalProductionMT)} testId="text-mt" />
               <KV label="Theoretical Bitumen MT" value={fmt(data.production.theoreticalBitumenMT, 3)} />
-              <KV label="Actual Bitumen MT" value={fmt(data.production.actualBitumenMT, 3)} />
-              <KV label="Bitumen Variance MT" value={fmt(data.production.bitumenVarianceMT, 3)} />
               <KV label="Theoretical LDO L" value={fmt(data.production.theoreticalLdoL, 1)} />
-              <KV label="Actual LDO via dispatches L" value={fmt(data.production.actualLdoL, 1)} />
             </CardContent>
           </Card>
 

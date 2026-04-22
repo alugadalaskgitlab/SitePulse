@@ -7484,14 +7484,22 @@ export class DatabaseStorage implements IStorage {
     if (bitumenRows.length) await tx.insert(bitumenDipReadings).values(bitumenRows);
   }
 
-  async upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string): Promise<PlantShiftLogWithDetails> {
-    const { manpower = [], idleEvents = [], editedBy: _ignore, ...header } = input as any;
+  async upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails> {
+    const { manpower = [], idleEvents = [], editedBy: _ignore, pin: _pin, ...header } = input as any;
     const shiftCode = header.shiftCode || "DAY";
+    const plantName = header.plantName || "Main Plant";
 
     return db.transaction(async (tx) => {
       const [existing] = await tx.select().from(plantShiftLogs)
-        .where(and(eq(plantShiftLogs.date, header.date), eq(plantShiftLogs.shiftCode, shiftCode)))
+        .where(and(eq(plantShiftLogs.date, header.date), eq(plantShiftLogs.shiftCode, shiftCode), eq(plantShiftLogs.plantName, plantName)))
         .limit(1);
+
+      // Block edits to a finalized log unless authorized (manager/admin PIN verified at the route)
+      if (existing && existing.isFinalized === 1 && !authorizedRole) {
+        const err: any = new Error("Shift log is finalized — manager or admin PIN required to edit");
+        err.code = "FINALIZED_LOCKED";
+        throw err;
+      }
 
       let saved: PlantShiftLog;
       if (existing) {
@@ -7512,7 +7520,7 @@ export class DatabaseStorage implements IStorage {
         await tx.delete(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, existing.id));
         await tx.delete(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, existing.id));
       } else {
-        const [created] = await tx.insert(plantShiftLogs).values({ ...header, shiftCode }).returning();
+        const [created] = await tx.insert(plantShiftLogs).values({ ...header, shiftCode, plantName }).returning();
         saved = created;
       }
 
@@ -7561,8 +7569,14 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getDailyPlantSummary(date: string): Promise<any> {
-    const shift = await this.getPlantShiftLogByDate(date, "DAY");
+  async getDailyPlantSummary(date: string, plantName: string = "Main Plant"): Promise<any> {
+    // Pick the relevant log for this (date, plant) regardless of shift code.
+    // Preference order: FULL → DAY → NIGHT → first available.
+    const allShifts = await db.select().from(plantShiftLogs)
+      .where(and(eq(plantShiftLogs.date, date), eq(plantShiftLogs.plantName, plantName)));
+    const pickOrder = ["FULL", "DAY", "NIGHT"];
+    const headerRow = pickOrder.map(c => allShifts.find(s => s.shiftCode === c)).find(Boolean) || allShifts[0];
+    const shift = headerRow ? await this.getPlantShiftLog(headerRow.id) : undefined;
 
     const dispatches = await db.select().from(truckDispatches).where(eq(truckDispatches.date, date));
     const equipment = await db.select().from(equipmentUsage).where(eq(equipmentUsage.date, date));

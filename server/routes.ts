@@ -2099,9 +2099,22 @@ export async function registerRoutes(
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
       const parsed = upsertPlantShiftLogSchema.parse(req.body);
       const editedBy = parsed.editedBy || "operator";
-      const saved = await storage.upsertPlantShiftLog(parsed, editedBy);
-      sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
-      res.status(201).json(saved);
+      // If a PIN is supplied (required when editing a finalized log), verify role
+      let authorizedRole: "admin" | "manager" | null = null;
+      const pin = (req.body && req.body.pin) || null;
+      if (pin) {
+        if (await storage.verifyPin("admin", pin)) authorizedRole = "admin";
+        else if (await storage.verifyPin("manager", pin)) authorizedRole = "manager";
+        else return res.status(403).json({ message: "Invalid PIN" });
+      }
+      try {
+        const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
+        sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
+        res.status(201).json(saved);
+      } catch (e: any) {
+        if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        throw e;
+      }
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to save shift log" });
     }
@@ -2155,7 +2168,8 @@ export async function registerRoutes(
   app.get("/api/plant-module/daily-reports/:date/pdf", async (req, res) => {
     try {
       const date = req.params.date;
-      const summary: any = await storage.getDailyPlantSummary(date);
+      const plantName = (req.query.plant as string) || "Main Plant";
+      const summary: any = await storage.getDailyPlantSummary(date, plantName);
 
       const doc = new PDFDocument({ size: "A4", margin: 40 });
       res.setHeader("Content-Type", "application/pdf");
@@ -2201,10 +2215,7 @@ export async function registerRoutes(
       line("Loads", summary.production.totalLoads);
       line("Total Production (MT)", summary.production.totalProductionMT?.toFixed(2));
       line("Theoretical Bitumen (MT)", summary.production.theoreticalBitumenMT?.toFixed(3));
-      line("Actual Bitumen (MT)", summary.production.actualBitumenMT?.toFixed(3));
-      line("Bitumen Variance (MT)", summary.production.bitumenVarianceMT?.toFixed(3));
       line("Theoretical LDO (L)", summary.production.theoreticalLdoL?.toFixed(1));
-      line("Actual LDO via dispatches (L)", summary.production.actualLdoL?.toFixed(1));
 
       if (summary.production.byMix?.length) {
         section("Production by Mix");

@@ -55,7 +55,9 @@ export default function PlantShiftLog() {
 
   const [isFinalized, setIsFinalized] = useState(0);
   const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinPurpose, setPinPurpose] = useState<"finalize" | "delete">("finalize");
+  const [pinPurpose, setPinPurpose] = useState<"finalize" | "delete" | "edit-finalized">("finalize");
+  const [plantName, setPlantName] = useState("Main Plant");
+  const [bitumenStockApproxMt, setBitumenStockApproxMt] = useState("");
   const [savedId, setSavedId] = useState<number | null>(null);
 
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails>({
@@ -98,18 +100,23 @@ export default function PlantShiftLog() {
       startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
     })));
     setIsFinalized(existing.isFinalized || 0);
+    setPlantName(existing.plantName || "Main Plant");
+    setBitumenStockApproxMt(existing.bitumenStockApproxMt?.toString() || "");
   }, [existing]);
 
   const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
 
+  const editedBy = "operator";
+
   const saveMutation = useMutation({
-    mutationFn: async (editedBy: string) => {
-      const payload = {
-        date, shiftCode,
+    mutationFn: async (extra?: { pin?: string }) => {
+      const payload: any = {
+        date, shiftCode, plantName,
         plantStartTime: plantStartTime || null,
         plantStopTime: plantStopTime || null,
         weather: weather || null,
         ambientTemp: numOrNull(ambientTemp),
+        bitumenStockApproxMt: numOrNull(bitumenStockApproxMt),
         operatorName: operatorName || null,
         supervisorName: supervisorName || null,
         remarks: remarks || null,
@@ -123,12 +130,21 @@ export default function PlantShiftLog() {
         ldoTank1ClosingMeter: numOrNull(ldoTank1ClosingMeter),
         ldoTank2OpeningMeter: numOrNull(ldoTank2OpeningMeter),
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
-        isFinalized: 0,
         manpower: manpower.filter(m => m.name?.trim()).map(m => ({ name: m.name.trim().toUpperCase(), role: m.role || null })),
         idleEvents: idleEvents.filter(e => e.startTime && e.reason),
         editedBy,
       };
+      if (extra?.pin) payload.pin = extra.pin;
       const res = await apiRequest("POST", "/api/plant-module/shift-logs", payload);
+      if (res.status === 403) {
+        const body = await res.json();
+        if (body.code === "FINALIZED_LOCKED") {
+          const e: any = new Error(body.message);
+          e.locked = true;
+          throw e;
+        }
+        throw new Error(body.message || "Forbidden");
+      }
       return res.json();
     },
     onSuccess: (data) => {
@@ -137,9 +153,18 @@ export default function PlantShiftLog() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, shiftCode] });
       setSavedId(data.id);
+      setIsFinalized(data.isFinalized || 0);
       toast({ title: "Shift log saved" });
     },
-    onError: (err: any) => toast({ title: "Save failed", description: err.message, variant: "destructive" }),
+    onError: (err: any) => {
+      if (err?.locked) {
+        setPinPurpose("edit-finalized");
+        setShowPinAuth(true);
+        toast({ title: "Finalized log — manager/admin PIN required to edit" });
+      } else {
+        toast({ title: "Save failed", description: err.message, variant: "destructive" });
+      }
+    },
   });
 
   const finalizeMutation = useMutation({
@@ -173,6 +198,7 @@ export default function PlantShiftLog() {
   const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
     setShowPinAuth(false);
     if (pinPurpose === "finalize") finalizeMutation.mutate({ pin, role });
+    else if (pinPurpose === "edit-finalized") saveMutation.mutate({ pin });
     else if (pinPurpose === "delete") {
       if (role !== "admin") {
         toast({ title: "Admin PIN required", variant: "destructive" });
@@ -245,6 +271,8 @@ export default function PlantShiftLog() {
             </Select>
           </div>
           <div><Label>Ambient Temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
+          <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
+          <div><Label>Bitumen Stock (Approx MT)</Label><Input type="number" step="0.01" value={bitumenStockApproxMt} onChange={e => setBitumenStockApproxMt(e.target.value)} data-testid="input-bitumen-stock-mt" /></div>
         </CardContent>
       </Card>
 
@@ -349,7 +377,10 @@ export default function PlantShiftLog() {
             <Trash2 className="w-4 h-4 mr-1" />Delete
           </Button>
         )}
-        <Button onClick={() => saveMutation.mutate("operator")} disabled={saveMutation.isPending} data-testid="button-save">
+        <Button onClick={() => {
+          if (isFinalized) { setPinPurpose("edit-finalized"); setShowPinAuth(true); }
+          else saveMutation.mutate(undefined);
+        }} disabled={saveMutation.isPending} data-testid="button-save">
           {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
           {savedId ? "Update" : "Save Draft"}
         </Button>
