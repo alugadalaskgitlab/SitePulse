@@ -2058,6 +2058,208 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // PLANT SHIFT LOG (operator daily log)
+  // ============================================
+
+  app.get("/api/plant-module/shift-logs", async (req, res) => {
+    try {
+      const logs = await storage.getPlantShiftLogs({
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      });
+      res.json(logs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch shift logs" });
+    }
+  });
+
+  app.get("/api/plant-module/shift-logs/by-date/:date", async (req, res) => {
+    try {
+      const shiftCode = (req.query.shift as string) || "DAY";
+      const log = await storage.getPlantShiftLogByDate(req.params.date, shiftCode);
+      if (!log) return res.status(404).json({ message: "No shift log for that date" });
+      res.json(log);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch shift log" });
+    }
+  });
+
+  app.get("/api/plant-module/shift-logs/:id", async (req, res) => {
+    try {
+      const log = await storage.getPlantShiftLog(parseInt(req.params.id));
+      if (!log) return res.status(404).json({ message: "Shift log not found" });
+      res.json(log);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch shift log" });
+    }
+  });
+
+  app.post("/api/plant-module/shift-logs", async (req, res) => {
+    try {
+      const { upsertPlantShiftLogSchema } = await import("@shared/schema");
+      const parsed = upsertPlantShiftLogSchema.parse(req.body);
+      const editedBy = parsed.editedBy || "operator";
+      const saved = await storage.upsertPlantShiftLog(parsed, editedBy);
+      sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
+      res.status(201).json(saved);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to save shift log" });
+    }
+  });
+
+  app.post("/api/plant-module/shift-logs/:id/finalize", async (req, res) => {
+    try {
+      const { pin } = req.body || {};
+      if (!pin) return res.status(403).json({ message: "Manager or admin PIN required" });
+      let role: "admin" | "manager" | null = null;
+      if (await storage.verifyPin("admin", pin)) role = "admin";
+      else if (await storage.verifyPin("manager", pin)) role = "manager";
+      if (!role) return res.status(403).json({ message: "Manager or admin PIN required" });
+      const id = parseInt(req.params.id);
+      const updated = await storage.finalizePlantShiftLog(id, role);
+      if (!updated) return res.status(404).json({ message: "Shift log not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to finalize shift log" });
+    }
+  });
+
+  app.delete("/api/plant-module/shift-logs/:id", async (req, res) => {
+    try {
+      const pin = req.body && req.body.pin;
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(403).json({ message: "Admin PIN required" });
+      }
+      const id = parseInt(req.params.id);
+      const ok = await storage.deletePlantShiftLog(id);
+      if (!ok) return res.status(404).json({ message: "Shift log not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete shift log" });
+    }
+  });
+
+  // ============================================
+  // DAILY PLANT REPORT (management consolidated view)
+  // ============================================
+
+  app.get("/api/plant-module/daily-reports/:date", async (req, res) => {
+    try {
+      const summary = await storage.getDailyPlantSummary(req.params.date);
+      res.json(summary);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to build daily plant report" });
+    }
+  });
+
+  app.get("/api/plant-module/daily-reports/:date/pdf", async (req, res) => {
+    try {
+      const date = req.params.date;
+      const summary: any = await storage.getDailyPlantSummary(date);
+
+      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="daily-plant-report-${date}.pdf"`);
+      doc.pipe(res);
+
+      doc.fontSize(16).font("Helvetica-Bold").text("Daily Plant Report", { align: "center" });
+      doc.fontSize(11).font("Helvetica").text(`High Lane Constructions Pvt Ltd`, { align: "center" });
+      doc.moveDown(0.3);
+      doc.fontSize(11).font("Helvetica-Bold").text(`Date: ${date}    Shift: ${summary.shift?.shiftCode || "DAY"}`, { align: "center" });
+      doc.moveDown();
+
+      const line = (label: string, value: string | number | null | undefined) => {
+        doc.fontSize(10).font("Helvetica-Bold").text(`${label}: `, { continued: true });
+        doc.font("Helvetica").text(value === null || value === undefined || value === "" ? "—" : String(value));
+      };
+      const section = (title: string) => {
+        doc.moveDown(0.4);
+        doc.fontSize(12).font("Helvetica-Bold").text(title);
+        doc.moveTo(doc.x, doc.y).lineTo(550, doc.y).stroke();
+        doc.moveDown(0.2);
+      };
+
+      section("Shift Header");
+      line("Operator", summary.shift?.operatorName);
+      line("Supervisor", summary.shift?.supervisorName);
+      line("Plant Start", summary.shift?.plantStartTime);
+      line("Plant Stop", summary.shift?.plantStopTime);
+      line("Running Hours", summary.runningHours);
+      line("Weather", summary.shift?.weather);
+
+      section("Production");
+      line("Loads", summary.production.totalLoads);
+      line("Total Production (MT)", summary.production.totalProductionMT?.toFixed(2));
+      line("Theoretical Bitumen (MT)", summary.production.theoreticalBitumenMT?.toFixed(3));
+      line("Actual Bitumen (MT)", summary.production.actualBitumenMT?.toFixed(3));
+      line("Bitumen Variance (MT)", summary.production.bitumenVarianceMT?.toFixed(3));
+      line("Theoretical LDO (L)", summary.production.theoreticalLdoL?.toFixed(1));
+      line("Actual LDO via dispatches (L)", summary.production.actualLdoL?.toFixed(1));
+
+      section("LDO Consumption (Shift Meters)");
+      line("Tank 1 Boiler (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
+      line("Tank 2 Dryer (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
+      line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
+      line("L / Hour", summary.ldo.lPerHour ?? "—");
+      line("L / MT Mix", summary.ldo.lPerMT ?? "—");
+
+      section("Bitumen Tank Status");
+      line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
+      line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
+      line("Tank 1 Opening Dip (cm)", summary.shift?.bitumenTank1OpeningDip);
+      line("Tank 1 Closing Dip (cm)", summary.shift?.bitumenTank1ClosingDip);
+      line("Tank 2 Opening Dip (cm)", summary.shift?.bitumenTank2OpeningDip);
+      line("Tank 2 Closing Dip (cm)", summary.shift?.bitumenTank2ClosingDip);
+
+      section("Equipment Usage");
+      if (!summary.equipment.length) {
+        doc.fontSize(10).font("Helvetica").text("No equipment logged.");
+      } else {
+        for (const e of summary.equipment) {
+          doc.fontSize(10).font("Helvetica").text(
+            `Eqp #${e.equipmentId}  Hrs: ${e.hours ?? "—"}  Open/Close: ${e.opening ?? "—"}/${e.closing ?? "—"}  Issued: ${e.issued ?? 0}L  Consumed: ${e.consumed ?? "—"}L  L/hr: ${e.lPerHr ?? "—"}  Op: ${e.operator ?? "—"}`
+          );
+        }
+      }
+
+      section("Manpower");
+      if (!summary.manpower.length) {
+        doc.fontSize(10).font("Helvetica").text("No manpower entries.");
+      } else {
+        for (const m of summary.manpower) {
+          doc.fontSize(10).font("Helvetica").text(`• ${m.name}${m.role ? " — " + m.role : ""}`);
+        }
+      }
+
+      section(`Idle Events (${summary.idle.totalMinutes} min total)`);
+      if (!summary.idle.events.length) {
+        doc.fontSize(10).font("Helvetica").text("No idle events.");
+      } else {
+        for (const ev of summary.idle.events) {
+          doc.fontSize(10).font("Helvetica").text(
+            `${ev.startTime} → ${ev.endTime || "ongoing"}  [${ev.reason}]  ${ev.remarks || ""}`
+          );
+        }
+        doc.moveDown(0.2);
+        doc.fontSize(10).font("Helvetica-Bold").text("By Reason:");
+        for (const [reason, mins] of Object.entries(summary.idle.byReason)) {
+          doc.font("Helvetica").text(`  • ${reason}: ${mins} min`);
+        }
+      }
+
+      if (summary.shift?.remarks) {
+        section("Remarks");
+        doc.fontSize(10).font("Helvetica").text(summary.shift.remarks);
+      }
+
+      doc.end();
+    } catch (err: any) {
+      console.error("PDF error", err);
+      res.status(500).json({ message: err.message || "Failed to generate PDF" });
+    }
+  });
+
+  // ============================================
   // PURCHASE INDENTS
   // ============================================
 

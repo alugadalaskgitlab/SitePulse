@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -694,6 +694,7 @@ export const bitumenDipReadings = pgTable("bitumen_dip_readings", {
   weightKg: real("weight_kg").notNull(),
   readingType: text("reading_type").notNull(),
   notes: text("notes"),
+  sourceShiftLogId: integer("source_shift_log_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -706,6 +707,7 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   readingType: text("reading_type").notNull(),
   quantityLiters: real("quantity_liters"),
   notes: text("notes"),
+  sourceShiftLogId: integer("source_shift_log_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -731,6 +733,110 @@ export type LdoDipReading = typeof ldoDipReadings.$inferSelect;
 export type InsertBitumenDipReading = z.infer<typeof insertBitumenDipReadingSchema>;
 export type InsertLdoFlowReading = z.infer<typeof insertLdoFlowReadingSchema>;
 export type InsertLdoDipReading = z.infer<typeof insertLdoDipReadingSchema>;
+
+// ============================================
+// PLANT SHIFT LOG (Operator daily log + EoD)
+// ============================================
+
+export const SHIFT_IDLE_REASONS = [
+  "Material Shortage",
+  "Mechanical",
+  "Electrical",
+  "Motor Tripping",
+  "No Demand",
+  "Power Failure",
+  "Rain",
+  "Other",
+] as const;
+
+export const plantShiftLogs = pgTable("plant_shift_logs", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  shiftCode: text("shift_code").notNull().default("DAY"),
+  plantStartTime: text("plant_start_time"),
+  plantStopTime: text("plant_stop_time"),
+  weather: text("weather"),
+  bitumenTank1Temp: real("bitumen_tank1_temp"),
+  bitumenTank2Temp: real("bitumen_tank2_temp"),
+  bitumenTank1OpeningDip: real("bitumen_tank1_opening_dip"),
+  bitumenTank1ClosingDip: real("bitumen_tank1_closing_dip"),
+  bitumenTank2OpeningDip: real("bitumen_tank2_opening_dip"),
+  bitumenTank2ClosingDip: real("bitumen_tank2_closing_dip"),
+  ldoTank1OpeningMeter: real("ldo_tank1_opening_meter"),
+  ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
+  ldoTank2OpeningMeter: real("ldo_tank2_opening_meter"),
+  ldoTank2ClosingMeter: real("ldo_tank2_closing_meter"),
+  operatorName: text("operator_name"),
+  supervisorName: text("supervisor_name"),
+  remarks: text("remarks"),
+  isFinalized: integer("is_finalized").notNull().default(0),
+  finalizedBy: text("finalized_by"),
+  finalizedAt: timestamp("finalized_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  dateIdx: index("plant_shift_logs_date_idx").on(table.date),
+}));
+
+export const plantShiftLogManpower = pgTable("plant_shift_log_manpower", {
+  id: serial("id").primaryKey(),
+  shiftLogId: integer("shift_log_id").notNull(),
+  name: text("name").notNull(),
+  role: text("role"),
+});
+
+export const plantShiftLogIdle = pgTable("plant_shift_log_idle", {
+  id: serial("id").primaryKey(),
+  shiftLogId: integer("shift_log_id").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time"),
+  reason: text("reason").notNull(),
+  remarks: text("remarks"),
+});
+
+export const plantShiftLogVersions = pgTable("plant_shift_log_versions", {
+  id: serial("id").primaryKey(),
+  shiftLogId: integer("shift_log_id").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  editedBy: text("edited_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPlantShiftLogSchema = createInsertSchema(plantShiftLogs).omit({ id: true, createdAt: true, updatedAt: true, finalizedAt: true });
+export const insertPlantShiftLogManpowerSchema = createInsertSchema(plantShiftLogManpower).omit({ id: true });
+export const insertPlantShiftLogIdleSchema = createInsertSchema(plantShiftLogIdle).omit({ id: true });
+
+export type PlantShiftLog = typeof plantShiftLogs.$inferSelect;
+export type InsertPlantShiftLog = z.infer<typeof insertPlantShiftLogSchema>;
+export type PlantShiftLogManpower = typeof plantShiftLogManpower.$inferSelect;
+export type InsertPlantShiftLogManpower = z.infer<typeof insertPlantShiftLogManpowerSchema>;
+export type PlantShiftLogIdle = typeof plantShiftLogIdle.$inferSelect;
+export type InsertPlantShiftLogIdle = z.infer<typeof insertPlantShiftLogIdleSchema>;
+
+export const plantShiftLogManpowerInputSchema = z.object({
+  name: z.string().min(1, "Name required"),
+  role: z.string().optional().nullable(),
+});
+
+export const plantShiftLogIdleInputSchema = z.object({
+  startTime: z.string().min(1, "Start time required"),
+  endTime: z.string().nullable().optional(),
+  reason: z.enum(SHIFT_IDLE_REASONS),
+  remarks: z.string().optional().nullable(),
+});
+
+export const upsertPlantShiftLogSchema = insertPlantShiftLogSchema.extend({
+  manpower: z.array(plantShiftLogManpowerInputSchema).optional().default([]),
+  idleEvents: z.array(plantShiftLogIdleInputSchema).optional().default([]),
+  editedBy: z.string().optional(),
+});
+
+export type UpsertPlantShiftLogInput = z.infer<typeof upsertPlantShiftLogSchema>;
+
+export type PlantShiftLogWithDetails = PlantShiftLog & {
+  manpower: PlantShiftLogManpower[];
+  idleEvents: PlantShiftLogIdle[];
+};
 
 // ============================================
 // ADMIN NOTIFICATIONS

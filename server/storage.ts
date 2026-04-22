@@ -31,6 +31,18 @@ import {
   bitumenDipReadings,
   ldoFlowReadings,
   ldoDipReadings,
+  plantShiftLogs,
+  plantShiftLogManpower,
+  plantShiftLogIdle,
+  plantShiftLogVersions,
+  type PlantShiftLog,
+  type PlantShiftLogWithDetails,
+  type PlantShiftLogManpower,
+  type PlantShiftLogIdle,
+  type UpsertPlantShiftLogInput,
+} from "@shared/schema";
+import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import {
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -7390,6 +7402,276 @@ export class DatabaseStorage implements IStorage {
   async deleteConcreteEstimateV2(id: number): Promise<boolean> {
     const result = await db.delete(concreteEstimatesV2).where(eq(concreteEstimatesV2.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // ============================================
+  // PLANT SHIFT LOG
+  // ============================================
+
+  async getPlantShiftLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<PlantShiftLog[]> {
+    const conditions: any[] = [];
+    if (filters?.dateFrom) conditions.push(gte(plantShiftLogs.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(plantShiftLogs.date, filters.dateTo));
+    return db.select().from(plantShiftLogs)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(plantShiftLogs.date), desc(plantShiftLogs.shiftCode));
+  }
+
+  async getPlantShiftLogByDate(date: string, shiftCode: string = "DAY"): Promise<PlantShiftLogWithDetails | undefined> {
+    const [header] = await db.select().from(plantShiftLogs)
+      .where(and(eq(plantShiftLogs.date, date), eq(plantShiftLogs.shiftCode, shiftCode)))
+      .limit(1);
+    if (!header) return undefined;
+    const manpower = await db.select().from(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, header.id));
+    const idleEvents = await db.select().from(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, header.id));
+    return { ...header, manpower, idleEvents };
+  }
+
+  async getPlantShiftLog(id: number): Promise<PlantShiftLogWithDetails | undefined> {
+    const [header] = await db.select().from(plantShiftLogs).where(eq(plantShiftLogs.id, id)).limit(1);
+    if (!header) return undefined;
+    const manpower = await db.select().from(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, header.id));
+    const idleEvents = await db.select().from(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, header.id));
+    return { ...header, manpower, idleEvents };
+  }
+
+  // Idempotent write-through. Deletes all readings tagged sourceShiftLogId=log.id
+  // and re-inserts only those entries with non-null values from the shift log.
+  private async _syncShiftLogReadings(tx: any, log: PlantShiftLog): Promise<void> {
+    await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, log.id));
+    await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, log.id));
+
+    const ldoRows: any[] = [];
+    const pushLdo = (tank: number, type: "opening" | "closing", value: number | null | undefined, time: string | null) => {
+      if (value === null || value === undefined) return;
+      ldoRows.push({
+        date: log.date,
+        time,
+        tankNumber: tank,
+        meterReading: value,
+        readingType: type,
+        notes: `AUTO from Plant Shift Log #${log.id}`,
+        sourceShiftLogId: log.id,
+      });
+    };
+    pushLdo(1, "opening", log.ldoTank1OpeningMeter, log.plantStartTime);
+    pushLdo(1, "closing", log.ldoTank1ClosingMeter, log.plantStopTime);
+    pushLdo(2, "opening", log.ldoTank2OpeningMeter, log.plantStartTime);
+    pushLdo(2, "closing", log.ldoTank2ClosingMeter, log.plantStopTime);
+    if (ldoRows.length) await tx.insert(ldoFlowReadings).values(ldoRows);
+
+    const bitumenRows: any[] = [];
+    const pushBitumen = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
+      if (depth === null || depth === undefined) return;
+      const vol = getVolumeAtDepth(depth);
+      const wt = vol * BITUMEN_DENSITY_KG_PER_LITER;
+      bitumenRows.push({
+        date: log.date,
+        time,
+        tankNumber: tank,
+        depthCm: depth,
+        volumeLiters: Math.round(vol),
+        weightKg: Math.round(wt),
+        readingType: type,
+        notes: `AUTO from Plant Shift Log #${log.id}`,
+        sourceShiftLogId: log.id,
+      });
+    };
+    pushBitumen(1, "opening", log.bitumenTank1OpeningDip, log.plantStartTime);
+    pushBitumen(1, "closing", log.bitumenTank1ClosingDip, log.plantStopTime);
+    pushBitumen(2, "opening", log.bitumenTank2OpeningDip, log.plantStartTime);
+    pushBitumen(2, "closing", log.bitumenTank2ClosingDip, log.plantStopTime);
+    if (bitumenRows.length) await tx.insert(bitumenDipReadings).values(bitumenRows);
+  }
+
+  async upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string): Promise<PlantShiftLogWithDetails> {
+    const { manpower = [], idleEvents = [], editedBy: _ignore, ...header } = input as any;
+    const shiftCode = header.shiftCode || "DAY";
+
+    return db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(plantShiftLogs)
+        .where(and(eq(plantShiftLogs.date, header.date), eq(plantShiftLogs.shiftCode, shiftCode)))
+        .limit(1);
+
+      let saved: PlantShiftLog;
+      if (existing) {
+        // Snapshot prior version for audit
+        await tx.insert(plantShiftLogVersions).values({
+          shiftLogId: existing.id,
+          snapshot: existing as any,
+          editedBy: editedBy || "operator",
+        });
+        const [updated] = await tx.update(plantShiftLogs)
+          .set({ ...header, shiftCode, updatedAt: new Date() })
+          .where(eq(plantShiftLogs.id, existing.id))
+          .returning();
+        saved = updated;
+
+        await tx.delete(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, existing.id));
+        await tx.delete(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, existing.id));
+      } else {
+        const [created] = await tx.insert(plantShiftLogs).values({ ...header, shiftCode }).returning();
+        saved = created;
+      }
+
+      if (manpower.length) {
+        await tx.insert(plantShiftLogManpower).values(
+          manpower.map((m: any) => ({ shiftLogId: saved.id, name: m.name, role: m.role || null }))
+        );
+      }
+      if (idleEvents.length) {
+        await tx.insert(plantShiftLogIdle).values(
+          idleEvents.map((e: any) => ({
+            shiftLogId: saved.id,
+            startTime: e.startTime,
+            endTime: e.endTime || null,
+            reason: e.reason,
+            remarks: e.remarks || null,
+          }))
+        );
+      }
+
+      await this._syncShiftLogReadings(tx, saved);
+
+      const mp = await tx.select().from(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, saved.id));
+      const ie = await tx.select().from(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, saved.id));
+      return { ...saved, manpower: mp, idleEvents: ie };
+    });
+  }
+
+  async finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined> {
+    const [updated] = await db.update(plantShiftLogs)
+      .set({ isFinalized: 1, finalizedBy, finalizedAt: new Date(), updatedAt: new Date() })
+      .where(eq(plantShiftLogs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePlantShiftLog(id: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, id));
+      await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, id));
+      await tx.delete(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, id));
+      await tx.delete(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, id));
+      await tx.delete(plantShiftLogVersions).where(eq(plantShiftLogVersions.shiftLogId, id));
+      const result = await tx.delete(plantShiftLogs).where(eq(plantShiftLogs.id, id)).returning();
+      return result.length > 0;
+    });
+  }
+
+  async getDailyPlantSummary(date: string): Promise<any> {
+    const shift = await this.getPlantShiftLogByDate(date, "DAY");
+
+    const dispatches = await db.select().from(truckDispatches).where(eq(truckDispatches.date, date));
+    const equipment = await db.select().from(equipmentUsage).where(eq(equipmentUsage.date, date));
+    const ldoFlows = await db.select().from(ldoFlowReadings).where(eq(ldoFlowReadings.date, date));
+    const bitumenDips = await db.select().from(bitumenDipReadings).where(eq(bitumenDipReadings.date, date));
+
+    // Production
+    const totalLoads = dispatches.length;
+    const totalProductionMT = dispatches.reduce((s, d) => s + (d.loadWeight || 0), 0);
+    const theoreticalBitumenMT = dispatches.reduce((s, d) => s + (d.theoreticalBitumenQty || 0), 0);
+    const theoreticalLdoL = dispatches.reduce((s, d) => s + (d.theoreticalLdoQty || 0), 0);
+    const actualBitumenMT = dispatches.reduce((s, d) => {
+      if (d.actualBitumenQty != null) return s + d.actualBitumenQty;
+      if (d.actualBitumenPercent != null) return s + (d.loadWeight * d.actualBitumenPercent / 100);
+      return s + (d.theoreticalBitumenQty || 0);
+    }, 0);
+    const actualLdoL = dispatches.reduce((s, d) => s + (d.actualLdoQty ?? d.theoreticalLdoQty ?? 0), 0);
+
+    // LDO derived from shift log opening/closing meters (either tank)
+    const ldoOpeningT1 = shift?.ldoTank1OpeningMeter ?? null;
+    const ldoClosingT1 = shift?.ldoTank1ClosingMeter ?? null;
+    const ldoOpeningT2 = shift?.ldoTank2OpeningMeter ?? null;
+    const ldoClosingT2 = shift?.ldoTank2ClosingMeter ?? null;
+    const ldoConsumedT1 = (ldoOpeningT1 != null && ldoClosingT1 != null) ? Math.max(0, ldoClosingT1 - ldoOpeningT1) : null;
+    const ldoConsumedT2 = (ldoOpeningT2 != null && ldoClosingT2 != null) ? Math.max(0, ldoClosingT2 - ldoOpeningT2) : null;
+    const ldoConsumedTotalL = (ldoConsumedT1 || 0) + (ldoConsumedT2 || 0);
+
+    // Plant running hours from shift log
+    let runningHours: number | null = null;
+    if (shift?.plantStartTime && shift?.plantStopTime) {
+      const [sh, sm] = shift.plantStartTime.split(":").map(Number);
+      const [eh, em] = shift.plantStopTime.split(":").map(Number);
+      if (!isNaN(sh) && !isNaN(eh)) {
+        let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+        if (mins < 0) mins += 24 * 60;
+        runningHours = Math.round((mins / 60) * 100) / 100;
+      }
+    }
+    const ldoLPerHour = (runningHours && runningHours > 0 && ldoConsumedTotalL > 0)
+      ? Math.round((ldoConsumedTotalL / runningHours) * 100) / 100 : null;
+    const ldoLPerMT = (totalProductionMT > 0 && ldoConsumedTotalL > 0)
+      ? Math.round((ldoConsumedTotalL / totalProductionMT) * 1000) / 1000 : null;
+
+    // Idle minutes by reason
+    const idleByReason: Record<string, number> = {};
+    let totalIdleMinutes = 0;
+    for (const ev of shift?.idleEvents || []) {
+      if (!ev.startTime || !ev.endTime) continue;
+      const [sh, sm] = ev.startTime.split(":").map(Number);
+      const [eh, em] = ev.endTime.split(":").map(Number);
+      if (isNaN(sh) || isNaN(eh)) continue;
+      let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+      if (mins < 0) mins += 24 * 60;
+      idleByReason[ev.reason] = (idleByReason[ev.reason] || 0) + mins;
+      totalIdleMinutes += mins;
+    }
+
+    // Equipment usage with derived diesel efficiency (DG fuel)
+    const equipmentSummary = equipment.map(e => {
+      const opening = e.openingDiesel ?? null;
+      const closing = e.closingDiesel ?? null;
+      const issued = e.dieselIssued ?? 0;
+      const hours = e.hoursOrKmRun ?? null;
+      let consumed: number | null = null;
+      let lPerHr: number | null = null;
+      if (opening != null && closing != null) {
+        consumed = Math.max(0, opening + issued - closing);
+        if (hours && hours > 0) lPerHr = Math.round((consumed / hours) * 100) / 100;
+      }
+      return {
+        id: e.id,
+        equipmentId: e.equipmentId,
+        hours,
+        opening, closing, issued,
+        consumed,
+        lPerHr,
+        operator: e.operator,
+        remarks: e.remarks,
+      };
+    });
+
+    return {
+      date,
+      shift,
+      production: {
+        totalLoads,
+        totalProductionMT,
+        theoreticalBitumenMT,
+        actualBitumenMT,
+        bitumenVarianceMT: actualBitumenMT - theoreticalBitumenMT,
+        theoreticalLdoL,
+        actualLdoL,
+      },
+      runningHours,
+      ldo: {
+        consumedT1L: ldoConsumedT1,
+        consumedT2L: ldoConsumedT2,
+        consumedTotalL: ldoConsumedTotalL || null,
+        lPerHour: ldoLPerHour,
+        lPerMT: ldoLPerMT,
+      },
+      bitumenDips,
+      ldoFlows,
+      equipment: equipmentSummary,
+      manpower: shift?.manpower || [],
+      idle: {
+        events: shift?.idleEvents || [],
+        byReason: idleByReason,
+        totalMinutes: totalIdleMinutes,
+      },
+    };
   }
 }
 
