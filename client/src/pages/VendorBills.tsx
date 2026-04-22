@@ -865,6 +865,8 @@ export default function VendorBills() {
             itemKey = `MAT_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
           } else if (group.category === "transport") {
             itemKey = `EQ_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
+          } else if (group.category === "labour") {
+            itemKey = deriveLabourKey(group.groupName);
           } else {
             itemKey = group.groupName.trim().toUpperCase();
           }
