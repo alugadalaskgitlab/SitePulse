@@ -11,6 +11,7 @@ import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -2933,7 +2934,16 @@ export async function registerRoutes(
 
   app.get("/api/vendor-bills/summary", async (req, res) => {
     try {
-      const bills = await storage.getVendorBills();
+      const filters = {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        vendor: req.query.vendor as string | undefined,
+        status: req.query.status as string | undefined,
+      };
+      const bills = await storage.getVendorBills(filters);
+
+      const { total: totalGst, ...gstByCategory } = aggregateGstBreakdown(bills);
+
       const summary = {
         total: bills.length,
         totalAmount: bills.reduce((sum, b) => sum + (b.totalAmount || 0), 0),
@@ -2945,6 +2955,8 @@ export async function registerRoutes(
         approvedAmount: bills.filter(b => b.status === "approved").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
         paid: bills.filter(b => b.status === "paid").length,
         paidAmount: bills.filter(b => b.status === "paid").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        gstByCategory,
+        totalGst,
       };
       res.json(summary);
     } catch (err) {

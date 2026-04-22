@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
+import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -275,6 +276,8 @@ export default function VendorBills() {
     approvedAmount: number;
     paid: number;
     paidAmount: number;
+    gstByCategory: { equipment: number; material: number; transport: number; labour: number; other: number };
+    totalGst: number;
   }>({
     queryKey: ["/api/vendor-bills/summary"],
   });
@@ -1061,6 +1064,8 @@ export default function VendorBills() {
       return true;
     });
   }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory]);
+
+  const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
 
   const escHtml = (str: string) => {
     const div = document.createElement("div");
@@ -2456,6 +2461,55 @@ export default function VendorBills() {
           </CardContent>
         </Card>
       </div>
+
+      <Card data-testid="card-gst-register">
+        <CardHeader className="py-2 px-3">
+          <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+            <span>
+              {filterVendor !== "all"
+                ? `Vendor Ledger — GST (${filterVendor})`
+                : "GST Register — Category Breakdown"}
+            </span>
+            <span className="text-[10px] normal-case font-normal text-muted-foreground">
+              Reflects current filters &middot; {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="py-2 px-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="text-center" data-testid="gst-card-equipment">
+              <p className="text-[10px] text-muted-foreground uppercase">GST Equipment</p>
+              <p className="text-base font-bold text-blue-700 dark:text-blue-400" data-testid="text-gst-equipment">
+                {formatCurrency(gstBreakdown.equipment)}
+              </p>
+            </div>
+            <div className="text-center" data-testid="gst-card-material">
+              <p className="text-[10px] text-muted-foreground uppercase">GST Material</p>
+              <p className="text-base font-bold text-emerald-700 dark:text-emerald-400" data-testid="text-gst-material">
+                {formatCurrency(gstBreakdown.material)}
+              </p>
+            </div>
+            <div className="text-center" data-testid="gst-card-transport">
+              <p className="text-[10px] text-muted-foreground uppercase">GST Transport</p>
+              <p className="text-base font-bold text-amber-700 dark:text-amber-400" data-testid="text-gst-transport">
+                {formatCurrency(gstBreakdown.transport)}
+              </p>
+            </div>
+            <div className="text-center" data-testid="gst-card-labour">
+              <p className="text-[10px] text-muted-foreground uppercase">GST Labour</p>
+              <p className="text-base font-bold text-purple-700 dark:text-purple-400" data-testid="text-gst-labour">
+                {formatCurrency(gstBreakdown.labour)}
+              </p>
+            </div>
+            <div className="text-center border-l md:pl-2" data-testid="gst-card-total">
+              <p className="text-[10px] text-muted-foreground uppercase">Total GST</p>
+              <p className="text-base font-bold text-green-700 dark:text-green-400" data-testid="text-gst-total">
+                {formatCurrency(gstBreakdown.total)}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="py-3">
