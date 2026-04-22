@@ -150,13 +150,15 @@ export default function PlantDispatches() {
     fallbackPartyName: string | null;
     shortages: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[];
   };
-  const [pendingDispatchPayload, setPendingDispatchPayload] = useState<any>(null);
+  type DispatchPayload = Record<string, unknown>;
+  type DispatchResult = { __confirmationRequired: true } | Record<string, unknown>;
+  const [pendingDispatchPayload, setPendingDispatchPayload] = useState<DispatchPayload | null>(null);
   const [shortageInfo, setShortageInfo] = useState<ShortageInfo | null>(null);
 
-  const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Custom fetch so we can detect HTTP 409 (owner-stock shortage) and
-      // surface the structured payload to the UI without throwing.
+  const createMutation = useMutation<DispatchResult, Error, DispatchPayload>({
+    mutationFn: async (data) => {
+      // Custom fetch so HTTP 409 (owner-stock shortage) can be surfaced
+      // structurally to the UI instead of being thrown.
       const res = await fetch("/api/plant-module/dispatches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -164,11 +166,10 @@ export default function PlantDispatches() {
         body: JSON.stringify(data),
       });
       if (res.status === 409) {
-        const body = await res.json();
-        // Stash the original payload so we can replay with allowHlcFallback.
+        const body = (await res.json()) as ShortageInfo;
         setPendingDispatchPayload(data);
-        setShortageInfo(body as ShortageInfo);
-        return { __confirmationRequired: true } as any;
+        setShortageInfo(body);
+        return { __confirmationRequired: true };
       }
       if (!res.ok) {
         const text = (await res.text()) || res.statusText;
@@ -176,8 +177,8 @@ export default function PlantDispatches() {
       }
       return res.json();
     },
-    onSuccess: async (result: any) => {
-      if (result?.__confirmationRequired) return; // wait for user
+    onSuccess: async (result) => {
+      if ("__confirmationRequired" in result && result.__confirmationRequired) return;
       await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });

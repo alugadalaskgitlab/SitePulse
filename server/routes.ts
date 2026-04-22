@@ -1439,14 +1439,7 @@ export async function registerRoutes(
   app.post("/api/plant-module/dispatches", async (req, res) => {
     try {
       const result = await storage.createTruckDispatchWithStockDeduction(req.body);
-
-      // Defensive guard — should not happen since the storage layer throws,
-      // but if it ever returns the confirmation shape directly, surface as 409.
-      if ((result as any)?.needsConfirmation) {
-        return res.status(409).json(result);
-      }
-
-      const dispatch = (result as any).dispatch;
+      const dispatch = result.dispatch;
       await storage.createNotification({
         type: "success",
         title: "Mix Dispatched",
@@ -1770,7 +1763,10 @@ export async function registerRoutes(
   // Body: { materialId, fromPartyId, toPartyId, transactionType?, dateFrom?, dateTo? }
   app.post("/api/plant-module/reassign-ledger/preview", async (req, res) => {
     try {
-      const { materialId, fromPartyId, dateFrom, dateTo, transactionType } = req.body || {};
+      const { pin, materialId, fromPartyId, dateFrom, dateTo, transactionType } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
       if (!materialId || !fromPartyId) {
         return res.status(400).json({ message: "materialId and fromPartyId are required" });
       }
@@ -1793,11 +1789,7 @@ export async function registerRoutes(
   app.post("/api/plant-module/reassign-ledger/execute", async (req, res) => {
     try {
       const { pin, materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
-      if (!pin) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      const isAdmin = await storage.verifyPin("admin", pin);
-      if (!isAdmin) {
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
         return res.status(401).json({ message: "Admin PIN required" });
       }
       if (!materialId || !fromPartyId || !toPartyId) {
@@ -1806,14 +1798,21 @@ export async function registerRoutes(
       if (parseInt(fromPartyId) === parseInt(toPartyId)) {
         return res.status(400).json({ message: "From and To parties must differ" });
       }
-      const result = await storage.executeLedgerReassignment({
+      const criteria = {
         materialId: parseInt(materialId),
         fromPartyId: parseInt(fromPartyId),
         toPartyId: parseInt(toPartyId),
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         transactionType: transactionType || undefined,
-      });
+      };
+      const result = await storage.executeLedgerReassignment(criteria);
+      // Audit log: actor (admin via PIN), timestamp, criteria, totals.
+      console.info(
+        `[LedgerReassignment] actor=admin at=${new Date().toISOString()} ` +
+        `criteria=${JSON.stringify(criteria)} ` +
+        `moved=${result.moved} totalIn=${result.totalIn} totalOut=${result.totalOut}`
+      );
       res.json({
         message: "Ledger rows reassigned and balances reconciled",
         ...result,

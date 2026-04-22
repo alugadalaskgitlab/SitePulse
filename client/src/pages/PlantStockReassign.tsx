@@ -22,17 +22,32 @@ type PreviewRow = {
   notes: string | null;
 };
 
+// Real values present in stock_ledger.transaction_type.
 const TX_TYPES = [
   "all",
-  "dispatch_truck",
-  "material_receipt",
-  "material_issue",
-  "material_return",
-  "physical_correction",
+  "dispatch",
+  "receipt",
+  "direct_purchase",
+  "issue",
+  "return",
+  "adjustment",
+  "equipment_usage",
+  "dpr_equipment_usage",
+  "opening",
 ];
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return typeof err === "string" ? err : "Unknown error";
+}
 
 export default function PlantStockReassign() {
   const { toast } = useToast();
+
+  // Page-level admin gate: the PIN entered here is held in memory and reused
+  // for both preview (read-only ledger slice) and execute calls.
+  const [adminPin, setAdminPin] = useState<string | null>(null);
+
   const [materialId, setMaterialId] = useState<string>("");
   const [fromPartyId, setFromPartyId] = useState<string>("");
   const [toPartyId, setToPartyId] = useState<string>("");
@@ -43,10 +58,10 @@ export default function PlantStockReassign() {
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
-  const [showPin, setShowPin] = useState(false);
+  const [showExecutePin, setShowExecutePin] = useState(false);
 
-  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
-  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"] });
+  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: !!adminPin });
+  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: !!adminPin });
 
   const fromPartyName = useMemo(
     () => parties?.find(p => String(p.id) === fromPartyId)?.name || "",
@@ -73,10 +88,11 @@ export default function PlantStockReassign() {
     );
   }, [preview]);
 
-  const canSearch = materialId && fromPartyId;
+  const canSearch = !!adminPin && materialId && fromPartyId;
   const canExecute = canSearch && toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0;
 
   const buildBody = () => ({
+    pin: adminPin,
     materialId: parseInt(materialId),
     fromPartyId: parseInt(fromPartyId),
     toPartyId: toPartyId ? parseInt(toPartyId) : undefined,
@@ -95,18 +111,24 @@ export default function PlantStockReassign() {
         credentials: "include",
         body: JSON.stringify(buildBody()),
       });
+      if (res.status === 401) {
+        // PIN was rejected (e.g. session-mounted PIN became stale) — re-gate.
+        setAdminPin(null);
+        toast({ title: "Admin PIN required", variant: "destructive" });
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
       const rows = (await res.json()) as PreviewRow[];
       setPreview(rows);
-    } catch (e: any) {
-      toast({ title: "Preview failed", description: e?.message || "Unknown error", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setPreviewLoading(false);
     }
   };
 
-  const handlePinSuccess = async (_role: "manager" | "admin", pin: string) => {
-    setShowPin(false);
+  const handleExecutePinSuccess = async (_role: "manager" | "admin", pin: string) => {
+    setShowExecutePin(false);
     setExecuting(true);
     try {
       const res = await fetch("/api/plant-module/reassign-ledger/execute", {
@@ -116,7 +138,10 @@ export default function PlantStockReassign() {
         body: JSON.stringify({ ...buildBody(), pin }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const result = await res.json();
+      const result = await res.json() as {
+        moved: number;
+        reconciled: { updated: number; created: number; errors: number };
+      };
       toast({
         title: "Reassignment complete",
         description: `Moved ${result.moved} ledger row(s). Recomputed ${result.reconciled.updated + result.reconciled.created} balance row(s).`,
@@ -124,12 +149,23 @@ export default function PlantStockReassign() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setPreview(null);
-    } catch (e: any) {
-      toast({ title: "Reassignment failed", description: e?.message || "Unknown error", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Reassignment failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setExecuting(false);
     }
   };
+
+  // Page-level admin PIN gate — required before any data is fetched.
+  if (!adminPin) {
+    return (
+      <PinAuth
+        targetRole="admin"
+        onSuccess={(_role, pin) => setAdminPin(pin)}
+        onClose={() => { window.history.back(); }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -141,6 +177,9 @@ export default function PlantStockReassign() {
         </Link>
         <ArrowRightLeft className="w-6 h-6 text-amber-700 dark:text-amber-500" />
         <h1 className="text-2xl font-bold flex-1">Stock Ledger Reassignment</h1>
+        <Button variant="ghost" size="sm" onClick={() => setAdminPin(null)} data-testid="button-lock">
+          Lock
+        </Button>
       </div>
 
       <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 p-3 text-sm flex items-start gap-2">
@@ -217,7 +256,7 @@ export default function PlantStockReassign() {
               variant="default"
               className="bg-amber-600 hover:bg-amber-700 text-white"
               disabled={!canExecute || executing}
-              onClick={() => setShowPin(true)}
+              onClick={() => setShowExecutePin(true)}
               data-testid="button-execute"
             >
               {executing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
@@ -273,11 +312,11 @@ export default function PlantStockReassign() {
         </Card>
       )}
 
-      {showPin && (
+      {showExecutePin && (
         <PinAuth
           targetRole="admin"
-          onSuccess={handlePinSuccess}
-          onClose={() => setShowPin(false)}
+          onSuccess={handleExecutePinSuccess}
+          onClose={() => setShowExecutePin(false)}
         />
       )}
     </div>
