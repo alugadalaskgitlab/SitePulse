@@ -62,9 +62,9 @@ export default function PlantShiftLog() {
   const [savedId, setSavedId] = useState<number | null>(null);
 
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails>({
-    queryKey: ["/api/plant-module/shift-logs/by-date", date, shiftCode, plantName],
+    queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName],
     queryFn: async () => {
-      const res = await fetch(`/api/plant-module/shift-logs/by-date/${date}?shift=${shiftCode}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" });
+      const res = await fetch(`/api/plant-module/shift-logs/by-date/${date}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" });
       if (res.status === 404) return null as any;
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -154,7 +154,7 @@ export default function PlantShiftLog() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, shiftCode, plantName] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
       setSavedId(data.id);
       setIsFinalized(data.isFinalized || 0);
       toast({ title: "Shift log saved" });
@@ -178,7 +178,7 @@ export default function PlantShiftLog() {
     },
     onSuccess: () => {
       setIsFinalized(1);
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, shiftCode, plantName] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
       toast({ title: "Shift log finalized for management review" });
     },
     onError: (err: any) => toast({ title: "Finalize failed", description: err.message, variant: "destructive" }),

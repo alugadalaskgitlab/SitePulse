@@ -259,6 +259,7 @@ export const materialReceipts = pgTable("material_receipts", {
   challanNumber: text("challan_number"),
   tankNumber: integer("tank_number"),
   notes: text("notes"),
+  plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("material_receipts_date_idx").on(table.date),
@@ -298,6 +299,7 @@ export const truckDispatches = pgTable("truck_dispatches", {
   driverName: text("driver_name"),
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for truck/tipper
   notes: text("notes"),
+  plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("truck_dispatches_date_idx").on(table.date),
@@ -346,6 +348,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   shiftTo: text("shift_to"), // Destination site/location for mobilization
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for transport vehicle
   transportDistance: real("transport_distance"), // One-way distance in km for mobilization
+  plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("equipment_usage_date_idx").on(table.date),
@@ -364,6 +367,7 @@ export const generatorLogs = pgTable("generator_logs", {
   closingDiesel: real("closing_diesel"), // Liters in tank
   dieselConsumed: real("diesel_consumed"), // opening + issued - closing
   efficiency: real("efficiency"), // Liters/hour
+  plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("generator_logs_date_idx").on(table.date),
@@ -780,7 +784,7 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("plant_shift_logs_date_idx").on(table.date),
-  uniqDateShiftPlant: uniqueIndex("plant_shift_logs_date_shift_plant_uq").on(table.date, table.shiftCode, table.plantName),
+  uniqDatePlant: uniqueIndex("plant_shift_logs_date_plant_uq").on(table.date, table.plantName),
 }));
 
 export const plantShiftLogManpower = pgTable("plant_shift_log_manpower", {

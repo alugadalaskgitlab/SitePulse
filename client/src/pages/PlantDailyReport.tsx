@@ -67,11 +67,6 @@ export default function PlantDailyReport() {
       {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
       {!isLoading && data && (
         <>
-          {data.aggregatesNote && (
-            <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-4 py-2 text-sm text-amber-900 dark:text-amber-200" data-testid="text-aggregates-note">
-              {data.aggregatesNote}
-            </div>
-          )}
           <Card>
             <CardHeader><CardTitle>Shift Header</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

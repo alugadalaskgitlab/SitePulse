@@ -2086,9 +2086,8 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/shift-logs/by-date/:date", async (req, res) => {
     try {
-      const shiftCode = (req.query.shift as string) || "DAY";
       const plantName = (req.query.plant as string) || "Main Plant";
-      const log = await storage.getPlantShiftLogByDate(req.params.date, shiftCode, plantName);
+      const log = await storage.getPlantShiftLogByDate(req.params.date, undefined, plantName);
       if (!log) return res.status(404).json({ message: "No shift log for that date" });
       res.json(log);
     } catch (err: any) {
