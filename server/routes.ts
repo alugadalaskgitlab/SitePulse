@@ -2064,7 +2064,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/shift-logs/plants", async (_req, res) => {
     try {
       const all = await storage.getPlantShiftLogs({});
-      const plants = Array.from(new Set(all.map(l => (l as any).plantName || "Main Plant")));
+      const plants = Array.from(new Set(all.map(l => l.plantName || "Main Plant")));
       if (!plants.length) plants.push("Main Plant");
       res.json(plants);
     } catch (err: any) {

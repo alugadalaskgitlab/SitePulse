@@ -112,7 +112,7 @@ export default function PlantShiftLog() {
 
   const saveMutation = useMutation({
     mutationFn: async (extra?: { pin?: string }) => {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         date, shiftCode, plantName,
         plantStartTime: plantStartTime || null,
         plantStopTime: plantStopTime || null,
@@ -267,9 +267,8 @@ export default function PlantShiftLog() {
                 <SelectItem value="Sunny">Sunny</SelectItem>
                 <SelectItem value="Cloudy">Cloudy</SelectItem>
                 <SelectItem value="Rain">Rain</SelectItem>
-                <SelectItem value="Heavy Rain">Heavy Rain</SelectItem>
-                <SelectItem value="Foggy">Foggy</SelectItem>
-                <SelectItem value="Windy">Windy</SelectItem>
+                <SelectItem value="Hot">Hot</SelectItem>
+                <SelectItem value="Cold">Cold</SelectItem>
               </SelectContent>
             </Select>
           </div>

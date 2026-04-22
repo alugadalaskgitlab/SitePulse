@@ -9,6 +9,36 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ChevronLeft, Download, Edit, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import type { PlantShiftLogWithDetails } from "@shared/schema";
+
+type DailyPlantSummary = {
+  date: string;
+  plantName: string;
+  shift?: PlantShiftLogWithDetails;
+  production: {
+    totalLoads: number;
+    totalProductionMT: number;
+    theoreticalBitumenMT: number;
+    actualBitumenMT: number;
+    bitumenVarianceMT: number;
+    theoreticalLdoL: number;
+    actualLdoL: number;
+    byMix: Array<{ mixName: string; mixType: string; loads: number; mt: number; theoreticalBitumenMT: number; theoreticalLdoL: number }>;
+  };
+  dispatches: Array<{ id: number; truckNumber: string; partyName?: string; mixName?: string; loadWeight: number; deliveryLocation?: string; time?: string }>;
+  receipts: { byMaterial: Array<{ materialName: string; quantity: number; uom: string; lines: number }>; totalLines: number };
+  runningHours: number | null;
+  productiveHours: number | null;
+  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; source: string };
+  bitumenDips: unknown[];
+  ldoFlows: unknown[];
+  ldoDips: unknown[];
+  equipment: Array<{ equipmentId: number; equipmentName: string | null; hours: number; dieselIssued: number; dieselConsumed: number | null; lPerHr: number | null }>;
+  totalDieselIssued: number;
+  generators: { items: Array<{ id: number; generatorName: string; hoursRun: number | null; opening: number | null; issued: number; closing: number | null; consumed: number | null; lPerHr: number | null; derivedSource: string; efficiency: number | null }>; totalDieselConsumedL: number };
+  manpower: Array<{ name: string; role: string | null }>;
+  idle: { events: Array<{ startTime: string; endTime: string | null; reason: string; remarks: string | null; minutes: number }>; byReason: Record<string, number>; totalMinutes: number };
+};
 
 export default function PlantDailyReport() {
   const { appendOrigin } = useOrigin();
@@ -26,7 +56,7 @@ export default function PlantDailyReport() {
     },
   });
 
-  const { data, isLoading } = useQuery<any>({
+  const { data, isLoading } = useQuery<DailyPlantSummary>({
     queryKey: ["/api/plant-module/daily-reports", date, plantName],
     queryFn: async () => {
       const res = await fetch(`/api/plant-module/daily-reports/${date}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" });
