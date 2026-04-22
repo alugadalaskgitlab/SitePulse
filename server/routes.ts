@@ -1826,6 +1826,26 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: rewrite the historical `balance_after` column for a given material,
+  // chronologically per (party, material). Used to clean up displays after
+  // legacy data moves. Requires admin PIN.
+  app.post("/api/plant-module/recompute-balance-after", async (req, res) => {
+    try {
+      const { pin, materialId } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!materialId) {
+        return res.status(400).json({ message: "materialId is required" });
+      }
+      const result = await storage.recomputeBalanceAfterForMaterial(parseInt(materialId));
+      res.json({ message: "balance_after recomputed", ...result });
+    } catch (err) {
+      console.error("recompute-balance-after error:", err);
+      res.status(500).json({ message: "Failed to recompute balance_after" });
+    }
+  });
+
   // Stock Ledger
   app.get("/api/plant-module/stock-ledger", async (req, res) => {
     try {

@@ -3064,10 +3064,35 @@ export class DatabaseStorage implements IStorage {
       })
       .where(and(...conds));
 
+    // Recompute the historical `balance_after` column for the affected material
+    // so the dispatch/movement history reads correctly under the new owner.
+    await this.recomputeBalanceAfterForMaterial(opts.materialId);
+
     // Now recompute balances from ledger so per-party totals reflect the move.
     const reconciled = await this.reconcileStockBalancesFromLedger();
 
     return { moved: matched.length, totalIn, totalOut, reconciled };
+  }
+
+  // Rewrites the running `balance_after` column on stock_ledger chronologically,
+  // partitioned by (party_id, material_id). Safe to call at any time.
+  async recomputeBalanceAfterForMaterial(materialId: number): Promise<{ updated: number }> {
+    const result = await db.execute(sql`
+      WITH r AS (
+        SELECT id,
+          SUM(COALESCE(quantity_in, 0) - COALESCE(quantity_out, 0))
+            OVER (PARTITION BY party_id, material_id ORDER BY date, id
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS nb
+        FROM stock_ledger
+        WHERE material_id = ${materialId}
+      )
+      UPDATE stock_ledger sl
+      SET balance_after = ROUND(r.nb::numeric, 6)
+      FROM r
+      WHERE sl.id = r.id
+        AND sl.balance_after IS DISTINCT FROM ROUND(r.nb::numeric, 6)
+    `);
+    return { updated: (result as { rowCount?: number }).rowCount ?? 0 };
   }
 
   async reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }> {
