@@ -65,7 +65,7 @@ export default function PlantShiftLog() {
     queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName],
     queryFn: async () => {
       const res = await fetch(`/api/plant-module/shift-logs/by-date/${date}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" });
-      if (res.status === 404) return null as any;
+      if (res.status === 404) return undefined;
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
@@ -142,7 +142,7 @@ export default function PlantShiftLog() {
       if (res.status === 403) {
         const body = await res.json();
         if (body.code === "FINALIZED_LOCKED") {
-          const e: any = new Error(body.message);
+          const e = new Error(body.message) as Error & { locked?: boolean };
           e.locked = true;
           throw e;
         }

@@ -139,7 +139,7 @@ export default function PlantDailyReport() {
                     <TableHead className="text-right">Loads</TableHead><TableHead className="text-right">MT</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {data.production.byMix.map((m: any, i: number) => (
+                    {data.production.byMix.map((m, i) => (
                       <TableRow key={i} data-testid={`row-mix-${i}`}>
                         <TableCell>{m.mixName}</TableCell>
                         <TableCell><Badge variant="outline">{m.mixType}</Badge></TableCell>
@@ -169,7 +169,7 @@ export default function PlantDailyReport() {
                     <TableHead>Mix</TableHead><TableHead className="text-right">MT</TableHead><TableHead>Location</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {data.dispatches.map((d: any) => (
+                    {data.dispatches.map((d) => (
                       <TableRow key={d.id} data-testid={`row-dispatch-${d.id}`}>
                         <TableCell>{d.time || "—"}</TableCell>
                         <TableCell>{d.truckNumber}</TableCell>
@@ -195,7 +195,7 @@ export default function PlantDailyReport() {
                     <TableHead>Material</TableHead><TableHead className="text-right">Qty</TableHead><TableHead>UoM</TableHead><TableHead className="text-right">Lines</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {data.receipts.byMaterial.map((r: any, i: number) => (
+                    {data.receipts.byMaterial.map((r, i) => (
                       <TableRow key={i} data-testid={`row-receipt-${i}`}>
                         <TableCell>{r.materialName}</TableCell>
                         <TableCell className="text-right font-semibold">{r.quantity.toFixed(2)}</TableCell>
@@ -223,7 +223,7 @@ export default function PlantDailyReport() {
                     <TableHead className="text-right">Δ%</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {data.generators.items.map((g: any) => {
+                    {data.generators.items.map((g) => {
                       const variance = (g.lPerHr != null && g.efficiency != null && g.efficiency > 0)
                         ? Math.round(((g.lPerHr - g.efficiency) / g.efficiency) * 1000) / 10
                         : null;
@@ -285,7 +285,7 @@ export default function PlantDailyReport() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.equipment.map((e: any, i: number) => (
+                    {data.equipment.map((e, i) => (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
                         <TableCell>{e.equipmentName || `#${e.equipmentId}`}</TableCell>
                         <TableCell>{e.operator || "—"}</TableCell>
@@ -308,7 +308,7 @@ export default function PlantDailyReport() {
             <CardContent>
               {data.manpower.length === 0 ? <p className="text-sm text-muted-foreground">No manpower entries.</p> : (
                 <ul className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                  {data.manpower.map((m: any, i: number) => (
+                  {data.manpower.map((m, i) => (
                     <li key={i} className="px-3 py-1.5 rounded bg-muted" data-testid={`item-manpower-${i}`}>
                       {m.name}{m.role ? <span className="text-muted-foreground"> — {m.role}</span> : null}
                     </li>
@@ -327,7 +327,7 @@ export default function PlantDailyReport() {
                     <TableHead>Start</TableHead><TableHead>End</TableHead><TableHead>Reason</TableHead><TableHead>Remarks</TableHead><TableHead className="text-right">Min</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {data.idle.events.map((ev: any, i: number) => (
+                    {data.idle.events.map((ev, i) => (
                       <TableRow key={i} data-testid={`row-idle-${i}`}>
                         <TableCell>{ev.startTime}</TableCell>
                         <TableCell>{ev.endTime || "—"}</TableCell>
@@ -361,7 +361,7 @@ export default function PlantDailyReport() {
   );
 }
 
-function KV({ label, value, testId }: { label: string; value: any; testId?: string }) {
+function KV({ label, value, testId }: { label: string; value: React.ReactNode; testId?: string }) {
   return (
     <div>
       <div className="text-muted-foreground">{label}</div>

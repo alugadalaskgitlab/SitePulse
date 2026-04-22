@@ -7588,9 +7588,17 @@ export class DatabaseStorage implements IStorage {
 
     const dispatches = await db.select().from(truckDispatches).where(and(eq(truckDispatches.date, date), eq(truckDispatches.plantName, plantName)));
     const equipment = await db.select().from(equipmentUsage).where(and(eq(equipmentUsage.date, date), eq(equipmentUsage.plantName, plantName)));
-    const ldoFlows = await db.select().from(ldoFlowReadings).where(eq(ldoFlowReadings.date, date));
-    const bitumenDips = await db.select().from(bitumenDipReadings).where(eq(bitumenDipReadings.date, date));
-    const ldoDips = await db.select().from(ldoDipReadings).where(eq(ldoDipReadings.date, date));
+    // Plant-scoped fuel datasets: prefer linkage via the selected shift log
+    // (sourceShiftLogId set by idempotent write-through). Falls back to
+    // (date, plantName) for ldoDipReadings which doesn't carry a shift link.
+    const ldoFlows = headerRow
+      ? await db.select().from(ldoFlowReadings).where(and(eq(ldoFlowReadings.date, date), eq(ldoFlowReadings.sourceShiftLogId, headerRow.id)))
+      : [];
+    const bitumenDips = headerRow
+      ? await db.select().from(bitumenDipReadings).where(and(eq(bitumenDipReadings.date, date), eq(bitumenDipReadings.sourceShiftLogId, headerRow.id)))
+      : [];
+    const ldoDips = await db.select().from(ldoDipReadings)
+      .where(and(eq(ldoDipReadings.date, date), eq(ldoDipReadings.plantName, plantName)));
     const receipts = await db.select().from(materialReceipts).where(and(eq(materialReceipts.date, date), eq(materialReceipts.plantName, plantName)));
     const generators = await db.select().from(generatorLogs).where(and(eq(generatorLogs.date, date), eq(generatorLogs.plantName, plantName)));
     const allMixTemplates = await db.select().from(mixTemplates);

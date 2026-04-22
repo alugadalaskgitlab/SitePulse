@@ -725,6 +725,7 @@ export const ldoDipReadings = pgTable("ldo_dip_readings", {
   weightKg: real("weight_kg").notNull(),
   readingType: text("reading_type").notNull(),
   notes: text("notes"),
+  plantName: text("plant_name").default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
