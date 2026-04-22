@@ -242,6 +242,7 @@ export default function VendorBills() {
   const [gstRateEquipment, setGstRateEquipment] = useState<number>(0);
   const [gstRateMaterial, setGstRateMaterial] = useState<number>(0);
   const [gstRateTransport, setGstRateTransport] = useState<number>(0);
+  const [gstRateLabour, setGstRateLabour] = useState<number>(0);
   const [tdsRate, setTdsRate] = useState<number>(0);
 
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -426,6 +427,7 @@ export default function VendorBills() {
     setGstRateEquipment(0);
     setGstRateMaterial(0);
     setGstRateTransport(0);
+    setGstRateLabour(0);
     setTdsRate(0);
     setEditingBillId(null);
     setAdminPinForUpdate(null);
@@ -481,6 +483,7 @@ export default function VendorBills() {
     setGstRateEquipment((bill as any).gstRateEquipment || 0);
     setGstRateMaterial((bill as any).gstRateMaterial || 0);
     setGstRateTransport((bill as any).gstRateTransport || 0);
+    setGstRateLabour((bill as any).gstRateLabour || 0);
     setTdsRate((bill as any).tdsRate || 0);
     setEditingBillId(bill.id);
     setView("form");
@@ -657,7 +660,8 @@ export default function VendorBills() {
   const gstAmountEquipment = useMemo(() => gstRateEquipment ? (categorySubtotals["equipment"] || 0) * gstRateEquipment / 100 : 0, [categorySubtotals, gstRateEquipment]);
   const gstAmountMaterial = useMemo(() => gstRateMaterial ? (categorySubtotals["material"] || 0) * gstRateMaterial / 100 : 0, [categorySubtotals, gstRateMaterial]);
   const gstAmountTransport = useMemo(() => gstRateTransport ? (categorySubtotals["transport"] || 0) * gstRateTransport / 100 : 0, [categorySubtotals, gstRateTransport]);
-  const totalGstAmount = useMemo(() => gstAmountEquipment + gstAmountMaterial + gstAmountTransport, [gstAmountEquipment, gstAmountMaterial, gstAmountTransport]);
+  const gstAmountLabour = useMemo(() => gstRateLabour ? (categorySubtotals["labour"] || 0) * gstRateLabour / 100 : 0, [categorySubtotals, gstRateLabour]);
+  const totalGstAmount = useMemo(() => gstAmountEquipment + gstAmountMaterial + gstAmountTransport + gstAmountLabour, [gstAmountEquipment, gstAmountMaterial, gstAmountTransport, gstAmountLabour]);
   const tdsAmount = useMemo(() => tdsRate ? totalAmount * tdsRate / 100 : 0, [totalAmount, tdsRate]);
   const netTotal = useMemo(() => totalAmount + totalGstAmount + (adjustmentAmount || 0) - tdsAmount, [totalAmount, totalGstAmount, adjustmentAmount, tdsAmount]);
 
@@ -918,6 +922,7 @@ export default function VendorBills() {
       gstRateEquipment: gstRateEquipment || null,
       gstRateMaterial: gstRateMaterial || null,
       gstRateTransport: gstRateTransport || null,
+      gstRateLabour: gstRateLabour || null,
       tdsRate: tdsRate || null,
       items: lineItems.filter(i => i.description).map(item => ({
         date: item.date || null,
@@ -1098,7 +1103,7 @@ export default function VendorBills() {
         }));
         if (catItems.length === 0) continue;
         const catTotal = catItems.reduce((sum: number, { item }: any) => sum + (item.amount || 0), 0);
-        const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : 0;
+        const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : cat === "labour" ? (bill as any).gstRateLabour : 0;
         const catGstAmt = catGstRate ? catTotal * catGstRate / 100 : 0;
         rows += `<tr class="cat-header"><td colspan="${colCount}" style="background:#f0f0f0;font-weight:bold;font-size:12px;text-transform:uppercase;letter-spacing:1px;padding:8px;">${printCatLabels[cat]} (${catItems.length} items)</td></tr>`;
         rows += catItems.map(({ item, origIdx }: any) => renderPrintRow(item, origIdx)).join("");
@@ -1171,15 +1176,17 @@ export default function VendorBills() {
           const pGstEq = pb.gstRateEquipment ? (pCatSubs["equipment"] || 0) * pb.gstRateEquipment / 100 : 0;
           const pGstMat = pb.gstRateMaterial ? (pCatSubs["material"] || 0) * pb.gstRateMaterial / 100 : 0;
           const pGstTr = pb.gstRateTransport ? (pCatSubs["transport"] || 0) * pb.gstRateTransport / 100 : 0;
+          const pGstLab = pb.gstRateLabour ? (pCatSubs["labour"] || 0) * pb.gstRateLabour / 100 : 0;
           const pIsAllType = bill.billType?.toLowerCase() === "all";
           const pUsePerGroupGst = pIsAllType || shouldGroup;
           const pSingleGstRate = !pUsePerGroupGst
             ? (bill.billType?.toLowerCase() === "equipment" ? pb.gstRateEquipment
               : bill.billType?.toLowerCase() === "material" ? pb.gstRateMaterial
-              : bill.billType?.toLowerCase() === "transport" ? pb.gstRateTransport : 0) || 0
+              : bill.billType?.toLowerCase() === "transport" ? pb.gstRateTransport
+              : bill.billType?.toLowerCase() === "labour" ? pb.gstRateLabour : 0) || 0
             : 0;
           const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
-          const pTotalGst = pUsePerGroupGst ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
+          const pTotalGst = pUsePerGroupGst ? pGstEq + pGstMat + pGstTr + pGstLab : pSingleGstAmt;
           const pAdvAmt = pb.adjustmentAmount || 0;
           const pAdvLabel = pb.adjustmentLabel || "ADVANCE DEDUCTION";
           const pTdsR = pb.tdsRate || 0;
@@ -1786,16 +1793,19 @@ export default function VendorBills() {
                 const hasEquipmentItems = (categorySubtotals["equipment"] || 0) !== 0;
                 const hasMaterialItems = (categorySubtotals["material"] || 0) !== 0;
                 const hasTransportItems = (categorySubtotals["transport"] || 0) !== 0;
+                const hasLabourItems = (categorySubtotals["labour"] || 0) !== 0;
                 const gstRows = isGrouped
                   ? [
                       ...(hasEquipmentItems ? [{ label: "GST ON EQUIPMENT", rate: gstRateEquipment, setRate: setGstRateEquipment, subtotal: categorySubtotals["equipment"] || 0, amount: gstAmountEquipment, testId: "gst-equipment" }] : []),
                       ...(hasMaterialItems ? [{ label: "GST ON MATERIAL", rate: gstRateMaterial, setRate: setGstRateMaterial, subtotal: categorySubtotals["material"] || 0, amount: gstAmountMaterial, testId: "gst-material" }] : []),
                       ...(hasTransportItems ? [{ label: "GST ON TRANSPORT", rate: gstRateTransport, setRate: setGstRateTransport, subtotal: categorySubtotals["transport"] || 0, amount: gstAmountTransport, testId: "gst-transport" }] : []),
+                      ...(hasLabourItems ? [{ label: "GST ON LABOUR", rate: gstRateLabour, setRate: setGstRateLabour, subtotal: categorySubtotals["labour"] || 0, amount: gstAmountLabour, testId: "gst-labour" }] : []),
                     ]
                   : (() => {
                       const singleType = billType === "equipment" ? { label: "GST", rate: gstRateEquipment, setRate: setGstRateEquipment, subtotal: totalAmount, amount: gstAmountEquipment, testId: "gst-equipment" }
                         : billType === "material" ? { label: "GST", rate: gstRateMaterial, setRate: setGstRateMaterial, subtotal: totalAmount, amount: gstAmountMaterial, testId: "gst-material" }
                         : billType === "transport" ? { label: "GST", rate: gstRateTransport, setRate: setGstRateTransport, subtotal: totalAmount, amount: gstAmountTransport, testId: "gst-transport" }
+                        : billType === "labour" ? { label: "GST", rate: gstRateLabour, setRate: setGstRateLabour, subtotal: totalAmount, amount: gstAmountLabour, testId: "gst-labour" }
                         : null;
                       return singleType ? [singleType] : [];
                     })();
@@ -2216,7 +2226,7 @@ export default function VendorBills() {
                           const catItems = bill.items.map((item: any, idx: number) => ({ item, idx })).filter(({ item }: any) => item.category === cat);
                           if (catItems.length === 0) return null;
                           const catTotal = catItems.reduce((sum: number, { item }: any) => sum + (item.amount || 0), 0);
-                          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : 0;
+                          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : cat === "labour" ? (bill as any).gstRateLabour : 0;
                           const catGstAmount = catGstRate ? catTotal * catGstRate / 100 : 0;
                           return (
                             <Fragment key={cat}>
@@ -2264,14 +2274,16 @@ export default function VendorBills() {
                       const gstEq = b.gstRateEquipment ? (detailCatSubs["equipment"] || 0) * b.gstRateEquipment / 100 : 0;
                       const gstMat = b.gstRateMaterial ? (detailCatSubs["material"] || 0) * b.gstRateMaterial / 100 : 0;
                       const gstTr = b.gstRateTransport ? (detailCatSubs["transport"] || 0) * b.gstRateTransport / 100 : 0;
+                      const gstLab = b.gstRateLabour ? (detailCatSubs["labour"] || 0) * b.gstRateLabour / 100 : 0;
                       const usePerGroupGst = isAllType || shouldGroup;
                       const singleGstRate = !usePerGroupGst
                         ? (bill.billType?.toLowerCase() === "equipment" ? b.gstRateEquipment
                           : bill.billType?.toLowerCase() === "material" ? b.gstRateMaterial
-                          : bill.billType?.toLowerCase() === "transport" ? b.gstRateTransport : 0) || 0
+                          : bill.billType?.toLowerCase() === "transport" ? b.gstRateTransport
+                          : bill.billType?.toLowerCase() === "labour" ? b.gstRateLabour : 0) || 0
                         : 0;
                       const singleGstAmt = singleGstRate ? (bill.totalAmount || 0) * singleGstRate / 100 : 0;
-                      const totalGst = usePerGroupGst ? gstEq + gstMat + gstTr : singleGstAmt;
+                      const totalGst = usePerGroupGst ? gstEq + gstMat + gstTr + gstLab : singleGstAmt;
                       const advAmt = b.adjustmentAmount || 0;
                       const advLabel = b.adjustmentLabel || "ADVANCE DEDUCTION";
                       const tdsR = b.tdsRate || 0;

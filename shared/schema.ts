@@ -1100,6 +1100,7 @@ export const vendorBills = pgTable("vendor_bills", {
   gstRateEquipment: real("gst_rate_equipment"),
   gstRateMaterial: real("gst_rate_material"),
   gstRateTransport: real("gst_rate_transport"),
+  gstRateLabour: real("gst_rate_labour"),
   tdsRate: real("tds_rate"),
   createdAt: timestamp("created_at").defaultNow(),
 });

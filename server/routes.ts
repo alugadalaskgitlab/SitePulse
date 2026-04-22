@@ -3379,7 +3379,7 @@ export async function registerRoutes(
           doc.text(`Rs. ${fmtCurrency(catTotal)}`, tableX + pageW - amtW + 4, y + 5, { width: amtW - 8, align: "right" });
           y += 20;
 
-          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : 0;
+          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : cat === "labour" ? (bill as any).gstRateLabour : 0;
           if (catGstRate > 0) {
             const catGstAmt = catTotal * catGstRate / 100;
             if (y + 20 > 720) { doc.addPage(); y = 40; }
@@ -3426,15 +3426,17 @@ export async function registerRoutes(
         const pGstEq = (bill as any).gstRateEquipment ? (pdfCatAmts["equipment"] || 0) * (bill as any).gstRateEquipment / 100 : 0;
         const pGstMat = (bill as any).gstRateMaterial ? (pdfCatAmts["material"] || 0) * (bill as any).gstRateMaterial / 100 : 0;
         const pGstTr = (bill as any).gstRateTransport ? (pdfCatAmts["transport"] || 0) * (bill as any).gstRateTransport / 100 : 0;
+        const pGstLab = (bill as any).gstRateLabour ? (pdfCatAmts["labour"] || 0) * (bill as any).gstRateLabour / 100 : 0;
         const pdfIsAllType = bill.billType?.toLowerCase() === "all";
         const pdfUsePerGroupGst = pdfIsAllType || shouldGroupPdf;
         const pSingleGstRate = !pdfUsePerGroupGst
           ? (bill.billType?.toLowerCase() === "equipment" ? (bill as any).gstRateEquipment
             : bill.billType?.toLowerCase() === "material" ? (bill as any).gstRateMaterial
-            : bill.billType?.toLowerCase() === "transport" ? (bill as any).gstRateTransport : 0) || 0
+            : bill.billType?.toLowerCase() === "transport" ? (bill as any).gstRateTransport
+            : bill.billType?.toLowerCase() === "labour" ? (bill as any).gstRateLabour : 0) || 0
           : 0;
         const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
-        const pTotalGst = pdfUsePerGroupGst ? pGstEq + pGstMat + pGstTr : pSingleGstAmt;
+        const pTotalGst = pdfUsePerGroupGst ? pGstEq + pGstMat + pGstTr + pGstLab : pSingleGstAmt;
         const adjustmentAmount = (bill as any).adjustmentAmount || 0;
         const adjustmentLabel = (bill as any).adjustmentLabel || "ADVANCE DEDUCTION";
         const pTdsRate = (bill as any).tdsRate || 0;

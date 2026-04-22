@@ -5575,6 +5575,7 @@ export class DatabaseStorage implements IStorage {
         gstRateEquipment: (data as any).gstRateEquipment || null,
         gstRateMaterial: (data as any).gstRateMaterial || null,
         gstRateTransport: (data as any).gstRateTransport || null,
+        gstRateLabour: (data as any).gstRateLabour || null,
         tdsRate: (data as any).tdsRate || null,
         verifiedBy: data.verifiedBy?.toUpperCase() || data.verifiedBy,
         verifiedAt: data.verifiedAt,
@@ -5626,6 +5627,7 @@ export class DatabaseStorage implements IStorage {
           gstRateEquipment: (data as any).gstRateEquipment || null,
           gstRateMaterial: (data as any).gstRateMaterial || null,
           gstRateTransport: (data as any).gstRateTransport || null,
+          gstRateLabour: (data as any).gstRateLabour || null,
           tdsRate: (data as any).tdsRate || null,
           paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
         };
