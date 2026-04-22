@@ -33,7 +33,19 @@ type DailyPlantSummary = {
   bitumenDips: unknown[];
   ldoFlows: unknown[];
   ldoDips: unknown[];
-  equipment: Array<{ equipmentId: number; equipmentName: string | null; hours: number; dieselIssued: number; dieselConsumed: number | null; lPerHr: number | null }>;
+  equipment: Array<{
+    id: number;
+    equipmentId: number;
+    equipmentName: string | null;
+    hours: number | null;
+    opening: number | null;
+    closing: number | null;
+    issued: number;
+    consumed: number | null;
+    lPerHr: number | null;
+    operator: string | null;
+    remarks: string | null;
+  }>;
   totalDieselIssued: number;
   generators: { items: Array<{ id: number; generatorName: string; hoursRun: number | null; opening: number | null; issued: number; closing: number | null; consumed: number | null; lPerHr: number | null; derivedSource: string; efficiency: number | null }>; totalDieselConsumedL: number };
   manpower: Array<{ name: string; role: string | null }>;
