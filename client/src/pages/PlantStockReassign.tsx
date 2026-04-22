@@ -59,6 +59,7 @@ export default function PlantStockReassign() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [showExecutePin, setShowExecutePin] = useState(false);
+  const [actor, setActor] = useState<string>("");
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: !!adminPin });
   const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: !!adminPin });
@@ -89,7 +90,7 @@ export default function PlantStockReassign() {
   }, [preview]);
 
   const canSearch = !!adminPin && materialId && fromPartyId;
-  const canExecute = canSearch && toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0;
+  const canExecute = canSearch && toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0 && actor.trim().length >= 2;
 
   const buildBody = () => ({
     pin: adminPin,
@@ -135,7 +136,7 @@ export default function PlantStockReassign() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ...buildBody(), pin }),
+        body: JSON.stringify({ ...buildBody(), pin, actor: actor.trim() }),
       });
       if (!res.ok) throw new Error(await res.text());
       const result = await res.json() as {
@@ -246,6 +247,15 @@ export default function PlantStockReassign() {
                 {TX_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="md:col-span-3 space-y-1.5">
+            <Label>Operator name (for audit log)</Label>
+            <Input
+              value={actor}
+              onChange={(e) => setActor(e.target.value)}
+              placeholder="e.g. Ramesh K."
+              data-testid="input-actor"
+            />
           </div>
           <div className="md:col-span-3 flex gap-2">
             <Button onClick={runPreview} disabled={!canSearch || previewLoading} data-testid="button-preview">

@@ -449,6 +449,25 @@ export interface IStorage {
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
 
+export type StockShortagePayload = {
+  needsConfirmation: true;
+  ownerPartyId: number;
+  ownerPartyName: string;
+  fallbackPartyId: number | null;
+  fallbackPartyName: string | null;
+  shortages: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[];
+};
+
+export class StockShortageError extends Error {
+  readonly code = "STOCK_SHORTAGE_NEEDS_CONFIRMATION" as const;
+  readonly payload: StockShortagePayload;
+  constructor(payload: StockShortagePayload) {
+    super("STOCK_SHORTAGE_NEEDS_CONFIRMATION");
+    this.payload = payload;
+    this.name = "StockShortageError";
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]> {
     let conditions = [];
@@ -2582,7 +2601,7 @@ export class DatabaseStorage implements IStorage {
     | { dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }
     | { needsConfirmation: true; ownerPartyId: number; ownerPartyName: string; fallbackPartyId: number | null; fallbackPartyName: string | null; shortages: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] }
   > {
-    const { allowHlcFallback = false, ...dispatchData } = dispatch as any;
+    const { allowHlcFallback = false, ...dispatchData } = dispatch;
     return db.transaction(async (tx) => {
       // Get mix template with components
       const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatchData.mixTemplateId)).limit(1);
@@ -2710,17 +2729,15 @@ export class DatabaseStorage implements IStorage {
       
       // If shortages exist and caller hasn't approved HLC fallback, abort with structured info.
       if (shortageDetails.length > 0 && !allowHlcFallback) {
-        // Throw an error that the route handler will recognise and return as 409.
-        const err: any = new Error("STOCK_SHORTAGE_NEEDS_CONFIRMATION");
-        err.code = "STOCK_SHORTAGE_NEEDS_CONFIRMATION";
-        err.payload = {
+        // Thrown so the route handler can return HTTP 409 with the payload.
+        const err = new StockShortageError({
           needsConfirmation: true,
           ownerPartyId: partyId,
           ownerPartyName,
           fallbackPartyId: hlcPartyId,
           fallbackPartyName: hlcParty?.name ?? null,
           shortages: shortageDetails,
-        };
+        });
         throw err;
       }
       

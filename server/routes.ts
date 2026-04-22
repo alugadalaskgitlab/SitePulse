@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
+import { storage, StockShortageError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
@@ -1449,10 +1449,10 @@ export async function registerRoutes(
       sendPushToAll("Dispatch Recorded", `${dispatch.loadWeight} MT dispatched on ${dispatch.date}`, "/plant").catch(() => {});
 
       res.status(201).json(result);
-    } catch (err: any) {
+    } catch (err) {
       // Owner-stock shortage — surface to the client as 409 so the UI can
       // ask the operator for explicit consent before borrowing from HLC.
-      if (err?.code === "STOCK_SHORTAGE_NEEDS_CONFIRMATION" && err?.payload) {
+      if (err instanceof StockShortageError) {
         return res.status(409).json(err.payload);
       }
       console.error("Dispatch error:", err);
@@ -1788,9 +1788,12 @@ export async function registerRoutes(
   // Requires admin PIN. Body adds: pin (string), toPartyId (int).
   app.post("/api/plant-module/reassign-ledger/execute", async (req, res) => {
     try {
-      const { pin, materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
+      const { pin, actor, materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
       if (!pin || !(await storage.verifyPin("admin", pin))) {
         return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
       }
       if (!materialId || !fromPartyId || !toPartyId) {
         return res.status(400).json({ message: "materialId, fromPartyId and toPartyId are required" });
@@ -1807,10 +1810,10 @@ export async function registerRoutes(
         transactionType: transactionType || undefined,
       };
       const result = await storage.executeLedgerReassignment(criteria);
-      // Audit log: actor (admin via PIN), timestamp, criteria, totals.
+      // Audit log: actor name + admin role, ISO timestamp, criteria, totals.
       console.info(
-        `[LedgerReassignment] actor=admin at=${new Date().toISOString()} ` +
-        `criteria=${JSON.stringify(criteria)} ` +
+        `[LedgerReassignment] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} criteria=${JSON.stringify(criteria)} ` +
         `moved=${result.moved} totalIn=${result.totalIn} totalOut=${result.totalOut}`
       );
       res.json({
