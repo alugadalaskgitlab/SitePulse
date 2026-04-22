@@ -10,7 +10,7 @@ import { ChevronLeft, ArrowRightLeft, Loader2, ShieldAlert, Search } from "lucid
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
-import type { Party, Material } from "@shared/schema";
+import type { Party, PlantMaterial as Material } from "@shared/schema";
 
 type PreviewRow = {
   id: number;

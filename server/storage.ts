@@ -246,7 +246,9 @@ export interface IStorage {
   deleteMaterialOpeningStock(id: number): Promise<boolean>;
   
   // Enhanced dispatch with stock deduction
-  createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
+  createTruckDispatchWithStockDeduction(
+    dispatch: InsertTruckDispatch & { allowHlcFallback?: boolean },
+  ): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
 
   // Physical stock correction (reconcile book stock to physical measurement)
   postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }>;
@@ -2595,12 +2597,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Enhanced truck dispatch with automatic stock deduction
+  // Returns the saved dispatch on success; throws StockShortageError when
+  // the owner has insufficient stock and the caller did not opt in to HLC borrow.
   async createTruckDispatchWithStockDeduction(
     dispatch: InsertTruckDispatch & { allowHlcFallback?: boolean },
-  ): Promise<
-    | { dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }
-    | { needsConfirmation: true; ownerPartyId: number; ownerPartyName: string; fallbackPartyId: number | null; fallbackPartyName: string | null; shortages: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] }
-  > {
+  ): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }> {
     const { allowHlcFallback = false, ...dispatchData } = dispatch;
     return db.transaction(async (tx) => {
       // Get mix template with components
@@ -2635,9 +2636,10 @@ export class DatabaseStorage implements IStorage {
       
       // Find HLC party (used for the optional borrow path)
       const allPartiesList = await tx.select().from(parties).orderBy(parties.id);
+      // Strict HLC lookup: never silently fall back to an arbitrary party.
       const hlcParty = allPartiesList.find(p => p.name?.toUpperCase() === 'HLC')
         || allPartiesList.find(p => p.name?.toUpperCase().includes('HIGH LANE'))
-        || allPartiesList[0];
+        || null;
       const hlcPartyId = hlcParty?.id ?? null;
       const ownerParty = allPartiesList.find(p => p.id === partyId);
       const ownerPartyName = ownerParty?.name || `Party #${partyId}`;
