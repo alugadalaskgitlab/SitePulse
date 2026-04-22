@@ -7756,6 +7756,7 @@ export class DatabaseStorage implements IStorage {
       return {
         id: g.id, generatorName: g.generatorName, hoursRun: hrs,
         opening, issued, closing, consumed, lPerHr,
+        efficiency: g.efficiency ?? null,
       };
     });
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);

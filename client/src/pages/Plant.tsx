@@ -495,6 +495,21 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </Card>
       </Link>
 
+      <Link href={appendRoleAndTab(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
+        <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Edit className="w-7 h-7 text-blue-700 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Today's Shift Log</h3>
+              <p className="text-sm text-muted-foreground">Open or create today's plant shift log – plant times, dips, manpower, idle</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
       <Link href={appendRoleAndTab(`/plant/daily-report/${new Date().toISOString().slice(0, 10)}`)}>
         <Card className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800">
           <CardContent className="p-6 flex items-center gap-4">

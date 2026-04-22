@@ -2061,6 +2061,17 @@ export async function registerRoutes(
   // PLANT SHIFT LOG (operator daily log)
   // ============================================
 
+  app.get("/api/plant-module/shift-logs/plants", async (_req, res) => {
+    try {
+      const all = await storage.getPlantShiftLogs({});
+      const plants = Array.from(new Set(all.map(l => (l as any).plantName || "Main Plant")));
+      if (!plants.length) plants.push("Main Plant");
+      res.json(plants);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/plant-module/shift-logs", async (req, res) => {
     try {
       const logs = await storage.getPlantShiftLogs({
@@ -2158,7 +2169,8 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/daily-reports/:date", async (req, res) => {
     try {
-      const summary = await storage.getDailyPlantSummary(req.params.date);
+      const plantName = (req.query.plant as string) || "Main Plant";
+      const summary = await storage.getDailyPlantSummary(req.params.date, plantName);
       res.json(summary);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to build daily plant report" });
@@ -2258,8 +2270,11 @@ export async function registerRoutes(
       if (summary.generators?.items?.length) {
         section(`Generator Logs (${summary.generators.items.length})  Total Diesel: ${summary.generators.totalDieselConsumedL?.toFixed(1) || 0} L`);
         for (const g of summary.generators.items) {
+          const variance = (g.lPerHr != null && g.efficiency != null && g.efficiency > 0)
+            ? Math.round(((g.lPerHr - g.efficiency) / g.efficiency) * 1000) / 10
+            : null;
           doc.fontSize(9).font("Helvetica").text(
-            `${g.generatorName}  Hrs: ${g.hoursRun ?? "—"}  Open/Issued/Close: ${g.opening ?? "—"}/${g.issued}/${g.closing ?? "—"}  Consumed: ${g.consumed ?? "—"}L  L/hr: ${g.lPerHr ?? "—"}`
+            `${g.generatorName}  Hrs: ${g.hoursRun ?? "—"}  Open/Issued/Close: ${g.opening ?? "—"}/${g.issued}/${g.closing ?? "—"}  Consumed: ${g.consumed ?? "—"}L  L/hr derived: ${g.lPerHr ?? "—"}  L/hr recorded: ${g.efficiency ?? "—"}  Δ: ${variance != null ? variance + "%" : "—"}`
           );
         }
       }

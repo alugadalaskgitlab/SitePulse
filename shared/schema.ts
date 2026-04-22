@@ -740,7 +740,7 @@ export type InsertLdoDipReading = z.infer<typeof insertLdoDipReadingSchema>;
 
 export const SHIFT_IDLE_REASONS = [
   "Material Shortage",
-  "Mechanical",
+  "Mechanical Breakdown",
   "Electrical",
   "Motor Tripping",
   "No Demand",
@@ -758,7 +758,8 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   plantStopTime: text("plant_stop_time"),
   weather: text("weather"),
   ambientTemp: real("ambient_temp"),
-  bitumenStockApproxMt: real("bitumen_stock_approx_mt"),
+  bitumenTank1StockApproxMt: real("bitumen_tank1_stock_approx_mt"),
+  bitumenTank2StockApproxMt: real("bitumen_tank2_stock_approx_mt"),
   bitumenTank1Temp: real("bitumen_tank1_temp"),
   bitumenTank2Temp: real("bitumen_tank2_temp"),
   bitumenTank1OpeningDip: real("bitumen_tank1_opening_dip"),

@@ -57,7 +57,8 @@ export default function PlantShiftLog() {
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinPurpose, setPinPurpose] = useState<"finalize" | "delete" | "edit-finalized">("finalize");
   const [plantName, setPlantName] = useState("Main Plant");
-  const [bitumenStockApproxMt, setBitumenStockApproxMt] = useState("");
+  const [bitumenTank1StockApproxMt, setBitumenTank1StockApproxMt] = useState("");
+  const [bitumenTank2StockApproxMt, setBitumenTank2StockApproxMt] = useState("");
   const [savedId, setSavedId] = useState<number | null>(null);
 
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails>({
@@ -101,7 +102,8 @@ export default function PlantShiftLog() {
     })));
     setIsFinalized(existing.isFinalized || 0);
     setPlantName(existing.plantName || "Main Plant");
-    setBitumenStockApproxMt(existing.bitumenStockApproxMt?.toString() || "");
+    setBitumenTank1StockApproxMt(existing.bitumenTank1StockApproxMt?.toString() || "");
+    setBitumenTank2StockApproxMt(existing.bitumenTank2StockApproxMt?.toString() || "");
   }, [existing]);
 
   const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
@@ -116,7 +118,8 @@ export default function PlantShiftLog() {
         plantStopTime: plantStopTime || null,
         weather: weather || null,
         ambientTemp: numOrNull(ambientTemp),
-        bitumenStockApproxMt: numOrNull(bitumenStockApproxMt),
+        bitumenTank1StockApproxMt: numOrNull(bitumenTank1StockApproxMt),
+        bitumenTank2StockApproxMt: numOrNull(bitumenTank2StockApproxMt),
         operatorName: operatorName || null,
         supervisorName: supervisorName || null,
         remarks: remarks || null,
@@ -272,7 +275,8 @@ export default function PlantShiftLog() {
           </div>
           <div><Label>Ambient Temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
           <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
-          <div><Label>Bitumen Stock (Approx MT)</Label><Input type="number" step="0.01" value={bitumenStockApproxMt} onChange={e => setBitumenStockApproxMt(e.target.value)} data-testid="input-bitumen-stock-mt" /></div>
+          <div><Label>Bitumen Tank 1 Stock ≈ MT</Label><Input type="number" step="0.01" value={bitumenTank1StockApproxMt} onChange={e => setBitumenTank1StockApproxMt(e.target.value)} data-testid="input-bitumen-tank1-stock-mt" /></div>
+          <div><Label>Bitumen Tank 2 Stock ≈ MT</Label><Input type="number" step="0.01" value={bitumenTank2StockApproxMt} onChange={e => setBitumenTank2StockApproxMt(e.target.value)} data-testid="input-bitumen-tank2-stock-mt" /></div>
         </CardContent>
       </Card>
 

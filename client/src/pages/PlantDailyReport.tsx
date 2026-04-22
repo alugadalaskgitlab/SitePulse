@@ -14,11 +14,22 @@ export default function PlantDailyReport() {
   const { appendOrigin } = useOrigin();
   const [, params] = useRoute("/plant/daily-report/:date");
   const [date, setDate] = useState(params?.date || format(new Date(), "yyyy-MM-dd"));
+  const [plantName, setPlantName] = useState("Main Plant");
+  const [showAllDispatches, setShowAllDispatches] = useState(false);
+
+  const { data: plantsList } = useQuery<string[]>({
+    queryKey: ["/api/plant-module/shift-logs/plants"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
+      if (!res.ok) return ["Main Plant"];
+      return res.json();
+    },
+  });
 
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/plant-module/daily-reports", date],
+    queryKey: ["/api/plant-module/daily-reports", date, plantName],
     queryFn: async () => {
-      const res = await fetch(`/api/plant-module/daily-reports/${date}`, { credentials: "include" });
+      const res = await fetch(`/api/plant-module/daily-reports/${date}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
@@ -41,10 +52,13 @@ export default function PlantDailyReport() {
         </div>
         <div className="flex items-center gap-2">
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" data-testid="input-date" />
+          <select value={plantName} onChange={e => setPlantName(e.target.value)} className="border rounded px-2 py-1 text-sm" data-testid="select-plant">
+            {(plantsList && plantsList.length ? plantsList : ["Main Plant"]).map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
           <Link href={appendOrigin(`/plant/shift-log/${date}`)}>
             <Button variant="outline" size="sm" data-testid="button-edit-shift-log"><Edit className="w-4 h-4 mr-1" />Shift Log</Button>
           </Link>
-          <a href={`/api/plant-module/daily-reports/${date}/pdf`} target="_blank" rel="noreferrer">
+          <a href={`/api/plant-module/daily-reports/${date}/pdf?plant=${encodeURIComponent(plantName)}`} target="_blank" rel="noreferrer">
             <Button variant="default" size="sm" data-testid="button-download-pdf"><Download className="w-4 h-4 mr-1" />PDF</Button>
           </a>
         </div>
@@ -97,7 +111,13 @@ export default function PlantDailyReport() {
 
           {data.dispatches?.length > 0 && (
             <Card>
-              <CardHeader><CardTitle>Dispatch List ({data.dispatches.length})</CardTitle></CardHeader>
+              <CardHeader className="flex-row items-center justify-between">
+                <CardTitle>Dispatch List ({data.dispatches.length})</CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setShowAllDispatches(s => !s)} data-testid="button-toggle-dispatches">
+                  {showAllDispatches ? "Hide" : "Show"}
+                </Button>
+              </CardHeader>
+              {showAllDispatches && (
               <CardContent>
                 <Table>
                   <TableHeader><TableRow>
@@ -118,6 +138,7 @@ export default function PlantDailyReport() {
                   </TableBody>
                 </Table>
               </CardContent>
+              )}
             </Card>
           )}
 
@@ -152,10 +173,17 @@ export default function PlantDailyReport() {
                   <TableHeader><TableRow>
                     <TableHead>Generator</TableHead><TableHead className="text-right">Hrs</TableHead>
                     <TableHead className="text-right">Open</TableHead><TableHead className="text-right">Issued</TableHead><TableHead className="text-right">Close</TableHead>
-                    <TableHead className="text-right">Consumed L</TableHead><TableHead className="text-right">L/hr</TableHead>
+                    <TableHead className="text-right">Consumed L</TableHead>
+                    <TableHead className="text-right">L/hr (Derived)</TableHead>
+                    <TableHead className="text-right">L/hr (Recorded)</TableHead>
+                    <TableHead className="text-right">Δ%</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {data.generators.items.map((g: any) => (
+                    {data.generators.items.map((g: any) => {
+                      const variance = (g.lPerHr != null && g.efficiency != null && g.efficiency > 0)
+                        ? Math.round(((g.lPerHr - g.efficiency) / g.efficiency) * 1000) / 10
+                        : null;
+                      return (
                       <TableRow key={g.id} data-testid={`row-generator-${g.id}`}>
                         <TableCell>{g.generatorName}</TableCell>
                         <TableCell className="text-right">{fmt(g.hoursRun)}</TableCell>
@@ -164,8 +192,10 @@ export default function PlantDailyReport() {
                         <TableCell className="text-right">{fmt(g.closing)}</TableCell>
                         <TableCell className="text-right font-semibold">{fmt(g.consumed)}</TableCell>
                         <TableCell className="text-right">{fmt(g.lPerHr)}</TableCell>
+                        <TableCell className="text-right">{fmt(g.efficiency)}</TableCell>
+                        <TableCell className={`text-right ${variance != null && Math.abs(variance) > 10 ? "text-red-600 font-semibold" : ""}`}>{variance != null ? `${variance > 0 ? "+" : ""}${variance}%` : "—"}</TableCell>
                       </TableRow>
-                    ))}
+                    );})}
                   </TableBody>
                 </Table>
               </CardContent>
