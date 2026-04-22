@@ -157,6 +157,21 @@ function canonicalMatName(description: string): string {
   return stripSourceSuffix(description.trim().toUpperCase()).replace(/\s+/g, "_");
 }
 
+function deriveLabourLabel(description: string): string {
+  return description.trim().toUpperCase().split(" - ")[0].trim();
+}
+
+function deriveLabourKey(description: string): string {
+  const head = deriveLabourLabel(description);
+  const parts = head.split(/\s+/).filter(Boolean);
+  if (parts[0] !== "LABOUR" || parts.length < 2) {
+    return head.replace(/\s+/g, "_");
+  }
+  const category = parts[1];
+  const gender = parts[2];
+  return gender ? `LAB_${category}_${gender}` : `LAB_${category}`;
+}
+
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
 
 function getStatusBadgeClass(status: string) {
@@ -547,7 +562,7 @@ export default function VendorBills() {
           body: JSON.stringify({
             vendorName,
             excludeBillId: editingBillId || undefined,
-            items: mapped.map(m => ({ date: m.date, equipmentId: m.equipmentId, description: m.description })),
+            items: mapped.map(m => ({ date: m.date, equipmentId: m.equipmentId, description: m.description, category: m.category, siteName: m.siteName || null })),
           }),
         });
         if (dupRes.ok) {
@@ -698,6 +713,15 @@ export default function VendorBills() {
           groups[key] = { equipmentId: item.equipmentId, groupName: mn.replace(/_/g, " "), entryType, category: item.category, unit, count: 0 };
         }
         groups[key].count++;
+      } else if (item.category === "labour" && item.description.trim()) {
+        const labKey = deriveLabourKey(item.description);
+        const labLabel = deriveLabourLabel(item.description);
+        const unit = (item.unit || "HEAD-DAY").toUpperCase();
+        const key = `lab_${labKey}_${unit}`;
+        if (!groups[key]) {
+          groups[key] = { equipmentId: null, groupName: labLabel, entryType: item.unit || "HEAD-DAY", category: "labour", unit, count: 0 };
+        }
+        groups[key].count++;
       } else if (item.description.trim()) {
         const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
         const unit = (item.unit || "NOS").toUpperCase();
@@ -732,6 +756,8 @@ export default function VendorBills() {
           const mn = canonicalMachineName(item.description);
           return mn === group.groupName.replace(/\s+/g, "_") && item.description.includes(group.entryType) && item.rate > 0;
         });
+      } else if (group.category === "labour") {
+        existing = lineItems.find(item => !item.equipmentId && item.category === "labour" && deriveLabourKey(item.description) === deriveLabourKey(group.groupName) && (item.unit || "HEAD-DAY").toUpperCase() === group.unit && item.rate > 0);
       } else {
         existing = lineItems.find(item => !item.equipmentId && item.category === group.category && stripSourceSuffix(item.description.trim().toUpperCase()) === group.groupName.toUpperCase() && (item.unit || "NOS").toUpperCase() === group.unit && item.rate > 0);
       }
@@ -758,6 +784,9 @@ export default function VendorBills() {
           } else if (group.category === "transport") {
             const canonicalKey = `EQ_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
             card = cardByKey.get(`${canonicalKey}_${group.category}`);
+          } else if (group.category === "labour") {
+            const labKey = deriveLabourKey(group.groupName);
+            card = cardByKey.get(`${labKey}_${group.category}`);
           } else {
             card = cardByKey.get(`${group.groupName.trim().toUpperCase()}_${group.category}`);
           }
@@ -789,6 +818,10 @@ export default function VendorBills() {
           const mn = canonicalMachineName(item.description);
           const unit = (item.unit || "HRS").toUpperCase();
           key = `eq_${mn}_${unit}`;
+        } else if (item.category === "labour") {
+          const labKey = deriveLabourKey(item.description);
+          const unit = (item.unit || "HEAD-DAY").toUpperCase();
+          key = `lab_${labKey}_${unit}`;
         } else {
           const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
           const unit = (item.unit || "NOS").toUpperCase();
@@ -900,6 +933,8 @@ export default function VendorBills() {
         const mn = canonicalMatName(item.description);
         const unit = (item.unit || "NOS").toUpperCase();
         itemKey = `MAT_${mn}_${unit}`;
+      } else if (item.category === "labour") {
+        itemKey = deriveLabourKey(item.description);
       } else if (item.equipmentId) {
         const mn = canonicalMachineName(item.description);
         const unit = (item.unit || "HRS").toUpperCase();

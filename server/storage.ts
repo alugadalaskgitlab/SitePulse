@@ -428,7 +428,7 @@ export interface IStorage {
   discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[]>;
   upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
   deleteVendorRateCard(id: number): Promise<boolean>;
-  checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
+  checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
 
   discoverVendors(billType: string, periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
@@ -7305,7 +7305,7 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
+  async checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
     const variants = await this.resolveVendorAliases(vendorName);
     const vendorConds = variants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
     const whereConditions = excludeBillId
@@ -7320,16 +7320,39 @@ export class DatabaseStorage implements IStorage {
     const billMap = new Map(existingBills.map(b => [b.id, b]));
     const duplicates: { index: number; billNo: string; billStatus: string }[] = [];
 
+    const labourHead = (desc?: string | null): string => {
+      if (!desc) return "";
+      return desc.toUpperCase().trim().split(" - ")[0].trim();
+    };
+    const isLabourDesc = (desc?: string | null): boolean => {
+      return !!desc && desc.toUpperCase().trim().startsWith("LABOUR ");
+    };
+
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
+      const itemIsLabour = (item.category || "").toLowerCase() === "labour" || isLabourDesc(item.description);
+
       for (const existing of existingItems) {
         const bill = billMap.get(existing.billId);
         if (!bill) continue;
         const dateMatch = existing.date === item.date;
+        if (!dateMatch) continue;
+
         const eqMatch = item.equipmentId && existing.equipmentId && item.equipmentId === existing.equipmentId;
-        const descMatch = !item.equipmentId && item.description && existing.description &&
+
+        let labourMatch = false;
+        if (itemIsLabour && isLabourDesc(existing.description)) {
+          const sameSite = (item.siteName || "").toUpperCase().trim() ===
+                           (existing.siteName || "").toUpperCase().trim();
+          if (sameSite) {
+            labourMatch = labourHead(item.description) === labourHead(existing.description);
+          }
+        }
+
+        const descMatch = !item.equipmentId && !itemIsLabour && item.description && existing.description &&
           item.description.toUpperCase().trim() === existing.description.toUpperCase().trim();
-        if (dateMatch && (eqMatch || descMatch)) {
+
+        if (eqMatch || labourMatch || descMatch) {
           duplicates.push({ index: i, billNo: bill.billNo, billStatus: bill.status });
           break;
         }
