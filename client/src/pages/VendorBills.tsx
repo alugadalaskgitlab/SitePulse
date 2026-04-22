@@ -537,6 +537,16 @@ export default function VendorBills() {
                   const oldKey = `${item.equipmentId}_${entryType}`;
                   card = cardByKey.get(`${oldKey}_${item.category}`);
                 }
+              } else if (item.category === "labour") {
+                const labKey = deriveLabourKey(item.description);
+                card = cardByKey.get(`${labKey}_${item.category}`);
+                if (!card) {
+                  const parts = labKey.split("_");
+                  if (parts.length === 3) {
+                    const fallbackKey = `${parts[0]}_${parts[1]}`;
+                    card = cardByKey.get(`${fallbackKey}_${item.category}`);
+                  }
+                }
               } else {
                 const descKey = stripSourceSuffix(item.description.trim().toUpperCase());
                 card = cardByKey.get(`${descKey}_${item.category}`);

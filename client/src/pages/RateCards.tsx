@@ -30,7 +30,7 @@ type ManualRow = {
   rate: number | string;
 };
 
-const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM"];
+const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM", "HEAD-DAY"];
 
 const BILLING_MODES = [
   { value: "HOURLY HIRE", unit: "HRS" },
