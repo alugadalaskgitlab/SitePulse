@@ -47,7 +47,7 @@ const TRANSPORT_MODES = [
   { value: "MONTHLY HIRE", unit: "MONTHS" },
 ];
 
-const LABOUR_CATEGORIES = ["SKILLED", "UNSKILLED", "MASON", "CARPENTER", "FITTER", "HELPER", "OPERATOR", "DRIVER"];
+const LABOUR_CATEGORIES = ["SKILLED", "SEMI-SKILLED", "UNSKILLED", "SUPERVISOR"];
 const LABOUR_GENDERS = ["", "MALE", "FEMALE"];
 
 const getCategoryBadgeClass = (cat: string) => {
