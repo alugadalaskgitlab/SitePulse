@@ -260,6 +260,24 @@ export interface IStorage {
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
 
+  // Admin: preview / move ledger rows between parties (historical reassignment).
+  previewLedgerForReassignment(opts: {
+    materialId: number;
+    fromPartyId: number;
+    dateFrom?: string;
+    dateTo?: string;
+    transactionType?: string;
+  }): Promise<{ id: number; date: string; transactionType: string; quantityIn: number | null; quantityOut: number | null; uom: string | null; notes: string | null }[]>;
+
+  executeLedgerReassignment(opts: {
+    materialId: number;
+    fromPartyId: number;
+    toPartyId: number;
+    dateFrom?: string;
+    dateTo?: string;
+    transactionType?: string;
+  }): Promise<{ moved: number; totalIn: number; totalOut: number; reconciled: { updated: number; created: number; errors: number } }>;
+
   // Migrate orphan stock (NULL partyId) to HLC party
   migrateOrphanStockToHLC(): Promise<{ ledgerFixed: number; balancesMerged: number; errors: number }>;
   
@@ -2558,11 +2576,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Enhanced truck dispatch with automatic stock deduction
-  async createTruckDispatchWithStockDeduction(dispatch: InsertTruckDispatch): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }> {
+  async createTruckDispatchWithStockDeduction(
+    dispatch: InsertTruckDispatch & { allowHlcFallback?: boolean },
+  ): Promise<
+    | { dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }
+    | { needsConfirmation: true; ownerPartyId: number; ownerPartyName: string; fallbackPartyId: number | null; fallbackPartyName: string | null; shortages: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] }
+  > {
+    const { allowHlcFallback = false, ...dispatchData } = dispatch as any;
     return db.transaction(async (tx) => {
       // Get mix template with components
-      const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatch.mixTemplateId)).limit(1);
-      const components = await tx.select().from(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, dispatch.mixTemplateId));
+      const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatchData.mixTemplateId)).limit(1);
+      const components = await tx.select().from(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, dispatchData.mixTemplateId));
       
       // Calculate theoretical consumption
       const loadWeight = dispatch.loadWeight;
@@ -2579,20 +2603,27 @@ export class DatabaseStorage implements IStorage {
         theoreticalAggregates[comp.materialId] = loadWeight * percent / 100;
       }
       
-      // Check stock availability and track shortages
+      // Owner-first deduction model:
+      //  1. The dispatch's partyId is treated as the material owner.
+      //  2. We deduct from THAT party's stock only.
+      //  3. If their stock can't cover it, we surface the shortage.
+      //     - If the caller passed allowHlcFallback=true, the shortfall is
+      //       borrowed from HLC's stock and tagged "(Borrowed from HLC)".
+      //     - Otherwise we throw a structured error so the API can return 409
+      //       and the UI can prompt the user for explicit consent.
       const shortages: { materialId: number; required: number; available: number }[] = [];
-      const partyId = dispatch.partyId;
+      const partyId = dispatchData.partyId;
       
-      // Helper to get stock balance
-      const getBalance = async (pId: number | null, matId: number) => {
-        const condition = pId === null 
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
-          : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
-        const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
-        return bal?.balance || 0;
-      };
+      // Find HLC party (used for the optional borrow path)
+      const allPartiesList = await tx.select().from(parties).orderBy(parties.id);
+      const hlcParty = allPartiesList.find(p => p.name?.toUpperCase() === 'HLC')
+        || allPartiesList.find(p => p.name?.toUpperCase().includes('HIGH LANE'))
+        || allPartiesList[0];
+      const hlcPartyId = hlcParty?.id ?? null;
+      const ownerParty = allPartiesList.find(p => p.id === partyId);
+      const ownerPartyName = ownerParty?.name || `Party #${partyId}`;
       
-      // Helper to deduct stock from a specific source
+      // Helper to deduct from a specific source and write ledger entry
       const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
         const condition = pId === null 
           ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
@@ -2609,9 +2640,8 @@ export class DatabaseStorage implements IStorage {
           await tx.insert(stockBalances).values({ partyId: pId, materialId: matId, balance: newBalance, uom });
         }
         
-        // Add ledger entry
         await tx.insert(stockLedger).values({
-          date: dispatch.date,
+          date: dispatchData.date,
           partyId: pId,
           materialId: matId,
           transactionType: "dispatch",
@@ -2624,90 +2654,100 @@ export class DatabaseStorage implements IStorage {
         return newBalance;
       };
       
-      // Find HLC party for fallback (never create null-party stock)
-      const allPartiesList = await tx.select().from(parties).orderBy(parties.id);
-      const hlcParty = allPartiesList.find(p => p.name?.toUpperCase() === 'HLC') || allPartiesList[0];
-      const hlcPartyId = hlcParty?.id ?? null;
-
-      // Helper to deduct stock with party-first (pooled), HLC fallback
-      // Party stock is pooled at plant level - check ALL parties with stock, not just dispatch's party
-      const deductStock = async (matId: number, requiredQty: number, uom: string, notes: string) => {
-        // Get all party stocks for this material (pooled at plant level)
-        const allPartyBalances = await tx.select().from(stockBalances)
-          .where(and(
-            eq(stockBalances.materialId, matId),
-            sql`${stockBalances.partyId} IS NOT NULL`,
-            sql`${stockBalances.balance} > 0`
-          ))
-          .orderBy(desc(stockBalances.balance)); // Deduct from largest stock first
-        
-        const totalPartyStock = allPartyBalances.reduce((sum, b) => sum + (b.balance || 0), 0);
-        const totalAvailable = totalPartyStock;
-        
-        let shortage = false;
-        if (totalAvailable < requiredQty) {
-          shortage = true;
-        }
-        
-        let remaining = requiredQty;
-        
-        // Deduct from party stocks (pooled - try all parties with stock)
-        for (const bal of allPartyBalances) {
-          if (remaining <= 0) break;
-          const deductFromParty = Math.min(bal.balance, remaining);
-          await deductFromSource(bal.partyId, matId, deductFromParty, uom, `${notes} (Party)`);
-          remaining -= deductFromParty;
-        }
-        
-        // Any remaining goes to HLC (never use null partyId)
-        if (remaining > 0 && hlcPartyId) {
-          await deductFromSource(hlcPartyId, matId, remaining, uom, `${notes} (HLC)`);
-        }
-        
-        return { shortage, available: totalAvailable };
-      };
-      
-      // Get bitumen material ID (look for material named BITUMEN)
+      // Resolve materials we need
       const [bitumenMaterial] = await tx.select().from(plantMaterials)
         .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
         .limit(1);
-      
-      // Get LDO material ID
       const [ldoMaterial] = await tx.select().from(plantMaterials)
         .where(sql`UPPER(${plantMaterials.name}) = 'LDO'`)
         .limit(1);
       
-      // Check and deduct bitumen (party-first, then plant-common)
+      // Build the consumption plan: list of {matId, qty, uom, label}
+      type Plan = { matId: number; qty: number; uom: string; label: string };
+      const plan: Plan[] = [];
       if (bitumenMaterial && theoreticalBitumenQty > 0) {
-        const result = await deductStock(bitumenMaterial.id, theoreticalBitumenQty, "Ton", "Bitumen dispatch");
-        if (result.shortage) {
-          shortages.push({ materialId: bitumenMaterial.id, required: theoreticalBitumenQty, available: result.available });
-        }
+        plan.push({ matId: bitumenMaterial.id, qty: theoreticalBitumenQty, uom: "Ton", label: "Bitumen dispatch" });
       }
-      
-      // Check and deduct LDO (party-first, then plant-common)
       if (ldoMaterial && theoreticalLdoQty > 0) {
-        const result = await deductStock(ldoMaterial.id, theoreticalLdoQty, "Liters", "LDO dispatch");
-        if (result.shortage) {
-          shortages.push({ materialId: ldoMaterial.id, required: theoreticalLdoQty, available: result.available });
-        }
+        plan.push({ matId: ldoMaterial.id, qty: theoreticalLdoQty, uom: "Liters", label: "LDO dispatch" });
       }
-      
-      // Check and deduct aggregates (party-first, then plant-common)
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
-        if (qty > 0) {
-          const result = await deductStock(matId, qty, "Ton", "Aggregate dispatch");
-          if (result.shortage) {
-            shortages.push({ materialId: matId, required: qty, available: result.available });
+        if (qty > 0) plan.push({ matId, qty, uom: "Ton", label: "Aggregate dispatch" });
+      }
+      
+      // Helper to read a single party balance
+      const getBalance = async (pId: number | null, matId: number) => {
+        const condition = pId === null 
+          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
+          : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
+        const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
+        return bal?.balance || 0;
+      };
+      
+      // PHASE 1: Compute shortages without writing anything
+      const shortageDetails: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] = [];
+      const matIdsForLookup = Array.from(new Set(plan.map(p => p.matId)));
+      const matRows = matIdsForLookup.length
+        ? await tx.select().from(plantMaterials).where(inArray(plantMaterials.id, matIdsForLookup))
+        : [];
+      const matNameById = new Map(matRows.map(m => [m.id, m.name]));
+      
+      for (const item of plan) {
+        const ownerBal = await getBalance(partyId, item.matId);
+        if (ownerBal < item.qty) {
+          const shortfall = +(item.qty - ownerBal).toFixed(6);
+          shortageDetails.push({
+            materialId: item.matId,
+            materialName: matNameById.get(item.matId) || `Material #${item.matId}`,
+            required: +item.qty.toFixed(6),
+            available: +ownerBal.toFixed(6),
+            shortfall,
+            uom: item.uom,
+          });
+        }
+      }
+      
+      // If shortages exist and caller hasn't approved HLC fallback, abort with structured info.
+      if (shortageDetails.length > 0 && !allowHlcFallback) {
+        // Throw an error that the route handler will recognise and return as 409.
+        const err: any = new Error("STOCK_SHORTAGE_NEEDS_CONFIRMATION");
+        err.code = "STOCK_SHORTAGE_NEEDS_CONFIRMATION";
+        err.payload = {
+          needsConfirmation: true,
+          ownerPartyId: partyId,
+          ownerPartyName,
+          fallbackPartyId: hlcPartyId,
+          fallbackPartyName: hlcParty?.name ?? null,
+          shortages: shortageDetails,
+        };
+        throw err;
+      }
+      
+      // PHASE 2: Actually deduct.
+      for (const item of plan) {
+        const ownerBal = await getBalance(partyId, item.matId);
+        const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
+        if (fromOwner > 0) {
+          await deductFromSource(partyId, item.matId, fromOwner, item.uom, `${item.label} (${ownerPartyName})`);
+        }
+        const remaining = +(item.qty - fromOwner).toFixed(9);
+        if (remaining > 0) {
+          // Borrowing branch — only reachable when allowHlcFallback === true.
+          if (hlcPartyId && hlcPartyId !== partyId) {
+            await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from HLC)`);
+          } else {
+            // Owner IS HLC, or no HLC found — record the shortfall against the owner so the ledger remains complete.
+            await deductFromSource(partyId, item.matId, remaining, item.uom, `${item.label} (${ownerPartyName} — short)`);
           }
+          shortages.push({ materialId: item.matId, required: item.qty, available: Math.max(ownerBal, 0) });
         }
       }
       
       // Calculate actual values (use provided or default to theoretical)
-      const actualBitumenPercent = dispatch.actualBitumenPercent ?? theoreticalBitumenPercent;
-      const actualBitumenQty = dispatch.actualBitumenQty ?? theoreticalBitumenQty;
-      const actualLdoQty = dispatch.actualLdoQty ?? theoreticalLdoQty;
+      const actualBitumenPercent = dispatchData.actualBitumenPercent ?? theoreticalBitumenPercent;
+      const actualBitumenQty = dispatchData.actualBitumenQty ?? theoreticalBitumenQty;
+      const actualLdoQty = dispatchData.actualLdoQty ?? theoreticalLdoQty;
       
       // Calculate variance percentages (if actual differs from theoretical)
       const bitumenVariancePercent = theoreticalBitumenQty > 0 
@@ -2718,15 +2758,15 @@ export class DatabaseStorage implements IStorage {
         : 0;
       
       // Check if user provided actual values different from theoretical
-      const hasAdjustment = (dispatch.actualBitumenPercent !== undefined && dispatch.actualBitumenPercent !== null) ||
-                           (dispatch.actualBitumenQty !== undefined && dispatch.actualBitumenQty !== null) ||
-                           (dispatch.actualLdoQty !== undefined && dispatch.actualLdoQty !== null);
+      const hasAdjustment = (dispatchData.actualBitumenPercent !== undefined && dispatchData.actualBitumenPercent !== null) ||
+                           (dispatchData.actualBitumenQty !== undefined && dispatchData.actualBitumenQty !== null) ||
+                           (dispatchData.actualLdoQty !== undefined && dispatchData.actualLdoQty !== null);
       
       // Create the dispatch record with variance tracking
       const [result] = await tx.insert(truckDispatches).values({
-        ...dispatch,
-        truckNumber: dispatch.truckNumber.toUpperCase(),
-        deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
+        ...dispatchData,
+        truckNumber: dispatchData.truckNumber.toUpperCase(),
+        deliveryLocation: dispatchData.deliveryLocation?.toUpperCase(),
         theoreticalBitumenPercent,
         theoreticalBitumenQty,
         theoreticalLdoQty,
@@ -2942,6 +2982,75 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
+  async previewLedgerForReassignment(opts: {
+    materialId: number;
+    fromPartyId: number;
+    dateFrom?: string;
+    dateTo?: string;
+    transactionType?: string;
+  }) {
+    const conds: any[] = [
+      eq(stockLedger.materialId, opts.materialId),
+      eq(stockLedger.partyId, opts.fromPartyId),
+    ];
+    if (opts.dateFrom) conds.push(gte(stockLedger.date, opts.dateFrom));
+    if (opts.dateTo) conds.push(lte(stockLedger.date, opts.dateTo));
+    if (opts.transactionType) conds.push(eq(stockLedger.transactionType, opts.transactionType));
+
+    const rows = await db.select({
+      id: stockLedger.id,
+      date: stockLedger.date,
+      transactionType: stockLedger.transactionType,
+      quantityIn: stockLedger.quantityIn,
+      quantityOut: stockLedger.quantityOut,
+      uom: stockLedger.uom,
+      notes: stockLedger.notes,
+    }).from(stockLedger).where(and(...conds)).orderBy(asc(stockLedger.date), asc(stockLedger.id));
+    return rows;
+  }
+
+  async executeLedgerReassignment(opts: {
+    materialId: number;
+    fromPartyId: number;
+    toPartyId: number;
+    dateFrom?: string;
+    dateTo?: string;
+    transactionType?: string;
+  }) {
+    const conds: any[] = [
+      eq(stockLedger.materialId, opts.materialId),
+      eq(stockLedger.partyId, opts.fromPartyId),
+    ];
+    if (opts.dateFrom) conds.push(gte(stockLedger.date, opts.dateFrom));
+    if (opts.dateTo) conds.push(lte(stockLedger.date, opts.dateTo));
+    if (opts.transactionType) conds.push(eq(stockLedger.transactionType, opts.transactionType));
+
+    // Read first so we can return totals
+    const matched = await db.select().from(stockLedger).where(and(...conds));
+    const totalIn = matched.reduce((s, r) => s + (r.quantityIn || 0), 0);
+    const totalOut = matched.reduce((s, r) => s + (r.quantityOut || 0), 0);
+
+    if (matched.length === 0) {
+      return { moved: 0, totalIn: 0, totalOut: 0, reconciled: { updated: 0, created: 0, errors: 0 } };
+    }
+
+    // Append a marker note so the audit trail makes the move visible
+    const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const moveNote = `[Reassigned ${opts.fromPartyId}→${opts.toPartyId} on ${stamp}]`;
+
+    await db.update(stockLedger)
+      .set({
+        partyId: opts.toPartyId,
+        notes: sql`COALESCE(${stockLedger.notes}, '') || ' ' || ${moveNote}`,
+      })
+      .where(and(...conds));
+
+    // Now recompute balances from ledger so per-party totals reflect the move.
+    const reconciled = await this.reconcileStockBalancesFromLedger();
+
+    return { moved: matched.length, totalIn, totalOut, reconciled };
+  }
+
   async reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }> {
     let updated = 0;
     let created = 0;

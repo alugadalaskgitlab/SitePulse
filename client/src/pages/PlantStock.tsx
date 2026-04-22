@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -937,6 +937,11 @@ export default function PlantStock() {
           <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
             <Printer className="w-4 h-4" /> Print
           </Button>
+          <Link href="/plant/stock-reassign">
+            <Button size="sm" variant="outline" className="gap-1 border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-stock-reassign">
+              <ArrowRightLeft className="w-4 h-4" /> Reassign Ledger
+            </Button>
+          </Link>
         </div>
       </div>
 

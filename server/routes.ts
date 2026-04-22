@@ -1439,17 +1439,29 @@ export async function registerRoutes(
   app.post("/api/plant-module/dispatches", async (req, res) => {
     try {
       const result = await storage.createTruckDispatchWithStockDeduction(req.body);
-      
+
+      // Defensive guard — should not happen since the storage layer throws,
+      // but if it ever returns the confirmation shape directly, surface as 409.
+      if ((result as any)?.needsConfirmation) {
+        return res.status(409).json(result);
+      }
+
+      const dispatch = (result as any).dispatch;
       await storage.createNotification({
         type: "success",
         title: "Mix Dispatched",
-        message: `Truck dispatch: ${result.dispatch.loadWeight} MT dispatched on ${result.dispatch.date}`,
+        message: `Truck dispatch: ${dispatch.loadWeight} MT dispatched on ${dispatch.date}`,
         isRead: 0,
       });
-      sendPushToAll("Dispatch Recorded", `${result.dispatch.loadWeight} MT dispatched on ${result.dispatch.date}`, "/plant").catch(() => {});
-      
+      sendPushToAll("Dispatch Recorded", `${dispatch.loadWeight} MT dispatched on ${dispatch.date}`, "/plant").catch(() => {});
+
       res.status(201).json(result);
-    } catch (err) {
+    } catch (err: any) {
+      // Owner-stock shortage — surface to the client as 409 so the UI can
+      // ask the operator for explicit consent before borrowing from HLC.
+      if (err?.code === "STOCK_SHORTAGE_NEEDS_CONFIRMATION" && err?.payload) {
+        return res.status(409).json(err.payload);
+      }
       console.error("Dispatch error:", err);
       res.status(500).json({ message: "Failed to create truck dispatch" });
     }
@@ -1751,6 +1763,64 @@ export async function registerRoutes(
       });
     } catch (err) {
       res.status(500).json({ message: "Failed to reconcile equipment usage ledger" });
+    }
+  });
+
+  // Admin: preview ledger rows that match a reassignment query (read-only).
+  // Body: { materialId, fromPartyId, toPartyId, transactionType?, dateFrom?, dateTo? }
+  app.post("/api/plant-module/reassign-ledger/preview", async (req, res) => {
+    try {
+      const { materialId, fromPartyId, dateFrom, dateTo, transactionType } = req.body || {};
+      if (!materialId || !fromPartyId) {
+        return res.status(400).json({ message: "materialId and fromPartyId are required" });
+      }
+      const rows = await storage.previewLedgerForReassignment({
+        materialId: parseInt(materialId),
+        fromPartyId: parseInt(fromPartyId),
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        transactionType: transactionType || undefined,
+      });
+      res.json(rows);
+    } catch (err) {
+      console.error("Reassign preview error:", err);
+      res.status(500).json({ message: "Failed to preview ledger rows" });
+    }
+  });
+
+  // Admin: actually move ledger rows from one party to another.
+  // Requires admin PIN. Body adds: pin (string), toPartyId (int).
+  app.post("/api/plant-module/reassign-ledger/execute", async (req, res) => {
+    try {
+      const { pin, materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
+      if (!pin) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      const isAdmin = await storage.verifyPin("admin", pin);
+      if (!isAdmin) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!materialId || !fromPartyId || !toPartyId) {
+        return res.status(400).json({ message: "materialId, fromPartyId and toPartyId are required" });
+      }
+      if (parseInt(fromPartyId) === parseInt(toPartyId)) {
+        return res.status(400).json({ message: "From and To parties must differ" });
+      }
+      const result = await storage.executeLedgerReassignment({
+        materialId: parseInt(materialId),
+        fromPartyId: parseInt(fromPartyId),
+        toPartyId: parseInt(toPartyId),
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        transactionType: transactionType || undefined,
+      });
+      res.json({
+        message: "Ledger rows reassigned and balances reconciled",
+        ...result,
+      });
+    } catch (err) {
+      console.error("Reassign execute error:", err);
+      res.status(500).json({ message: "Failed to reassign ledger rows" });
     }
   });
 

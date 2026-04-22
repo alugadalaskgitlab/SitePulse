@@ -953,6 +953,35 @@ export default function PlantLdoFlowMeter() {
         LDO density: {LDO_DENSITY_KG_PER_LITER} kg/L | Tank 1 = Boiler (heats bitumen) | Tank 2 = Dryer (heats aggregates)
       </div>
 
+      {/* Negative LDO-balance banner — surfaces over-deductions promptly */}
+      {(() => {
+        const negs = ldoPartyBalances.filter(b => b.balance < -0.0001);
+        if (negs.length === 0) return null;
+        return (
+          <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-800 p-3 text-sm" data-testid="banner-negative-ldo">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 mt-0.5 text-red-600 dark:text-red-400 shrink-0" />
+              <div className="flex-1">
+                <div className="font-semibold text-red-700 dark:text-red-300">LDO stock is negative for {negs.length} party{negs.length > 1 ? 'ies' : ''}.</div>
+                <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                  {negs.map(b => {
+                    const pname = parties?.find(p => p.id === b.partyId)?.name || `Party #${b.partyId}`;
+                    return (
+                      <li key={b.id} data-testid={`negative-party-${b.partyId}`}>
+                        <span className="font-medium">{pname}</span>: {b.balance.toFixed(3)} {b.uom}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-1 text-xs text-red-700/80 dark:text-red-300/80">
+                  Likely a missing receipt or a dispatch routed to the wrong owner. Check recent material receipts, or use the admin Stock Reassignment tool to move past dispatches between parties.
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[1, 2].map(tankNum => {
           const latestDip = tankNum === 1 ? latestDipTank1 : latestDipTank2;

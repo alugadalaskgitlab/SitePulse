@@ -29,6 +29,7 @@ import PlantAuditReport from "@/pages/PlantAuditReport";
 import PlantDieselProcurementReport from "@/pages/PlantDieselProcurementReport";
 import PlantBitumenStock from "@/pages/PlantBitumenStock";
 import PlantLdoFlowMeter from "@/pages/PlantLdoFlowMeter";
+import PlantStockReassign from "@/pages/PlantStockReassign";
 import PurchaseIndents from "@/pages/PurchaseIndents";
 import DieselRequirements from "@/pages/DieselRequirements";
 import VendorBills from "@/pages/VendorBills";
@@ -109,6 +110,7 @@ function Router() {
             <Route path="/plant/diesel-procurement" component={PlantDieselProcurementReport} />
             <Route path="/plant/bitumen-stock" component={PlantBitumenStock} />
             <Route path="/plant/ldo-flow-meter" component={PlantLdoFlowMeter} />
+            <Route path="/plant/stock-reassign" component={PlantStockReassign} />
             <Route path="/plant/purchase-indents" component={PurchaseIndents} />
             <Route path="/plant/diesel-requirements" component={DieselRequirements} />
             <Route path="/plant/vendor-bills" component={VendorBills} />

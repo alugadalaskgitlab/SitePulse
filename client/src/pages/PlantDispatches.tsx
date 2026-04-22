@@ -140,10 +140,44 @@ export default function PlantDispatches() {
     return sitesList.filter(s => s.isActive !== 0 && (!s.partyId || s.partyId === pid));
   }, [sitesList, partyId]);
 
+  // Shortage confirmation state — shown when the owner's stock can't cover
+  // a dispatch and the operator must explicitly approve borrowing from HLC.
+  type ShortageInfo = {
+    needsConfirmation: true;
+    ownerPartyId: number;
+    ownerPartyName: string;
+    fallbackPartyId: number | null;
+    fallbackPartyName: string | null;
+    shortages: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[];
+  };
+  const [pendingDispatchPayload, setPendingDispatchPayload] = useState<any>(null);
+  const [shortageInfo, setShortageInfo] = useState<ShortageInfo | null>(null);
+
   const createMutation = useMutation({
-    mutationFn: (data: any) =>
-      apiRequest("POST", "/api/plant-module/dispatches", data),
-    onSuccess: async () => {
+    mutationFn: async (data: any) => {
+      // Custom fetch so we can detect HTTP 409 (owner-stock shortage) and
+      // surface the structured payload to the UI without throwing.
+      const res = await fetch("/api/plant-module/dispatches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (res.status === 409) {
+        const body = await res.json();
+        // Stash the original payload so we can replay with allowHlcFallback.
+        setPendingDispatchPayload(data);
+        setShortageInfo(body as ShortageInfo);
+        return { __confirmationRequired: true } as any;
+      }
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    onSuccess: async (result: any) => {
+      if (result?.__confirmationRequired) return; // wait for user
       await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
@@ -153,6 +187,18 @@ export default function PlantDispatches() {
       toast({ title: "Dispatch recorded successfully" });
     },
   });
+
+  const confirmHlcBorrow = () => {
+    if (!pendingDispatchPayload) return;
+    createMutation.mutate({ ...pendingDispatchPayload, allowHlcFallback: true });
+    setShortageInfo(null);
+    setPendingDispatchPayload(null);
+  };
+
+  const cancelHlcBorrow = () => {
+    setShortageInfo(null);
+    setPendingDispatchPayload(null);
+  };
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
@@ -1296,6 +1342,70 @@ export default function PlantDispatches() {
           )}
         </CardContent>
       </Card>
+
+      {/* Owner-stock shortage confirmation — operator must explicitly OK borrowing from HLC */}
+      <Dialog open={!!shortageInfo} onOpenChange={(o) => { if (!o) cancelHlcBorrow(); }}>
+        <DialogContent className="max-w-lg" data-testid="dialog-stock-shortage">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="w-5 h-5" />
+              Owner stock is short
+            </DialogTitle>
+          </DialogHeader>
+          {shortageInfo && (
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="font-semibold">{shortageInfo.ownerPartyName}</span> does not have enough
+                stock for this dispatch. The shortfall would have to be borrowed from{" "}
+                <span className="font-semibold">{shortageInfo.fallbackPartyName || "HLC"}</span>.
+              </p>
+              <div className="rounded-md border bg-muted/40">
+                <table className="w-full text-xs">
+                  <thead className="border-b bg-muted/60">
+                    <tr>
+                      <th className="text-left p-2">Material</th>
+                      <th className="text-right p-2">Required</th>
+                      <th className="text-right p-2">Owner has</th>
+                      <th className="text-right p-2 text-amber-700 dark:text-amber-400">Borrow from HLC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shortageInfo.shortages.map((s) => (
+                      <tr key={s.materialId} className="border-b last:border-0" data-testid={`row-shortage-${s.materialId}`}>
+                        <td className="p-2 font-medium">{s.materialName}</td>
+                        <td className="p-2 text-right tabular-nums">{s.required.toFixed(3)} {s.uom}</td>
+                        <td className="p-2 text-right tabular-nums">{s.available.toFixed(3)} {s.uom}</td>
+                        <td className="p-2 text-right tabular-nums font-semibold text-amber-700 dark:text-amber-400">
+                          {s.shortfall.toFixed(3)} {s.uom}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Borrowed quantities will be tagged "(Borrowed from HLC)" in the stock ledger so they remain
+                visible for later reconciliation. If this is wrong, cancel and check whether a recent
+                receipt is missing for {shortageInfo.ownerPartyName}.
+              </p>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={cancelHlcBorrow} data-testid="button-cancel-borrow">
+              Cancel dispatch
+            </Button>
+            <Button
+              onClick={confirmHlcBorrow}
+              disabled={createMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="button-confirm-borrow"
+            >
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Borrow from HLC and save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
