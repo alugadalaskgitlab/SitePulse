@@ -8110,9 +8110,11 @@ export class DatabaseStorage implements IStorage {
       // Auto-coerce inline → none when the operator left every DG field blank
       // (default form state). Prevents persisting empty placeholder generator
       // log rows when no DG actually ran during the heating session.
-      const hasAnyDgInput = payload.dgStartTime || payload.dgEndTime
+      // Generator name is intentionally excluded — it's pre-populated with a
+      // default ("600 KVA") so its presence does not indicate that DG actually ran.
+      const hasAnyDgInput = !!payload.dgStartTime || !!payload.dgEndTime
         || payload.dgOpeningDiesel != null || payload.dgClosingDiesel != null
-        || payload.dgIssuedDiesel != null || payload.dgGeneratorName;
+        || payload.dgIssuedDiesel != null;
       if (!hasAnyDgInput) {
         payload.dgMode = "none";
       } else {
