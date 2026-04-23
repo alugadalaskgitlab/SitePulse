@@ -198,15 +198,21 @@ export default function PlantHeatingSessions() {
       const payload = buildPayload(extra);
       const url = form.id ? `/api/plant-module/heating-sessions/${form.id}` : "/api/plant-module/heating-sessions";
       const method = form.id ? "PUT" : "POST";
-      const res = await apiRequest(method, url, payload);
-      if (res.status === 403) {
-        const body = await res.json();
-        if (body.code === "FINALIZED_LOCKED") {
-          const e = new Error(body.message) as Error & { locked?: boolean };
-          e.locked = true;
-          throw e;
-        }
-        throw new Error(body.message);
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let body: any = {};
+        try { body = await res.json(); } catch {}
+        const msg = body?.message || res.statusText;
+        const e = new Error(msg) as Error & { code?: string; locked?: boolean; status?: number };
+        e.code = body?.code;
+        e.status = res.status;
+        if (res.status === 403 && body?.code === "FINALIZED_LOCKED") e.locked = true;
+        throw e;
       }
       return res.json();
     },
