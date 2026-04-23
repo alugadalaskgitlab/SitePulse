@@ -2550,6 +2550,135 @@ export async function registerRoutes(
       }
   };
 
+  // Build the bulk-ZIP cover sheet PDF: a single-page-friendly index listing each
+  // requested (date, plant) row with totals + party/mix breakdown. Mirrors the
+  // shape of the Daily Reports list page so the ZIP is self-contained.
+  type CoverEntry = { date: string; plant: string };
+  type CoverIndexRow = {
+    date: string; plantName: string;
+    hasDispatches: boolean; hasEquipment: boolean; hasShiftLog: boolean;
+    hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
+    totalLoads: number; totalProductionMt: number; sessionsCount: number;
+    shiftLogFinalized: boolean;
+    breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
+  };
+  const buildBulkZipCoverSheetPdf = async (
+    entries: CoverEntry[],
+    indexByKey: Map<string, CoverIndexRow>,
+    fromD: string,
+    toD: string,
+  ): Promise<Buffer> => {
+    return await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: 36 });
+      const chunks: Buffer[] = [];
+      doc.on("data", (c: Buffer) => chunks.push(c));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+      try {
+        const logoPath = path.join(process.cwd(), "attached_assets", "1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg");
+        try { if (fs.existsSync(logoPath)) doc.image(logoPath, 36, 32, { width: 46, height: 46 }); } catch {}
+        doc.fontSize(16).font("Helvetica-Bold").text("Daily Plant Reports — Cover Sheet", 92, 36);
+        doc.fontSize(10).font("Helvetica").text("High Lane Constructions Pvt Ltd", 92, 56);
+        const rangeLabel = fromD === toD ? fromD : `${fromD} → ${toD}`;
+        doc.fontSize(10).text(`Range: ${rangeLabel}    Entries: ${entries.length}    Generated: ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`, 92, 70);
+        doc.moveTo(36, 90).lineTo(559, 90).stroke();
+
+        // Sort entries: most recent first, then plant name (matches list page order).
+        const sorted = [...entries].sort((a, b) =>
+          b.date.localeCompare(a.date) || a.plant.localeCompare(b.plant)
+        );
+
+        // Column layout (page width 559 - 36 = 523 usable).
+        const COL = {
+          date: { x: 36, w: 78 },
+          plant: { x: 116, w: 92 },
+          loads: { x: 210, w: 40 },
+          mt: { x: 252, w: 50 },
+          breakdown: { x: 304, w: 200 },
+          sessions: { x: 506, w: 53 },
+        };
+
+        const drawHeader = (y: number) => {
+          doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+          doc.text("Date", COL.date.x, y, { width: COL.date.w });
+          doc.text("Plant", COL.plant.x, y, { width: COL.plant.w });
+          doc.text("Loads", COL.loads.x, y, { width: COL.loads.w, align: "right" });
+          doc.text("MT", COL.mt.x, y, { width: COL.mt.w, align: "right" });
+          doc.text("Party / Mix Breakdown", COL.breakdown.x, y, { width: COL.breakdown.w });
+          doc.text("Heat Sess.", COL.sessions.x, y, { width: COL.sessions.w, align: "right" });
+          doc.moveTo(36, y + 12).lineTo(559, y + 12).stroke();
+          return y + 16;
+        };
+
+        let y = 100;
+        y = drawHeader(y);
+
+        // Grand totals across all entries that have data.
+        let grandLoads = 0;
+        let grandMt = 0;
+        let grandSessions = 0;
+        let daysWithData = 0;
+
+        const PAGE_BOTTOM = 800;
+        for (const e of sorted) {
+          const row = indexByKey.get(`${e.date}|${e.plant}`);
+          const breakdownLines: string[] = row && row.breakdown.length > 0
+            ? row.breakdown.map((b) => `• ${b.partyName}: ${b.loads} load${b.loads === 1 ? "" : "s"} / ${b.mt.toFixed(2)} MT (${b.mixType})`)
+            : ["—"];
+
+          // Pre-measure the row height based on breakdown wrap.
+          doc.fontSize(8).font("Helvetica");
+          const breakdownText = breakdownLines.join("\n");
+          const breakdownH = doc.heightOfString(breakdownText, { width: COL.breakdown.w });
+          const rowH = Math.max(14, breakdownH + 4);
+
+          if (y + rowH > PAGE_BOTTOM) {
+            doc.addPage();
+            y = 40;
+            y = drawHeader(y);
+          }
+
+          doc.fontSize(9).font("Helvetica").fillColor("#000");
+          doc.text(e.date, COL.date.x, y, { width: COL.date.w });
+          doc.text(e.plant, COL.plant.x, y, { width: COL.plant.w });
+          if (row && row.hasDispatches) {
+            doc.text(String(row.totalLoads || 0), COL.loads.x, y, { width: COL.loads.w, align: "right" });
+            doc.text(row.totalProductionMt ? row.totalProductionMt.toFixed(2) : "—", COL.mt.x, y, { width: COL.mt.w, align: "right" });
+            grandLoads += row.totalLoads || 0;
+            grandMt += row.totalProductionMt || 0;
+            daysWithData += 1;
+          } else {
+            doc.text("—", COL.loads.x, y, { width: COL.loads.w, align: "right" });
+            doc.text("—", COL.mt.x, y, { width: COL.mt.w, align: "right" });
+          }
+          doc.fontSize(8).font("Helvetica");
+          doc.text(breakdownText, COL.breakdown.x, y, { width: COL.breakdown.w });
+          doc.fontSize(9);
+          if (row && row.sessionsCount) {
+            doc.text(String(row.sessionsCount), COL.sessions.x, y, { width: COL.sessions.w, align: "right" });
+            grandSessions += row.sessionsCount;
+          } else {
+            doc.text("—", COL.sessions.x, y, { width: COL.sessions.w, align: "right" });
+          }
+
+          y += rowH;
+          doc.moveTo(36, y - 1).lineTo(559, y - 1).strokeColor("#cccccc").stroke().strokeColor("#000");
+        }
+
+        // Totals strip.
+        if (y + 30 > PAGE_BOTTOM) { doc.addPage(); y = 40; }
+        y += 6;
+        doc.fontSize(10).font("Helvetica-Bold").fillColor("#000");
+        doc.text(`Totals  —  ${entries.length} entr${entries.length === 1 ? "y" : "ies"} (${daysWithData} with data)`, COL.date.x, y, { width: COL.plant.x - COL.date.x + COL.plant.w });
+        doc.text(String(grandLoads || "—"), COL.loads.x, y, { width: COL.loads.w, align: "right" });
+        doc.text(grandMt ? grandMt.toFixed(2) : "—", COL.mt.x, y, { width: COL.mt.w, align: "right" });
+        doc.text(String(grandSessions || "—"), COL.sessions.x, y, { width: COL.sessions.w, align: "right" });
+
+        doc.end();
+      } catch (e) { reject(e); }
+    });
+  };
+
   const buildDailyPlantReportPdfBuffer = async (date: string, plantName: string): Promise<Buffer> => {
     const summary: any = await storage.getDailyPlantSummary(date, plantName);
     return await new Promise<Buffer>((resolve, reject) => {
@@ -2618,6 +2747,25 @@ export async function registerRoutes(
       const status: Status[] = [];
       const files: Array<{ name: string; data: Buffer }> = [];
       const slugPlant = (p: string) => p.replace(/[^A-Za-z0-9._-]+/g, "_");
+
+      // Cover sheet — a single index PDF listing every (date, plant) row with totals
+      // + party/mix breakdown so accountants can scan the export without opening
+      // each per-day PDF. Empty days render as "—". Built from
+      // getDailyPlantReportIndex (same shape as the Daily Reports list page).
+      try {
+        const sortedDatesForCover = entries.map((e) => e.date).sort();
+        const coverFromD = sortedDatesForCover[0];
+        const coverToD = sortedDatesForCover[sortedDatesForCover.length - 1];
+        const indexRows = await storage.getDailyPlantReportIndex({ from: coverFromD, to: coverToD });
+        const indexByKey = new Map(indexRows.map((r) => [`${r.date}|${r.plantName}`, r]));
+        const coverBuf = await buildBulkZipCoverSheetPdf(entries, indexByKey, coverFromD, coverToD);
+        // 00- prefix keeps it sorted to the top in most ZIP viewers.
+        files.push({ name: "00-cover-sheet.pdf", data: coverBuf });
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        files.push({ name: "00-cover-sheet-ERROR.txt", data: Buffer.from(`Failed to build cover sheet: ${msg}`) });
+      }
+
       for (const e of entries) {
         try {
           const buf = await buildDailyPlantReportPdfBuffer(e.date, e.plant);
