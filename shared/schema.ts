@@ -368,9 +368,11 @@ export const generatorLogs = pgTable("generator_logs", {
   dieselConsumed: real("diesel_consumed"), // opening + issued - closing
   efficiency: real("efficiency"), // Liters/hour
   plantName: text("plant_name").notNull().default("Main Plant"),
+  sourceHeatingSessionId: integer("source_heating_session_id"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("generator_logs_date_idx").on(table.date),
+  sourceHeatingIdx: uniqueIndex("generator_logs_source_heating_session_uq").on(table.sourceHeatingSessionId),
 }));
 
 // LDO Consumption Tracking
@@ -822,6 +824,75 @@ export type PlantShiftLogManpower = typeof plantShiftLogManpower.$inferSelect;
 export type InsertPlantShiftLogManpower = z.infer<typeof insertPlantShiftLogManpowerSchema>;
 export type PlantShiftLogIdle = typeof plantShiftLogIdle.$inferSelect;
 export type InsertPlantShiftLogIdle = z.infer<typeof insertPlantShiftLogIdleSchema>;
+
+// ============================================
+// BITUMEN HEATING SESSIONS
+// ============================================
+
+export const HEATING_SESSION_TYPES = ["NIGHT_PREHEAT", "DAY_MAINTENANCE"] as const;
+export const HEATING_DG_MODES = ["none", "inline", "link"] as const;
+
+export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  sessionType: text("session_type").notNull().default("NIGHT_PREHEAT"),
+  plantName: text("plant_name").notNull().default("Main Plant"),
+  staffName: text("staff_name"),
+  staffRole: text("staff_role"),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  durationHours: real("duration_hours"),
+  hotOilTempStart: real("hot_oil_temp_start"),
+  hotOilTempEnd: real("hot_oil_temp_end"),
+  hotOilSupplyTemp: real("hot_oil_supply_temp"),
+  hotOilReturnTemp: real("hot_oil_return_temp"),
+  bitumenTank1TempStart: real("bitumen_tank1_temp_start"),
+  bitumenTank1TempEnd: real("bitumen_tank1_temp_end"),
+  bitumenTank2TempStart: real("bitumen_tank2_temp_start"),
+  bitumenTank2TempEnd: real("bitumen_tank2_temp_end"),
+  ldoTank1OpeningMeter: real("ldo_tank1_opening_meter"),
+  ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
+  ldoTank1Consumed: real("ldo_tank1_consumed"),
+  dgMode: text("dg_mode").notNull().default("none"),
+  dgGeneratorName: text("dg_generator_name"),
+  dgStartTime: text("dg_start_time"),
+  dgEndTime: text("dg_end_time"),
+  dgHoursRun: real("dg_hours_run"),
+  dgOpeningDiesel: real("dg_opening_diesel"),
+  dgIssuedDiesel: real("dg_issued_diesel"),
+  dgClosingDiesel: real("dg_closing_diesel"),
+  dgDieselConsumed: real("dg_diesel_consumed"),
+  generatorLogId: integer("generator_log_id"),
+  remarks: text("remarks"),
+  isFinalized: integer("is_finalized").notNull().default(0),
+  createdBy: text("created_by"),
+  finalizedBy: text("finalized_by"),
+  finalizedAt: timestamp("finalized_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  dateIdx: index("bitumen_heating_sessions_date_idx").on(table.date),
+}));
+
+export const plantHeatingSessionVersions = pgTable("plant_heating_session_versions", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  editedBy: text("edited_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBitumenHeatingSessionSchema = createInsertSchema(bitumenHeatingSessions).omit({
+  id: true, createdAt: true, updatedAt: true, finalizedAt: true, isFinalized: true, finalizedBy: true,
+});
+export type BitumenHeatingSession = typeof bitumenHeatingSessions.$inferSelect;
+export type InsertBitumenHeatingSession = z.infer<typeof insertBitumenHeatingSessionSchema>;
+export type PlantHeatingSessionVersion = typeof plantHeatingSessionVersions.$inferSelect;
+
+export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSchema.extend({
+  editedBy: z.string().optional(),
+});
+export type UpsertBitumenHeatingSessionInput = z.infer<typeof upsertBitumenHeatingSessionSchema>;
 
 export const plantShiftLogManpowerInputSchema = z.object({
   name: z.string().min(1, "Name required"),

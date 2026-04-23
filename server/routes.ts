@@ -2323,10 +2323,159 @@ export async function registerRoutes(
         doc.fontSize(10).font("Helvetica").text(summary.shift.remarks);
       }
 
+      // Boiler / Heating section
+      if (summary.boilerHeating) {
+        const bh = summary.boilerHeating;
+        section(`Boiler / Heating Sessions (${bh.sessionCount})`);
+        line("Total Heating Hours", bh.totalHours);
+        line("Tank-1 LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
+        line("Boiler L / Hour (Tank-1)", bh.lPerHour ?? "—");
+        line("Boiler L / MT Production (Tank-1)", bh.lPerMT ?? "—");
+        line("Dryer L / MT Production (Tank-2)", summary.ldo.lPerMT ?? "—");
+        line("DG Diesel Attributable (L)", bh.dgDieselL?.toFixed(1) ?? "—");
+        line("Shift Log Tank-1 LDO (L)", bh.shiftLogT1L?.toFixed(1) ?? "—");
+        if (bh.mismatchL != null && Math.abs(bh.mismatchL) > 5) {
+          line("⚠ Reconciliation mismatch (L)", `${bh.mismatchL > 0 ? "+" : ""}${bh.mismatchL}`);
+        }
+        if (bh.sessions?.length) {
+          for (const s of bh.sessions) {
+            doc.fontSize(9).font("Helvetica").text(
+              `• ${s.sessionType}  ${s.startTime || "—"}→${s.endTime || "—"}  ${s.durationHours ?? 0}h  LDO ${s.ldoTank1Consumed?.toFixed(1) ?? 0}L  DG ${s.dgDieselConsumed?.toFixed(1) ?? 0}L  ${s.staffName || ""}${s.isFinalized ? "  [Finalized]" : ""}`
+            );
+          }
+        }
+      }
+
       doc.end();
     } catch (err: any) {
       console.error("PDF error", err);
       res.status(500).json({ message: err.message || "Failed to generate PDF" });
+    }
+  });
+
+  // ============================================
+  // BITUMEN HEATING SESSIONS
+  // ============================================
+
+  app.get("/api/plant-module/heating-sessions", async (req, res) => {
+    try {
+      const rows = await storage.getBitumenHeatingSessions({
+        date: req.query.date as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        plantName: (req.query.plant as string | undefined) || undefined,
+      });
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch heating sessions" });
+    }
+  });
+
+  app.get("/api/plant-module/heating-sessions/:id", async (req, res) => {
+    try {
+      const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));
+      if (!row) return res.status(404).json({ message: "Heating session not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/plant-module/heating-sessions", async (req, res) => {
+    try {
+      const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
+      const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
+      const editedBy = parsed.editedBy || "operator";
+      let authorizedRole: "admin" | "manager" | null = null;
+      const pin = req.body?.pin;
+      if (pin) {
+        if (await storage.verifyPin("admin", pin)) authorizedRole = "admin";
+        else if (await storage.verifyPin("manager", pin)) authorizedRole = "manager";
+        else return res.status(403).json({ message: "Invalid PIN" });
+      }
+      try {
+        const saved = await storage.upsertBitumenHeatingSession(
+          { ...parsed, ...(req.body.id ? { id: req.body.id } : {}) } as any,
+          editedBy,
+          authorizedRole,
+        );
+        res.status(201).json(saved);
+      } catch (e: any) {
+        if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        throw e;
+      }
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to save heating session" });
+    }
+  });
+
+  app.put("/api/plant-module/heating-sessions/:id", async (req, res) => {
+    try {
+      const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
+      const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
+      const editedBy = parsed.editedBy || "operator";
+      let authorizedRole: "admin" | "manager" | null = null;
+      const pin = req.body?.pin;
+      if (pin) {
+        if (await storage.verifyPin("admin", pin)) authorizedRole = "admin";
+        else if (await storage.verifyPin("manager", pin)) authorizedRole = "manager";
+        else return res.status(403).json({ message: "Invalid PIN" });
+      }
+      try {
+        const saved = await storage.upsertBitumenHeatingSession(
+          { ...parsed, id: parseInt(req.params.id) } as any,
+          editedBy,
+          authorizedRole,
+        );
+        res.json(saved);
+      } catch (e: any) {
+        if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        throw e;
+      }
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to save heating session" });
+    }
+  });
+
+  app.post("/api/plant-module/heating-sessions/:id/finalize", async (req, res) => {
+    try {
+      const pin = req.body?.pin;
+      if (!pin) return res.status(403).json({ message: "Manager or admin PIN required" });
+      let role: "admin" | "manager" | null = null;
+      if (await storage.verifyPin("admin", pin)) role = "admin";
+      else if (await storage.verifyPin("manager", pin)) role = "manager";
+      if (!role) return res.status(403).json({ message: "Manager or admin PIN required" });
+      const updated = await storage.finalizeBitumenHeatingSession(parseInt(req.params.id), role);
+      if (!updated) return res.status(404).json({ message: "Heating session not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/plant-module/heating-sessions/:id", async (req, res) => {
+    try {
+      const pin = req.body?.pin;
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(403).json({ message: "Admin PIN required" });
+      }
+      const ok = await storage.deleteBitumenHeatingSession(parseInt(req.params.id));
+      if (!ok) return res.status(404).json({ message: "Heating session not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/plant-module/ldo-meter/last", async (req, res) => {
+    try {
+      const tank = parseInt((req.query.tank as string) || "1");
+      const before = (req.query.before as string) || new Date().toISOString().slice(0, 16);
+      const plantName = (req.query.plant as string) || "Main Plant";
+      const result = await storage.getLatestLdoMeterReading(tank, before, plantName);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

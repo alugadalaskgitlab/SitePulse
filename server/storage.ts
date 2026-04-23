@@ -32,6 +32,8 @@ import {
   ldoFlowReadings,
   ldoDipReadings,
   plantShiftLogs,
+  bitumenHeatingSessions,
+  plantHeatingSessionVersions,
   plantShiftLogManpower,
   plantShiftLogIdle,
   plantShiftLogVersions,
@@ -40,6 +42,8 @@ import {
   type PlantShiftLogManpower,
   type PlantShiftLogIdle,
   type UpsertPlantShiftLogInput,
+  type BitumenHeatingSession,
+  type UpsertBitumenHeatingSessionInput,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import {
@@ -469,6 +473,14 @@ export interface IStorage {
   finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined>;
   deletePlantShiftLog(id: number): Promise<boolean>;
   getDailyPlantSummary(date: string, plantName?: string): Promise<unknown>;
+
+  // Bitumen Heating Sessions
+  getBitumenHeatingSessions(filters?: { dateFrom?: string; dateTo?: string; date?: string; plantName?: string }): Promise<BitumenHeatingSession[]>;
+  getBitumenHeatingSession(id: number): Promise<BitumenHeatingSession | undefined>;
+  upsertBitumenHeatingSession(input: UpsertBitumenHeatingSessionInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<BitumenHeatingSession>;
+  finalizeBitumenHeatingSession(id: number, finalizedBy: string): Promise<BitumenHeatingSession | undefined>;
+  deleteBitumenHeatingSession(id: number): Promise<boolean>;
+  getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName?: string): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null>;
 }
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
@@ -7994,6 +8006,249 @@ export class DatabaseStorage implements IStorage {
         byReason: idleByReason,
         totalMinutes: totalIdleMinutes,
       },
+      boilerHeating: await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1),
+    };
+  }
+
+  // ============================================
+  // BITUMEN HEATING SESSIONS
+  // ============================================
+
+  private _computeDurationHours(start?: string | null, end?: string | null): number | null {
+    if (!start || !end) return null;
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    if (isNaN(sh) || isNaN(eh)) return null;
+    let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+    if (mins < 0) mins += 24 * 60;
+    return Math.round((mins / 60) * 1000) / 1000;
+  }
+
+  async getBitumenHeatingSessions(filters: { dateFrom?: string; dateTo?: string; date?: string; plantName?: string } = {}): Promise<BitumenHeatingSession[]> {
+    const conds: any[] = [];
+    if (filters.date) conds.push(eq(bitumenHeatingSessions.date, filters.date));
+    if (filters.dateFrom) conds.push(gte(bitumenHeatingSessions.date, filters.dateFrom));
+    if (filters.dateTo) conds.push(lte(bitumenHeatingSessions.date, filters.dateTo));
+    if (filters.plantName) conds.push(eq(bitumenHeatingSessions.plantName, filters.plantName));
+    const q = db.select().from(bitumenHeatingSessions);
+    const rows = conds.length
+      ? await q.where(and(...conds)).orderBy(desc(bitumenHeatingSessions.date), asc(bitumenHeatingSessions.startTime))
+      : await q.orderBy(desc(bitumenHeatingSessions.date), asc(bitumenHeatingSessions.startTime));
+    return rows;
+  }
+
+  async getBitumenHeatingSession(id: number): Promise<BitumenHeatingSession | undefined> {
+    const [row] = await db.select().from(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).limit(1);
+    return row;
+  }
+
+  async upsertBitumenHeatingSession(input: UpsertBitumenHeatingSessionInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<BitumenHeatingSession> {
+    const { editedBy: _e, ...payload } = input as any;
+    const id = (payload.id as number | undefined) || undefined;
+    delete payload.id;
+    delete payload.pin;
+
+    // Derived numbers
+    const durationHours = this._computeDurationHours(payload.startTime, payload.endTime);
+    if (durationHours != null) payload.durationHours = durationHours;
+    if (payload.ldoTank1OpeningMeter != null && payload.ldoTank1ClosingMeter != null) {
+      payload.ldoTank1Consumed = Math.max(0, payload.ldoTank1ClosingMeter - payload.ldoTank1OpeningMeter);
+    }
+    if (payload.dgMode === "inline") {
+      const dgHours = this._computeDurationHours(payload.dgStartTime, payload.dgEndTime);
+      if (dgHours != null) payload.dgHoursRun = dgHours;
+      const op = payload.dgOpeningDiesel ?? null;
+      const cl = payload.dgClosingDiesel ?? null;
+      const iss = payload.dgIssuedDiesel ?? 0;
+      if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
+    } else {
+      payload.dgDieselConsumed = null;
+      payload.dgHoursRun = null;
+    }
+
+    return db.transaction(async (tx) => {
+      let existing: BitumenHeatingSession | undefined;
+      if (id) {
+        [existing] = await tx.select().from(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).limit(1);
+        if (existing && existing.isFinalized === 1 && !authorizedRole) {
+          const err: any = new Error("Heating session is finalized — manager or admin PIN required to edit");
+          err.code = "FINALIZED_LOCKED";
+          throw err;
+        }
+      }
+
+      let saved: BitumenHeatingSession;
+      if (existing) {
+        await tx.insert(plantHeatingSessionVersions).values({
+          sessionId: existing.id,
+          snapshot: existing as any,
+          editedBy: editedBy || "operator",
+        });
+        const [updated] = await tx.update(bitumenHeatingSessions)
+          .set({ ...payload, updatedAt: new Date() })
+          .where(eq(bitumenHeatingSessions.id, existing.id))
+          .returning();
+        saved = updated;
+      } else {
+        const [created] = await tx.insert(bitumenHeatingSessions)
+          .values({ ...payload, createdBy: editedBy || "operator" })
+          .returning();
+        saved = created;
+      }
+
+      // DG sync
+      if (saved.dgMode === "inline") {
+        // Upsert generator log keyed by sourceHeatingSessionId
+        const [existingDg] = await tx.select().from(generatorLogs)
+          .where(eq(generatorLogs.sourceHeatingSessionId, saved.id)).limit(1);
+        const dgRow = {
+          date: saved.date,
+          generatorName: saved.dgGeneratorName || "600 KVA",
+          startTime: saved.dgStartTime,
+          endTime: saved.dgEndTime,
+          hoursRun: saved.dgHoursRun,
+          openingDiesel: saved.dgOpeningDiesel,
+          dieselIssued: saved.dgIssuedDiesel,
+          closingDiesel: saved.dgClosingDiesel,
+          dieselConsumed: saved.dgDieselConsumed,
+          efficiency: (saved.dgDieselConsumed != null && saved.dgHoursRun && saved.dgHoursRun > 0)
+            ? Math.round((saved.dgDieselConsumed / saved.dgHoursRun) * 1000) / 1000 : null,
+          plantName: saved.plantName,
+          sourceHeatingSessionId: saved.id,
+        };
+        let linkedId: number;
+        if (existingDg) {
+          const [u] = await tx.update(generatorLogs).set(dgRow).where(eq(generatorLogs.id, existingDg.id)).returning();
+          linkedId = u.id;
+        } else {
+          const [c] = await tx.insert(generatorLogs).values(dgRow).returning();
+          linkedId = c.id;
+        }
+        if (saved.generatorLogId !== linkedId) {
+          const [u] = await tx.update(bitumenHeatingSessions)
+            .set({ generatorLogId: linkedId })
+            .where(eq(bitumenHeatingSessions.id, saved.id))
+            .returning();
+          saved = u;
+        }
+      } else {
+        // Remove any inline DG row that previously existed for this session
+        await tx.delete(generatorLogs).where(eq(generatorLogs.sourceHeatingSessionId, saved.id));
+        if (saved.dgMode !== "link" && saved.generatorLogId != null) {
+          const [u] = await tx.update(bitumenHeatingSessions)
+            .set({ generatorLogId: null })
+            .where(eq(bitumenHeatingSessions.id, saved.id))
+            .returning();
+          saved = u;
+        }
+      }
+
+      return saved;
+    });
+  }
+
+  async finalizeBitumenHeatingSession(id: number, finalizedBy: string): Promise<BitumenHeatingSession | undefined> {
+    const [updated] = await db.update(bitumenHeatingSessions)
+      .set({ isFinalized: 1, finalizedBy, finalizedAt: new Date(), updatedAt: new Date() })
+      .where(eq(bitumenHeatingSessions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteBitumenHeatingSession(id: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      await tx.delete(generatorLogs).where(eq(generatorLogs.sourceHeatingSessionId, id));
+      await tx.delete(plantHeatingSessionVersions).where(eq(plantHeatingSessionVersions.sessionId, id));
+      const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();
+      return result.length > 0;
+    });
+  }
+
+  async getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName: string = "Main Plant"): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null> {
+    const cutoff = beforeDateTime; // ISO "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD"
+    const cutoffDate = cutoff.length >= 10 ? cutoff.slice(0, 10) : cutoff;
+    const cutoffTime = cutoff.length > 10 ? cutoff.slice(11, 16) : "23:59";
+
+    const candidates: { value: number; date: string; time: string | null; source: string; sourceId: number; sortKey: string }[] = [];
+
+    if (tank === 1) {
+      const sessions = await db.select().from(bitumenHeatingSessions)
+        .where(and(eq(bitumenHeatingSessions.plantName, plantName), lte(bitumenHeatingSessions.date, cutoffDate)));
+      for (const s of sessions) {
+        if (s.ldoTank1ClosingMeter == null) continue;
+        const t = s.endTime || "23:59";
+        const sk = `${s.date}T${t}`;
+        if (sk > cutoff) continue;
+        candidates.push({ value: s.ldoTank1ClosingMeter, date: s.date, time: s.endTime, source: `Heating Session #${s.id}`, sourceId: s.id, sortKey: sk });
+      }
+    }
+
+    const shifts = await db.select().from(plantShiftLogs)
+      .where(and(eq(plantShiftLogs.plantName, plantName), lte(plantShiftLogs.date, cutoffDate)));
+    for (const sh of shifts) {
+      const closeVal = tank === 1 ? sh.ldoTank1ClosingMeter : sh.ldoTank2ClosingMeter;
+      if (closeVal == null) continue;
+      const t = sh.plantStopTime || "23:59";
+      const sk = `${sh.date}T${t}`;
+      if (sk > cutoff) continue;
+      candidates.push({ value: closeVal, date: sh.date, time: sh.plantStopTime, source: `Plant Shift Log ${sh.date}`, sourceId: sh.id, sortKey: sk });
+    }
+
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+    const top = candidates[0];
+    return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
+  }
+
+  private async _getBoilerHeatingSummary(
+    date: string,
+    plantName: string,
+    shift: PlantShiftLogWithDetails | undefined,
+    totalProductionMT: number,
+    ldoConsumedT1Shift: number | null,
+  ) {
+    const sessions = await this.getBitumenHeatingSessions({ date, plantName });
+    const sessionCount = sessions.length;
+    if (sessionCount === 0) {
+      return {
+        sessionCount: 0,
+        totalHours: 0,
+        sessionsLdoT1L: 0,
+        lPerHour: null,
+        lPerMT: null,
+        dgDieselL: 0,
+        shiftLogT1L: ldoConsumedT1Shift,
+        mismatchL: null,
+        primarySource: "shift_meter" as const,
+      };
+    }
+    const totalHours = sessions.reduce((s, x) => s + (x.durationHours || 0), 0);
+    const sessionsLdoT1L = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
+    const dgDieselL = sessions.reduce((s, x) => s + (x.dgDieselConsumed || 0), 0);
+    const lPerHour = totalHours > 0 ? Math.round((sessionsLdoT1L / totalHours) * 100) / 100 : null;
+    const lPerMT = totalProductionMT > 0 ? Math.round((sessionsLdoT1L / totalProductionMT) * 1000) / 1000 : null;
+    const mismatchL = (ldoConsumedT1Shift != null) ? Math.round((sessionsLdoT1L - ldoConsumedT1Shift) * 10) / 10 : null;
+    return {
+      sessionCount,
+      totalHours: Math.round(totalHours * 100) / 100,
+      sessionsLdoT1L: Math.round(sessionsLdoT1L * 10) / 10,
+      lPerHour,
+      lPerMT,
+      dgDieselL: Math.round(dgDieselL * 10) / 10,
+      shiftLogT1L: ldoConsumedT1Shift,
+      mismatchL,
+      primarySource: "sessions" as const,
+      sessions: sessions.map(s => ({
+        id: s.id,
+        sessionType: s.sessionType,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        durationHours: s.durationHours,
+        ldoTank1Consumed: s.ldoTank1Consumed,
+        dgDieselConsumed: s.dgDieselConsumed,
+        staffName: s.staffName,
+        isFinalized: s.isFinalized,
+      })),
     };
   }
 }

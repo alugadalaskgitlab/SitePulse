@@ -60,6 +60,8 @@ export default function PlantShiftLog() {
   const [bitumenTank1StockApproxMt, setBitumenTank1StockApproxMt] = useState("");
   const [bitumenTank2StockApproxMt, setBitumenTank2StockApproxMt] = useState("");
   const [savedId, setSavedId] = useState<number | null>(null);
+  const [autoFillT1Source, setAutoFillT1Source] = useState<string>("");
+  const [autoFillT2Source, setAutoFillT2Source] = useState<string>("");
 
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails>({
     queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName],
@@ -211,6 +213,37 @@ export default function PlantShiftLog() {
     }
   };
 
+  // Auto-fill Tank-1 opening (latest meter reading) and Tank-2 opening (yesterday's closing) for new logs
+  useEffect(() => {
+    if (existing) return; // never overwrite when loaded from DB
+    if (!date) return;
+    if (!ldoTank1OpeningMeter) {
+      const before = `${date}T${plantStartTime || "00:00"}`;
+      fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then((data: any) => {
+          if (data && typeof data.value === "number") {
+            setLdoTank1OpeningMeter(prev => prev || String(data.value));
+            setAutoFillT1Source(data.source);
+          }
+        })
+        .catch(() => {});
+    }
+    if (!ldoTank2OpeningMeter) {
+      const before = `${date}T00:00`;
+      fetch(`/api/plant-module/ldo-meter/last?tank=2&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then((data: any) => {
+          if (data && typeof data.value === "number") {
+            setLdoTank2OpeningMeter(prev => prev || String(data.value));
+            setAutoFillT2Source(data.source);
+          }
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existing, date, plantName]);
+
   // Derived
   const ldoTotal = useMemo(() => {
     const t1Open = parseFloat(ldoTank1OpeningMeter), t1Close = parseFloat(ldoTank1ClosingMeter);
@@ -295,11 +328,23 @@ export default function PlantShiftLog() {
       <Card>
         <CardHeader><CardTitle>LDO Flow Meters</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div><Label>Tank 1 (Boiler) Opening</Label><Input type="number" step="0.01" value={ldoTank1OpeningMeter} onChange={e => setLdoTank1OpeningMeter(e.target.value)} data-testid="input-ldo-t1-open" /></div>
+          <div>
+            <Label>Tank 1 (Boiler) Opening</Label>
+            <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
+              onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
+              data-testid="input-ldo-t1-open" />
+            {autoFillT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
+          </div>
           <div><Label>Tank 1 (Boiler) Closing</Label><Input type="number" step="0.01" value={ldoTank1ClosingMeter} onChange={e => setLdoTank1ClosingMeter(e.target.value)} data-testid="input-ldo-t1-close" /></div>
           <div><Label>Tank 1 Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
           <div />
-          <div><Label>Tank 2 (Dryer) Opening</Label><Input type="number" step="0.01" value={ldoTank2OpeningMeter} onChange={e => setLdoTank2OpeningMeter(e.target.value)} data-testid="input-ldo-t2-open" /></div>
+          <div>
+            <Label>Tank 2 (Dryer) Opening</Label>
+            <Input type="number" step="0.01" value={ldoTank2OpeningMeter}
+              onChange={e => { setLdoTank2OpeningMeter(e.target.value); setAutoFillT2Source(""); }}
+              data-testid="input-ldo-t2-open" />
+            {autoFillT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
+          </div>
           <div><Label>Tank 2 (Dryer) Closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
           <div><Label>Tank 2 Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>

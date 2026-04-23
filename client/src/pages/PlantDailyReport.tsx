@@ -50,6 +50,28 @@ type DailyPlantSummary = {
   generators: { items: Array<{ id: number; generatorName: string; hoursRun: number | null; opening: number | null; issued: number; closing: number | null; consumed: number | null; lPerHr: number | null; derivedSource: string; efficiency: number | null }>; totalDieselConsumedL: number };
   manpower: Array<{ name: string; role: string | null }>;
   idle: { events: Array<{ startTime: string; endTime: string | null; reason: string; remarks: string | null; minutes: number }>; byReason: Record<string, number>; totalMinutes: number };
+  boilerHeating?: {
+    sessionCount: number;
+    totalHours: number;
+    sessionsLdoT1L: number;
+    lPerHour: number | null;
+    lPerMT: number | null;
+    dgDieselL: number;
+    shiftLogT1L: number | null;
+    mismatchL: number | null;
+    primarySource: "sessions" | "shift_meter";
+    sessions?: Array<{
+      id: number;
+      sessionType: string;
+      startTime: string | null;
+      endTime: string | null;
+      durationHours: number | null;
+      ldoTank1Consumed: number | null;
+      dgDieselConsumed: number | null;
+      staffName: string | null;
+      isFinalized: number;
+    }>;
+  };
 };
 
 export default function PlantDailyReport() {
@@ -278,6 +300,56 @@ export default function PlantDailyReport() {
               <KV label="L / MT Mix" value={fmt(data.ldo.lPerMT, 3)} />
             </CardContent>
           </Card>
+
+          {data.boilerHeating && data.boilerHeating.sessionCount > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Boiler / Heating Sessions ({data.boilerHeating.sessionCount})
+                  {data.boilerHeating.mismatchL != null && Math.abs(data.boilerHeating.mismatchL) > 5 && (
+                    <Badge variant="destructive" className="ml-2">⚠ Mismatch {data.boilerHeating.mismatchL > 0 ? "+" : ""}{data.boilerHeating.mismatchL}L vs shift meter</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                  <KV label="Total Heating Hrs" value={fmt(data.boilerHeating.totalHours, 2)} />
+                  <KV label="LDO T1 (Sessions) L" value={fmt(data.boilerHeating.sessionsLdoT1L, 1)} />
+                  <KV label="L / Hour" value={fmt(data.boilerHeating.lPerHour, 2)} />
+                  <KV label="L / MT (Boiler)" value={fmt(data.boilerHeating.lPerMT, 3)} />
+                  <KV label="DG Diesel L" value={fmt(data.boilerHeating.dgDieselL, 1)} />
+                </div>
+                {data.boilerHeating.sessions && data.boilerHeating.sessions.length > 0 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead className="text-right">Hours</TableHead>
+                        <TableHead>Staff</TableHead>
+                        <TableHead className="text-right">LDO T1 L</TableHead>
+                        <TableHead className="text-right">DG Diesel L</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.boilerHeating.sessions.map(s => (
+                        <TableRow key={s.id} data-testid={`row-heating-session-${s.id}`}>
+                          <TableCell>{s.sessionType === "NIGHT_PREHEAT" ? "Night Pre-heat" : "Day Maint."}</TableCell>
+                          <TableCell>{s.startTime || "—"} → {s.endTime || "—"}</TableCell>
+                          <TableCell className="text-right">{fmt(s.durationHours, 2)}</TableCell>
+                          <TableCell>{s.staffName || "—"}</TableCell>
+                          <TableCell className="text-right">{fmt(s.ldoTank1Consumed, 1)}</TableCell>
+                          <TableCell className="text-right">{fmt(s.dgDieselConsumed, 1)}</TableCell>
+                          <TableCell>{s.isFinalized ? <Badge className="bg-green-600">Finalized</Badge> : <Badge variant="outline">Draft</Badge>}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>Equipment Usage (Total Diesel Issued: {fmt(data.totalDieselIssued, 1)} L)</CardTitle></CardHeader>
