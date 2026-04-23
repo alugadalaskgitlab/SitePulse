@@ -4802,6 +4802,15 @@ async function seedDatabase() {
   }
 
   try {
+    const legacyManpowerResult = await storage.migrateLegacyPlantShiftLogManpower();
+    if (legacyManpowerResult.updated > 0 || legacyManpowerResult.errors > 0) {
+      console.log(`Startup: Plant shift-log manpower backfill - updated: ${legacyManpowerResult.updated}, skipped: ${legacyManpowerResult.skipped}, errors: ${legacyManpowerResult.errors}`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to backfill plant shift-log manpower:", err);
+  }
+
+  try {
     const orphanResult = await storage.migrateOrphanStockToHLC();
     if (orphanResult.ledgerFixed > 0 || orphanResult.balancesMerged > 0) {
       console.log(`Startup: Migrated orphan stock to HLC - ${orphanResult.ledgerFixed} ledger entries fixed, ${orphanResult.balancesMerged} balances merged, ${orphanResult.errors} errors`);

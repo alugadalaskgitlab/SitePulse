@@ -325,6 +325,9 @@ export interface IStorage {
   // Update historical DPR engineer names to "NAME - ROLE" from Personnel Master
   migrateEngineerNamesToPersonnelFormat(): Promise<{ updated: number; unmatched: number; errors: number }>;
 
+  // Backfill contractorName / category / gender on legacy plant_shift_log_manpower rows
+  migrateLegacyPlantShiftLogManpower(): Promise<{ updated: number; skipped: number; errors: number }>;
+
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
   
@@ -6599,6 +6602,122 @@ export class DatabaseStorage implements IStorage {
       }
     } catch (err) {
       console.error('migrateEngineerNamesToPersonnelFormat: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
+  }
+
+  async migrateLegacyPlantShiftLogManpower(): Promise<{ updated: number; skipped: number; errors: number }> {
+    const result = { updated: 0, skipped: 0, errors: 0 };
+    try {
+      const legacyRows = await db.select().from(plantShiftLogManpower).where(
+        or(
+          isNull(plantShiftLogManpower.contractorName),
+          eq(plantShiftLogManpower.contractorName, ""),
+          isNull(plantShiftLogManpower.category),
+          eq(plantShiftLogManpower.category, ""),
+          isNull(plantShiftLogManpower.gender),
+          eq(plantShiftLogManpower.gender, ""),
+        )
+      );
+
+      if (legacyRows.length === 0) {
+        return result;
+      }
+
+      const allAliases = await db.select().from(vendorAliases);
+      const aliasToCanonical = new Map<string, string>();
+      for (const a of allAliases) {
+        aliasToCanonical.set(a.alias.toUpperCase().trim(), a.canonicalName.toUpperCase().trim());
+        aliasToCanonical.set(a.canonicalName.toUpperCase().trim(), a.canonicalName.toUpperCase().trim());
+      }
+      const canonicaliseContractor = (raw: string): string => {
+        const upper = raw.toUpperCase().trim().replace(/\s+/g, " ");
+        return aliasToCanonical.get(upper) || upper;
+      };
+
+      const categoryKeywords: Array<{ kw: RegExp; cat: string }> = [
+        { kw: /\bMASON\b/i, cat: "MASON" },
+        { kw: /\bHELPER\b/i, cat: "HELPER" },
+        { kw: /\bMAZ?DOOR\b/i, cat: "MAZDOOR" },
+        { kw: /\bLAB(?:OU?R(?:ER)?)?\b/i, cat: "MAZDOOR" },
+        { kw: /\bCARPENTER\b/i, cat: "CARPENTER" },
+        { kw: /\b(BAR[\s-]?BENDER|BARBENDER|BENDER)\b/i, cat: "BAR-BENDER" },
+        { kw: /\bOPERATOR\b/i, cat: "OPERATOR" },
+        { kw: /\bDRIVER\b/i, cat: "DRIVER" },
+        { kw: /\bELECTRICIAN\b/i, cat: "ELECTRICIAN" },
+        { kw: /\bMECHANIC\b/i, cat: "MECHANIC" },
+        { kw: /\b(WATCHMAN|GUARD|SECURITY)\b/i, cat: "WATCHMAN" },
+      ];
+      const detectCategory = (text: string): string | null => {
+        for (const { kw, cat } of categoryKeywords) {
+          if (kw.test(text)) return cat;
+        }
+        return null;
+      };
+
+      // Try to extract an embedded contractor reference from the worker name.
+      // Patterns: "RAM (RAMU CONTRACTORS)", "RAM - RAMU CONTRACTORS", "RAM / RAMU CONTRACTORS"
+      const extractContractor = (name: string): string | null => {
+        const parenMatch = name.match(/^.*?\s*[\(\[]\s*([^)\]]+?)\s*[\)\]]\s*$/);
+        if (parenMatch && parenMatch[1].trim()) {
+          return parenMatch[1].trim();
+        }
+        const dashMatch = name.match(/^.*?\s*[-/|]\s*([A-Za-z][A-Za-z0-9 .&'_-]{2,})\s*$/);
+        if (dashMatch && dashMatch[1].trim()) {
+          // Avoid eating obvious role tokens (MASON, HELPER, etc.) as contractor
+          const tail = dashMatch[1].trim();
+          if (!detectCategory(tail) || /CONTRACTOR|LABOUR|LABOR|SUPPLIER|TEAM|GANG|PARTY/i.test(tail)) {
+            return tail;
+          }
+        }
+        return null;
+      };
+
+      for (const row of legacyRows) {
+        try {
+          const rawName = String(row.name || "").trim();
+          if (!rawName) {
+            result.skipped++;
+            continue;
+          }
+
+          const extractedContractor = extractContractor(rawName);
+          const roleText = String(row.role || "");
+          const combinedText = `${rawName} ${roleText}`;
+
+          const hasContractor = !!(row.contractorName && row.contractorName.trim());
+          const hasCategory = !!(row.category && row.category.trim());
+          const hasGender = !!(row.gender && row.gender.trim());
+
+          const newContractor = hasContractor
+            ? canonicaliseContractor(row.contractorName as string)
+            : (extractedContractor ? canonicaliseContractor(extractedContractor) : "UNKNOWN CONTRACTOR");
+
+          const detectedCat = detectCategory(combinedText);
+          const newCategory = hasCategory
+            ? (row.category as string).toUpperCase().trim()
+            : (detectedCat || "OTHER");
+
+          const newGender = hasGender
+            ? (row.gender as string).toUpperCase().trim()
+            : "MALE";
+
+          await db.update(plantShiftLogManpower)
+            .set({ contractorName: newContractor, category: newCategory, gender: newGender })
+            .where(eq(plantShiftLogManpower.id, row.id));
+          result.updated++;
+        } catch (err) {
+          console.error(`migrateLegacyPlantShiftLogManpower: Error processing row ${row.id}:`, err);
+          result.errors++;
+        }
+      }
+
+      if (result.updated > 0 || result.errors > 0) {
+        console.log(`migrateLegacyPlantShiftLogManpower: Updated ${result.updated}, skipped ${result.skipped}, errors ${result.errors}`);
+      }
+    } catch (err) {
+      console.error('migrateLegacyPlantShiftLogManpower: Fatal error:', err);
       result.errors++;
     }
     return result;
