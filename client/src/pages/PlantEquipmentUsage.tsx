@@ -138,6 +138,7 @@ export default function PlantEquipmentUsage() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterEquipmentId, setFilterEquipmentId] = useState("all");
+  const [rollupMonth, setRollupMonth] = useState<string>("");
 
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -547,6 +548,108 @@ export default function PlantEquipmentUsage() {
   }, {} as Record<string, EquipmentUsage[]>);
 
   const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+  const MONTHLY_VARIANCE_THRESHOLD_PCT = 15;
+  const MONTHLY_MIN_DAYS = 2;
+
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    filteredUsage.forEach(u => { if (u.date) set.add(u.date.slice(0, 7)); });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [filteredUsage]);
+
+  const effectiveRollupMonth = (rollupMonth && availableMonths.includes(rollupMonth))
+    ? rollupMonth
+    : (availableMonths[0] || "");
+
+  const monthlyRollup = useMemo(() => {
+    if (!effectiveRollupMonth) return [] as Array<{
+      equipmentId: number;
+      name: string;
+      meterUnit: string;
+      runtime: number;
+      actual: number;
+      expected: number;
+      days: number;
+      overshootDays: number;
+      variancePct: number | null;
+    }>;
+    type Row = {
+      equipmentId: number;
+      name: string;
+      meterUnit: string;
+      runtime: number;
+      actual: number;
+      expected: number;
+      dayKeys: Set<string>;
+      overshootDayKeys: Set<string>;
+    };
+    const map = new Map<number, Row>();
+    filteredUsage.forEach((entry) => {
+      if (!entry.date?.startsWith(effectiveRollupMonth)) return;
+      if ((entry as any).dieselIncluded === true) return;
+      if (isPartialEntry(entry)) return;
+      if ((entry as any).entryType === "shifting") return;
+      const equip = equipment?.find(e => e.id === entry.equipmentId);
+      if (!equip) return;
+      const openingDieselVal = (entry as any).openingDiesel ?? 0;
+      const dieselIssuedVal = entry.dieselIssued ?? 0;
+      const closingDieselEntry = (entry as any).closingDiesel ?? (entry as any).dieselBalanceInTank;
+      const expected = entry.expectedDiesel ?? 0;
+      const consumed = closingDieselEntry != null
+        ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
+        : expected;
+      const totalKmVal = (entry as any).totalKm ?? 0;
+      const runtime = entry.hoursOrKmRun || totalKmVal || 0;
+      if (runtime <= 0 && consumed <= 0 && expected <= 0) return;
+      const isTripBased = !entry.hoursOrKmRun && totalKmVal > 0;
+      const meterUnit = isTripBased ? "km" : (equip.meterType === "hour_meter" ? "hrs" : "km");
+      const key = entry.equipmentId;
+      let row = map.get(key);
+      if (!row) {
+        row = {
+          equipmentId: key,
+          name: equip.name + ((equip as any).registrationNumber ? ` (${(equip as any).registrationNumber})` : ""),
+          meterUnit,
+          runtime: 0,
+          actual: 0,
+          expected: 0,
+          dayKeys: new Set<string>(),
+          overshootDayKeys: new Set<string>(),
+        };
+        map.set(key, row);
+      }
+      row.runtime += runtime;
+      row.actual += consumed;
+      row.expected += expected;
+      row.dayKeys.add(entry.date);
+      if (expected > 0 && ((consumed - expected) / expected) * 100 >= MONTHLY_VARIANCE_THRESHOLD_PCT) {
+        row.overshootDayKeys.add(entry.date);
+      }
+    });
+    return Array.from(map.values()).map((r) => ({
+      equipmentId: r.equipmentId,
+      name: r.name,
+      meterUnit: r.meterUnit,
+      runtime: r.runtime,
+      actual: r.actual,
+      expected: r.expected,
+      days: r.dayKeys.size,
+      overshootDays: r.overshootDayKeys.size,
+      variancePct: r.expected > 0 ? ((r.actual - r.expected) / r.expected) * 100 : null,
+    })).sort((a, b) => {
+      const av = a.variancePct ?? -Infinity;
+      const bv = b.variancePct ?? -Infinity;
+      return bv - av;
+    });
+  }, [filteredUsage, equipment, effectiveRollupMonth]);
+
+  const isPersistentOffender = (r: { variancePct: number | null; overshootDays: number }) =>
+    r.variancePct != null
+    && r.variancePct >= MONTHLY_VARIANCE_THRESHOLD_PCT
+    && r.overshootDays >= MONTHLY_MIN_DAYS;
+
+  const monthlyOffenderCount = monthlyRollup.filter(isPersistentOffender).length;
 
   // Build filename with date range and filters
   const buildFilename = (extension: string) => {
@@ -1450,6 +1553,122 @@ export default function PlantEquipmentUsage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Card data-testid="card-monthly-rollup">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 flex-wrap">
+            <Gauge className="w-5 h-5" />
+            Monthly Variance by Machine
+            {monthlyOffenderCount > 0 && (
+              <Badge variant="destructive" className="ml-2" data-testid="badge-monthly-offenders">
+                {monthlyOffenderCount} persistent over-consumer{monthlyOffenderCount > 1 ? "s" : ""}
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4">
+            <div className="min-w-[200px]">
+              <Label className="text-sm text-muted-foreground">MONTH</Label>
+              <Select
+                value={effectiveRollupMonth || "none"}
+                onValueChange={(v) => setRollupMonth(v === "none" ? "" : v)}
+                disabled={availableMonths.length === 0}
+              >
+                <SelectTrigger data-testid="select-rollup-month">
+                  <SelectValue placeholder="No data" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.length === 0 ? (
+                    <SelectItem value="none">No data</SelectItem>
+                  ) : (
+                    availableMonths.map(m => (
+                      <SelectItem key={m} value={m}>
+                        {format(new Date(`${m}-01T00:00:00`), "MMMM yyyy")}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Highlights machines averaging ≥{MONTHLY_VARIANCE_THRESHOLD_PCT}% over norm across {MONTHLY_MIN_DAYS}+ days. Honours the date and equipment filters above.
+            </p>
+          </div>
+          {isLoading ? (
+            <div className="flex justify-center p-8">
+              <Loader2 className="w-6 h-6 animate-spin" />
+            </div>
+          ) : monthlyRollup.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8" data-testid="text-monthly-rollup-empty">
+              No machine usage recorded for this month.
+            </p>
+          ) : (
+            <div className="border rounded-md overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium">Equipment</th>
+                      <th className="text-right px-3 py-2 font-medium">Days</th>
+                      <th className="text-right px-3 py-2 font-medium">Total Run</th>
+                      <th className="text-right px-3 py-2 font-medium">Total Actual L</th>
+                      <th className="text-right px-3 py-2 font-medium">Total Norm L</th>
+                      <th className="text-right px-3 py-2 font-medium">Variance L</th>
+                      <th className="text-right px-3 py-2 font-medium">Avg ±%</th>
+                      <th className="text-right px-3 py-2 font-medium">Overshoot Days</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyRollup.map((row) => {
+                      const variance = row.actual - row.expected;
+                      const isPersistent = isPersistentOffender(row);
+                      const isOver = (row.variancePct ?? 0) > 0;
+                      const rowCls = isPersistent
+                        ? "bg-red-50 dark:bg-red-900/20"
+                        : (row.variancePct != null && Math.abs(row.variancePct) >= MONTHLY_VARIANCE_THRESHOLD_PCT
+                            ? (isOver ? "bg-amber-50 dark:bg-amber-900/20" : "")
+                            : "");
+                      const pctCls = row.variancePct == null
+                        ? "text-muted-foreground"
+                        : isPersistent
+                          ? "text-red-700 dark:text-red-300 font-semibold"
+                          : Math.abs(row.variancePct) >= MONTHLY_VARIANCE_THRESHOLD_PCT
+                            ? (isOver ? "text-amber-700 dark:text-amber-300 font-semibold" : "text-amber-700 dark:text-amber-300")
+                            : "text-green-700 dark:text-green-400";
+                      return (
+                        <tr key={row.equipmentId} className={`border-t ${rowCls}`} data-testid={`row-monthly-rollup-${row.equipmentId}`}>
+                          <td className="px-3 py-2">
+                            <span data-testid={`text-monthly-equipment-${row.equipmentId}`}>{row.name}</span>
+                            {isPersistent && (
+                              <Badge variant="destructive" className="ml-2 text-xs" data-testid={`badge-persistent-${row.equipmentId}`}>
+                                Persistent
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">{row.days}</td>
+                          <td className="px-3 py-2 text-right">{row.runtime.toFixed(2)} {row.meterUnit}</td>
+                          <td className="px-3 py-2 text-right" data-testid={`text-monthly-actual-${row.equipmentId}`}>{row.actual.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right" data-testid={`text-monthly-norm-${row.equipmentId}`}>{row.expected.toFixed(2)}</td>
+                          <td className={`px-3 py-2 text-right ${variance > 0 ? "text-red-700 dark:text-red-300" : variance < 0 ? "text-amber-700 dark:text-amber-300" : ""}`}>
+                            {variance > 0 ? "+" : ""}{variance.toFixed(2)}
+                          </td>
+                          <td className={`px-3 py-2 text-right ${pctCls}`} data-testid={`text-monthly-variance-pct-${row.equipmentId}`}>
+                            {row.variancePct == null ? "—" : `${row.variancePct > 0 ? "+" : ""}${row.variancePct.toFixed(1)}%`}
+                          </td>
+                          <td className="px-3 py-2 text-right" data-testid={`text-monthly-overshoot-days-${row.equipmentId}`}>
+                            {row.overshootDays} / {row.days}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
