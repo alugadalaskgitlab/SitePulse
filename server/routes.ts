@@ -2078,6 +2078,80 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: list custom token-equivalence aliases (and admin-suppressed learned
+  // aliases). Returned as a flat list with `kind` discriminator so the cleanup
+  // screen can render a Manage panel and apply both kinds to its suggester.
+  app.post("/api/plant-module/shift-log-manpower/custom-aliases", async (req, res) => {
+    try {
+      const { pin } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      const aliases = await storage.listShiftLogManpowerCustomAliases();
+      res.json(aliases);
+    } catch (err) {
+      console.error("shift-log-manpower custom-aliases list error:", err);
+      res.status(500).json({ message: "Failed to load custom aliases" });
+    }
+  });
+
+  // Admin: add a custom alias or suppress a learned alias.
+  app.post("/api/plant-module/shift-log-manpower/add-custom-alias", async (req, res) => {
+    try {
+      const { pin, actor, tokenA, tokenB, kind } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      const k = kind === "suppress_learned" ? "suppress_learned" : "alias";
+      const result = await storage.addShiftLogManpowerCustomAlias({
+        tokenA: String(tokenA || ""),
+        tokenB: String(tokenB || ""),
+        kind: k,
+        actor: actor.trim(),
+      });
+      console.info(
+        `[ShiftLogManpowerCustomAlias] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} add kind=${k} added=${result.added} ` +
+        `tokenA=${tokenA} tokenB=${tokenB}`
+      );
+      res.json(result);
+    } catch (err) {
+      console.error("shift-log-manpower add-custom-alias error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to add custom alias";
+      res.status(400).json({ message: msg });
+    }
+  });
+
+  // Admin: delete a custom alias / unsuppress a previously-suppressed pair.
+  app.post("/api/plant-module/shift-log-manpower/delete-custom-alias", async (req, res) => {
+    try {
+      const { pin, actor, id } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      const numId = Number(id);
+      if (!Number.isFinite(numId) || numId <= 0) {
+        return res.status(400).json({ message: "Valid id is required" });
+      }
+      const result = await storage.deleteShiftLogManpowerCustomAlias(numId);
+      console.info(
+        `[ShiftLogManpowerCustomAlias] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} delete id=${numId} removed=${result.removed}`
+      );
+      res.json(result);
+    } catch (err) {
+      console.error("shift-log-manpower delete-custom-alias error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to delete custom alias";
+      res.status(400).json({ message: msg });
+    }
+  });
+
   // Admin: list "not a duplicate" name-pairs that have been dismissed on the
   // worker-cleanup screen. Used to suppress repeated false-positive suggestions
   // across sessions and devices.

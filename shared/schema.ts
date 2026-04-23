@@ -875,6 +875,26 @@ export const ALL_PLANTS_SENTINEL = "__ALL_PLANTS__";
 
 export type PlantShiftLogManpowerDismissedDup = typeof plantShiftLogManpowerDismissedDups.$inferSelect;
 
+// Admin-managed custom token-equivalence pairs for the duplicate-suggester.
+// `kind = 'alias'` adds an extra token-pair (e.g. CHIKKU↔CHANDRA) on top of the
+// hard-coded SHORT_FORM_GROUPS and the auto-mined learned aliases. `kind =
+// 'suppress_learned'` mutes a previously-mined learned token-pair without
+// having to undo the original merge — useful when a wrong merge taught the
+// system a noisy equivalence. Tokens are stored UPPER-cased and sorted
+// (tokenA < tokenB) so the pair is unordered.
+export const plantShiftLogManpowerCustomAliases = pgTable("plant_shift_log_manpower_custom_aliases", {
+  id: serial("id").primaryKey(),
+  tokenA: text("token_a").notNull(),
+  tokenB: text("token_b").notNull(),
+  kind: text("kind").notNull().default("alias"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqPair: uniqueIndex("psl_custom_alias_pair_uq").on(t.tokenA, t.tokenB, t.kind),
+}));
+
+export type PlantShiftLogManpowerCustomAlias = typeof plantShiftLogManpowerCustomAliases.$inferSelect;
+
 export const insertPlantShiftLogSchema = createInsertSchema(plantShiftLogs).omit({ id: true, createdAt: true, updatedAt: true, finalizedAt: true, isFinalized: true, finalizedBy: true });
 export const insertPlantShiftLogManpowerSchema = createInsertSchema(plantShiftLogManpower).omit({ id: true });
 export const insertPlantShiftLogIdleSchema = createInsertSchema(plantShiftLogIdle).omit({ id: true });

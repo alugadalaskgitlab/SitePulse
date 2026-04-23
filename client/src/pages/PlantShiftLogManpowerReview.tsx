@@ -32,6 +32,15 @@ type LearnedAliases = {
   tokenPairs: LearnedAliasEntry[];
 };
 
+type CustomAlias = {
+  id: number;
+  tokenA: string;
+  tokenB: string;
+  kind: "alias" | "suppress_learned";
+  createdBy: string;
+  createdAt: string;
+};
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return typeof err === "string" ? err : "Unknown error";
@@ -358,6 +367,7 @@ function buildClusters(
   rows: ReviewRow[],
   dismissedPairKeys: Set<string>,
   learned: LearnedAliases | null,
+  customAliases: CustomAlias[] | null,
 ): Cluster[] {
   const n = rows.length;
   const parent = Array.from({ length: n }, (_, i) => i);
@@ -375,6 +385,19 @@ function buildClusters(
   };
   const learnedPairCounts = new Map<string, number>();
   const learnedTokenCounts = new Map<string, number>();
+  // Suppressed token-pair keys (admin-muted learned aliases). Applied AFTER
+  // accumulating learned counts so a suppress entry hides the matching mined
+  // pair from the suggester without touching the underlying merge history.
+  const suppressedTokenKeys = new Set<string>();
+  if (customAliases) {
+    for (const c of customAliases) {
+      if (c.kind !== "suppress_learned") continue;
+      const ua = c.tokenA.toUpperCase().trim();
+      const ub = c.tokenB.toUpperCase().trim();
+      if (!ua || !ub || ua === ub) continue;
+      suppressedTokenKeys.add(ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`);
+    }
+  }
   if (learned) {
     for (const p of learned.pairs) {
       const k = pairKey(p.a, p.b);
@@ -385,7 +408,21 @@ function buildClusters(
       const ub = p.b.toUpperCase().trim();
       if (!ua || !ub || ua === ub) continue;
       const k = ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+      if (suppressedTokenKeys.has(k)) continue;
       learnedTokenCounts.set(k, Math.max(learnedTokenCounts.get(k) || 0, p.count || 1));
+    }
+  }
+  // Custom admin-added token-equivalences. Stored with count = 2 so they get
+  // the same "repeat / confidence-boost" treatment as a learned pair an admin
+  // has confirmed more than once — they were explicitly entered, after all.
+  if (customAliases) {
+    for (const c of customAliases) {
+      if (c.kind !== "alias") continue;
+      const ua = c.tokenA.toUpperCase().trim();
+      const ub = c.tokenB.toUpperCase().trim();
+      if (!ua || !ub || ua === ub) continue;
+      const k = ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+      learnedTokenCounts.set(k, Math.max(learnedTokenCounts.get(k) || 0, 2));
     }
   }
   // edgeReasons[clusterRoot index] → list of reasons collected. We collect
@@ -476,6 +513,13 @@ export default function PlantShiftLogManpowerReview() {
   type DismissedPair = { id: number; nameA: string; nameB: string; dismissedBy: string; dismissedAt: string };
   const [dismissedPairs, setDismissedPairs] = useState<DismissedPair[] | null>(null);
   const [learnedAliases, setLearnedAliases] = useState<LearnedAliases | null>(null);
+  const [customAliases, setCustomAliases] = useState<CustomAlias[] | null>(null);
+  const [showAliasPanel, setShowAliasPanel] = useState(false);
+  const [newAliasA, setNewAliasA] = useState("");
+  const [newAliasB, setNewAliasB] = useState("");
+  const [savingAlias, setSavingAlias] = useState(false);
+  const [deletingAliasId, setDeletingAliasId] = useState<number | null>(null);
+  const [suppressingTokenKey, setSuppressingTokenKey] = useState<string | null>(null);
   const [savingDismissalKey, setSavingDismissalKey] = useState<string | null>(null);
   const [restoringDismissalId, setRestoringDismissalId] = useState<number | null>(null);
   const [showDismissedList, setShowDismissedList] = useState(false);
@@ -551,6 +595,119 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
+  const fetchCustomAliases = async () => {
+    if (!adminPin) return;
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/custom-aliases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      setCustomAliases((await res.json()) as CustomAlias[]);
+    } catch (err) {
+      toast({ title: "Failed to load custom aliases", description: getErrorMessage(err), variant: "destructive" });
+    }
+  };
+
+  const submitNewAlias = async () => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    const a = newAliasA.trim();
+    const b = newAliasB.trim();
+    if (a.length < 1 || b.length < 1) {
+      toast({ title: "Both tokens are required", variant: "destructive" });
+      return;
+    }
+    setSavingAlias(true);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/add-custom-alias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), tokenA: a, tokenB: b, kind: "alias" }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { added: boolean; alias: CustomAlias | null };
+      toast({
+        title: result.added ? "Custom alias saved" : "Already saved",
+        description: result.added
+          ? `${a.toUpperCase()} ↔ ${b.toUpperCase()} will now be suggested as a duplicate.`
+          : "That token-pair was already in the custom dictionary.",
+      });
+      setNewAliasA("");
+      setNewAliasB("");
+      await fetchCustomAliases();
+    } catch (err) {
+      toast({ title: "Failed to save alias", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setSavingAlias(false);
+    }
+  };
+
+  const deleteCustomAlias = async (id: number) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    setDeletingAliasId(id);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/delete-custom-alias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), id }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      toast({ title: "Removed" });
+      await fetchCustomAliases();
+    } catch (err) {
+      toast({ title: "Failed to remove", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setDeletingAliasId(null);
+    }
+  };
+
+  const suppressLearnedTokenPair = async (a: string, b: string) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    const key = a < b ? `${a}||${b}` : `${b}||${a}`;
+    setSuppressingTokenKey(key);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/add-custom-alias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pin: adminPin, actor: actor.trim(), tokenA: a, tokenB: b, kind: "suppress_learned",
+        }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { added: boolean };
+      toast({
+        title: result.added ? "Learned alias suppressed" : "Already suppressed",
+        description: `${a} ↔ ${b} will no longer trigger duplicate suggestions.`,
+      });
+      await fetchCustomAliases();
+    } catch (err) {
+      toast({ title: "Failed to suppress", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setSuppressingTokenKey(null);
+    }
+  };
+
   const fetchDismissedPairs = async () => {
     if (!adminPin) return;
     try {
@@ -572,6 +729,7 @@ export default function PlantShiftLogManpowerReview() {
     if (adminPin) {
       fetchRecentMerges();
       fetchLearnedAliases();
+      fetchCustomAliases();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPin]);
@@ -793,8 +951,8 @@ export default function PlantShiftLogManpowerReview() {
     return s;
   }, [dismissedPairs]);
   const clusters = useMemo(
-    () => (rows ? buildClusters(rows, dismissedPairKeys, learnedAliases) : []),
-    [rows, dismissedPairKeys, learnedAliases]
+    () => (rows ? buildClusters(rows, dismissedPairKeys, learnedAliases, customAliases) : []),
+    [rows, dismissedPairKeys, learnedAliases, customAliases]
   );
   const visibleClusters = clusters;
   const nameToCluster = useMemo(() => {
@@ -1147,6 +1305,239 @@ export default function PlantShiftLogManpowerReview() {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      <Card data-testid="card-manage-aliases">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-700 dark:text-purple-300" />
+            Manage aliases
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowAliasPanel(s => !s)}
+            data-testid="button-toggle-alias-panel"
+          >
+            {showAliasPanel ? "Hide" : "Show"}
+          </Button>
+        </CardHeader>
+        {showAliasPanel && (
+          <CardContent className="space-y-4">
+            <div className="text-xs text-muted-foreground">
+              Teach the duplicate-suggester new short forms or local nicknames (e.g.
+              <span className="font-mono"> CHIKKU ↔ CHANDRA</span>) without doing a merge first.
+              Custom aliases are applied alongside the built-in dictionary
+              (MD./MOHAMMED, SK/SHEIKH, …) and the patterns mined from past merges.
+              You can also mute a noisy auto-mined alias to suppress it without
+              having to undo the merge that created it.
+            </div>
+
+            <div className="rounded-md border border-purple-300 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/40 p-3">
+              <div className="text-sm font-semibold text-purple-900 dark:text-purple-200 mb-2">
+                Add a custom alias
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Token A</Label>
+                  <Input
+                    value={newAliasA}
+                    onChange={(e) => setNewAliasA(e.target.value)}
+                    placeholder="e.g. CHIKKU"
+                    className="h-8 text-xs uppercase w-40"
+                    data-testid="input-new-alias-a"
+                  />
+                </div>
+                <span className="text-muted-foreground pb-2">↔</span>
+                <div className="space-y-1">
+                  <Label className="text-xs">Token B</Label>
+                  <Input
+                    value={newAliasB}
+                    onChange={(e) => setNewAliasB(e.target.value)}
+                    placeholder="e.g. CHANDRA"
+                    className="h-8 text-xs uppercase w-40"
+                    data-testid="input-new-alias-b"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={submitNewAlias}
+                  disabled={
+                    savingAlias
+                    || !newAliasA.trim()
+                    || !newAliasB.trim()
+                    || actor.trim().length < 2
+                  }
+                  className="h-8 bg-purple-600 hover:bg-purple-700 text-white"
+                  data-testid="button-add-custom-alias"
+                >
+                  {savingAlias
+                    ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    : <Combine className="w-3.5 h-3.5 mr-1" />}
+                  Add alias
+                </Button>
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Tokens are case-insensitive and stored UPPER-cased. Punctuation/spaces are stripped.
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold mb-1.5">
+                Custom aliases ({(customAliases || []).filter(c => c.kind === "alias").length})
+              </div>
+              {customAliases === null ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-custom-aliases-loading">Loading…</div>
+              ) : customAliases.filter(c => c.kind === "alias").length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-custom-aliases-empty">
+                  No custom aliases yet. Add one above to teach the suggester a new equivalence.
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-auto" data-testid="list-custom-aliases">
+                  {customAliases.filter(c => c.kind === "alias").map(c => {
+                    const when = new Date(c.createdAt);
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-xs border border-purple-200 dark:border-purple-800"
+                        data-testid={`custom-alias-${c.id}`}
+                      >
+                        <span className="font-mono">{c.tokenA}</span>
+                        <span className="text-muted-foreground">↔</span>
+                        <span className="font-mono">{c.tokenB}</span>
+                        <span className="text-muted-foreground ml-2">
+                          by {c.createdBy} · {when.toLocaleDateString()}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 ml-auto text-rose-700 dark:text-rose-300"
+                          disabled={deletingAliasId === c.id || actor.trim().length < 2}
+                          onClick={() => deleteCustomAlias(c.id)}
+                          data-testid={`button-delete-custom-alias-${c.id}`}
+                        >
+                          {deletingAliasId === c.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <><X className="w-3.5 h-3.5 mr-1" />Remove</>}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold mb-1.5">
+                Auto-learned token aliases ({learnedAliases?.tokenPairs.length || 0})
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-2">
+                Token equivalences mined from past merges. Click <span className="font-mono">Mute</span> to
+                suppress a noisy one without undoing the merge that created it.
+              </div>
+              {!learnedAliases ? (
+                <div className="text-xs text-muted-foreground py-2">Loading…</div>
+              ) : learnedAliases.tokenPairs.length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-learned-token-pairs-empty">
+                  No learned token-pairs yet. They appear here automatically as you confirm merges.
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-auto" data-testid="list-learned-token-pairs">
+                  {learnedAliases.tokenPairs.map(p => {
+                    const ua = p.a.toUpperCase().trim();
+                    const ub = p.b.toUpperCase().trim();
+                    const tokenKey = ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+                    const suppressed = (customAliases || []).some(
+                      c => c.kind === "suppress_learned"
+                        && ((c.tokenA === ua && c.tokenB === ub) || (c.tokenA === ub && c.tokenB === ua))
+                    );
+                    return (
+                      <div
+                        key={tokenKey}
+                        className={
+                          "flex flex-wrap items-center gap-2 rounded px-2 py-1 text-xs border " +
+                          (suppressed
+                            ? "bg-slate-100 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700 opacity-70"
+                            : "bg-white/70 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900")
+                        }
+                        data-testid={`learned-token-pair-${tokenKey}`}
+                      >
+                        <span className="font-mono">{p.a}</span>
+                        <span className="text-muted-foreground">↔</span>
+                        <span className="font-mono">{p.b}</span>
+                        <span className="text-muted-foreground ml-2">
+                          confirmed {p.count}× by past merge{p.count === 1 ? "" : "s"}
+                        </span>
+                        {suppressed && (
+                          <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            muted
+                          </span>
+                        )}
+                        {!suppressed && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 ml-auto text-amber-700 dark:text-amber-300"
+                            disabled={suppressingTokenKey === tokenKey || actor.trim().length < 2}
+                            onClick={() => suppressLearnedTokenPair(p.a, p.b)}
+                            data-testid={`button-suppress-learned-${tokenKey}`}
+                          >
+                            {suppressingTokenKey === tokenKey
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <><X className="w-3.5 h-3.5 mr-1" />Mute</>}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {(customAliases || []).some(c => c.kind === "suppress_learned") && (
+              <div>
+                <div className="text-sm font-semibold mb-1.5">
+                  Muted learned aliases ({(customAliases || []).filter(c => c.kind === "suppress_learned").length})
+                </div>
+                <div className="text-[11px] text-muted-foreground mb-2">
+                  These auto-mined token-pairs are currently suppressed. Remove a row to let them
+                  trigger duplicate suggestions again.
+                </div>
+                <div className="space-y-1 max-h-48 overflow-auto" data-testid="list-suppressed-learned">
+                  {(customAliases || []).filter(c => c.kind === "suppress_learned").map(c => {
+                    const when = new Date(c.createdAt);
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-slate-800/40 rounded px-2 py-1 text-xs border border-slate-300 dark:border-slate-700"
+                        data-testid={`suppressed-learned-${c.id}`}
+                      >
+                        <span className="font-mono">{c.tokenA}</span>
+                        <span className="text-muted-foreground">↔</span>
+                        <span className="font-mono">{c.tokenB}</span>
+                        <span className="text-muted-foreground ml-2">
+                          muted by {c.createdBy} · {when.toLocaleDateString()}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 ml-auto text-emerald-700 dark:text-emerald-300"
+                          disabled={deletingAliasId === c.id || actor.trim().length < 2}
+                          onClick={() => deleteCustomAlias(c.id)}
+                          data-testid={`button-unmute-${c.id}`}
+                        >
+                          {deletingAliasId === c.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <><Undo2 className="w-3.5 h-3.5 mr-1" />Unmute</>}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {rows && (

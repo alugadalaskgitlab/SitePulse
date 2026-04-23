@@ -38,8 +38,10 @@ import {
   plantShiftLogManpowerRelabelBatches,
   plantShiftLogManpowerRelabelSnapshots,
   plantShiftLogManpowerDismissedDups,
+  plantShiftLogManpowerCustomAliases,
   type PlantShiftLogManpowerRelabelBatch,
   type PlantShiftLogManpowerDismissedDup,
+  type PlantShiftLogManpowerCustomAlias,
   plantShiftLogIdle,
   plantShiftLogVersions,
   type PlantShiftLog,
@@ -405,6 +407,19 @@ export interface IStorage {
     ids?: number[];
     olderThanDays?: number;
   }): Promise<{ removed: number; removedIds: number[] }>;
+
+  // Admin-managed custom token-equivalence pairs for the duplicate-suggester
+  // (kind = 'alias') and admin-suppressed learned token-pairs (kind =
+  // 'suppress_learned'). Both kinds live in the same table; the cleanup screen
+  // uses them to extend / mute the auto-mined dictionary.
+  listShiftLogManpowerCustomAliases(): Promise<PlantShiftLogManpowerCustomAlias[]>;
+  addShiftLogManpowerCustomAlias(input: {
+    tokenA: string;
+    tokenB: string;
+    kind: "alias" | "suppress_learned";
+    actor: string;
+  }): Promise<{ added: boolean; alias: PlantShiftLogManpowerCustomAlias | null }>;
+  deleteShiftLogManpowerCustomAlias(id: number): Promise<{ removed: boolean }>;
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
@@ -7303,6 +7318,54 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .returning({ id: plantShiftLogManpowerDismissedDups.id });
     return { removed: res.length, removedIds: res.map((r) => r.id) };
+  }
+
+  async listShiftLogManpowerCustomAliases(): Promise<PlantShiftLogManpowerCustomAlias[]> {
+    return await db.select().from(plantShiftLogManpowerCustomAliases)
+      .orderBy(desc(plantShiftLogManpowerCustomAliases.createdAt));
+  }
+
+  async addShiftLogManpowerCustomAlias(input: {
+    tokenA: string;
+    tokenB: string;
+    kind: "alias" | "suppress_learned";
+    actor: string;
+  }): Promise<{ added: boolean; alias: PlantShiftLogManpowerCustomAlias | null }> {
+    const actorTrim = String(input.actor || "").trim();
+    if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
+    if (input.kind !== "alias" && input.kind !== "suppress_learned") {
+      throw new Error("kind must be 'alias' or 'suppress_learned'");
+    }
+    const norm = (s: string) =>
+      String(s || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .trim();
+    const a0 = norm(input.tokenA);
+    const b0 = norm(input.tokenB);
+    if (!a0 || !b0) throw new Error("Both tokens must contain at least one letter or digit");
+    if (a0 === b0) throw new Error("Tokens must be different");
+    const [tokenA, tokenB] = a0 < b0 ? [a0, b0] : [b0, a0];
+    const inserted = await db.insert(plantShiftLogManpowerCustomAliases)
+      .values({ tokenA, tokenB, kind: input.kind, createdBy: actorTrim })
+      .onConflictDoNothing({
+        target: [
+          plantShiftLogManpowerCustomAliases.tokenA,
+          plantShiftLogManpowerCustomAliases.tokenB,
+          plantShiftLogManpowerCustomAliases.kind,
+        ],
+      })
+      .returning();
+    if (inserted.length === 0) return { added: false, alias: null };
+    return { added: true, alias: inserted[0] };
+  }
+
+  async deleteShiftLogManpowerCustomAlias(id: number): Promise<{ removed: boolean }> {
+    if (!Number.isFinite(id) || id <= 0) throw new Error("Valid id is required");
+    const res = await db.delete(plantShiftLogManpowerCustomAliases)
+      .where(eq(plantShiftLogManpowerCustomAliases.id, id))
+      .returning({ id: plantShiftLogManpowerCustomAliases.id });
+    return { removed: res.length > 0 };
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
