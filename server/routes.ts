@@ -11,7 +11,7 @@ import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
-import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
+import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -4081,6 +4081,258 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching vendor bills summary:", err);
       res.status(500).json({ message: "Failed to fetch vendor bills summary" });
+    }
+  });
+
+  // Multi-day CSV/Excel export of GST Register / Vendor Ledger.
+  // Mirrors task #193's daily-reports-export shape: a Summary cover (range,
+  // vendor scope, totals, per-category breakdown, per-vendor breakdown when
+  // exporting all vendors) followed by a per-bill Detail listing.
+  // Filters (dateFrom/dateTo/vendor/status/category) are applied here so the
+  // download mirrors what the user sees on screen.
+  app.get("/api/vendor-bills/export", async (req, res) => {
+    try {
+      const dateFrom = (req.query.dateFrom as string) || undefined;
+      const dateTo = (req.query.dateTo as string) || undefined;
+      const vendor = (req.query.vendor as string) || undefined;
+      const status = (req.query.status as string) || undefined;
+      const categoryFilter = ((req.query.category as string) || "all").toLowerCase();
+      const format = (String(req.query.format || "xlsx").toLowerCase() === "csv") ? "csv" : "xlsx";
+
+      const billsRaw = await storage.getVendorBills({ dateFrom, dateTo, vendor, status });
+      // Apply category filter the same way the UI does (combined => "all" billType).
+      const bills = categoryFilter === "all"
+        ? billsRaw
+        : billsRaw.filter(b => {
+            const target = categoryFilter === "combined" ? "all" : categoryFilter;
+            return (b.billType || "").toLowerCase() === target;
+          });
+      // Sort newest first for both summary and detail.
+      bills.sort((a, b) => (b.billDate || "").localeCompare(a.billDate || ""));
+
+      const allVendorNames = await storage.getVendorNames();
+
+      const vendorScope = vendor && vendor !== "all" ? vendor : "All vendors";
+      const isLedger = vendor && vendor !== "all";
+      const reportLabel = isLedger ? `Vendor Ledger — ${vendorScope}` : "GST Register — Category Breakdown";
+
+      const sortedDates = bills.map(b => b.billDate).filter(Boolean).sort();
+      const fromD = dateFrom || sortedDates[0] || "";
+      const toD = dateTo || sortedDates[sortedDates.length - 1] || "";
+      const rangeLabel = !fromD && !toD ? "all dates"
+        : fromD === toD ? fromD
+        : `${fromD || "…"} → ${toD || "…"}`;
+      const generatedAt = new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
+      const filenameRange = fromD && toD
+        ? (fromD === toD ? fromD : `${fromD}_to_${toD}`)
+        : "all-dates";
+      const filenameScope = isLedger ? `vendor-ledger-${vendorScope}` : "gst-register";
+      const safeFilename = `${filenameScope}-${filenameRange}`.replace(/[^A-Za-z0-9._-]+/g, "_");
+
+      // Per-bill numbers. We don't track inter-state on the schema, so split GST
+      // assuming intra-state (CGST = SGST = GST/2, IGST = 0). This matches how
+      // the on-screen GST cards present the totals.
+      type BillRow = {
+        billNo: string; date: string; vendor: string; category: string;
+        taxable: number; gst: number; cgst: number; sgst: number; igst: number; total: number;
+      };
+      const detailRows: BillRow[] = bills.map(b => {
+        const taxable = b.totalAmount || 0;
+        const cat = computeBillGstByCategory(b);
+        const gst = cat.equipment + cat.material + cat.transport + cat.labour + cat.other;
+        return {
+          billNo: b.billNo,
+          date: b.billDate,
+          vendor: b.vendorName,
+          category: (b.billType || "other").toLowerCase(),
+          taxable,
+          gst,
+          cgst: gst / 2,
+          sgst: gst / 2,
+          igst: 0,
+          total: taxable + gst,
+        };
+      });
+
+      const totals = aggregateGstBreakdown(bills);
+      const totalTaxable = bills.reduce((s, b) => s + (b.totalAmount || 0), 0);
+      const grandTotal = totalTaxable + totals.total;
+
+      // Category summary — always show the 4 main categories so empty buckets
+      // appear as "—" rows instead of being silently dropped. "Other" is only
+      // listed if it has a non-zero contribution.
+      const baseCategories: GstCategory[] = ["equipment", "material", "transport", "labour"];
+      const categoryList: GstCategory[] = totals.other > 0
+        ? [...baseCategories, "other" as GstCategory]
+        : baseCategories;
+      type CatRow = { category: string; bills: number | string; taxable: number | string; gst: number | string };
+      const categoryRows: CatRow[] = categoryList.map(cat => {
+        const billsInCat = bills.filter(b => {
+          const bt = (b.billType || "other").toLowerCase();
+          if (bt === "all") {
+            // Combined bill — count if it has any line item in this category.
+            return (b.items || []).some(it => ((it.category || "other").toLowerCase()) === cat);
+          }
+          return bt === cat;
+        });
+        const taxable = billsInCat.reduce((s, b) => {
+          const bt = (b.billType || "other").toLowerCase();
+          if (bt === "all") {
+            return s + (b.items || [])
+              .filter(it => ((it.category || "other").toLowerCase()) === cat)
+              .reduce((ss, it) => ss + (it.amount || 0), 0);
+          }
+          return s + (b.totalAmount || 0);
+        }, 0);
+        const gstAmt = totals[cat] || 0;
+        const isEmpty = billsInCat.length === 0 && gstAmt === 0;
+        return {
+          category: cat.toUpperCase(),
+          bills: isEmpty ? "—" : billsInCat.length,
+          taxable: isEmpty ? "—" : taxable,
+          gst: isEmpty ? "—" : gstAmt,
+        };
+      });
+
+      // Vendor summary — only when exporting the full GST register. Include
+      // every known vendor so vendors with no bills in range show as "—".
+      type VendorRow = { vendor: string; bills: number | string; taxable: number | string; gst: number | string };
+      let vendorRows: VendorRow[] = [];
+      if (!isLedger) {
+        const byVendor = new Map<string, typeof bills>();
+        for (const b of bills) {
+          const k = b.vendorName.toUpperCase();
+          if (!byVendor.has(k)) byVendor.set(k, []);
+          byVendor.get(k)!.push(b);
+        }
+        const vendorSet = new Set<string>([
+          ...allVendorNames.map(v => v.toUpperCase()),
+          ...Array.from(byVendor.keys()),
+        ]);
+        vendorRows = Array.from(vendorSet).sort().map(v => {
+          const list = byVendor.get(v) || [];
+          if (list.length === 0) {
+            return { vendor: v, bills: "—", taxable: "—", gst: "—" };
+          }
+          const tx = list.reduce((s, b) => s + (b.totalAmount || 0), 0);
+          const { total: g } = aggregateGstBreakdown(list);
+          return { vendor: v, bills: list.length, taxable: tx, gst: g };
+        });
+      }
+
+      const fmtNum = (n: number) => n.toFixed(2);
+      const fmtCell = (v: number | string) => (typeof v === "number" ? fmtNum(v) : v);
+
+      if (format === "csv") {
+        const escape = (v: any) => {
+          const s = v == null ? "" : String(v);
+          return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const toLine = (cells: any[]) => cells.map(escape).join(",");
+        const lines: string[] = [];
+        lines.push(toLine([`${reportLabel} — Cover Sheet`]));
+        lines.push(toLine(["High Lane Constructions Pvt Ltd"]));
+        lines.push(toLine([`Range: ${rangeLabel}`]));
+        lines.push(toLine([`Vendor: ${vendorScope}`]));
+        lines.push(toLine([`Status filter: ${status && status !== "all" ? status : "all"}`]));
+        lines.push(toLine([`Category filter: ${categoryFilter !== "all" ? categoryFilter : "all"}`]));
+        lines.push(toLine([`Bills in range: ${bills.length}`]));
+        lines.push(toLine([`Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`]));
+        lines.push(toLine([`GST split assumes intra-state (CGST = SGST = GST/2, IGST = 0).`]));
+        lines.push(toLine([`Generated: ${generatedAt}`]));
+        lines.push("");
+        lines.push(toLine(["== SUMMARY — GST BY CATEGORY =="]));
+        lines.push(toLine(["Category", "Bills", "Taxable", "GST"]));
+        for (const r of categoryRows) {
+          lines.push(toLine([r.category, r.bills, fmtCell(r.taxable), fmtCell(r.gst)]));
+        }
+        lines.push(toLine(["TOTAL", bills.length, fmtNum(totalTaxable), fmtNum(totals.total)]));
+        if (!isLedger) {
+          lines.push("");
+          lines.push(toLine(["== SUMMARY — BY VENDOR =="]));
+          lines.push(toLine(["Vendor", "Bills", "Taxable", "GST"]));
+          for (const r of vendorRows) {
+            lines.push(toLine([r.vendor, r.bills, fmtCell(r.taxable), fmtCell(r.gst)]));
+          }
+          lines.push(toLine(["TOTAL", bills.length, fmtNum(totalTaxable), fmtNum(totals.total)]));
+        }
+        lines.push("");
+        lines.push(toLine(["== DETAIL (every bill in range) =="]));
+        lines.push(toLine(["Bill No", "Date", "Vendor", "Category", "Taxable", "CGST", "SGST", "IGST", "Total"]));
+        if (detailRows.length === 0) {
+          lines.push(toLine(["—", "—", "—", "—", "—", "—", "—", "—", "—"]));
+        } else {
+          for (const r of detailRows) {
+            lines.push(toLine([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.cgst), fmtNum(r.sgst), fmtNum(r.igst), fmtNum(r.total)]));
+          }
+          lines.push(toLine(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total / 2), fmtNum(totals.total / 2), fmtNum(0), fmtNum(grandTotal)]));
+        }
+        const body = "\uFEFF" + lines.join("\r\n") + "\r\n";
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.csv"`);
+        res.send(body);
+        return;
+      }
+
+      // xlsx — Summary sheet (cover + category + vendor) and Detail sheet.
+      const wb = xlsx.utils.book_new();
+      const summaryAoa: any[][] = [
+        [`${reportLabel} — Cover Sheet`],
+        ["High Lane Constructions Pvt Ltd"],
+        [`Range: ${rangeLabel}`],
+        [`Vendor: ${vendorScope}`],
+        [`Status filter: ${status && status !== "all" ? status : "all"}`],
+        [`Category filter: ${categoryFilter !== "all" ? categoryFilter : "all"}`],
+        [`Bills in range: ${bills.length}`],
+        [`Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`],
+        [`GST split assumes intra-state (CGST = SGST = GST/2, IGST = 0).`],
+        [`Generated: ${generatedAt}`],
+        [],
+        ["GST by Category"],
+        ["Category", "Bills", "Taxable", "GST"],
+        ...categoryRows.map(r => [r.category, r.bills, fmtCell(r.taxable), fmtCell(r.gst)]),
+        ["TOTAL", bills.length, fmtNum(totalTaxable), fmtNum(totals.total)],
+      ];
+      if (!isLedger) {
+        summaryAoa.push([]);
+        summaryAoa.push(["By Vendor"]);
+        summaryAoa.push(["Vendor", "Bills", "Taxable", "GST"]);
+        for (const r of vendorRows) {
+          summaryAoa.push([r.vendor, r.bills, fmtCell(r.taxable), fmtCell(r.gst)]);
+        }
+        summaryAoa.push(["TOTAL", bills.length, fmtNum(totalTaxable), fmtNum(totals.total)]);
+      }
+      const summarySheet = xlsx.utils.aoa_to_sheet(summaryAoa);
+      (summarySheet as any)["!cols"] = [
+        { wch: 32 }, { wch: 10 }, { wch: 16 }, { wch: 16 },
+      ];
+      xlsx.utils.book_append_sheet(wb, summarySheet, "Summary");
+
+      const detailAoa: any[][] = [
+        ["Bill No", "Date", "Vendor", "Category", "Taxable", "CGST", "SGST", "IGST", "Total"],
+      ];
+      if (detailRows.length === 0) {
+        detailAoa.push(["—", "—", "—", "—", "—", "—", "—", "—", "—"]);
+      } else {
+        for (const r of detailRows) {
+          detailAoa.push([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.cgst), fmtNum(r.sgst), fmtNum(r.igst), fmtNum(r.total)]);
+        }
+        detailAoa.push(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total / 2), fmtNum(totals.total / 2), fmtNum(0), fmtNum(grandTotal)]);
+      }
+      const detailSheet = xlsx.utils.aoa_to_sheet(detailAoa);
+      (detailSheet as any)["!cols"] = [
+        { wch: 18 }, { wch: 12 }, { wch: 28 }, { wch: 12 },
+        { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
+      ];
+      xlsx.utils.book_append_sheet(wb, detailSheet, "Detail");
+
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      console.error("Error exporting vendor bills:", err);
+      res.status(500).json({ message: err?.message || "Failed to export vendor bills" });
     }
   });
 

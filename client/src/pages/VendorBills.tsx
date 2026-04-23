@@ -1100,6 +1100,49 @@ export default function VendorBills() {
     return { site, plant, other, total: site + plant + other };
   }, [filteredBills]);
 
+  const handleGstRegisterExport = async (fmt: "csv" | "xlsx") => {
+    if (!filteredBills.length) {
+      toast({ title: "Nothing to export", description: "Adjust the filters to include some bills." });
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (filterDateFrom) params.set("dateFrom", filterDateFrom);
+      if (filterDateTo) params.set("dateTo", filterDateTo);
+      if (filterVendor && filterVendor !== "all") params.set("vendor", filterVendor);
+      if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
+      if (filterCategory && filterCategory !== "all") params.set("category", filterCategory);
+      params.set("format", fmt);
+      const res = await fetch(`/api/vendor-bills/export?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const sortedDates = filteredBills.map(b => b.billDate).filter(Boolean).sort();
+      const fromD = filterDateFrom || sortedDates[0] || "";
+      const toD = filterDateTo || sortedDates[sortedDates.length - 1] || "";
+      const range = !fromD && !toD ? "all-dates" : (fromD === toD ? fromD : `${fromD || "…"}_to_${toD || "…"}`);
+      const isLedger = filterVendor && filterVendor !== "all";
+      const scope = isLedger ? `vendor-ledger-${filterVendor}` : "gst-register";
+      const filename = `${scope}-${range}.${fmt}`.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_(csv|xlsx)$/, ".$1");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({
+        title: `Exported ${fmt.toUpperCase()}`,
+        description: `${filteredBills.length} bill${filteredBills.length === 1 ? "" : "s"} included with summary cover.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Export failed", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
   const escHtml = (str: string) => {
     const div = document.createElement("div");
     div.textContent = str;
@@ -2641,15 +2684,39 @@ export default function VendorBills() {
 
       <Card data-testid="card-gst-register">
         <CardHeader className="py-2 px-3">
-          <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+          <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
             <span>
               {filterVendor !== "all"
                 ? `Vendor Ledger — GST (${filterVendor})`
                 : "GST Register — Category Breakdown"}
             </span>
-            <span className="text-[10px] normal-case font-normal text-muted-foreground">
-              Reflects current filters &middot; {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] normal-case font-normal text-muted-foreground">
+                Reflects current filters &middot; {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px] normal-case"
+                onClick={() => handleGstRegisterExport("csv")}
+                disabled={!filteredBills.length}
+                data-testid="button-export-gst-csv"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px] normal-case"
+                onClick={() => handleGstRegisterExport("xlsx")}
+                disabled={!filteredBills.length}
+                data-testid="button-export-gst-excel"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                Export Excel
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="py-2 px-3">
