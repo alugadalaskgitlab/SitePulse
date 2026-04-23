@@ -6230,6 +6230,47 @@ export class DatabaseStorage implements IStorage {
           siteName: siteLabel,
         });
       }
+
+      // Plant Shift Log manpower (groups by date, plant, contractor, category, gender)
+      const plantManpowerRows = await db.select({
+        date: plantShiftLogs.date,
+        plantName: plantShiftLogs.plantName,
+        category: plantShiftLogManpower.category,
+        gender: plantShiftLogManpower.gender,
+      })
+      .from(plantShiftLogManpower)
+      .innerJoin(plantShiftLogs, eq(plantShiftLogs.id, plantShiftLogManpower.shiftLogId))
+      .where(and(
+        vendorMatchSql(plantShiftLogManpower.contractorName),
+        gte(plantShiftLogs.date, periodFrom),
+        lte(plantShiftLogs.date, periodTo),
+      ));
+
+      const plantGroups = new Map<string, { date: string; plant: string; category: string; gender: string | null; count: number }>();
+      for (const row of plantManpowerRows) {
+        const dateStr = typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0];
+        const plant = (row.plantName || "MAIN PLANT").toUpperCase().trim();
+        const cat = (row.category || "UNSKILLED").toUpperCase().trim();
+        const gender = row.gender ? row.gender.toUpperCase().trim() : null;
+        const key = `${dateStr}|${plant}|${cat}|${gender || ""}`;
+        const grp = plantGroups.get(key) || { date: dateStr, plant, category: cat, gender, count: 0 };
+        grp.count += 1;
+        plantGroups.set(key, grp);
+      }
+
+      for (const grp of plantGroups.values()) {
+        const genderPart = grp.gender ? ` ${grp.gender}` : "";
+        const desc = `LABOUR ${grp.category}${genderPart}`;
+        items.push({
+          date: grp.date,
+          category: "labour",
+          description: desc,
+          qty: grp.count,
+          unit: "HEAD-DAY",
+          source: "auto",
+          siteName: `PLANT: ${grp.plant}`,
+        });
+      }
     }
 
     items.sort((a, b) => {
@@ -6274,6 +6315,11 @@ export class DatabaseStorage implements IStorage {
       .from(labourLogs)
       .where(sql`${labourLogs.contractor} IS NOT NULL AND ${labourLogs.contractor} != ''`);
     for (const r of labContractors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    const plantLabContractors = await db.selectDistinct({ name: plantShiftLogManpower.contractorName })
+      .from(plantShiftLogManpower)
+      .where(sql`${plantShiftLogManpower.contractorName} IS NOT NULL AND ${plantShiftLogManpower.contractorName} != ''`);
+    for (const r of plantLabContractors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
     const billVendors = await db.selectDistinct({ name: vendorBills.vendorName })
       .from(vendorBills)
@@ -6914,6 +6960,21 @@ export class DatabaseStorage implements IStorage {
       for (const row of labRows) {
         if (row.contractor) addRecord(row.contractor, "labour");
       }
+
+      const plantLabRows = await db.select({
+        contractor: plantShiftLogManpower.contractorName,
+      })
+      .from(plantShiftLogManpower)
+      .innerJoin(plantShiftLogs, eq(plantShiftLogs.id, plantShiftLogManpower.shiftLogId))
+      .where(and(
+        sql`${plantShiftLogManpower.contractorName} IS NOT NULL AND ${plantShiftLogManpower.contractorName} != ''`,
+        gte(plantShiftLogs.date, periodFrom),
+        lte(plantShiftLogs.date, periodTo),
+      ));
+
+      for (const row of plantLabRows) {
+        if (row.contractor) addRecord(row.contractor, "labour");
+      }
     }
 
     const existingBills = await db.select({
@@ -7377,7 +7438,16 @@ export class DatabaseStorage implements IStorage {
       eq(dprs.isSuperseded, false),
     ));
 
-    for (const row of labCombos) {
+    const plantLabCombos = await db.selectDistinct({
+      category: plantShiftLogManpower.category,
+      gender: plantShiftLogManpower.gender,
+    })
+    .from(plantShiftLogManpower)
+    .where(vendorMatchSql(plantShiftLogManpower.contractorName));
+
+    const allLabCombos: { category: string | null; gender: string | null }[] = [...labCombos, ...plantLabCombos];
+
+    for (const row of allLabCombos) {
       const cat = (row.category || "UNSKILLED").toUpperCase().trim();
       const gender = row.gender ? row.gender.toUpperCase().trim() : null;
       const keySuffix = gender ? `${cat}_${gender}` : cat;
