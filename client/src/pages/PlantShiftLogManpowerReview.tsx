@@ -375,6 +375,14 @@ export default function PlantShiftLogManpowerReview() {
   const [savingDismissalKey, setSavingDismissalKey] = useState<string | null>(null);
   const [restoringDismissalId, setRestoringDismissalId] = useState<number | null>(null);
   const [showDismissedList, setShowDismissedList] = useState(false);
+  // Filters & bulk-restore controls for the dismissed-pairs panel.
+  const [dismissedNameFilter, setDismissedNameFilter] = useState<string>("");
+  const [dismissedActorFilter, setDismissedActorFilter] = useState<string>("__all__");
+  const [dismissedDateFrom, setDismissedDateFrom] = useState<string>("");
+  const [dismissedDateTo, setDismissedDateTo] = useState<string>("");
+  const [selectedDismissedIds, setSelectedDismissedIds] = useState<Record<number, boolean>>({});
+  const [bulkRestoring, setBulkRestoring] = useState(false);
+  const [purgeOlderDays, setPurgeOlderDays] = useState<string>("90");
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
@@ -465,10 +473,13 @@ export default function PlantShiftLogManpowerReview() {
   }, [adminPin]);
 
   // Refetch dismissed pairs whenever the plant scope changes (or on unlock).
+  // Also wipe any in-flight bulk-restore selection so a stale checkbox state
+  // from the previous plant can't leak into the new scope.
   useEffect(() => {
     if (adminPin) {
       fetchDismissedPairs();
     }
+    setSelectedDismissedIds({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPin, dismissalsScopeKey]);
 
@@ -754,6 +765,48 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
+  const bulkRestoreDismissed = async (opts: { ids?: number[]; olderThanDays?: number; description: string }) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(`${opts.description}\n\nThese name-pairs will be allowed to suggest themselves again. Continue?`);
+      if (!ok) return;
+    }
+    setBulkRestoring(true);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pin: adminPin,
+          actor: actor.trim(),
+          plantName: dismissalsScopeKey,
+          ids: opts.ids,
+          olderThanDays: opts.olderThanDays,
+        }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { removed: number };
+      toast({
+        title: result.removed > 0 ? "Dismissals restored" : "No dismissals matched",
+        description: result.removed > 0
+          ? `${result.removed} name-pair${result.removed === 1 ? "" : "s"} can suggest themselves again.`
+          : "Nothing matched the selected criteria.",
+      });
+      setSelectedDismissedIds({});
+      await fetchDismissedPairs();
+    } catch (err) {
+      toast({ title: "Bulk restore failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setBulkRestoring(false);
+    }
+  };
+
   const restoreDismissedPair = async (p: DismissedPair) => {
     if (!adminPin) return;
     if (!actor || actor.trim().length < 2) {
@@ -781,6 +834,37 @@ export default function PlantShiftLogManpowerReview() {
       setRestoringDismissalId(null);
     }
   };
+
+  const dismissedActors = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of dismissedPairs || []) {
+      if (p.dismissedBy) set.add(p.dismissedBy);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [dismissedPairs]);
+
+  const filteredDismissedPairs = useMemo(() => {
+    if (!dismissedPairs) return [];
+    const q = dismissedNameFilter.trim().toUpperCase();
+    const fromTs = dismissedDateFrom ? new Date(dismissedDateFrom + "T00:00:00").getTime() : null;
+    // dateTo is inclusive — include the entire day
+    const toTs = dismissedDateTo ? new Date(dismissedDateTo + "T23:59:59.999").getTime() : null;
+    return dismissedPairs.filter((p) => {
+      if (q && !(p.nameA.toUpperCase().includes(q) || p.nameB.toUpperCase().includes(q))) return false;
+      if (dismissedActorFilter !== "__all__" && p.dismissedBy !== dismissedActorFilter) return false;
+      if (fromTs !== null || toTs !== null) {
+        const ts = new Date(p.dismissedAt).getTime();
+        if (fromTs !== null && ts < fromTs) return false;
+        if (toTs !== null && ts > toTs) return false;
+      }
+      return true;
+    });
+  }, [dismissedPairs, dismissedNameFilter, dismissedActorFilter, dismissedDateFrom, dismissedDateTo]);
+
+  const selectedDismissedCount = useMemo(
+    () => Object.values(selectedDismissedIds).filter(Boolean).length,
+    [selectedDismissedIds],
+  );
 
   const totals = useMemo(() => {
     if (!rows) return { workers: 0, items: 0 };
@@ -972,9 +1056,9 @@ export default function PlantShiftLogManpowerReview() {
                 className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-2 text-xs"
                 data-testid="dismissed-pairs-panel"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Undo2 className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
-                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                  <span className="font-medium text-slate-800 dark:text-slate-200" data-testid="text-dismissed-pairs-count">
                     {dismissedPairs.length} name-pair{dismissedPairs.length === 1 ? "" : "s"} marked 'not a duplicate'
                   </span>
                   <Button
@@ -988,36 +1072,209 @@ export default function PlantShiftLogManpowerReview() {
                   </Button>
                 </div>
                 {showDismissedList && (
-                  <div className="mt-2 space-y-1 max-h-60 overflow-auto">
-                    {dismissedPairs.map(p => {
-                      const when = new Date(p.dismissedAt);
-                      return (
-                        <div
-                          key={p.id}
-                          className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-slate-800/40 rounded px-2 py-1"
-                          data-testid={`dismissed-pair-${p.id}`}
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Filter by name</Label>
+                        <Input
+                          value={dismissedNameFilter}
+                          onChange={(e) => setDismissedNameFilter(e.target.value)}
+                          placeholder="e.g. RAJU"
+                          className="h-8 text-xs"
+                          data-testid="input-dismissed-filter-name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Dismissed by</Label>
+                        <Select value={dismissedActorFilter} onValueChange={setDismissedActorFilter}>
+                          <SelectTrigger className="h-8 text-xs" data-testid="select-dismissed-actor-filter">
+                            <SelectValue placeholder="Any operator" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__all__">Any operator</SelectItem>
+                            {dismissedActors.map(a => (
+                              <SelectItem key={a} value={a}>{a}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">From date</Label>
+                        <Input
+                          type="date"
+                          value={dismissedDateFrom}
+                          onChange={(e) => setDismissedDateFrom(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-dismissed-date-from"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">To date</Label>
+                        <Input
+                          type="date"
+                          value={dismissedDateTo}
+                          onChange={(e) => setDismissedDateTo(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-dismissed-date-to"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] text-muted-foreground" data-testid="text-dismissed-filtered-count">
+                        Showing {filteredDismissedPairs.length} of {dismissedPairs.length}
+                      </span>
+                      {(dismissedNameFilter || dismissedActorFilter !== "__all__" || dismissedDateFrom || dismissedDateTo) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-[11px]"
+                          onClick={() => {
+                            setDismissedNameFilter("");
+                            setDismissedActorFilter("__all__");
+                            setDismissedDateFrom("");
+                            setDismissedDateTo("");
+                          }}
+                          data-testid="button-dismissed-clear-filters"
                         >
-                          <span className="font-mono">{p.nameA}</span>
-                          <span className="text-muted-foreground">↔</span>
-                          <span className="font-mono">{p.nameB}</span>
-                          <span className="text-muted-foreground ml-2">
-                            by {p.dismissedBy} · {when.toLocaleDateString()}
-                          </span>
+                          Clear filters
+                        </Button>
+                      )}
+                      <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px]"
+                          disabled={filteredDismissedPairs.length === 0}
+                          onClick={() => {
+                            const next: Record<number, boolean> = { ...selectedDismissedIds };
+                            const allSelected = filteredDismissedPairs.every(p => next[p.id]);
+                            for (const p of filteredDismissedPairs) {
+                              if (allSelected) delete next[p.id];
+                              else next[p.id] = true;
+                            }
+                            setSelectedDismissedIds(next);
+                          }}
+                          data-testid="button-dismissed-toggle-all"
+                        >
+                          {filteredDismissedPairs.length > 0 && filteredDismissedPairs.every(p => selectedDismissedIds[p.id])
+                            ? "Unselect all (filtered)"
+                            : "Select all (filtered)"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px] border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                          disabled={
+                            bulkRestoring
+                            || selectedDismissedCount === 0
+                            || actor.trim().length < 2
+                          }
+                          onClick={() => {
+                            const ids = Object.entries(selectedDismissedIds)
+                              .filter(([, v]) => v)
+                              .map(([k]) => Number(k))
+                              .filter(n => Number.isFinite(n));
+                            bulkRestoreDismissed({
+                              ids,
+                              description: `Bulk-restore ${ids.length} selected dismissal${ids.length === 1 ? "" : "s"}.`,
+                            });
+                          }}
+                          data-testid="button-dismissed-bulk-restore"
+                        >
+                          {bulkRestoring
+                            ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                            : <Undo2 className="w-3.5 h-3.5 mr-1" />}
+                          Restore selected ({selectedDismissedCount})
+                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-[11px] whitespace-nowrap">Clear older than</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={purgeOlderDays}
+                            onChange={(e) => setPurgeOlderDays(e.target.value)}
+                            className="h-7 w-16 text-xs"
+                            data-testid="input-dismissed-purge-days"
+                          />
+                          <span className="text-[11px] text-muted-foreground">days</span>
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="h-6 px-2 ml-auto text-emerald-700 dark:text-emerald-300"
-                            disabled={restoringDismissalId === p.id || actor.trim().length < 2}
-                            onClick={() => restoreDismissedPair(p)}
-                            data-testid={`button-restore-dismissed-${p.id}`}
+                            variant="outline"
+                            className="h-7 px-2 text-[11px] border-rose-400 text-rose-800 dark:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950"
+                            disabled={
+                              bulkRestoring
+                              || actor.trim().length < 2
+                              || !(Number.isFinite(Number(purgeOlderDays)) && Number(purgeOlderDays) >= 0)
+                            }
+                            onClick={() => {
+                              const days = Number(purgeOlderDays);
+                              bulkRestoreDismissed({
+                                olderThanDays: days,
+                                description: `Clear every dismissal older than ${days} day${days === 1 ? "" : "s"} for the current plant scope.`,
+                              });
+                            }}
+                            data-testid="button-dismissed-purge-old"
                           >
-                            {restoringDismissalId === p.id
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <><Undo2 className="w-3.5 h-3.5 mr-1" />Restore</>}
+                            {bulkRestoring
+                              ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              : <X className="w-3.5 h-3.5 mr-1" />}
+                            Purge old
                           </Button>
                         </div>
-                      );
-                    })}
+                      </div>
+                    </div>
+                    <div className="space-y-1 max-h-60 overflow-auto">
+                      {filteredDismissedPairs.length === 0 ? (
+                        <div className="text-[11px] text-muted-foreground px-2 py-3 text-center" data-testid="text-dismissed-empty">
+                          No dismissed pairs match the current filters.
+                        </div>
+                      ) : filteredDismissedPairs.map(p => {
+                        const when = new Date(p.dismissedAt);
+                        return (
+                          <div
+                            key={p.id}
+                            className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-slate-800/40 rounded px-2 py-1"
+                            data-testid={`dismissed-pair-${p.id}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-3.5 w-3.5 cursor-pointer"
+                              checked={!!selectedDismissedIds[p.id]}
+                              onChange={(ev) => {
+                                const checked = ev.target.checked;
+                                setSelectedDismissedIds(prev => {
+                                  const next = { ...prev };
+                                  if (checked) next[p.id] = true;
+                                  else delete next[p.id];
+                                  return next;
+                                });
+                              }}
+                              data-testid={`checkbox-dismissed-${p.id}`}
+                              aria-label={`Select ${p.nameA} ↔ ${p.nameB}`}
+                            />
+                            <span className="font-mono">{p.nameA}</span>
+                            <span className="text-muted-foreground">↔</span>
+                            <span className="font-mono">{p.nameB}</span>
+                            <span className="text-muted-foreground ml-2" data-testid={`text-dismissed-meta-${p.id}`}>
+                              by {p.dismissedBy} · {when.toLocaleDateString()} {when.toLocaleTimeString()}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 ml-auto text-emerald-700 dark:text-emerald-300"
+                              disabled={restoringDismissalId === p.id || actor.trim().length < 2}
+                              onClick={() => restoreDismissedPair(p)}
+                              data-testid={`button-restore-dismissed-${p.id}`}
+                            >
+                              {restoringDismissalId === p.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <><Undo2 className="w-3.5 h-3.5 mr-1" />Restore</>}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

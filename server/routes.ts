@@ -2120,6 +2120,55 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: bulk-restore dismissed name-pairs. Either provide a list of `ids`
+  // (multi-select restore from the UI) or `olderThanDays` to purge every
+  // dismissal older than N days within the given plant scope. Both can be
+  // combined (the intersection is deleted). Each call writes a single audit
+  // line summarising the operator, plant scope and number of pairs restored.
+  app.post("/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs", async (req, res) => {
+    try {
+      const { pin, actor, ids, olderThanDays, plantName } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      const plant = String(plantName || "").trim();
+      if (!plant) return res.status(400).json({ message: "plantName is required" });
+      const idList = Array.isArray(ids)
+        ? ids.map((n: unknown) => Number(n)).filter((n: number) => Number.isFinite(n) && n > 0)
+        : [];
+      const days = olderThanDays === undefined || olderThanDays === null || olderThanDays === ""
+        ? undefined
+        : Number(olderThanDays);
+      if (idList.length === 0 && (days === undefined || !Number.isFinite(days) || days < 0)) {
+        return res.status(400).json({ message: "Provide either ids[] or a non-negative olderThanDays" });
+      }
+      const result = await storage.removeShiftLogManpowerDismissedDuplicatePairsBulk({
+        plantName: plant,
+        ids: idList.length > 0 ? idList : undefined,
+        olderThanDays: days,
+      });
+      console.info(
+        `[ShiftLogManpowerDismissDup] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} plant="${plant}" bulk-restored=${result.removed}` +
+        ` ids=[${result.removedIds.join(",")}]` +
+        (days !== undefined && Number.isFinite(days) ? ` olderThanDays=${days}` : "")
+      );
+      res.json({
+        message: result.removed > 0
+          ? `Restored ${result.removed} dismissal${result.removed === 1 ? "" : "s"}`
+          : "No matching dismissals found",
+        ...result,
+      });
+    } catch (err) {
+      console.error("shift-log-manpower bulk-restore-dismissed-pairs error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to bulk-restore dismissed pairs";
+      res.status(400).json({ message: msg });
+    }
+  });
+
   // Stock Ledger
   app.get("/api/plant-module/stock-ledger", async (req, res) => {
     try {

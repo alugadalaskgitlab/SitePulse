@@ -395,6 +395,11 @@ export interface IStorage {
     actor: string;
   }): Promise<{ added: number }>;
   removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{ removed: boolean }>;
+  removeShiftLogManpowerDismissedDuplicatePairsBulk(input: {
+    plantName: string;
+    ids?: number[];
+    olderThanDays?: number;
+  }): Promise<{ removed: number; removedIds: number[] }>;
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
@@ -7248,6 +7253,35 @@ export class DatabaseStorage implements IStorage {
       .where(eq(plantShiftLogManpowerDismissedDups.id, id))
       .returning({ id: plantShiftLogManpowerDismissedDups.id });
     return { removed: res.length > 0 };
+  }
+
+  async removeShiftLogManpowerDismissedDuplicatePairsBulk(input: {
+    plantName: string;
+    ids?: number[];
+    olderThanDays?: number;
+  }): Promise<{ removed: number; removedIds: number[] }> {
+    const plant = String(input.plantName || "").trim();
+    if (!plant) throw new Error("plantName is required");
+    const ids = Array.isArray(input.ids)
+      ? input.ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+    const olderThanDays = Number(input.olderThanDays);
+    const hasOlderThan = Number.isFinite(olderThanDays) && olderThanDays >= 0;
+    if (ids.length === 0 && !hasOlderThan) {
+      throw new Error("Either ids or olderThanDays must be provided");
+    }
+    const conditions = [eq(plantShiftLogManpowerDismissedDups.plantName, plant)];
+    if (ids.length > 0) {
+      conditions.push(inArray(plantShiftLogManpowerDismissedDups.id, ids));
+    }
+    if (hasOlderThan) {
+      const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+      conditions.push(lt(plantShiftLogManpowerDismissedDups.dismissedAt, cutoff));
+    }
+    const res = await db.delete(plantShiftLogManpowerDismissedDups)
+      .where(and(...conditions))
+      .returning({ id: plantShiftLogManpowerDismissedDups.id });
+    return { removed: res.length, removedIds: res.map((r) => r.id) };
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
