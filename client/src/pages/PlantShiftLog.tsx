@@ -195,9 +195,9 @@ export default function PlantShiftLog() {
     setManpower(existing.manpower.map(m => ({
       name: m.name,
       role: m.role,
-      contractorName: (m as any).contractorName ?? null,
-      category: (m as any).category ?? null,
-      gender: (m as any).gender ?? null,
+      contractorName: m.contractorName ?? null,
+      category: m.category ?? null,
+      gender: m.gender ?? null,
     })));
     setIdleEvents(existing.idleEvents.map(e => ({
       startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,

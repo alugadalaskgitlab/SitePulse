@@ -45,9 +45,9 @@ export default function Plant() {
   const backLink = getBackLink("/plant");
 
   useEffect(() => {
-    if (tabParam && ["operations", "stock", "masters"].includes(tabParam)) {
+    if (tabParam && ["operations", "stock", "reports", "masters"].includes(tabParam)) {
       setActiveTab(tabParam);
-      if (roleParam && ["stock", "masters"].includes(tabParam)) {
+      if (roleParam && ["stock", "reports", "masters"].includes(tabParam)) {
         setUnlockedTabs(prev => {
           const newMap = new Map(prev);
           newMap.set(tabParam, roleParam);
@@ -113,14 +113,18 @@ export default function Plant() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="operations" className="gap-2" data-testid="tab-operations">
             <Truck className="w-4 h-4" />
             <span className="hidden sm:inline">Operations</span>
           </TabsTrigger>
           <TabsTrigger value="stock" className="gap-2" data-testid="tab-management">
             <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Management / Reports</span>
+            <span className="hidden sm:inline">Management</span>
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-2" data-testid="tab-reports">
+            <FileText className="w-4 h-4" />
+            <span className="hidden sm:inline">Reports</span>
           </TabsTrigger>
           <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
             <Settings className="w-4 h-4" />
@@ -130,6 +134,23 @@ export default function Plant() {
 
         <TabsContent value="operations" className="mt-6">
           <OperationsTab />
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-6">
+          {unlockedTabs.has("reports") ? (
+            <ReportsTab unlockedRole={unlockedTabs.get("reports")!} />
+          ) : (
+            <Card className="py-12">
+              <CardContent className="text-center">
+                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Reports — Manager / Admin PIN required</h3>
+                <p className="text-sm text-muted-foreground mb-4">Daily Plant Reports, historical reports and heating trends</p>
+                <Button onClick={() => { setPendingTab("reports"); setShowPinAuth(true); }} data-testid="button-unlock-reports">
+                  <Lock className="w-4 h-4 mr-2" /> Enter PIN
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="stock" className="mt-6">
@@ -314,6 +335,65 @@ function OperationsTab() {
   );
 }
 
+function ReportsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const appendRoleAndTab = (path: string) => {
+    const sep = path.includes("?") ? "&" : "?";
+    return `${path}${sep}role=${unlockedRole}&tab=reports`;
+  };
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-md text-sm">
+        Reports — All daily plant reports, historical reports, and heating trends. Use date / plant filters and bulk PDF / ZIP export.
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Link href={appendRoleAndTab(`/plant/daily-report/${todayStr}`)}>
+          <Card className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800" data-testid="tile-today-daily-report-reports">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <FileText className="w-7 h-7 text-green-700 dark:text-green-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Today's Daily Plant Report</h3>
+                <p className="text-sm text-muted-foreground">Consolidated daily report — production, dispatches, fuel, manpower, idle</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={appendRoleAndTab("/plant/daily-reports")}>
+          <Card className="hover-elevate cursor-pointer h-full border-slate-200 dark:border-slate-800" data-testid="tile-historical-daily-reports-reports">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center">
+                <FileText className="w-7 h-7 text-slate-700 dark:text-slate-300" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Historical Daily Reports</h3>
+                <p className="text-sm text-muted-foreground">Browse all dates with date / plant filters; bulk PDF / ZIP export</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={appendRoleAndTab("/plant/heating-trends")}>
+          <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-trends-reports">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Boiler / Heating Trends</h3>
+                <p className="text-sm text-muted-foreground">Daily L/MT, L/Hr trends with date-range filter and Excel export</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
   const { appendOrigin } = useOrigin();
   const isAdmin = unlockedRole === "admin";
@@ -437,58 +517,6 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </div>
       )}
 
-      {/* ── Reports section ── */}
-      <div className="mt-2">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Reports</h3>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link href={appendRoleAndTab(`/plant/daily-report/${todayStr}`)}>
-          <Card className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800" data-testid="tile-today-daily-report-reports">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <FileText className="w-7 h-7 text-green-700 dark:text-green-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">Today's Daily Plant Report</h3>
-                <p className="text-sm text-muted-foreground">Consolidated daily report — production, dispatches, fuel, manpower, idle</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href={appendRoleAndTab("/plant/daily-reports")}>
-          <Card className="hover-elevate cursor-pointer h-full border-slate-200 dark:border-slate-800" data-testid="tile-historical-daily-reports-reports">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center">
-                <FileText className="w-7 h-7 text-slate-700 dark:text-slate-300" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">Historical Daily Reports</h3>
-                <p className="text-sm text-muted-foreground">Browse all dates with date / plant filters; bulk PDF / ZIP export</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href={appendRoleAndTab("/plant/heating-trends")}>
-          <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-trends-reports">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">Boiler / Heating Trends</h3>
-                <p className="text-sm text-muted-foreground">Daily L/MT, L/Hr trends with date-range filter and Excel export</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      <div className="mt-4">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Stock & Variance</h3>
-      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Link href={appendRoleAndTab("/plant/stock")}>
         <Card className="hover-elevate cursor-pointer h-full">

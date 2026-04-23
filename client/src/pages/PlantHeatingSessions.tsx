@@ -465,7 +465,17 @@ export default function PlantHeatingSessions() {
                 {form.dgMode === "inline" && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div><Label>Generator</Label>
-                      <Select value={form.dgGeneratorName} onValueChange={v => setField("dgGeneratorName", v)}>
+                      <Select
+                        value={form.dgGeneratorName}
+                        onValueChange={v => {
+                          if (v === "__new__") {
+                            const name = window.prompt("Enter new generator name (e.g. '125 KVA')")?.trim();
+                            if (name) setField("dgGeneratorName", name);
+                          } else {
+                            setField("dgGeneratorName", v);
+                          }
+                        }}
+                      >
                         <SelectTrigger data-testid="select-dg-generator"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {(generatorNames && generatorNames.length > 0
@@ -474,6 +484,11 @@ export default function PlantHeatingSessions() {
                           ).map(n => (
                             <SelectItem key={n} value={n}>{n}</SelectItem>
                           ))}
+                          {form.dgGeneratorName &&
+                            !(generatorNames || ["600 KVA", "40-30 KVA"]).includes(form.dgGeneratorName) && (
+                              <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
+                            )}
+                          <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
