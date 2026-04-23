@@ -265,6 +265,51 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      <Link href={appendOrigin("/plant/shift-log")}>
+        <Card className="hover-elevate cursor-pointer h-full">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <ClipboardList className="w-7 h-7 text-purple-700 dark:text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Plant Shift Log</h3>
+              <p className="text-sm text-muted-foreground">Operator daily log – plant start/stop, idle events, manpower, fuel meters</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href={appendOrigin(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
+        <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800" data-testid="tile-today-shift-log">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Today's Shift Log</h3>
+              <p className="text-sm text-muted-foreground">Open or create today's plant shift log – plant times, dips, manpower, idle</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href={appendOrigin(`/plant/heating-sessions/${new Date().toISOString().slice(0, 10)}`)}>
+        <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-sessions">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Bitumen Heating Sessions</h3>
+              <p className="text-sm text-muted-foreground">Per-session boiler runs – night pre-heat + day-time, with optional inline DG</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
       <Link href={appendOrigin("/plant/diesel-requirements")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
           <CardContent className="p-6 flex items-center gap-4">
@@ -480,36 +525,6 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </Card>
       </Link>
 
-      <Link href={appendRoleAndTab("/plant/shift-log")}>
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <ClipboardList className="w-7 h-7 text-purple-700 dark:text-purple-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Plant Shift Log</h3>
-              <p className="text-sm text-muted-foreground">Operator daily log – plant start/stop, idle events, manpower, fuel meters</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      <Link href={appendRoleAndTab(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
-        <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Today's Shift Log</h3>
-              <p className="text-sm text-muted-foreground">Open or create today's plant shift log – plant times, dips, manpower, idle</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
       <Card
         className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800"
         data-testid="tile-today-daily-report"
@@ -544,21 +559,6 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
           <ChevronRight className="w-5 h-5 text-muted-foreground" />
         </CardContent>
       </Card>
-
-      <Link href={appendRoleAndTab(`/plant/heating-sessions/${new Date().toISOString().slice(0, 10)}`)}>
-        <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-sessions">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-              <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Bitumen Heating Sessions</h3>
-              <p className="text-sm text-muted-foreground">Per-session boiler runs – night pre-heat + day-time, with optional inline DG</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
 
       <Link href={appendRoleAndTab("/plant/ldo-flow-meter")}>
         <Card className="hover-elevate cursor-pointer h-full">

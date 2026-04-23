@@ -71,7 +71,11 @@ export default function PlantHeatingSessions() {
   const { appendOrigin } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
   const dateParam = params?.date || format(new Date(), "yyyy-MM-dd");
-  const backLink = appendOrigin("/plant/dashboard");
+  const _sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const _backTab = _sp.get("tab") || "operations";
+  const _backRole = _sp.get("role");
+  const _dashBase = appendOrigin("/plant/dashboard");
+  const backLink = `${_dashBase}${_dashBase.includes("?") ? "&" : "?"}tab=${_backTab}${_backRole ? `&role=${_backRole}` : ""}`;
 
   const [filterDate, setFilterDate] = useState(dateParam);
   const [dialogOpen, setDialogOpen] = useState(false);

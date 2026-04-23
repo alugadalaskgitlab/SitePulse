@@ -26,7 +26,11 @@ export default function PlantShiftLog() {
   const [, params] = useRoute("/plant/shift-log/:date");
   const [, setLocation] = useLocation();
   const dateParam = params?.date || format(new Date(), "yyyy-MM-dd");
-  const backLink = appendOrigin("/plant/dashboard");
+  const _sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const _backTab = _sp.get("tab") || "operations";
+  const _backRole = _sp.get("role");
+  const _dashBase = appendOrigin("/plant/dashboard");
+  const backLink = `${_dashBase}${_dashBase.includes("?") ? "&" : "?"}tab=${_backTab}${_backRole ? `&role=${_backRole}` : ""}`;
 
   const [date, setDate] = useState(dateParam);
   const [shiftCode, setShiftCode] = useState("DAY");
