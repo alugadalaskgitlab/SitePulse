@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
@@ -70,28 +71,66 @@ export default function SiteDashboard() {
   const [pendingAction, setPendingAction] = useState<"reports-excel" | "reports-pdf" | "reports-print" | null>(null);
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState("dpr-summary");
-  const [filters, setFilters] = useState({
-    site: "",
-    engineer: "",
-    dateFrom: "",
-    dateTo: "",
-    activity: "",
-    equipment: "",
-    hasDiesel: false,
-    material: "",
-    supplier: "",
-  });
+  // DPR filter state — persisted across visits in localStorage so the page
+  // re-opens with the user's last-used filter set. URL params (if any are
+  // ever added for shareable links) win over the saved set.
+  const SITE_DPR_FILTER_URL_KEYS = [
+    "site", "engineer", "dateFrom", "dateTo", "activity", "equipment", "hasDiesel", "material", "supplier",
+  ];
+  const urlHasDprFilterParams = (() => {
+    if (typeof window === "undefined") return false;
+    const sp = new URLSearchParams(window.location.search);
+    return SITE_DPR_FILTER_URL_KEYS.some((k) => sp.has(k));
+  })();
+  const [filters, setFilters] = usePersistedFilters(
+    "site-dashboard:dpr-filters:v1",
+    {
+      site: "",
+      engineer: "",
+      dateFrom: "",
+      dateTo: "",
+      activity: "",
+      equipment: "",
+      hasDiesel: false,
+      material: "",
+      supplier: "",
+    },
+    { shouldHydrate: !urlHasDprFilterParams },
+  );
   
   const [, setLocation] = useLocation();
   
   // Materials Received tab state
   const today = format(new Date(), "yyyy-MM-dd");
-  const [materialDateFrom, setMaterialDateFrom] = useState(today);
-  const [materialDateTo, setMaterialDateTo] = useState(today);
-  const [materialSiteFilter, setMaterialSiteFilter] = useState("");
-  const [materialNameFilter, setMaterialNameFilter] = useState("");
-  const [materialSupplierFilter, setMaterialSupplierFilter] = useState("");
-  const [materialStockOwnerFilter, setMaterialStockOwnerFilter] = useState("");
+  // Materials Received filter state — persisted across visits in localStorage.
+  // URL params (if any are ever added for shareable links) win over the saved set.
+  const SITE_MATERIAL_FILTER_URL_KEYS = [
+    "materialDateFrom", "materialDateTo", "materialSiteFilter", "materialNameFilter", "materialSupplierFilter", "materialStockOwnerFilter",
+  ];
+  const urlHasMaterialFilterParams = (() => {
+    if (typeof window === "undefined") return false;
+    const sp = new URLSearchParams(window.location.search);
+    return SITE_MATERIAL_FILTER_URL_KEYS.some((k) => sp.has(k));
+  })();
+  const [materialFilters, setMaterialFilters] = usePersistedFilters(
+    "site-dashboard:material-filters:v1",
+    {
+      materialDateFrom: today,
+      materialDateTo: today,
+      materialSiteFilter: "",
+      materialNameFilter: "",
+      materialSupplierFilter: "",
+      materialStockOwnerFilter: "",
+    },
+    { shouldHydrate: !urlHasMaterialFilterParams },
+  );
+  const { materialDateFrom, materialDateTo, materialSiteFilter, materialNameFilter, materialSupplierFilter, materialStockOwnerFilter } = materialFilters;
+  const setMaterialDateFrom = (v: string) => setMaterialFilters((f) => ({ ...f, materialDateFrom: v }));
+  const setMaterialDateTo = (v: string) => setMaterialFilters((f) => ({ ...f, materialDateTo: v }));
+  const setMaterialSiteFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialSiteFilter: v }));
+  const setMaterialNameFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialNameFilter: v }));
+  const setMaterialSupplierFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialSupplierFilter: v }));
+  const setMaterialStockOwnerFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialStockOwnerFilter: v }));
   const [newMaterialEntry, setNewMaterialEntry] = useState({
     date: today,
     time: format(new Date(), "HH:mm"),

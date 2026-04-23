@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,12 +35,36 @@ export default function PlantStock() {
   const searchString = useSearch();
   const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
   const backLink = appendOrigin(`/plant/dashboard?tab=stock${urlRole ? `&role=${urlRole}` : ""}`);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [selectedPartyId, setSelectedPartyId] = useState<string>("all");
-  const [selectedMaterialId, setSelectedMaterialId] = useState<string>("all");
-  const [selectedTransactionType, setSelectedTransactionType] = useState<string>("all");
-  const [issuedToFilter, setIssuedToFilter] = useState<string>("");
+  // Filter state — persisted across visits in localStorage so the page
+  // re-opens with the user's last-used filter set. URL params (if any are
+  // ever added for shareable links) win over the saved set.
+  const PLANT_STOCK_FILTER_URL_KEYS = [
+    "dateFrom", "dateTo", "selectedPartyId", "selectedMaterialId", "selectedTransactionType", "issuedToFilter",
+  ];
+  const urlHasStockFilterParams = (() => {
+    if (typeof window === "undefined") return false;
+    const sp = new URLSearchParams(window.location.search);
+    return PLANT_STOCK_FILTER_URL_KEYS.some((k) => sp.has(k));
+  })();
+  const [persistedFilters, setPersistedFilters] = usePersistedFilters(
+    "plant-stock:last-filters:v1",
+    {
+      dateFrom: "",
+      dateTo: "",
+      selectedPartyId: "all",
+      selectedMaterialId: "all",
+      selectedTransactionType: "all",
+      issuedToFilter: "",
+    },
+    { shouldHydrate: !urlHasStockFilterParams },
+  );
+  const { dateFrom, dateTo, selectedPartyId, selectedMaterialId, selectedTransactionType, issuedToFilter } = persistedFilters;
+  const setDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, dateFrom: v }));
+  const setDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, dateTo: v }));
+  const setSelectedPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, selectedPartyId: v }));
+  const setSelectedMaterialId = (v: string) => setPersistedFilters((f) => ({ ...f, selectedMaterialId: v }));
+  const setSelectedTransactionType = (v: string) => setPersistedFilters((f) => ({ ...f, selectedTransactionType: v }));
+  const setIssuedToFilter = (v: string) => setPersistedFilters((f) => ({ ...f, issuedToFilter: v }));
 
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,9 +37,41 @@ export default function PlantLdoFlowMeter() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<LdoFlowReading | null>(null);
 
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterTank, setFilterTank] = useState("all");
+  // Filter state — persisted across visits in localStorage so the page
+  // re-opens with the user's last-used filter set. URL params (if any are
+  // ever added for shareable links) win over the saved set.
+  const PLANT_LDO_FILTER_URL_KEYS = [
+    "filterDateFrom", "filterDateTo", "filterTank",
+    "reconDateFrom", "reconDateTo", "reconPartyId", "reconMixTemplateId", "reconSite",
+  ];
+  const urlHasLdoFilterParams = (() => {
+    if (typeof window === "undefined") return false;
+    const sp = new URLSearchParams(window.location.search);
+    return PLANT_LDO_FILTER_URL_KEYS.some((k) => sp.has(k));
+  })();
+  const [persistedFilters, setPersistedFilters] = usePersistedFilters(
+    "plant-ldo-flow-meter:last-filters:v1",
+    {
+      filterDateFrom: "",
+      filterDateTo: "",
+      filterTank: "all",
+      reconDateFrom: "",
+      reconDateTo: "",
+      reconPartyId: "all",
+      reconMixTemplateId: "all",
+      reconSite: "all",
+    },
+    { shouldHydrate: !urlHasLdoFilterParams },
+  );
+  const { filterDateFrom, filterDateTo, filterTank, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
+  const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
+  const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
+  const setFilterTank = (v: string) => setPersistedFilters((f) => ({ ...f, filterTank: v }));
+  const setReconDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateFrom: v }));
+  const setReconDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateTo: v }));
+  const setReconPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, reconPartyId: v }));
+  const setReconMixTemplateId = (v: string) => setPersistedFilters((f) => ({ ...f, reconMixTemplateId: v }));
+  const setReconSite = (v: string) => setPersistedFilters((f) => ({ ...f, reconSite: v }));
 
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
@@ -68,12 +101,6 @@ export default function PlantLdoFlowMeter() {
   const [dipReadingType, setDipReadingType] = useState("opening");
   const [dipDepthCm, setDipDepthCm] = useState("");
   const [dipNotes, setDipNotes] = useState("");
-
-  const [reconDateFrom, setReconDateFrom] = useState("");
-  const [reconDateTo, setReconDateTo] = useState("");
-  const [reconPartyId, setReconPartyId] = useState("all");
-  const [reconMixTemplateId, setReconMixTemplateId] = useState("all");
-  const [reconSite, setReconSite] = useState("all");
 
   const { data: readings, isLoading } = useQuery<LdoFlowReading[]>({
     queryKey: ["/api/plant-module/ldo-flow-readings"],

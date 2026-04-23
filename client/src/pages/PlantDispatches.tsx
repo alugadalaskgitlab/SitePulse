@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,13 +33,36 @@ export default function PlantDispatches() {
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   
-  // Filter state
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterPartyId, setFilterPartyId] = useState("all");
-  const [filterMixType, setFilterMixType] = useState("all");
-  const [filterVehicle, setFilterVehicle] = useState("all");
-  const [filterOwner, setFilterOwner] = useState("all");
+  // Filter state — persisted across visits in localStorage so the page
+  // re-opens with the user's last-used filter set. URL params (if any are
+  // ever added for shareable links) win over the saved set.
+  const PLANT_DISPATCHES_FILTER_URL_KEYS = [
+    "filterDateFrom", "filterDateTo", "filterPartyId", "filterMixType", "filterVehicle", "filterOwner",
+  ];
+  const urlHasDispatchFilterParams = (() => {
+    if (typeof window === "undefined") return false;
+    const sp = new URLSearchParams(window.location.search);
+    return PLANT_DISPATCHES_FILTER_URL_KEYS.some((k) => sp.has(k));
+  })();
+  const [persistedFilters, setPersistedFilters] = usePersistedFilters(
+    "plant-dispatches:last-filters:v1",
+    {
+      filterDateFrom: "",
+      filterDateTo: "",
+      filterPartyId: "all",
+      filterMixType: "all",
+      filterVehicle: "all",
+      filterOwner: "all",
+    },
+    { shouldHydrate: !urlHasDispatchFilterParams },
+  );
+  const { filterDateFrom, filterDateTo, filterPartyId, filterMixType, filterVehicle, filterOwner } = persistedFilters;
+  const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
+  const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
+  const setFilterPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, filterPartyId: v }));
+  const setFilterMixType = (v: string) => setPersistedFilters((f) => ({ ...f, filterMixType: v }));
+  const setFilterVehicle = (v: string) => setPersistedFilters((f) => ({ ...f, filterVehicle: v }));
+  const setFilterOwner = (v: string) => setPersistedFilters((f) => ({ ...f, filterOwner: v }));
   
   // PIN auth state for per-action authentication
   const [showPinAuth, setShowPinAuth] = useState(false);
