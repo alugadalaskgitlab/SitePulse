@@ -97,6 +97,10 @@ function parseSiteBadge(item: { siteName?: string | null; description?: string }
   if (!resolved) return null;
   const sn = resolved.toUpperCase();
   if (sn === "PLANT") return { type: "plant", label: "PLANT" };
+  if (sn.startsWith("PLANT:") || sn.startsWith("PLANT ")) {
+    const name = sn.replace(/^PLANT[:\s]\s*/, "").trim();
+    return { type: "plant", label: name ? `PLANT · ${name}` : "PLANT" };
+  }
   if (sn.startsWith("SITE*")) {
     const name = sn.replace(/^SITE\*:?\s*/, "").trim();
     return { type: "site-unlinked", label: name ? `SITE* · ${name}` : "SITE*" };
@@ -106,6 +110,15 @@ function parseSiteBadge(item: { siteName?: string | null; description?: string }
     return { type: "site", label: name ? `SITE · ${name}` : "SITE" };
   }
   return { type: "site", label: sn };
+}
+
+function getLabourSource(item: { siteName?: string | null; description?: string; category?: string }): "plant" | "site" | "other" {
+  const resolved = inferSiteNameFromDescription(item.description, item.siteName);
+  if (!resolved) return "other";
+  const sn = resolved.toUpperCase();
+  if (sn === "PLANT" || sn.startsWith("PLANT:") || sn.startsWith("PLANT ")) return "plant";
+  if (sn.startsWith("SITE")) return "site";
+  return "other";
 }
 
 function getSiteBadgeClass(type: "site" | "plant" | "site-unlinked"): string {
@@ -1749,6 +1762,21 @@ export default function VendorBills() {
                           const catItems = lineItems.map((item, idx) => ({ item, idx })).filter(({ item }) => item.category === cat);
                           if (catItems.length === 0) return null;
                           const catTotal = catItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
+
+                          let labourSubGroups: Array<{ key: "site" | "plant" | "other"; label: string; items: Array<{ item: LineItem; idx: number }> }> | null = null;
+                          if (cat === "labour") {
+                            const siteItems = catItems.filter(({ item }) => getLabourSource(item) === "site");
+                            const plantItems = catItems.filter(({ item }) => getLabourSource(item) === "plant");
+                            const otherItems = catItems.filter(({ item }) => getLabourSource(item) === "other");
+                            const present = (siteItems.length ? 1 : 0) + (plantItems.length ? 1 : 0) + (otherItems.length ? 1 : 0);
+                            if (present > 1) {
+                              labourSubGroups = [];
+                              if (siteItems.length) labourSubGroups.push({ key: "site", label: "DPR Site Labour", items: siteItems });
+                              if (plantItems.length) labourSubGroups.push({ key: "plant", label: "Plant Shift Manpower", items: plantItems });
+                              if (otherItems.length) labourSubGroups.push({ key: "other", label: "Manual / Other", items: otherItems });
+                            }
+                          }
+
                           return (
                             <Fragment key={cat}>
                               <tr className={`${getCategoryBadgeClass(cat)} border-b`}>
@@ -1759,7 +1787,31 @@ export default function VendorBills() {
                                   {catItems.length} item{catItems.length !== 1 ? "s" : ""}
                                 </td>
                               </tr>
-                              {catItems.map(({ item, idx }) => renderItemRow(item, idx))}
+                              {labourSubGroups ? (
+                                labourSubGroups.map(grp => {
+                                  const grpTotal = grp.items.reduce((sum, { item }) => sum + (item.amount || 0), 0);
+                                  const badgeClass = grp.key === "other"
+                                    ? "bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800/40 dark:text-gray-300 dark:border-gray-600"
+                                    : getSiteBadgeClass(grp.key);
+                                  return (
+                                    <Fragment key={grp.key}>
+                                      <tr className="border-b bg-muted/20">
+                                        <td colSpan={totalColSpan} className="px-3 py-1.5 text-xs uppercase tracking-wider" data-testid={`row-labour-source-${grp.key}`}>
+                                          <Badge variant="outline" className={`text-[10px] mr-2 ${badgeClass} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-labour-source-${grp.key}`}>
+                                            {grp.label}
+                                          </Badge>
+                                          <span className="text-muted-foreground normal-case">
+                                            {grp.items.length} row{grp.items.length !== 1 ? "s" : ""} · Rs. {formatCurrency(grpTotal)}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                      {grp.items.map(({ item, idx }) => renderItemRow(item, idx))}
+                                    </Fragment>
+                                  );
+                                })
+                              ) : (
+                                catItems.map(({ item, idx }) => renderItemRow(item, idx))
+                              )}
                               <tr className="border-b bg-muted/40">
                                 <td colSpan={labelColSpan} className="px-2 py-2 text-right text-xs font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
                                   {catLabels[cat]} Sub-total
@@ -2243,7 +2295,39 @@ export default function VendorBills() {
                                   {catItems.length} item{catItems.length !== 1 ? "s" : ""}
                                 </td>
                               </tr>
-                              {catItems.map(({ item, idx }: any) => renderDetailRow(item, idx))}
+                              {(() => {
+                                if (cat !== "labour") return catItems.map(({ item, idx }: any) => renderDetailRow(item, idx));
+                                const siteItems = catItems.filter(({ item }: any) => getLabourSource(item) === "site");
+                                const plantItems = catItems.filter(({ item }: any) => getLabourSource(item) === "plant");
+                                const otherItems = catItems.filter(({ item }: any) => getLabourSource(item) === "other");
+                                const present = (siteItems.length ? 1 : 0) + (plantItems.length ? 1 : 0) + (otherItems.length ? 1 : 0);
+                                if (present <= 1) return catItems.map(({ item, idx }: any) => renderDetailRow(item, idx));
+                                const groups: Array<{ key: "site" | "plant" | "other"; label: string; items: any[] }> = [];
+                                if (siteItems.length) groups.push({ key: "site", label: "DPR Site Labour", items: siteItems });
+                                if (plantItems.length) groups.push({ key: "plant", label: "Plant Shift Manpower", items: plantItems });
+                                if (otherItems.length) groups.push({ key: "other", label: "Manual / Other", items: otherItems });
+                                return groups.map(grp => {
+                                  const grpTotal = grp.items.reduce((s: number, { item }: any) => s + (item.amount || 0), 0);
+                                  const badgeClass = grp.key === "other"
+                                    ? "bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800/40 dark:text-gray-300 dark:border-gray-600"
+                                    : getSiteBadgeClass(grp.key);
+                                  return (
+                                    <Fragment key={grp.key}>
+                                      <tr className="border-b bg-muted/20">
+                                        <td colSpan={totalCols} className="px-3 py-1.5 text-xs uppercase tracking-wider" data-testid={`row-detail-labour-source-${grp.key}`}>
+                                          <Badge variant="outline" className={`text-[10px] mr-2 ${badgeClass} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-detail-labour-source-${grp.key}`}>
+                                            {grp.label}
+                                          </Badge>
+                                          <span className="text-muted-foreground normal-case">
+                                            {grp.items.length} row{grp.items.length !== 1 ? "s" : ""} · Rs. {formatCurrency(grpTotal)}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                      {grp.items.map(({ item, idx }: any) => renderDetailRow(item, idx))}
+                                    </Fragment>
+                                  );
+                                });
+                              })()}
                               <tr className="border-b bg-muted/40">
                                 <td colSpan={labelCols} className="px-2 py-2 text-right text-xs font-semibold uppercase">
                                   {catLabels[cat]} Sub-total
