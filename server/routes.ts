@@ -2480,6 +2480,9 @@ export async function registerRoutes(
   app.get("/api/plant-module/ldo-meter/last", async (req, res) => {
     try {
       const tank = parseInt((req.query.tank as string) || "1");
+      if (tank !== 1 && tank !== 2) {
+        return res.status(400).json({ code: "INVALID_TANK", message: "tank must be 1 or 2" });
+      }
       const before = (req.query.before as string) || new Date().toISOString().slice(0, 16);
       const plantName = (req.query.plant as string) || "Main Plant";
       const result = await storage.getLatestLdoMeterReading(tank, before, plantName);
