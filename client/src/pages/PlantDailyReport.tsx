@@ -29,7 +29,7 @@ type DailyPlantSummary = {
   receipts: { byMaterial: Array<{ materialName: string; quantity: number; uom: string; lines: number }>; totalLines: number };
   runningHours: number | null;
   productiveHours: number | null;
-  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string };
+  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null };
   bitumenDips: unknown[];
   ldoFlows: unknown[];
   ldoDips: unknown[];
@@ -291,14 +291,23 @@ export default function PlantDailyReport() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>LDO Consumption {data.ldo.source && data.ldo.source !== "shift_meter" ? <Badge variant="secondary" className="ml-2">Source: {data.ldo.source}</Badge> : null}</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>
+                LDO Consumption
+                {data.ldo.source && data.ldo.source !== "shift_meter" ? <Badge variant="secondary" className="ml-2">Source: {data.ldo.source}</Badge> : null}
+                {data.ldo.primarySourceT1 === "sessions" ? <Badge variant="default" className="ml-2" data-testid="badge-t1-source">Tank-1 from Heating Sessions</Badge> : null}
+              </CardTitle>
+            </CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
-              <KV label="Tank 1 Boiler L" value={fmt(data.ldo.consumedT1L, 1)} />
+              <KV label={`Tank 1 Boiler L${data.ldo.primarySourceT1 === "sessions" ? " (sessions)" : ""}`} value={fmt(data.ldo.consumedT1L, 1)} />
               <KV label="Tank 2 Dryer L" value={fmt(data.ldo.consumedT2L, 1)} />
               <KV label="Total L" value={fmt(data.ldo.consumedTotalL, 1)} />
               <KV label="L / Hour (combined)" value={fmt(data.ldo.lPerHour, 2)} />
               <KV label="Dryer L / MT (Tank-2)" value={fmt(data.ldo.dryerLPerMT, 3)} />
               <KV label="Boiler L / MT (Tank-1)" value={fmt(data.ldo.boilerLPerMT, 3)} />
+              {data.ldo.primarySourceT1 === "sessions" && data.ldo.reconciliationT1ShiftL != null && (
+                <KV label="Tank-1 Shift Meter (recon)" value={fmt(data.ldo.reconciliationT1ShiftL, 1)} />
+              )}
             </CardContent>
           </Card>
 

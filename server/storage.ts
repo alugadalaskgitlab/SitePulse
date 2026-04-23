@@ -7976,6 +7976,28 @@ export class DatabaseStorage implements IStorage {
     });
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
 
+    const boilerHeating = await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1);
+
+    // Primary-source rule: when heating sessions exist for the day, sessions
+    // are the source of truth for Tank-1 LDO. The shift-log Tank-1 value is
+    // demoted to a reconciliation field. This prevents double-counting and
+    // keeps the report aligned with the operator's actual boiler runs.
+    const t1PrimarySource: "sessions" | "shift_meter" | "dip_fallback" =
+      (boilerHeating && boilerHeating.sessionCount > 0)
+        ? "sessions"
+        : (t1Source ?? "shift_meter");
+    const effectiveT1L = t1PrimarySource === "sessions"
+      ? (boilerHeating?.sessionsLdoT1L ?? null)
+      : ldoConsumedT1;
+    const reconciliationT1ShiftL = t1PrimarySource === "sessions" ? ldoConsumedT1 : null;
+    const effectiveTotalL = (effectiveT1L || 0) + (ldoConsumedT2 || 0);
+    const effectiveLPerHour = (runningHours && runningHours > 0 && effectiveTotalL > 0)
+      ? Math.round((effectiveTotalL / runningHours) * 100) / 100 : null;
+    const effectiveLPerMT = (totalProductionMT > 0 && effectiveTotalL > 0)
+      ? Math.round((effectiveTotalL / totalProductionMT) * 1000) / 1000 : null;
+    const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveT1L || 0) > 0)
+      ? Math.round(((effectiveT1L as number) / totalProductionMT) * 1000) / 1000 : null;
+
     return {
       date,
       plantName,
@@ -7995,14 +8017,16 @@ export class DatabaseStorage implements IStorage {
       runningHours,
       productiveHours,
       ldo: {
-        consumedT1L: ldoConsumedT1,
+        consumedT1L: effectiveT1L,
         consumedT2L: ldoConsumedT2,
-        consumedTotalL: ldoConsumedTotalL || null,
-        lPerHour: ldoLPerHour,
-        lPerMT: ldoLPerMT,
+        consumedTotalL: effectiveTotalL || null,
+        lPerHour: effectiveLPerHour,
+        lPerMT: effectiveLPerMT,
         dryerLPerMT,
-        boilerLPerMT,
+        boilerLPerMT: effectiveBoilerLPerMT,
         source: ldoSource,
+        primarySourceT1: t1PrimarySource,
+        reconciliationT1ShiftL,
       },
       bitumenDips,
       ldoFlows,
@@ -8016,7 +8040,7 @@ export class DatabaseStorage implements IStorage {
         byReason: idleByReason,
         totalMinutes: totalIdleMinutes,
       },
-      boilerHeating: await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1),
+      boilerHeating,
     };
   }
 
@@ -8208,29 +8232,35 @@ export class DatabaseStorage implements IStorage {
       candidates.push({ value: closeVal, date: sh.date, time: sh.plantStopTime, source: `Plant Shift Log ${sh.date} (closing)`, sourceId: sh.id, sortKey: sk });
     }
 
-    if (candidates.length) {
-      candidates.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
-      const top = candidates[0];
-      return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
-    }
-
-    // Tank-1 fallback: if no prior closing, use the SAME-DAY morning shift-log Tank-1 OPENING meter
+    // For Tank-1 specifically, include same-day morning shift-log OPENING as a
+    // candidate. Carry-forward precedence (per task spec): latest prior session
+    // closing same-day → same-day shift-log opening → fall back to older-day
+    // closings only if no same-day source exists.
     if (tank === 1) {
-      const sameDayShifts = shifts.filter(sh => sh.date === cutoffDate && sh.ldoTank1OpeningMeter != null);
-      if (sameDayShifts.length) {
-        sameDayShifts.sort((a, b) => (a.plantStartTime || "00:00").localeCompare(b.plantStartTime || "00:00"));
-        const morning = sameDayShifts[0];
-        return {
-          value: morning.ldoTank1OpeningMeter as number,
-          date: morning.date,
-          time: morning.plantStartTime,
-          source: `Plant Shift Log ${morning.date} (opening)`,
-          sourceId: morning.id,
-        };
+      for (const sh of shifts) {
+        if (sh.date !== cutoffDate) continue;
+        if (sh.ldoTank1OpeningMeter == null) continue;
+        const sk = `${sh.date}T${sh.plantStartTime || "00:00"}`;
+        if (sk > cutoff) continue;
+        candidates.push({
+          value: sh.ldoTank1OpeningMeter,
+          date: sh.date,
+          time: sh.plantStartTime,
+          source: `Plant Shift Log ${sh.date} (opening)`,
+          sourceId: sh.id,
+          sortKey: sk,
+        });
       }
     }
 
-    return null;
+    if (!candidates.length) return null;
+
+    // Prefer the latest same-day candidate over any older-day candidate.
+    const sameDay = candidates.filter(c => c.date === cutoffDate);
+    const pool = sameDay.length ? sameDay : candidates;
+    pool.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+    const top = pool[0];
+    return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
   }
 
   private async _getBoilerHeatingSummary(
