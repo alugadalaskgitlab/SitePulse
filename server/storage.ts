@@ -8094,6 +8094,17 @@ export class DatabaseStorage implements IStorage {
       const iss = payload.dgIssuedDiesel ?? 0;
       if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
     } else if (payload.dgMode === "link" && payload.generatorLogId != null) {
+      // Guard: a generator log may only be linked from one heating session at
+      // a time, otherwise its diesel/hours would be over-attributed.
+      const conflicts = await db.select({ id: bitumenHeatingSessions.id })
+        .from(bitumenHeatingSessions)
+        .where(eq(bitumenHeatingSessions.generatorLogId, payload.generatorLogId));
+      const otherLink = conflicts.find(c => c.id !== id);
+      if (otherLink) {
+        const err: any = new Error(`Generator log #${payload.generatorLogId} is already linked to heating session #${otherLink.id}.`);
+        err.code = "GEN_LOG_ALREADY_LINKED";
+        throw err;
+      }
       // Pull totals from the linked generator log so reports attribute DG diesel correctly
       const [linked] = await db.select().from(generatorLogs)
         .where(eq(generatorLogs.id, payload.generatorLogId)).limit(1);

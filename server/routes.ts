@@ -2399,6 +2399,7 @@ export async function registerRoutes(
         res.status(201).json(saved);
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        if (e?.code === "GEN_LOG_ALREADY_LINKED") return res.status(409).json({ code: "GEN_LOG_ALREADY_LINKED", message: e.message });
         throw e;
       }
     } catch (err: any) {
@@ -2427,6 +2428,7 @@ export async function registerRoutes(
         res.json(saved);
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        if (e?.code === "GEN_LOG_ALREADY_LINKED") return res.status(409).json({ code: "GEN_LOG_ALREADY_LINKED", message: e.message });
         throw e;
       }
     } catch (err: any) {
