@@ -865,7 +865,7 @@ export default function PlantLdoFlowMeter() {
     doc.setFontSize(16);
     doc.text("LDO Flow Meter Readings - HLC Plant", 14, 15);
     doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | LDO: ${LDO_DENSITY_KG_PER_LITER} kg/L`, 14, 22);
+    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 22);
 
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "",
@@ -888,7 +888,7 @@ export default function PlantLdoFlowMeter() {
     const printContent = `
       <html><head><title>LDO Flow Meter Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
-      <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | LDO: ${LDO_DENSITY_KG_PER_LITER} kg/L</p></div>
+      <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
@@ -951,7 +951,7 @@ export default function PlantLdoFlowMeter() {
       </div>
 
       <div className="text-sm text-muted-foreground">
-        LDO density: {LDO_DENSITY_KG_PER_LITER} kg/L | Tank 1 = Boiler (heats bitumen) | Tank 2 = Dryer (heats aggregates)
+        Tank 1 = Boiler (heats bitumen) | Tank 2 = Dryer (heats aggregates)
       </div>
 
       <NegativeBalanceBanner
@@ -1018,14 +1018,12 @@ export default function PlantLdoFlowMeter() {
                         <span className="text-sm font-medium text-green-700 dark:text-green-400">Usable Stock</span>
                         <div data-testid={`text-dip-usable-t${tankNum}`}>
                           <span className="font-bold text-2xl text-green-700 dark:text-green-400">{usableVol.toFixed(0)} L</span>
-                          <span className="text-sm text-muted-foreground ml-1">({(usableVol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                         </div>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
                         <span className="text-sm text-muted-foreground">Total Stock:</span>
                         <span data-testid={`text-dip-volume-t${tankNum}`}>
                           <span className="font-semibold text-base">{vol.toFixed(0)} L</span>
-                          <span className="text-sm text-muted-foreground ml-1">({(vol * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                         </span>
                       </div>
                       <div className="flex justify-between gap-1 flex-wrap">
@@ -1072,7 +1070,6 @@ export default function PlantLdoFlowMeter() {
                     </div>
                     <div data-testid={`text-flow-stock-t${tankNum}`}>
                       <span className="font-bold text-xl text-blue-700 dark:text-blue-300">{stock.stockL.toFixed(0)} L</span>
-                      <span className="text-sm text-muted-foreground ml-1">({(stock.stockL * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                     </div>
                     <p className="text-xs text-muted-foreground">Based on stock entry of {stock.date} ± receipts & consumption</p>
                   </div>
@@ -1097,18 +1094,12 @@ export default function PlantLdoFlowMeter() {
                       const t2Usable = latestDipTank2 ? getLdoUsableVolume(2, latestDipTank2.depthCm) : 0;
                       return (t1Usable + t2Usable).toFixed(0);
                     })()} L</span>
-                    <span className="text-sm text-muted-foreground ml-1">({(() => {
-                      const t1Usable = latestDipTank1 ? getLdoUsableVolume(1, latestDipTank1.depthCm) : 0;
-                      const t2Usable = latestDipTank2 ? getLdoUsableVolume(2, latestDipTank2.depthCm) : 0;
-                      return ((t1Usable + t2Usable) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3);
-                    })()} MT)</span>
                   </div>
                 </div>
                 <div className="flex justify-between gap-1 flex-wrap">
                   <span className="text-sm text-muted-foreground">Total Stock (Dip):</span>
                   <span data-testid="text-combined-dip-stock">
                     <span className="font-semibold text-base">{((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L</span>
-                    <span className="text-sm text-muted-foreground ml-1">({(((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                   </span>
                 </div>
               </>
@@ -1121,7 +1112,6 @@ export default function PlantLdoFlowMeter() {
                 </div>
                 <div data-testid="text-combined-flow-stock">
                   <span className="font-bold text-2xl text-blue-700 dark:text-blue-300">{((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L</span>
-                  <span className="text-sm text-muted-foreground ml-1">({(((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
                 </div>
                 <div className="text-xs text-muted-foreground flex gap-3">
                   <span>T1: {tankStock.tank1 ? `${tankStock.tank1.stockL.toFixed(0)} L` : "—"}</span>
@@ -1134,10 +1124,7 @@ export default function PlantLdoFlowMeter() {
               <span className="text-sm text-muted-foreground">Total Consumption:</span>
               <span data-testid="text-combined-consumption">
                 {totalConsumptionBothTanks > 0 ? (
-                  <>
-                    <span className="font-bold text-lg">{totalConsumptionBothTanks.toFixed(0)} L</span>
-                    <span className="text-sm text-muted-foreground ml-1">({(totalConsumptionBothTanks * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT)</span>
-                  </>
+                  <span className="font-bold text-lg">{totalConsumptionBothTanks.toFixed(0)} L</span>
                 ) : "-"}
               </span>
             </div>
@@ -2011,7 +1998,6 @@ export default function PlantLdoFlowMeter() {
                 {quantityLiters && (
                   <p className="text-sm text-muted-foreground mt-1">
                     = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
-                    = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT
                   </p>
                 )}
               </div>
@@ -2098,14 +2084,12 @@ export default function PlantLdoFlowMeter() {
                     <span className="text-muted-foreground">Total:</span>
                     <span data-testid="text-dip-calc-volume">
                       <span className="font-bold text-base">{dipCalculatedVolume.volume.toFixed(0)} L</span>
-                      <span className="text-sm text-muted-foreground ml-1">({(dipCalculatedVolume.weight / 1000).toFixed(3)} MT)</span>
                     </span>
                   </div>
                   <div className="flex justify-between gap-1 flex-wrap">
                     <span className="text-muted-foreground">Usable (excl. dead stock):</span>
                     <span data-testid="text-dip-calc-usable">
                       <span className="font-bold text-base text-green-600 dark:text-green-400">{dipCalculatedVolume.usable.toFixed(0)} L</span>
-                      <span className="text-sm text-muted-foreground ml-1">({((dipCalculatedVolume.usable * LDO_DENSITY_KG_PER_LITER) / 1000).toFixed(3)} MT)</span>
                     </span>
                   </div>
                 </div>
