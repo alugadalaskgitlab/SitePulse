@@ -481,8 +481,42 @@ export interface IStorage {
   upsertBitumenHeatingSession(input: UpsertBitumenHeatingSessionInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<BitumenHeatingSession>;
   finalizeBitumenHeatingSession(id: number, finalizedBy: string): Promise<BitumenHeatingSession | undefined>;
   deleteBitumenHeatingSession(id: number): Promise<boolean>;
+  getHeatingTrends(filters: { dateFrom: string; dateTo: string; plantName?: string }): Promise<HeatingTrendsResult>;
   getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName?: string): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null>;
 }
+
+export type HeatingTrendsBucket = {
+  count: number;
+  hours: number;
+  ldoT1L: number;
+  dgDieselL: number;
+  lPerHour: number | null;
+  lPerMT: number | null;
+};
+export type HeatingTrendsRow = {
+  date: string;
+  productionMT: number;
+  night: HeatingTrendsBucket;
+  day: HeatingTrendsBucket;
+  total: HeatingTrendsBucket;
+};
+export type HeatingTrendsResult = {
+  dateFrom: string;
+  dateTo: string;
+  plantName: string;
+  targetLPerMT: number;
+  rows: HeatingTrendsRow[];
+  summary: {
+    days: number;
+    sessionCount: number;
+    totalHours: number;
+    totalLdoT1L: number;
+    dgDieselL: number;
+    totalProductionMT: number;
+    lPerHour: number | null;
+    lPerMT: number | null;
+  };
+};
 
 type PlantReportWithDetailsLocal = PlantReportWithDetails;
 
@@ -8283,6 +8317,105 @@ export class DatabaseStorage implements IStorage {
       const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();
       return result.length > 0;
     });
+  }
+
+  async getHeatingTrends(filters: { dateFrom: string; dateTo: string; plantName?: string }): Promise<HeatingTrendsResult> {
+    const plantName = filters.plantName || "Main Plant";
+    const dateFrom = filters.dateFrom;
+    const dateTo = filters.dateTo;
+    const TARGET_L_PER_MT = 1.5;
+
+    const sessions = await this.getBitumenHeatingSessions({ dateFrom, dateTo, plantName });
+    const dispatches = await db.select().from(truckDispatches).where(and(
+      gte(truckDispatches.date, dateFrom),
+      lte(truckDispatches.date, dateTo),
+      eq(truckDispatches.plantName, plantName),
+    ));
+
+    const productionByDate = new Map<string, number>();
+    for (const d of dispatches) {
+      productionByDate.set(d.date, (productionByDate.get(d.date) || 0) + (d.loadWeight || 0));
+    }
+
+    const dateKeys = new Set<string>();
+    for (const s of sessions) dateKeys.add(s.date);
+    for (const d of productionByDate.keys()) dateKeys.add(d);
+
+    // Walk every calendar day in range so the chart has a continuous x-axis.
+    const start = new Date(`${dateFrom}T00:00:00`);
+    const end = new Date(`${dateTo}T00:00:00`);
+    for (let t = start.getTime(); t <= end.getTime(); t += 24 * 3600 * 1000) {
+      dateKeys.add(new Date(t).toISOString().slice(0, 10));
+    }
+
+    const emptyBucket = (): HeatingTrendsBucket => ({
+      count: 0, hours: 0, ldoT1L: 0, dgDieselL: 0, lPerHour: null, lPerMT: null,
+    });
+    const round = (n: number, p = 2) => Math.round(n * Math.pow(10, p)) / Math.pow(10, p);
+
+    const rowMap = new Map<string, HeatingTrendsRow>();
+    for (const dt of dateKeys) {
+      rowMap.set(dt, {
+        date: dt,
+        productionMT: round(productionByDate.get(dt) || 0, 3),
+        night: emptyBucket(),
+        day: emptyBucket(),
+        total: emptyBucket(),
+      });
+    }
+
+    for (const s of sessions) {
+      const row = rowMap.get(s.date);
+      if (!row) continue;
+      const bucket = s.sessionType === "DAY_MAINTENANCE" ? row.day : row.night;
+      bucket.count += 1;
+      bucket.hours += s.durationHours || 0;
+      bucket.ldoT1L += s.ldoTank1Consumed || 0;
+      bucket.dgDieselL += s.dgDieselConsumed || 0;
+      row.total.count += 1;
+      row.total.hours += s.durationHours || 0;
+      row.total.ldoT1L += s.ldoTank1Consumed || 0;
+      row.total.dgDieselL += s.dgDieselConsumed || 0;
+    }
+
+    const finalize = (b: HeatingTrendsBucket, mt: number) => {
+      b.hours = round(b.hours, 2);
+      b.ldoT1L = round(b.ldoT1L, 2);
+      b.dgDieselL = round(b.dgDieselL, 2);
+      b.lPerHour = b.hours > 0 ? round(b.ldoT1L / b.hours, 2) : null;
+      b.lPerMT = mt > 0 && b.ldoT1L > 0 ? round(b.ldoT1L / mt, 3) : null;
+    };
+
+    const rows = Array.from(rowMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+    let sumHours = 0, sumLdo = 0, sumDg = 0, sumMT = 0, sumSessions = 0;
+    for (const r of rows) {
+      finalize(r.night, r.productionMT);
+      finalize(r.day, r.productionMT);
+      finalize(r.total, r.productionMT);
+      sumHours += r.total.hours;
+      sumLdo += r.total.ldoT1L;
+      sumDg += r.total.dgDieselL;
+      sumMT += r.productionMT;
+      sumSessions += r.total.count;
+    }
+
+    return {
+      dateFrom,
+      dateTo,
+      plantName,
+      targetLPerMT: TARGET_L_PER_MT,
+      rows,
+      summary: {
+        days: rows.length,
+        sessionCount: sumSessions,
+        totalHours: round(sumHours, 2),
+        totalLdoT1L: round(sumLdo, 2),
+        dgDieselL: round(sumDg, 2),
+        totalProductionMT: round(sumMT, 3),
+        lPerHour: sumHours > 0 ? round(sumLdo / sumHours, 2) : null,
+        lPerMT: sumMT > 0 && sumLdo > 0 ? round(sumLdo / sumMT, 3) : null,
+      },
+    };
   }
 
   async getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName: string = "Main Plant"): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null> {

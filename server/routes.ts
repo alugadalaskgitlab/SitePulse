@@ -2477,6 +2477,90 @@ export async function registerRoutes(
     }
   });
 
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function resolveTrendsRange(req: any): { dateFrom: string; dateTo: string; plantName: string } | { error: string } {
+    const today = new Date().toISOString().slice(0, 10);
+    const dateTo = (req.query.dateTo as string) || today;
+    const dateFromQ = req.query.dateFrom as string | undefined;
+    let dateFrom = dateFromQ;
+    if (!dateFrom) {
+      const d = new Date(`${dateTo}T00:00:00`);
+      d.setDate(d.getDate() - 29);
+      dateFrom = d.toISOString().slice(0, 10);
+    }
+    if (!ISO_DATE_RE.test(dateFrom) || !ISO_DATE_RE.test(dateTo)) {
+      return { error: "dateFrom and dateTo must be YYYY-MM-DD" };
+    }
+    if (dateFrom > dateTo) {
+      return { error: "dateFrom must be <= dateTo" };
+    }
+    const plantName = (req.query.plant as string | undefined) || "Main Plant";
+    return { dateFrom, dateTo, plantName };
+  }
+
+  app.get("/api/plant-module/heating-trends", async (req, res) => {
+    try {
+      const r = resolveTrendsRange(req);
+      if ("error" in r) return res.status(400).json({ message: r.error });
+      const result = await storage.getHeatingTrends(r);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch heating trends" });
+    }
+  });
+
+  app.get("/api/plant-module/heating-trends/excel", async (req, res) => {
+    try {
+      const r = resolveTrendsRange(req);
+      if ("error" in r) return res.status(400).json({ message: r.error });
+      const { dateFrom, dateTo, plantName } = r;
+      const trends = await storage.getHeatingTrends({ dateFrom, dateTo, plantName });
+      const sheet = trends.rows.map(r => ({
+        Date: r.date,
+        "Production (MT)": r.productionMT,
+        "Night Sessions": r.night.count,
+        "Night Hours": r.night.hours,
+        "Night LDO T1 (L)": r.night.ldoT1L,
+        "Night L/Hour": r.night.lPerHour ?? "",
+        "Night L/MT": r.night.lPerMT ?? "",
+        "Day Sessions": r.day.count,
+        "Day Hours": r.day.hours,
+        "Day LDO T1 (L)": r.day.ldoT1L,
+        "Day L/Hour": r.day.lPerHour ?? "",
+        "Day L/MT": r.day.lPerMT ?? "",
+        "Total Sessions": r.total.count,
+        "Total Hours": r.total.hours,
+        "Total LDO T1 (L)": r.total.ldoT1L,
+        "DG Diesel (L)": r.total.dgDieselL,
+        "L/Hour (boiler)": r.total.lPerHour ?? "",
+        "L/MT (boiler)": r.total.lPerMT ?? "",
+        "Target L/MT": trends.targetLPerMT,
+      }));
+      const summary = [{
+        "Date Range": `${trends.dateFrom} to ${trends.dateTo}`,
+        Plant: trends.plantName,
+        Days: trends.summary.days,
+        Sessions: trends.summary.sessionCount,
+        "Total Hours": trends.summary.totalHours,
+        "Total LDO T1 (L)": trends.summary.totalLdoT1L,
+        "DG Diesel (L)": trends.summary.dgDieselL,
+        "Production (MT)": trends.summary.totalProductionMT,
+        "L/Hour": trends.summary.lPerHour ?? "",
+        "L/MT": trends.summary.lPerMT ?? "",
+        "Target L/MT": trends.targetLPerMT,
+      }];
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(summary), "Summary");
+      xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(sheet), "Daily");
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="heating-trends-${dateFrom}-to-${dateTo}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to export heating trends" });
+    }
+  });
+
   app.get("/api/plant-module/ldo-meter/last", async (req, res) => {
     try {
       const tank = parseInt((req.query.tank as string) || "1");

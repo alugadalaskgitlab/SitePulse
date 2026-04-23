@@ -33,6 +33,7 @@ import PlantStockReassign from "@/pages/PlantStockReassign";
 import PlantShiftLog from "@/pages/PlantShiftLog";
 import PlantDailyReport from "@/pages/PlantDailyReport";
 import PlantHeatingSessions from "@/pages/PlantHeatingSessions";
+import PlantHeatingTrends from "@/pages/PlantHeatingTrends";
 import PurchaseIndents from "@/pages/PurchaseIndents";
 import DieselRequirements from "@/pages/DieselRequirements";
 import VendorBills from "@/pages/VendorBills";
@@ -120,6 +121,7 @@ function Router() {
             <Route path="/plant/daily-report/:date" component={PlantDailyReport} />
             <Route path="/plant/heating-sessions" component={PlantHeatingSessions} />
             <Route path="/plant/heating-sessions/:date" component={PlantHeatingSessions} />
+            <Route path="/plant/heating-trends" component={PlantHeatingTrends} />
             <Route path="/plant/purchase-indents" component={PurchaseIndents} />
             <Route path="/plant/diesel-requirements" component={DieselRequirements} />
             <Route path="/plant/vendor-bills" component={VendorBills} />

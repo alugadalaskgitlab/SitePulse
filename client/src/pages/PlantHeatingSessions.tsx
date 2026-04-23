@@ -331,6 +331,9 @@ export default function PlantHeatingSessions() {
         </div>
         <div className="flex items-center gap-2">
           <Input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className="w-40" data-testid="input-filter-date" />
+          <Link href={appendOrigin("/plant/heating-trends")}>
+            <Button variant="outline" data-testid="button-view-trends">View Trends</Button>
+          </Link>
           <Button onClick={openNew} data-testid="button-new-session"><Plus className="w-4 h-4 mr-1" />New Session</Button>
         </div>
       </div>
