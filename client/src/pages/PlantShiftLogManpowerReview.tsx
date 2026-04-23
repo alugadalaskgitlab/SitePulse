@@ -60,6 +60,62 @@ function levenshtein(a: string, b: string): number {
   return prev[bl];
 }
 
+// Phonetic key tuned for transliterated Indian names. Maps common spelling
+// variants ("RAJESH"/"RAAJESH", "MOHAMMED"/"MOHAMED", "REDDY"/"REDDI",
+// "DINESH"/"DHINESH", "PRAVEEN"/"PRAVIN", "SUNIL"/"SUNEEL", …) to the same
+// code so the cluster builder can surface them as likely duplicates even
+// when their Levenshtein distance is > 1.
+function phoneticToken(t: string): string {
+  if (!t) return "";
+  let s = t.toUpperCase().replace(/[^A-Z]/g, "");
+  if (!s) return "";
+  // Common Indian-English digraphs → single canonical sound
+  s = s.replace(/PH/g, "F");
+  s = s.replace(/CK/g, "K");
+  s = s.replace(/CH/g, "S");
+  s = s.replace(/SH/g, "S");
+  s = s.replace(/TH/g, "T");
+  s = s.replace(/DH/g, "D");
+  s = s.replace(/BH/g, "B");
+  s = s.replace(/GH/g, "G");
+  s = s.replace(/KH/g, "K");
+  s = s.replace(/JH/g, "J");
+  // Single-letter swaps for transliteration drift
+  s = s.replace(/Q/g, "K");
+  s = s.replace(/X/g, "KS");
+  s = s.replace(/W/g, "V");
+  s = s.replace(/Z/g, "S");
+  // Collapse repeated letters (RAAJESH → RAJESH, MOHAMMED → MOHAMED, ABDULL → ABDUL)
+  s = s.replace(/(.)\1+/g, "$1");
+  if (!s) return "";
+  // Keep the first letter; strip remaining vowels (Y treated as a vowel so
+  // REDDY/REDDI/RAVI/RAVY collapse together).
+  const first = s[0];
+  const rest = s.slice(1).replace(/[AEIOUY]/g, "");
+  return (first + rest).replace(/(.)\1+/g, "$1");
+}
+
+// Per-token phonetic match. Requires the two names to have the same token
+// count and every corresponding token to share the same phonetic key. Skips
+// very short names (< 4 letters) to keep the false-positive rate low — RAJ vs
+// RAJU shouldn't auto-cluster on phonetics alone.
+function isPhoneticDup(a: string, b: string): boolean {
+  const ta = a.split(" ").filter(Boolean);
+  const tb = b.split(" ").filter(Boolean);
+  if (ta.length === 0 || ta.length !== tb.length) return false;
+  const minLetters = Math.min(a.replace(/\s/g, "").length, b.replace(/\s/g, "").length);
+  if (minLetters < 4) return false;
+  for (let i = 0; i < ta.length; i++) {
+    if (ta[i] === tb[i]) continue;
+    const ka = phoneticToken(ta[i]);
+    const kb = phoneticToken(tb[i]);
+    if (!ka || !kb || ka !== kb) return false;
+    // Require ≥ 2-char key for any non-equal token to avoid R↔R-style trivial collisions.
+    if (ka.length < 2) return false;
+  }
+  return true;
+}
+
 function isLikelyDup(rawA: string, rawB: string): boolean {
   const a = normalizeName(rawA);
   const b = normalizeName(rawB);
@@ -76,6 +132,8 @@ function isLikelyDup(rawA: string, rawB: string): boolean {
   }
   // Levenshtein distance ≤ 1 between normalized full strings
   if (levenshtein(a, b) <= 1) return true;
+  // Phonetic match for Indian-name spelling variants ≥ 2 edits apart
+  if (isPhoneticDup(a, b)) return true;
   return false;
 }
 
