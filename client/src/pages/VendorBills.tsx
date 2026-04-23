@@ -258,6 +258,11 @@ export default function VendorBills() {
   const [gstRateTransport, setGstRateTransport] = useState<number>(0);
   const [gstRateLabour, setGstRateLabour] = useState<number>(0);
   const [tdsRate, setTdsRate] = useState<number>(0);
+  const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
+
+  useEffect(() => {
+    setLabourFilter("all");
+  }, [vendorName, periodFrom, periodTo]);
 
   const [showPinAuth, setShowPinAuth] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
@@ -1565,6 +1570,16 @@ export default function VendorBills() {
               const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
               const shouldGroup = computeCategorySubTotals(lineItems).length > 1;
 
+              const labourItemsAll = lineItems.filter(i => i.category === "labour");
+              const labourSiteCount = labourItemsAll.filter(i => getLabourSource(i) === "site").length;
+              const labourPlantCount = labourItemsAll.filter(i => getLabourSource(i) === "plant").length;
+              const showLabourFilter = labourSiteCount > 0 && labourPlantCount > 0;
+              const labourChips: Array<{ key: "all" | "site" | "plant"; label: string; count: number }> = [
+                { key: "all", label: "All", count: labourItemsAll.length },
+                { key: "site", label: "DPR Site", count: labourSiteCount },
+                { key: "plant", label: "Plant Shift", count: labourPlantCount },
+              ];
+
               const renderItemRow = (item: LineItem, idx: number) => (
                 <tr key={idx} className="border-b">
                   <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
@@ -1740,7 +1755,37 @@ export default function VendorBills() {
               );
 
               return (
-                <table className="w-full text-sm" style={{ minWidth: 900 }}>
+                <>
+                  {showLabourFilter && (
+                    <div className="px-3 pt-3 pb-2 flex flex-wrap items-center gap-2 border-b" data-testid="labour-filter-chips">
+                      <span className="text-xs uppercase tracking-wider text-muted-foreground mr-1">Labour view:</span>
+                      {labourChips.map(chip => {
+                        const active = labourFilter === chip.key;
+                        return (
+                          <Button
+                            key={chip.key}
+                            type="button"
+                            variant={active ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setLabourFilter(chip.key)}
+                            data-testid={`button-labour-filter-${chip.key}`}
+                          >
+                            {chip.label}
+                            <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0 no-default-hover-elevate no-default-active-elevate">
+                              {chip.count}
+                            </Badge>
+                          </Button>
+                        );
+                      })}
+                      {labourFilter !== "all" && (
+                        <span className="text-[11px] text-muted-foreground ml-1" data-testid="text-labour-filter-hint">
+                          View only — hidden rows are still saved with the bill.
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <table className="w-full text-sm" style={{ minWidth: 900 }}>
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground uppercase">
                       <th className="px-2 py-2 text-left w-8">#</th>
@@ -1774,6 +1819,9 @@ export default function VendorBills() {
                               if (siteItems.length) labourSubGroups.push({ key: "site", label: "DPR Site Labour", items: siteItems });
                               if (plantItems.length) labourSubGroups.push({ key: "plant", label: "Plant Shift Manpower", items: plantItems });
                               if (otherItems.length) labourSubGroups.push({ key: "other", label: "Manual / Other", items: otherItems });
+                              if (labourFilter !== "all") {
+                                labourSubGroups = labourSubGroups.filter(g => g.key === labourFilter);
+                              }
                             }
                           }
 
@@ -1824,7 +1872,13 @@ export default function VendorBills() {
                         })}
                       </>
                     ) : (
-                      lineItems.map((item, idx) => renderItemRow(item, idx))
+                      lineItems
+                        .map((item, idx) => ({ item, idx }))
+                        .filter(({ item }) => {
+                          if (item.category !== "labour" || labourFilter === "all" || !showLabourFilter) return true;
+                          return getLabourSource(item) === labourFilter;
+                        })
+                        .map(({ item, idx }) => renderItemRow(item, idx))
                     )}
                   </tbody>
                   <tfoot>
@@ -1835,6 +1889,7 @@ export default function VendorBills() {
                     </tr>
                   </tfoot>
                 </table>
+                </>
               );
             })()}
           </CardContent>
