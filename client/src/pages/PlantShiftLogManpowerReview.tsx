@@ -288,25 +288,68 @@ type DupReason =
   | { kind: "learnedTokenPair"; uses: Array<{ a: string; b: string; count: number }> }
   | { kind: "coOccurrence"; sharedShifts: number };
 
-function describeReason(r: DupReason): string {
+// A rendered reason chip. `short` is the badge text (kept terse for the
+// suggestions panel), `tooltip` is the plain-English explanation shown on
+// hover, and `learned` flags chips that come from past-merge history so the
+// UI can style them differently.
+type ReasonChip = { short: string; tooltip: string; learned?: boolean };
+
+function describeReason(r: DupReason): ReasonChip {
   switch (r.kind) {
-    case "exact": return "exact match after normalization";
-    case "typo": return "1-letter typo";
-    case "extraInitial": return "same name + extra initial";
-    case "phonetic": return "phonetic spelling variant";
-    case "reorder": return "tokens reordered";
-    case "shortForm": return "short-form alias (e.g. MD./MOHAMMED)";
-    case "learnedFullPair": return r.count >= 2
-      ? `previously merged ${r.count}× by an admin`
-      : "previously merged by an admin";
+    case "exact":
+      return {
+        short: "exact",
+        tooltip: "These names are identical once you ignore case, punctuation, and extra spaces.",
+      };
+    case "typo":
+      return {
+        short: "typo",
+        tooltip: "The two spellings differ by a single character — almost always a typing mistake.",
+      };
+    case "extraInitial":
+      return {
+        short: "extra initial",
+        tooltip: "One spelling is the same as the other but with a short initial (≤ 3 letters) added at the end.",
+      };
+    case "phonetic":
+      return {
+        short: "phonetic",
+        tooltip: "Same name, different spelling of the same sound (for example RAJESH vs RAAJESH, or MOHAMMED vs MOHAMED).",
+      };
+    case "reorder":
+      return {
+        short: "reordered",
+        tooltip: "Both names use the exact same words, just in a different order (for example RAVI KUMAR vs KUMAR RAVI).",
+      };
+    case "shortForm":
+      return {
+        short: "short-form (MD./MOHAMMED)",
+        tooltip: "One spelling uses a well-known short form of the other (for example MD. or MOHD. for MOHAMMED, SK for SHEIKH, ABD for ABDUL).",
+      };
+    case "learnedFullPair":
+      return {
+        short: r.count >= 2 ? `learned from past merge (${r.count}×)` : "learned from past merge",
+        tooltip: r.count >= 2
+          ? `An admin has merged these two exact spellings ${r.count} times before, so they are flagged automatically every time they reappear.`
+          : "An admin merged these two exact spellings once before, so they are flagged automatically when they reappear.",
+        learned: true,
+      };
     case "learnedTokenPair": {
       const parts = r.uses.map(u => `${u.a}↔${u.b}${u.count >= 2 ? ` (${u.count}×)` : ""}`).join(", ");
       const anyRepeat = r.uses.some(u => u.count >= 2);
-      return anyRepeat
-        ? `matches a previously-confirmed pattern ${parts}`
-        : `matches a prior-merge pattern ${parts}`;
+      return {
+        short: `learned pattern: ${parts}`,
+        tooltip: anyRepeat
+          ? `Past admin merges have repeatedly equated these word pairs: ${parts}. Confidence is boosted because the same substitution has been confirmed more than once.`
+          : `A past admin merge equated these word pairs: ${parts}.`,
+        learned: true,
+      };
     }
-    case "coOccurrence": return `same role + contractor on ${r.sharedShifts} shared shift${r.sharedShifts === 1 ? "" : "s"}`;
+    case "coOccurrence":
+      return {
+        short: "same role + contractor",
+        tooltip: `Both names share the same role and contractor and appeared together on ${r.sharedShifts} shared shift log${r.sharedShifts === 1 ? "" : "s"} — almost always one worker entered under two spellings.`,
+      };
   }
 }
 
@@ -348,10 +391,12 @@ type Cluster = {
   key: string;
   names: string[];
   canonical: string;
-  // Aggregated short labels (deduped, ordered) describing why this cluster
-  // was suggested. Rendered as small chips on the suggestion panel and as
-  // a hover-tooltip on the per-row "possible dup" badge.
-  reasonLabels: string[];
+  // Aggregated reason chips (deduped, ordered) describing why this cluster
+  // was suggested. Each chip carries a short badge label and a plain-English
+  // tooltip explaining the underlying rule. Rendered as small chips on the
+  // suggestion panel and as a hover-tooltip on the per-row "possible dup"
+  // badge.
+  reasonChips: ReasonChip[];
   // Did any edge in this cluster fire because of a previously-confirmed
   // merge pattern? Used to surface a separate "learned" badge.
   fromLearnedPattern: boolean;
@@ -467,14 +512,14 @@ function buildClusters(
     const names = members.map((m: ReviewRow) => m.name).sort();
     const reasons = reasonsByRoot.get(root) || [];
     const seen = new Set<string>();
-    const reasonLabels: string[] = [];
+    const reasonChips: ReasonChip[] = [];
     let fromLearnedPattern = false;
     for (const r of reasons) {
       if (r.kind === "learnedFullPair" || r.kind === "learnedTokenPair") fromLearnedPattern = true;
-      const label = describeReason(r);
-      if (!seen.has(label)) { seen.add(label); reasonLabels.push(label); }
+      const chip = describeReason(r);
+      if (!seen.has(chip.short)) { seen.add(chip.short); reasonChips.push(chip); }
     }
-    clusters.push({ key: names.join("||"), names, canonical, reasonLabels, fromLearnedPattern });
+    clusters.push({ key: names.join("||"), names, canonical, reasonChips, fromLearnedPattern });
   });
   // Largest clusters first; tie-break: learned-pattern clusters first (most
   // actionable signal).
@@ -1794,20 +1839,21 @@ export default function PlantShiftLogManpowerReview() {
                     >
                       <span className="font-medium">Keep <span className="font-mono">{c.canonical}</span>, merge:</span>
                       <span className="font-mono">{c.names.filter(n => n !== c.canonical).join(", ")}</span>
-                      {c.reasonLabels.length > 0 && (
+                      {c.reasonChips.length > 0 && (
                         <div className="basis-full flex flex-wrap gap-1 mt-0.5" data-testid={`suggestion-reasons-${c.canonical}`}>
                           <span className="text-[10px] uppercase tracking-wide text-purple-900/70 dark:text-purple-200/70 mr-1">Why:</span>
-                          {c.reasonLabels.map((label, idx) => (
+                          {c.reasonChips.map((chip, idx) => (
                             <span
                               key={idx}
                               className={
-                                /previously-confirmed|previously merged|prior-merge/.test(label)
-                                  ? "text-[10px] rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700"
-                                  : "text-[10px] rounded px-1.5 py-0.5 bg-purple-100/70 text-purple-900 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-800"
+                                chip.learned
+                                  ? "text-[10px] rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700 cursor-help"
+                                  : "text-[10px] rounded px-1.5 py-0.5 bg-purple-100/70 text-purple-900 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-800 cursor-help"
                               }
+                              title={chip.tooltip}
                               data-testid={`suggestion-reason-chip-${c.canonical}-${idx}`}
                             >
-                              {label}
+                              {chip.short}
                             </span>
                           ))}
                         </div>
@@ -1939,7 +1985,9 @@ export default function PlantShiftLogManpowerReview() {
                             {(() => {
                               const c = nameToCluster.get(r.name);
                               if (!c) return null;
-                              const why = c.reasonLabels.length > 0 ? `Why: ${c.reasonLabels.join("; ")}` : "";
+                              const why = c.reasonChips.length > 0
+                                ? `Why: ${c.reasonChips.map(rc => `${rc.short} — ${rc.tooltip}`).join("\n")}`
+                                : "";
                               if (c.canonical === r.name) {
                                 return (
                                   <div
