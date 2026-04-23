@@ -8113,6 +8113,10 @@ export class DatabaseStorage implements IStorage {
       const cl = payload.dgClosingDiesel ?? null;
       const iss = payload.dgIssuedDiesel ?? 0;
       if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
+    } else if (payload.dgMode === "link" && payload.generatorLogId == null) {
+      const err: any = new Error("dgMode='link' requires selecting an existing Generator Log");
+      err.code = "GEN_LOG_REQUIRED";
+      throw err;
     } else if (payload.dgMode === "link" && payload.generatorLogId != null) {
       // Pull the linked generator log first to validate same-date / same-plant.
       const [linked] = await db.select().from(generatorLogs)
