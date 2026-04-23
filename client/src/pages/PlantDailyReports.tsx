@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
@@ -103,11 +103,70 @@ export default function PlantDailyReports() {
   const [, setLocation] = useLocation();
   const params = useMemo(() => new URLSearchParams(searchString || ""), [searchString]);
 
+  const FILTERS_STORAGE_KEY = "plant-daily-reports:last-filters:v1";
+
+  // On first mount: if URL has no filter params and localStorage has a saved
+  // filter set, restore it by updating the URL. URL params always win, so
+  // shareable links keep working unchanged.
+  const restoreCheckedRef = useRef(false);
+  useEffect(() => {
+    if (restoreCheckedRef.current) return;
+    restoreCheckedRef.current = true;
+    if (typeof window === "undefined") return;
+    const current = new URLSearchParams(searchString || "");
+    const FILTER_KEYS = ["from", "to", "plant", "party", "mixType"] as const;
+    const hasAnyFilterParam = FILTER_KEYS.some((k) => current.has(k));
+    if (hasAnyFilterParam) return;
+    try {
+      const raw = window.localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        from?: string;
+        to?: string;
+        plant?: string;
+        parties?: string[];
+        mixTypes?: string[];
+      };
+      const p = new URLSearchParams();
+      if (saved.from && saved.from !== defaultFrom) p.set("from", saved.from);
+      if (saved.to && saved.to !== today) p.set("to", saved.to);
+      if (saved.plant) p.set("plant", saved.plant);
+      for (const x of saved.parties || []) p.append("party", x);
+      for (const x of saved.mixTypes || []) p.append("mixType", x);
+      const qs = p.toString();
+      if (qs) setLocation(`/plant/daily-reports?${qs}`, { replace: true });
+    } catch {
+      /* ignore corrupt storage */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const from = params.get("from") || defaultFrom;
   const to = params.get("to") || today;
   const plant = params.get("plant") || "";
   const selectedParties = params.getAll("party"); // party ids as strings
   const selectedMixTypes = params.getAll("mixType"); // mix type names
+
+  // Persist whatever filter set is currently reflected in the URL so that the
+  // next visit (without URL params) can restore it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!restoreCheckedRef.current) return; // don't overwrite before restore check
+    try {
+      window.localStorage.setItem(
+        FILTERS_STORAGE_KEY,
+        JSON.stringify({
+          from,
+          to,
+          plant,
+          parties: selectedParties,
+          mixTypes: selectedMixTypes,
+        }),
+      );
+    } catch {
+      /* storage might be full / disabled — ignore */
+    }
+  }, [from, to, plant, selectedParties.join(","), selectedMixTypes.join(",")]);
 
   const updateFilters = (
     next: Partial<{
@@ -341,7 +400,10 @@ export default function PlantDailyReports() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setLocation("/plant/daily-reports")}
+              onClick={() => {
+                try { window.localStorage.removeItem(FILTERS_STORAGE_KEY); } catch { /* ignore */ }
+                setLocation("/plant/daily-reports");
+              }}
               data-testid="button-reset-filters"
               aria-label="Reset filters to default 90-day view"
             >
