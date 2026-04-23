@@ -35,6 +35,9 @@ import {
   bitumenHeatingSessions,
   plantHeatingSessionVersions,
   plantShiftLogManpower,
+  plantShiftLogManpowerRelabelBatches,
+  plantShiftLogManpowerRelabelSnapshots,
+  type PlantShiftLogManpowerRelabelBatch,
   plantShiftLogIdle,
   plantShiftLogVersions,
   type PlantShiftLog,
@@ -352,7 +355,23 @@ export interface IStorage {
     contractorName: string;
     category: string;
     gender: string;
-  }): Promise<{ updated: number }>;
+    actor: string;
+  }): Promise<{ updated: number; batchId: number }>;
+
+  // Recent merge/relabel batches done from the worker-cleanup screen, newest
+  // first. Limited to the retention window (days) and excludes already-undone
+  // batches.
+  getRecentShiftLogManpowerRelabelBatches(days: number): Promise<Array<
+    PlantShiftLogManpowerRelabelBatch & { isMerge: boolean }
+  >>;
+
+  // Restore the previous (name, contractor, category, gender) for every row
+  // that was changed in the given batch. Marks the batch as undone. Throws
+  // if already undone or older than 30 days.
+  undoShiftLogManpowerRelabelBatch(input: {
+    batchId: number;
+    actor: string;
+  }): Promise<{ restored: number }>;
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
@@ -6895,7 +6914,8 @@ export class DatabaseStorage implements IStorage {
     contractorName: string;
     category: string;
     gender: string;
-  }): Promise<{ updated: number }> {
+    actor: string;
+  }): Promise<{ updated: number; batchId: number }> {
     const fromNamesUpper = Array.from(
       new Set(
         (input.fromNames || [])
@@ -6913,6 +6933,8 @@ export class DatabaseStorage implements IStorage {
     if (!category) throw new Error("Category is required");
     const gender = String(input.gender || "").trim().toUpperCase();
     if (!gender) throw new Error("Gender is required");
+    const actorTrim = String(input.actor || "").trim();
+    if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
 
     const allAliases = await db.select().from(vendorAliases);
     const aliasToCanonical = new Map<string, string>();
@@ -6924,6 +6946,46 @@ export class DatabaseStorage implements IStorage {
     const canonicalContractor = aliasToCanonical.get(upperContractor) || upperContractor;
 
     return await db.transaction(async (tx) => {
+      // Snapshot every matched row's current values BEFORE the update so we can
+      // undo this batch later.
+      const matchedRows = await tx.select({
+        id: plantShiftLogManpower.id,
+        name: plantShiftLogManpower.name,
+        contractorName: plantShiftLogManpower.contractorName,
+        category: plantShiftLogManpower.category,
+        gender: plantShiftLogManpower.gender,
+      })
+        .from(plantShiftLogManpower)
+        .where(sql`UPPER(TRIM(${plantShiftLogManpower.name})) IN (${sql.join(fromNamesUpper.map(n => sql`${n}`), sql`, `)})`);
+
+      if (matchedRows.length === 0) {
+        // Still record an empty batch so the admin sees the action attempted? No —
+        // skip writing audit / batch when nothing changed.
+        return { updated: 0, batchId: 0 };
+      }
+
+      const [batch] = await tx.insert(plantShiftLogManpowerRelabelBatches).values({
+        actor: actorTrim,
+        fromNames: fromNamesUpper,
+        toName: toNameUpper,
+        contractorName: canonicalContractor,
+        category,
+        gender,
+        rowCount: matchedRows.length,
+      }).returning({ id: plantShiftLogManpowerRelabelBatches.id });
+
+      // Bulk insert per-row snapshots
+      await tx.insert(plantShiftLogManpowerRelabelSnapshots).values(
+        matchedRows.map(r => ({
+          batchId: batch.id,
+          manpowerId: r.id,
+          prevName: r.name,
+          prevContractorName: r.contractorName,
+          prevCategory: r.category,
+          prevGender: r.gender,
+        }))
+      );
+
       const result = await tx.update(plantShiftLogManpower)
         .set({
           name: toNameUpper,
@@ -6931,9 +6993,102 @@ export class DatabaseStorage implements IStorage {
           category,
           gender,
         })
-        .where(sql`UPPER(TRIM(${plantShiftLogManpower.name})) IN (${sql.join(fromNamesUpper.map(n => sql`${n}`), sql`, `)})`)
+        .where(inArray(plantShiftLogManpower.id, matchedRows.map(r => r.id)))
         .returning({ id: plantShiftLogManpower.id });
-      return { updated: result.length };
+      return { updated: result.length, batchId: batch.id };
+    });
+  }
+
+  async getRecentShiftLogManpowerRelabelBatches(days: number): Promise<Array<
+    PlantShiftLogManpowerRelabelBatch & { isMerge: boolean }
+  >> {
+    const safeDays = Math.max(1, Math.min(365, Math.floor(days || 30)));
+    const cutoff = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+    const rows = await db.select().from(plantShiftLogManpowerRelabelBatches)
+      .where(and(
+        gte(plantShiftLogManpowerRelabelBatches.createdAt, cutoff),
+        isNull(plantShiftLogManpowerRelabelBatches.undoneAt),
+      ))
+      .orderBy(desc(plantShiftLogManpowerRelabelBatches.createdAt))
+      .limit(100);
+    return rows.map(r => {
+      const fromList = r.fromNames || [];
+      const isMerge = fromList.length > 1
+        || fromList.some(n => String(n || "").trim().toUpperCase() !== String(r.toName || "").trim().toUpperCase());
+      return { ...r, isMerge };
+    });
+  }
+
+  async undoShiftLogManpowerRelabelBatch(input: {
+    batchId: number;
+    actor: string;
+  }): Promise<{ restored: number }> {
+    const actorTrim = String(input.actor || "").trim();
+    if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
+    if (!Number.isFinite(input.batchId) || input.batchId <= 0) throw new Error("Invalid batchId");
+
+    return await db.transaction(async (tx) => {
+      const [batch] = await tx.select().from(plantShiftLogManpowerRelabelBatches)
+        .where(eq(plantShiftLogManpowerRelabelBatches.id, input.batchId))
+        .limit(1);
+      if (!batch) throw new Error("Merge batch not found");
+      if (batch.undoneAt) throw new Error("This merge has already been undone");
+      const ageMs = Date.now() - new Date(batch.createdAt).getTime();
+      if (ageMs > 30 * 24 * 60 * 60 * 1000) {
+        throw new Error("This merge is older than 30 days and can no longer be undone");
+      }
+
+      const snapshots = await tx.select().from(plantShiftLogManpowerRelabelSnapshots)
+        .where(eq(plantShiftLogManpowerRelabelSnapshots.batchId, input.batchId));
+
+      // Refuse to undo if any of this batch's affected rows were touched by a
+      // later (still-active) relabel batch — undoing would silently overwrite
+      // the newer intentional edits. Admin must undo the newer batch first.
+      const affectedIds = snapshots.map(s => s.manpowerId);
+      if (affectedIds.length > 0) {
+        const conflicts = await tx
+          .select({
+            manpowerId: plantShiftLogManpowerRelabelSnapshots.manpowerId,
+            laterBatchId: plantShiftLogManpowerRelabelSnapshots.batchId,
+          })
+          .from(plantShiftLogManpowerRelabelSnapshots)
+          .innerJoin(
+            plantShiftLogManpowerRelabelBatches,
+            eq(plantShiftLogManpowerRelabelBatches.id, plantShiftLogManpowerRelabelSnapshots.batchId),
+          )
+          .where(and(
+            inArray(plantShiftLogManpowerRelabelSnapshots.manpowerId, affectedIds),
+            gt(plantShiftLogManpowerRelabelSnapshots.batchId, input.batchId),
+            isNull(plantShiftLogManpowerRelabelBatches.undoneAt),
+          ))
+          .limit(5);
+        if (conflicts.length > 0) {
+          const laterIds = Array.from(new Set(conflicts.map(c => c.laterBatchId))).join(", ");
+          throw new Error(
+            `Cannot undo: some of these worker rows were changed by a newer merge (batch ${laterIds}). Undo the newer merge first.`
+          );
+        }
+      }
+
+      let restored = 0;
+      for (const s of snapshots) {
+        const res = await tx.update(plantShiftLogManpower)
+          .set({
+            name: s.prevName,
+            contractorName: s.prevContractorName,
+            category: s.prevCategory,
+            gender: s.prevGender,
+          })
+          .where(eq(plantShiftLogManpower.id, s.manpowerId))
+          .returning({ id: plantShiftLogManpower.id });
+        restored += res.length;
+      }
+
+      await tx.update(plantShiftLogManpowerRelabelBatches)
+        .set({ undoneAt: new Date(), undoneBy: actorTrim })
+        .where(eq(plantShiftLogManpowerRelabelBatches.id, input.batchId));
+
+      return { restored };
     });
   }
 

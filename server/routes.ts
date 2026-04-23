@@ -1948,19 +1948,63 @@ export async function registerRoutes(
         contractorName: String(contractorName),
         category: String(category),
         gender: String(gender),
+        actor: actor.trim(),
       });
       const isMerge = fromList.length > 1 || fromList.some(n => n.trim().toUpperCase() !== targetName.toUpperCase());
       console.info(
         `[ShiftLogManpowerRelabel] actor="${actor.trim()}" role=admin ` +
         `at=${new Date().toISOString()} ${isMerge ? "merge" : "relabel"} ` +
         `from=[${fromList.map(n => `"${n}"`).join(",")}] -> name="${targetName}" ` +
-        `contractor="${contractorName}" category="${category}" gender="${gender}" updated=${result.updated}`
+        `contractor="${contractorName}" category="${category}" gender="${gender}" updated=${result.updated} batchId=${result.batchId}`
       );
       res.json({ message: isMerge ? "Worker names merged" : "Worker rows relabeled", ...result });
     } catch (err) {
       console.error("shift-log-manpower bulk-relabel error:", err);
       const msg = err instanceof Error ? err.message : "Failed to relabel worker rows";
       res.status(500).json({ message: msg });
+    }
+  });
+
+  // Admin: list recent (≤30 day) merge/relabel batches, newest first, with the
+  // info needed to render an Undo button.
+  app.post("/api/plant-module/shift-log-manpower/recent-merges", async (req, res) => {
+    try {
+      const { pin } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      const batches = await storage.getRecentShiftLogManpowerRelabelBatches(30);
+      res.json(batches);
+    } catch (err) {
+      console.error("shift-log-manpower recent-merges error:", err);
+      res.status(500).json({ message: "Failed to load recent merges" });
+    }
+  });
+
+  // Admin: undo a previous merge/relabel batch by restoring the per-row snapshot.
+  app.post("/api/plant-module/shift-log-manpower/undo-merge", async (req, res) => {
+    try {
+      const { pin, actor, batchId } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      const id = Number(batchId);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Valid batchId is required" });
+      }
+      const result = await storage.undoShiftLogManpowerRelabelBatch({ batchId: id, actor: actor.trim() });
+      console.info(
+        `[ShiftLogManpowerRelabel] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} undo batchId=${id} restored=${result.restored}`
+      );
+      res.json({ message: "Merge undone — original worker names restored", ...result });
+    } catch (err) {
+      console.error("shift-log-manpower undo-merge error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to undo merge";
+      res.status(400).json({ message: msg });
     }
   });
 

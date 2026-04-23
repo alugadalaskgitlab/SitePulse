@@ -817,6 +817,37 @@ export const plantShiftLogVersions = pgTable("plant_shift_log_versions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Audit log of every bulk-relabel/merge done from the worker-cleanup screen.
+// Keeps a per-row snapshot of the previous (name, contractor, category, gender)
+// so an admin can undo a wrong merge within the retention window (30 days).
+export const plantShiftLogManpowerRelabelBatches = pgTable("plant_shift_log_manpower_relabel_batches", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  actor: text("actor").notNull(),
+  fromNames: text("from_names").array().notNull(),
+  toName: text("to_name").notNull(),
+  contractorName: text("contractor_name").notNull(),
+  category: text("category").notNull(),
+  gender: text("gender").notNull(),
+  rowCount: integer("row_count").notNull(),
+  undoneAt: timestamp("undone_at"),
+  undoneBy: text("undone_by"),
+}, (t) => ({
+  createdAtIdx: index("psl_relabel_batch_created_idx").on(t.createdAt),
+}));
+
+export const plantShiftLogManpowerRelabelSnapshots = pgTable("plant_shift_log_manpower_relabel_snapshots", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull(),
+  manpowerId: integer("manpower_id").notNull(),
+  prevName: text("prev_name").notNull(),
+  prevContractorName: text("prev_contractor_name"),
+  prevCategory: text("prev_category"),
+  prevGender: text("prev_gender"),
+}, (t) => ({
+  batchIdx: index("psl_relabel_snap_batch_idx").on(t.batchId),
+}));
+
 export const insertPlantShiftLogSchema = createInsertSchema(plantShiftLogs).omit({ id: true, createdAt: true, updatedAt: true, finalizedAt: true, isFinalized: true, finalizedBy: true });
 export const insertPlantShiftLogManpowerSchema = createInsertSchema(plantShiftLogManpower).omit({ id: true });
 export const insertPlantShiftLogIdleSchema = createInsertSchema(plantShiftLogIdle).omit({ id: true });
@@ -827,6 +858,8 @@ export type PlantShiftLogManpower = typeof plantShiftLogManpower.$inferSelect;
 export type InsertPlantShiftLogManpower = z.infer<typeof insertPlantShiftLogManpowerSchema>;
 export type PlantShiftLogIdle = typeof plantShiftLogIdle.$inferSelect;
 export type InsertPlantShiftLogIdle = z.infer<typeof insertPlantShiftLogIdleSchema>;
+export type PlantShiftLogManpowerRelabelBatch = typeof plantShiftLogManpowerRelabelBatches.$inferSelect;
+export type PlantShiftLogManpowerRelabelSnapshot = typeof plantShiftLogManpowerRelabelSnapshots.$inferSelect;
 
 // ============================================
 // BITUMEN HEATING SESSIONS

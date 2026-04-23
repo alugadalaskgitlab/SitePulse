@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X } from "lucide-react";
+import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X, Undo2, History } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -150,6 +150,85 @@ export default function PlantShiftLogManpowerReview() {
     enabled: !!adminPin,
   });
 
+  type RecentMerge = {
+    id: number;
+    createdAt: string;
+    actor: string;
+    fromNames: string[];
+    toName: string;
+    contractorName: string;
+    category: string;
+    gender: string;
+    rowCount: number;
+    isMerge: boolean;
+  };
+  const [recentMerges, setRecentMerges] = useState<RecentMerge[] | null>(null);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  const [undoingId, setUndoingId] = useState<number | null>(null);
+
+  const fetchRecentMerges = async () => {
+    if (!adminPin) return;
+    setLoadingRecent(true);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/recent-merges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      setRecentMerges((await res.json()) as RecentMerge[]);
+    } catch (err) {
+      toast({ title: "Failed to load recent merges", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
+
+  useEffect(() => {
+    if (adminPin) fetchRecentMerges();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminPin]);
+
+  const undoMerge = async (m: RecentMerge) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const fromList = m.fromNames.join(", ");
+      const ok = window.confirm(
+        `Undo this merge?\n\n` +
+        `${fromList} → ${m.toName}\n` +
+        `${m.rowCount} shift-log row(s) will be reverted to their original worker name, contractor, category and gender.`
+      );
+      if (!ok) return;
+    }
+    setUndoingId(m.id);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/undo-merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), batchId: m.id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { restored: number };
+      toast({
+        title: "Merge undone",
+        description: `Restored ${result.restored} shift-log row(s) to their original worker info.`,
+      });
+      await Promise.all([fetchRecentMerges(), fetchRows()]);
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+    } catch (err) {
+      toast({ title: "Undo failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setUndoingId(null);
+    }
+  };
+
   const fetchRows = async () => {
     if (!adminPin) return;
     setLoading(true);
@@ -223,7 +302,7 @@ export default function PlantShiftLogManpowerReview() {
         description: `${row.name}: updated ${result.updated} row(s) → ${e.contractor.trim().toUpperCase()} / ${e.category} / ${e.gender}`,
       });
       // Refresh list
-      await fetchRows();
+      await Promise.all([fetchRows(), fetchRecentMerges()]);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
     } catch (err) {
       toast({ title: "Relabel failed", description: getErrorMessage(err), variant: "destructive" });
@@ -292,7 +371,7 @@ export default function PlantShiftLogManpowerReview() {
         title: "Names merged",
         description: `${fromNames.length} name(s) → ${target.toUpperCase()} · ${result.updated} row(s) updated`,
       });
-      await fetchRows();
+      await Promise.all([fetchRows(), fetchRecentMerges()]);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
     } catch (err) {
       toast({ title: "Merge failed", description: getErrorMessage(err), variant: "destructive" });
@@ -422,6 +501,92 @@ export default function PlantShiftLogManpowerReview() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-recent-merges">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base flex items-center gap-2">
+            <History className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+            Recent merges (last 30 days)
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={fetchRecentMerges}
+            disabled={loadingRecent}
+            data-testid="button-refresh-recent-merges"
+          >
+            {loadingRecent ? <Loader2 className="w-4 h-4 animate-spin" /> : "Refresh"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="text-xs text-muted-foreground">
+            Did you merge the wrong two names? Hit Undo within 30 days to restore every affected
+            shift-log row to its original worker name, contractor, category and gender.
+          </div>
+          {recentMerges === null ? (
+            <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-merges-loading">
+              Loading…
+            </div>
+          ) : recentMerges.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-merges-empty">
+              No merges or relabels in the last 30 days.
+            </div>
+          ) : (
+            <div className="overflow-auto border rounded-md">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/60 border-b">
+                  <tr>
+                    <th className="text-left p-2">When</th>
+                    <th className="text-left p-2">By</th>
+                    <th className="text-left p-2">Action</th>
+                    <th className="text-left p-2">Rows</th>
+                    <th className="text-left p-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentMerges.map(m => {
+                    const when = new Date(m.createdAt);
+                    const fromList = m.fromNames.join(", ");
+                    return (
+                      <tr key={m.id} className="border-b last:border-0 align-top" data-testid={`row-recent-merge-${m.id}`}>
+                        <td className="p-2 text-xs whitespace-nowrap">
+                          {when.toLocaleDateString()}<br />
+                          <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
+                        </td>
+                        <td className="p-2 text-xs">{m.actor}</td>
+                        <td className="p-2 text-xs">
+                          <div className="font-medium">
+                            {m.isMerge ? "Merge" : "Relabel"}: <span className="font-mono">{fromList}</span> → <span className="font-mono">{m.toName}</span>
+                          </div>
+                          <div className="text-muted-foreground">
+                            {m.contractorName} · {m.category} · {m.gender}
+                          </div>
+                        </td>
+                        <td className="p-2 tabular-nums">{m.rowCount}</td>
+                        <td className="p-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                            disabled={undoingId === m.id || actor.trim().length < 2}
+                            onClick={() => undoMerge(m)}
+                            data-testid={`button-undo-merge-${m.id}`}
+                          >
+                            {undoingId === m.id
+                              ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              : <Undo2 className="w-4 h-4 mr-2" />}
+                            Undo
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
