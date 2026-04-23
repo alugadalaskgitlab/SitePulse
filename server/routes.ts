@@ -2386,6 +2386,9 @@ export async function registerRoutes(
     try {
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
+      if (parsed.id != null) {
+        return res.status(400).json({ code: "ID_NOT_ALLOWED_ON_POST", message: "POST creates new sessions; use PUT /:id to update" });
+      }
       const editedBy = parsed.editedBy || "operator";
       let authorizedRole: "admin" | "manager" | null = null;
       const pin = req.body?.pin;
