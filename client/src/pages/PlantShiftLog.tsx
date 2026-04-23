@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, Lock, FileText, Loader2, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, Lock, FileText, Loader2, Pencil, Users } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -407,6 +407,11 @@ export default function PlantShiftLog() {
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
           <Link href={appendOrigin(`/plant/daily-report/${date}`)}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
+          </Link>
+          <Link href="/plant/shift-log-manpower-review">
+            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-manpower-review">
+              <Users className="w-4 h-4 mr-1" />Review UNKNOWN Workers
+            </Button>
           </Link>
         </div>
       </div>

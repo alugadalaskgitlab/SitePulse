@@ -8,7 +8,7 @@ import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
@@ -1894,6 +1894,64 @@ export async function registerRoutes(
     } catch (err) {
       console.error("recompute-balance-after error:", err);
       res.status(500).json({ message: "Failed to recompute balance_after" });
+    }
+  });
+
+  // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER for review.
+  app.post("/api/plant-module/shift-log-manpower/review-list", async (req, res) => {
+    try {
+      const { pin, dateFrom, dateTo } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      const rows = await storage.listShiftLogManpowerNeedingReview({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      });
+      res.json(rows);
+    } catch (err) {
+      console.error("shift-log-manpower review-list error:", err);
+      res.status(500).json({ message: "Failed to list workers needing review" });
+    }
+  });
+
+  // Admin: bulk-relabel every shift-log row of a given worker name.
+  app.post("/api/plant-module/shift-log-manpower/bulk-relabel", async (req, res) => {
+    try {
+      const { pin, actor, name, contractorName, category, gender } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      if (!name || !contractorName || !category || !gender) {
+        return res.status(400).json({ message: "name, contractorName, category and gender are required" });
+      }
+      const catUpper = String(category).toUpperCase().trim();
+      const genUpper = String(gender).toUpperCase().trim();
+      if (!(LABOUR_CATEGORIES as readonly string[]).includes(catUpper)) {
+        return res.status(400).json({ message: `category must be one of: ${LABOUR_CATEGORIES.join(", ")}` });
+      }
+      if (!(LABOUR_GENDERS as readonly string[]).includes(genUpper)) {
+        return res.status(400).json({ message: `gender must be one of: ${LABOUR_GENDERS.join(", ")}` });
+      }
+      const result = await storage.bulkRelabelShiftLogManpowerByName({
+        name: String(name),
+        contractorName: String(contractorName),
+        category: String(category),
+        gender: String(gender),
+      });
+      console.info(
+        `[ShiftLogManpowerRelabel] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} name="${name}" -> contractor="${contractorName}" ` +
+        `category="${category}" gender="${gender}" updated=${result.updated}`
+      );
+      res.json({ message: "Worker rows relabeled", ...result });
+    } catch (err) {
+      console.error("shift-log-manpower bulk-relabel error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to relabel worker rows";
+      res.status(500).json({ message: msg });
     }
   });
 

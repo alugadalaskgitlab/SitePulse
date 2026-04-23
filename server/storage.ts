@@ -328,6 +328,28 @@ export interface IStorage {
   // Backfill contractorName / category / gender on legacy plant_shift_log_manpower rows
   migrateLegacyPlantShiftLogManpower(): Promise<{ updated: number; skipped: number; errors: number }>;
 
+  // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
+  listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string }): Promise<Array<{
+    name: string;
+    count: number;
+    earliestDate: string;
+    latestDate: string;
+    currentContractors: string[];
+    currentCategories: string[];
+    currentGenders: string[];
+    roles: string[];
+    needsContractor: boolean;
+    needsCategory: boolean;
+  }>>;
+
+  // Admin: bulk-set contractor/category/gender for every shift-log row of a worker name
+  bulkRelabelShiftLogManpowerByName(input: {
+    name: string;
+    contractorName: string;
+    category: string;
+    gender: string;
+  }): Promise<{ updated: number }>;
+
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
   
@@ -6767,6 +6789,130 @@ export class DatabaseStorage implements IStorage {
       result.errors++;
     }
     return result;
+  }
+
+  async listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string }): Promise<Array<{
+    name: string;
+    count: number;
+    earliestDate: string;
+    latestDate: string;
+    currentContractors: string[];
+    currentCategories: string[];
+    currentGenders: string[];
+    roles: string[];
+    needsContractor: boolean;
+    needsCategory: boolean;
+  }>> {
+    const conds: any[] = [
+      or(
+        eq(plantShiftLogManpower.contractorName, "UNKNOWN CONTRACTOR"),
+        eq(plantShiftLogManpower.category, "OTHER"),
+      )!,
+    ];
+    if (opts?.dateFrom) conds.push(gte(plantShiftLogs.date, opts.dateFrom));
+    if (opts?.dateTo) conds.push(lte(plantShiftLogs.date, opts.dateTo));
+
+    const rows = await db.select({
+      id: plantShiftLogManpower.id,
+      name: plantShiftLogManpower.name,
+      role: plantShiftLogManpower.role,
+      contractorName: plantShiftLogManpower.contractorName,
+      category: plantShiftLogManpower.category,
+      gender: plantShiftLogManpower.gender,
+      date: plantShiftLogs.date,
+    })
+      .from(plantShiftLogManpower)
+      .innerJoin(plantShiftLogs, eq(plantShiftLogs.id, plantShiftLogManpower.shiftLogId))
+      .where(and(...conds));
+
+    type Group = {
+      name: string;
+      count: number;
+      earliestDate: string;
+      latestDate: string;
+      currentContractors: Set<string>;
+      currentCategories: Set<string>;
+      currentGenders: Set<string>;
+      roles: Set<string>;
+      needsContractor: boolean;
+      needsCategory: boolean;
+    };
+    const groups = new Map<string, Group>();
+    for (const r of rows) {
+      const nameKey = String(r.name || "").trim().toUpperCase();
+      if (!nameKey) continue;
+      const dateStr = typeof r.date === "string" ? r.date : (r.date as Date).toISOString().split("T")[0];
+      let g = groups.get(nameKey);
+      if (!g) {
+        g = {
+          name: nameKey,
+          count: 0,
+          earliestDate: dateStr,
+          latestDate: dateStr,
+          currentContractors: new Set(),
+          currentCategories: new Set(),
+          currentGenders: new Set(),
+          roles: new Set(),
+          needsContractor: false,
+          needsCategory: false,
+        };
+        groups.set(nameKey, g);
+      }
+      g.count += 1;
+      if (dateStr < g.earliestDate) g.earliestDate = dateStr;
+      if (dateStr > g.latestDate) g.latestDate = dateStr;
+      if (r.contractorName) g.currentContractors.add(r.contractorName);
+      if (r.category) g.currentCategories.add(r.category);
+      if (r.gender) g.currentGenders.add(r.gender);
+      if (r.role) g.roles.add(r.role);
+      if (r.contractorName === "UNKNOWN CONTRACTOR") g.needsContractor = true;
+      if (r.category === "OTHER") g.needsCategory = true;
+    }
+    return Array.from(groups.values())
+      .map(g => ({
+        name: g.name,
+        count: g.count,
+        earliestDate: g.earliestDate,
+        latestDate: g.latestDate,
+        currentContractors: Array.from(g.currentContractors),
+        currentCategories: Array.from(g.currentCategories),
+        currentGenders: Array.from(g.currentGenders),
+        roles: Array.from(g.roles),
+        needsContractor: g.needsContractor,
+        needsCategory: g.needsCategory,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }
+
+  async bulkRelabelShiftLogManpowerByName(input: {
+    name: string;
+    contractorName: string;
+    category: string;
+    gender: string;
+  }): Promise<{ updated: number }> {
+    const nameTrim = String(input.name || "").trim();
+    if (!nameTrim) throw new Error("Worker name is required");
+    const contractorRaw = String(input.contractorName || "").trim();
+    if (!contractorRaw) throw new Error("Contractor is required");
+    const category = String(input.category || "").trim().toUpperCase();
+    if (!category) throw new Error("Category is required");
+    const gender = String(input.gender || "").trim().toUpperCase();
+    if (!gender) throw new Error("Gender is required");
+
+    const allAliases = await db.select().from(vendorAliases);
+    const aliasToCanonical = new Map<string, string>();
+    for (const a of allAliases) {
+      aliasToCanonical.set(a.alias.toUpperCase().trim(), a.canonicalName.toUpperCase().trim());
+      aliasToCanonical.set(a.canonicalName.toUpperCase().trim(), a.canonicalName.toUpperCase().trim());
+    }
+    const upperContractor = contractorRaw.toUpperCase().replace(/\s+/g, " ");
+    const canonicalContractor = aliasToCanonical.get(upperContractor) || upperContractor;
+
+    const result = await db.update(plantShiftLogManpower)
+      .set({ contractorName: canonicalContractor, category, gender })
+      .where(sql`UPPER(TRIM(${plantShiftLogManpower.name})) = ${nameTrim.toUpperCase()}`)
+      .returning({ id: plantShiftLogManpower.id });
+    return { updated: result.length };
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
