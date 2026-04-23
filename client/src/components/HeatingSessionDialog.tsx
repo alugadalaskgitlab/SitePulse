@@ -1,0 +1,508 @@
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Save, Loader2, Trash2 } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
+
+type DgMode = "none" | "inline" | "link";
+
+function emptyForm(date: string, plantName: string) {
+  return {
+    id: undefined as number | undefined,
+    date,
+    sessionType: "NIGHT_PREHEAT",
+    plantName,
+    staffName: "",
+    staffRole: "",
+    startTime: "",
+    endTime: "",
+    hotOilTempStart: "",
+    hotOilTempEnd: "",
+    hotOilSupplyTemp: "",
+    hotOilReturnTemp: "",
+    bitumenTank1TempStart: "",
+    bitumenTank1TempEnd: "",
+    bitumenTank2TempStart: "",
+    bitumenTank2TempEnd: "",
+    ldoTank1OpeningMeter: "",
+    ldoTank1ClosingMeter: "",
+    dgMode: "inline" as DgMode,
+    dgGeneratorName: "",
+    dgStartTime: "",
+    dgEndTime: "",
+    dgOpeningHourMeter: "",
+    dgClosingHourMeter: "",
+    dgOpeningDiesel: "",
+    dgIssuedDiesel: "",
+    dgClosingDiesel: "",
+    generatorLogId: null as number | null,
+    remarks: "",
+    isFinalized: 0,
+    autoFilledOpening: false,
+    autoFilledSource: "" as string,
+  };
+}
+
+type FormState = ReturnType<typeof emptyForm>;
+
+function durationHrs(start: string, end: string): number | null {
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if (isNaN(sh) || isNaN(eh)) return null;
+  let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+  if (mins < 0) mins += 24 * 60;
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+function sessionToForm(s: BitumenHeatingSession): FormState {
+  return {
+    id: s.id,
+    date: s.date,
+    sessionType: s.sessionType,
+    plantName: s.plantName,
+    staffName: s.staffName || "",
+    staffRole: s.staffRole || "",
+    startTime: s.startTime || "",
+    endTime: s.endTime || "",
+    hotOilTempStart: s.hotOilTempStart?.toString() || "",
+    hotOilTempEnd: s.hotOilTempEnd?.toString() || "",
+    hotOilSupplyTemp: s.hotOilSupplyTemp?.toString() || "",
+    hotOilReturnTemp: s.hotOilReturnTemp?.toString() || "",
+    bitumenTank1TempStart: s.bitumenTank1TempStart?.toString() || "",
+    bitumenTank1TempEnd: s.bitumenTank1TempEnd?.toString() || "",
+    bitumenTank2TempStart: s.bitumenTank2TempStart?.toString() || "",
+    bitumenTank2TempEnd: s.bitumenTank2TempEnd?.toString() || "",
+    ldoTank1OpeningMeter: s.ldoTank1OpeningMeter?.toString() || "",
+    ldoTank1ClosingMeter: s.ldoTank1ClosingMeter?.toString() || "",
+    dgMode: (s.dgMode as DgMode) || "none",
+    dgGeneratorName: s.dgGeneratorName || "",
+    dgStartTime: s.dgStartTime || "",
+    dgEndTime: s.dgEndTime || "",
+    dgOpeningHourMeter: s.dgOpeningHourMeter?.toString() || "",
+    dgClosingHourMeter: s.dgClosingHourMeter?.toString() || "",
+    dgOpeningDiesel: s.dgOpeningDiesel?.toString() || "",
+    dgIssuedDiesel: s.dgIssuedDiesel?.toString() || "",
+    dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
+    generatorLogId: s.generatorLogId,
+    remarks: s.remarks || "",
+    isFinalized: s.isFinalized,
+    autoFilledOpening: false,
+    autoFilledSource: "",
+  };
+}
+
+export interface HeatingSessionDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  date: string;
+  plantName: string;
+  session?: BitumenHeatingSession | null;
+  onSaved?: () => void;
+  onDeleted?: () => void;
+}
+
+export function HeatingSessionDialog({
+  open, onOpenChange, date, plantName, session, onSaved, onDeleted,
+}: HeatingSessionDialogProps) {
+  const { toast } = useToast();
+  const [form, setForm] = useState<FormState>(() =>
+    session ? sessionToForm(session) : emptyForm(date, plantName)
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(session ? sessionToForm(session) : emptyForm(date, plantName));
+  }, [open, session, date, plantName]);
+
+  const setField = <K extends keyof FormState>(k: K, v: FormState[K]) => {
+    setForm(prev => ({ ...prev, [k]: v }));
+  };
+
+  const { data: existingGenerators } = useQuery<GeneratorLog[]>({
+    queryKey: ["/api/plant-module/generator-logs"],
+    enabled: open,
+  });
+  const { data: generatorMasters } = useQuery<{ id: number | null; name: string }[]>({
+    queryKey: ["/api/plant-module/generators"],
+    enabled: open,
+  });
+
+  const generatorOptionsForDate = useMemo(
+    () => (existingGenerators || []).filter(g =>
+      g.date === form.date &&
+      (g.sourceHeatingSessionId == null || g.sourceHeatingSessionId === form.id)
+    ),
+    [existingGenerators, form.date, form.id]
+  );
+
+  const selectedGeneratorEquipmentId = useMemo(() => {
+    if (form.dgMode !== "inline") return null;
+    const match = (generatorMasters || []).find(g => g.name === form.dgGeneratorName);
+    return match?.id ?? null;
+  }, [generatorMasters, form.dgGeneratorName, form.dgMode]);
+
+  const { data: dgPrevBalance } = useQuery<{ previousBalance: number; previousClosingReading: number }>({
+    queryKey: ["/api/plant-module/equipment-usage/previous-balance", selectedGeneratorEquipmentId],
+    enabled: open && selectedGeneratorEquipmentId != null,
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/equipment-usage/previous-balance/${selectedGeneratorEquipmentId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch DG tank balance");
+      return res.json();
+    },
+  });
+
+  // Auto-fill Tank-1 opening meter when opening a new session.
+  const autoFilledOpeningRef = useRef<string | null>(null);
+  const fetchSeqRef = useRef(0);
+  useEffect(() => {
+    if (!open || form.id) return;
+    const isEmpty = !form.ldoTank1OpeningMeter;
+    const isAutoFilled = form.ldoTank1OpeningMeter && form.ldoTank1OpeningMeter === autoFilledOpeningRef.current;
+    if (!isEmpty && !isAutoFilled) return;
+    const before = form.startTime ? `${form.date}T${form.startTime}` : `${form.date}T23:59`;
+    const seq = ++fetchSeqRef.current;
+    fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(form.plantName)}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any) => {
+        if (seq !== fetchSeqRef.current) return;
+        if (data && typeof data.value === "number") {
+          const next = String(data.value);
+          setForm(prev => {
+            if (prev.ldoTank1OpeningMeter && prev.ldoTank1OpeningMeter !== autoFilledOpeningRef.current) return prev;
+            autoFilledOpeningRef.current = next;
+            return {
+              ...prev,
+              ldoTank1OpeningMeter: next,
+              autoFilledOpening: true,
+              autoFilledSource: data.source,
+            };
+          });
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form.id, form.date, form.startTime, form.plantName]);
+
+  const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
+
+  const dur = durationHrs(form.startTime, form.endTime);
+  const ldoConsumed = (() => {
+    const o = parseFloat(form.ldoTank1OpeningMeter), c = parseFloat(form.ldoTank1ClosingMeter);
+    if (isNaN(o) || isNaN(c)) return null;
+    return Math.max(0, c - o);
+  })();
+  const ldoLPerHr = (ldoConsumed != null && dur && dur > 0) ? ldoConsumed / dur : null;
+
+  const dgDurFromTime = durationHrs(form.dgStartTime, form.dgEndTime);
+  const dgDurFromMeter = (() => {
+    const o = parseFloat(form.dgOpeningHourMeter), c = parseFloat(form.dgClosingHourMeter);
+    if (isNaN(o) || isNaN(c)) return null;
+    return Math.max(0, Math.round((c - o) * 100) / 100);
+  })();
+  const dgHoursUsed = dgDurFromMeter ?? dgDurFromTime;
+  const dgConsumed = (() => {
+    const o = parseFloat(form.dgOpeningDiesel), c = parseFloat(form.dgClosingDiesel), iss = parseFloat(form.dgIssuedDiesel) || 0;
+    if (isNaN(o) || isNaN(c)) return null;
+    return Math.max(0, o + iss - c);
+  })();
+  const dgLPerHr = (dgConsumed != null && dgHoursUsed && dgHoursUsed > 0) ? dgConsumed / dgHoursUsed : null;
+
+  const buildPayload = () => {
+    const ldoOpen = numOrNull(form.ldoTank1OpeningMeter);
+    const ldoClose = numOrNull(form.ldoTank1ClosingMeter);
+    if (ldoOpen != null && ldoClose != null && ldoClose < ldoOpen) {
+      throw new Error("Closing meter must be ≥ opening meter");
+    }
+    const dgOpenHM = numOrNull(form.dgOpeningHourMeter);
+    const dgCloseHM = numOrNull(form.dgClosingHourMeter);
+    if (form.dgMode === "inline" && dgOpenHM != null && dgCloseHM != null && dgCloseHM < dgOpenHM) {
+      throw new Error("DG closing hour-meter must be ≥ opening hour-meter");
+    }
+    const payload: Record<string, unknown> = {
+      date: form.date,
+      sessionType: form.sessionType,
+      plantName: form.plantName,
+      staffName: form.staffName || null,
+      staffRole: form.staffRole || null,
+      startTime: form.startTime || null,
+      endTime: form.endTime || null,
+      hotOilTempStart: numOrNull(form.hotOilTempStart),
+      hotOilTempEnd: numOrNull(form.hotOilTempEnd),
+      hotOilSupplyTemp: numOrNull(form.hotOilSupplyTemp),
+      hotOilReturnTemp: numOrNull(form.hotOilReturnTemp),
+      bitumenTank1TempStart: numOrNull(form.bitumenTank1TempStart),
+      bitumenTank1TempEnd: numOrNull(form.bitumenTank1TempEnd),
+      bitumenTank2TempStart: numOrNull(form.bitumenTank2TempStart),
+      bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
+      ldoTank1OpeningMeter: ldoOpen,
+      ldoTank1ClosingMeter: ldoClose,
+      dgMode: form.dgMode,
+      dgGeneratorName: form.dgMode === "inline" ? form.dgGeneratorName : null,
+      dgStartTime: form.dgMode === "inline" ? (form.dgStartTime || null) : null,
+      dgEndTime: form.dgMode === "inline" ? (form.dgEndTime || null) : null,
+      dgOpeningHourMeter: form.dgMode === "inline" ? dgOpenHM : null,
+      dgClosingHourMeter: form.dgMode === "inline" ? dgCloseHM : null,
+      dgOpeningDiesel: form.dgMode === "inline" ? numOrNull(form.dgOpeningDiesel) : null,
+      dgIssuedDiesel: form.dgMode === "inline" ? numOrNull(form.dgIssuedDiesel) : null,
+      dgClosingDiesel: form.dgMode === "inline" ? numOrNull(form.dgClosingDiesel) : null,
+      generatorLogId: form.dgMode === "link" ? form.generatorLogId : null,
+      remarks: form.remarks || null,
+      editedBy: "operator",
+    };
+    if (form.id) payload.id = form.id;
+    return payload;
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = buildPayload();
+      const url = form.id ? `/api/plant-module/heating-sessions/${form.id}` : "/api/plant-module/heating-sessions";
+      const method = form.id ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let body: any = {};
+        try { body = await res.json(); } catch {}
+        throw new Error(body?.message || res.statusText);
+      }
+      const saved: BitumenHeatingSession = await res.json();
+      if (!saved.isFinalized) {
+        try {
+          await apiRequest("POST", `/api/plant-module/heating-sessions/${saved.id}/finalize`, { finalizedBy: "operator" });
+        } catch {
+          // non-fatal
+        }
+      }
+      return saved;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
+      toast({ title: "Heating session saved" });
+      onOpenChange(false);
+      onSaved?.();
+    },
+    onError: (err: any) => {
+      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const pin = window.prompt("Enter admin PIN to delete this session");
+      if (!pin) throw new Error("Cancelled");
+      const res = await apiRequest("DELETE", `/api/plant-module/heating-sessions/${id}`, { pin });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
+      toast({ title: "Heating session deleted" });
+      onOpenChange(false);
+      onDeleted?.();
+    },
+    onError: (err: any) => {
+      if (err?.message === "Cancelled") return;
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{form.id ? "Edit" : "New"} Heating Session</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div><Label>Date</Label><Input type="date" value={form.date} onChange={e => setField("date", e.target.value)} data-testid="input-date" /></div>
+            <div><Label>Session Type</Label>
+              <Select value={form.sessionType} onValueChange={v => setField("sessionType", v)}>
+                <SelectTrigger data-testid="select-session-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NIGHT_PREHEAT">Night Pre-heating</SelectItem>
+                  <SelectItem value="DAY_MAINTENANCE">Daytime Maintenance</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Staff Name</Label><Input value={form.staffName} onChange={e => setField("staffName", e.target.value)} data-testid="input-staff-name" /></div>
+            <div><Label>Staff Role</Label><Input value={form.staffRole} onChange={e => setField("staffRole", e.target.value)} placeholder="Boiler operator" data-testid="input-staff-role" /></div>
+            <div><Label>Start Time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
+            <div><Label>End Time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
+            <div><Label>Duration (h)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-duration">{dur ?? "—"}</div></div>
+            <div />
+          </div>
+
+          <Card>
+            <CardHeader className="py-3"><CardTitle className="text-base">Hot-Oil & Bitumen Temperatures</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
+              <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+              <div className="md:col-span-2" />
+              <div><Label>Bitumen T1 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" /></div>
+              <div><Label>Bitumen T1 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" /></div>
+              <div><Label>Bitumen T2 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" /></div>
+              <div><Label>Bitumen T2 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" /></div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <Label>Opening Meter</Label>
+                <Input type="number" step="0.01" value={form.ldoTank1OpeningMeter}
+                  onChange={e => setForm(p => ({ ...p, ldoTank1OpeningMeter: e.target.value, autoFilledOpening: false }))}
+                  data-testid="input-ldo-open" />
+                {form.autoFilledOpening && form.autoFilledSource && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-hint">
+                    Auto-filled from previous closing ({form.autoFilledSource})
+                  </p>
+                )}
+              </div>
+              <div><Label>Closing Meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
+              <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
+              <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="py-3"><CardTitle className="text-base">Generator (DG) for this Session</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Label className="mr-2">DG Mode:</Label>
+                <Select value={form.dgMode} onValueChange={v => setField("dgMode", v as DgMode)}>
+                  <SelectTrigger className="w-48" data-testid="select-dg-mode"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No DG used</SelectItem>
+                    <SelectItem value="inline">Inline (capture here, auto-create Generator Log)</SelectItem>
+                    <SelectItem value="link">Link Existing Generator Log</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {form.dgMode === "inline" && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="md:col-span-2"><Label>Generator</Label>
+                      <Select
+                        value={form.dgGeneratorName || undefined}
+                        onValueChange={v => {
+                          if (v === "__new__") {
+                            const name = window.prompt("Enter new generator name (e.g. '125 KVA GENERATOR')")?.trim();
+                            if (name) setField("dgGeneratorName", name);
+                          } else {
+                            setField("dgGeneratorName", v);
+                          }
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-dg-generator"><SelectValue placeholder="Pick a generator" /></SelectTrigger>
+                        <SelectContent>
+                          {(generatorMasters || []).map(g => (
+                            <SelectItem key={g.name} value={g.name}>{g.name}</SelectItem>
+                          ))}
+                          {form.dgGeneratorName &&
+                            !(generatorMasters || []).some(g => g.name === form.dgGeneratorName) && (
+                              <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
+                            )}
+                          <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div><Label>DG Start</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
+                    <div><Label>DG End</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
+                    <div><Label>Hours from Time</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-time">{dgDurFromTime ?? "—"}</div></div>
+                    <div><Label>Hour-Meter Opening</Label><Input type="number" step="0.01" value={form.dgOpeningHourMeter} onChange={e => setField("dgOpeningHourMeter", e.target.value)} data-testid="input-dg-hm-open" /></div>
+                    <div><Label>Hour-Meter Closing</Label><Input type="number" step="0.01" value={form.dgClosingHourMeter} onChange={e => setField("dgClosingHourMeter", e.target.value)} data-testid="input-dg-hm-close" /></div>
+                    <div><Label>Hours from Meter</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-meter">{dgDurFromMeter ?? "—"}</div></div>
+                    <div><Label>DG Hours Used</Label><div className="px-3 py-2 rounded bg-emerald-50 dark:bg-emerald-950/30 font-semibold text-sm" data-testid="text-dg-hrs-used">{dgHoursUsed != null ? dgHoursUsed.toFixed(2) : "—"}</div></div>
+                    <div><Label>HSD Opening (L)</Label><Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" /></div>
+                    <div><Label>HSD Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
+                    <div><Label>HSD Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
+                    <div><Label>HSD Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
+                    <div>
+                      <Label>Diesel Balance in Tank (last)</Label>
+                      <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-prev-balance">
+                        {selectedGeneratorEquipmentId == null
+                          ? "—"
+                          : dgPrevBalance
+                            ? `${dgPrevBalance.previousBalance.toFixed(2)} L`
+                            : "…"}
+                      </div>
+                    </div>
+                    <div>
+                      <Label>New Balance in Tank</Label>
+                      <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-new-balance">
+                        {(() => {
+                          if (selectedGeneratorEquipmentId == null || !dgPrevBalance) return "—";
+                          const issued = parseFloat(form.dgIssuedDiesel) || 0;
+                          const consumed = dgConsumed ?? 0;
+                          const next = dgPrevBalance.previousBalance + issued - consumed;
+                          return `${next.toFixed(2)} L`;
+                        })()}
+                      </div>
+                    </div>
+                    <div><Label>HSD L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Tip: enter both clock time and hour-meter readings — the system uses the hour-meter when available and falls back to time. DG Hours Used drives the L/Hr metric. The "Diesel Balance in Tank (last)" chip is the most recent tank reading from Equipment Usage; "New Balance" is last + Issued − Consumed.
+                  </p>
+                </>
+              )}
+
+              {form.dgMode === "link" && (
+                <div>
+                  <Label>Existing Generator Log (same date)</Label>
+                  <Select value={form.generatorLogId ? String(form.generatorLogId) : ""} onValueChange={v => setField("generatorLogId", parseInt(v))}>
+                    <SelectTrigger data-testid="select-link-dg"><SelectValue placeholder="Pick a generator log" /></SelectTrigger>
+                    <SelectContent>
+                      {generatorOptionsForDate.map(g => (
+                        <SelectItem key={g.id} value={String(g.id)}>
+                          #{g.id} {g.generatorName} {g.startTime}-{g.endTime} ({g.hoursRun?.toFixed(1) || "?"}h, {g.dieselConsumed?.toFixed(1) || "?"}L)
+                        </SelectItem>
+                      ))}
+                      {!generatorOptionsForDate.length && <SelectItem value="0" disabled>No generator logs for this date</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div>
+            <Label>Remarks</Label>
+            <Textarea rows={2} value={form.remarks} onChange={e => setField("remarks", e.target.value)} data-testid="input-remarks" />
+          </div>
+
+          <div className="flex flex-wrap gap-2 justify-end">
+            {form.id && (
+              <Button variant="outline" onClick={() => deleteMutation.mutate(form.id!)} disabled={deleteMutation.isPending} data-testid="button-delete">
+                <Trash2 className="w-4 h-4 mr-1" />Delete
+              </Button>
+            )}
+            <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="button-cancel">Cancel</Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save">
+              {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+              Save & Close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
