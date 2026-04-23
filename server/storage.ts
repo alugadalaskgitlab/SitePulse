@@ -8094,6 +8094,24 @@ export class DatabaseStorage implements IStorage {
       const iss = payload.dgIssuedDiesel ?? 0;
       if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
     } else if (payload.dgMode === "link" && payload.generatorLogId != null) {
+      // Pull the linked generator log first to validate same-date / same-plant.
+      const [linked] = await db.select().from(generatorLogs)
+        .where(eq(generatorLogs.id, payload.generatorLogId)).limit(1);
+      if (!linked) {
+        const err: any = new Error(`Generator log #${payload.generatorLogId} not found`);
+        err.code = "GEN_LOG_NOT_FOUND";
+        throw err;
+      }
+      if (payload.date && linked.date !== payload.date) {
+        const err: any = new Error(`Linked generator log date (${linked.date}) does not match heating session date (${payload.date})`);
+        err.code = "GEN_LOG_DATE_MISMATCH";
+        throw err;
+      }
+      if (payload.plantName && linked.plantName && linked.plantName !== payload.plantName) {
+        const err: any = new Error(`Linked generator log plant (${linked.plantName}) does not match heating session plant (${payload.plantName})`);
+        err.code = "GEN_LOG_PLANT_MISMATCH";
+        throw err;
+      }
       // Guard: a generator log may only be linked from one heating session at
       // a time, otherwise its diesel/hours would be over-attributed.
       const conflicts = await db.select({ id: bitumenHeatingSessions.id })
@@ -8106,10 +8124,8 @@ export class DatabaseStorage implements IStorage {
         throw err;
       }
       // Pull totals from the linked generator log so reports attribute DG diesel correctly
-      const [linked] = await db.select().from(generatorLogs)
-        .where(eq(generatorLogs.id, payload.generatorLogId)).limit(1);
-      payload.dgHoursRun = linked?.hoursRun ?? null;
-      payload.dgDieselConsumed = linked?.dieselConsumed ?? null;
+      payload.dgHoursRun = linked.hoursRun ?? null;
+      payload.dgDieselConsumed = linked.dieselConsumed ?? null;
     } else {
       payload.dgDieselConsumed = null;
       payload.dgHoursRun = null;

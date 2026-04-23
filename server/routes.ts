@@ -2400,6 +2400,9 @@ export async function registerRoutes(
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
         if (e?.code === "GEN_LOG_ALREADY_LINKED") return res.status(409).json({ code: "GEN_LOG_ALREADY_LINKED", message: e.message });
+        if (e?.code === "GEN_LOG_NOT_FOUND" || e?.code === "GEN_LOG_DATE_MISMATCH" || e?.code === "GEN_LOG_PLANT_MISMATCH") {
+          return res.status(400).json({ code: e.code, message: e.message });
+        }
         throw e;
       }
     } catch (err: any) {
@@ -2429,6 +2432,9 @@ export async function registerRoutes(
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
         if (e?.code === "GEN_LOG_ALREADY_LINKED") return res.status(409).json({ code: "GEN_LOG_ALREADY_LINKED", message: e.message });
+        if (e?.code === "GEN_LOG_NOT_FOUND" || e?.code === "GEN_LOG_DATE_MISMATCH" || e?.code === "GEN_LOG_PLANT_MISMATCH") {
+          return res.status(400).json({ code: e.code, message: e.message });
+        }
         throw e;
       }
     } catch (err: any) {
