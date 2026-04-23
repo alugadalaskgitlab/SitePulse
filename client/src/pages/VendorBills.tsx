@@ -1131,12 +1131,35 @@ export default function VendorBills() {
         rows += `<tr class="cat-header"><td colspan="${colCount}" style="background:#f0f0f0;font-weight:bold;font-size:12px;text-transform:uppercase;letter-spacing:1px;padding:8px;">${printCatLabels[cat]} (${catItems.length} items)</td></tr>`;
         rows += catItems.map(({ item, origIdx }: any) => renderPrintRow(item, origIdx)).join("");
         rows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${printCatLabels[cat]} Sub-total</td><td style="text-align:right">Rs. ${formatCurrency(catTotal)}</td></tr>`;
+        if (cat === "labour") {
+          let siteAmt = 0, plantAmt = 0;
+          for (const { item } of catItems as any[]) {
+            const src = getLabourSource(item);
+            if (src === "site") siteAmt += item.amount || 0;
+            else if (src === "plant") plantAmt += item.amount || 0;
+          }
+          if (siteAmt > 0 && plantAmt > 0) {
+            rows += `<tr class="summary-row"><td colspan="${colCount}" style="text-align:right;font-weight:normal;font-style:italic;font-size:11px;color:#444;">of which DPR Site: Rs. ${formatCurrency(siteAmt)} &nbsp;·&nbsp; Plant Shift: Rs. ${formatCurrency(plantAmt)}</td></tr>`;
+          }
+        }
         if (catGstRate > 0) {
           rows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">GST ON ${printCatLabels[cat]} @ ${catGstRate}%</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(catGstAmt)}</td></tr>`;
         }
       }
     } else {
       rows = bill.items.map((item: any, i: number) => renderPrintRow(item, i)).join("");
+      const onlyLabour = bill.items.length > 0 && bill.items.every((it: any) => (it.category || "other") === "labour");
+      if (onlyLabour) {
+        let siteAmt = 0, plantAmt = 0;
+        for (const item of bill.items as any[]) {
+          const src = getLabourSource(item);
+          if (src === "site") siteAmt += item.amount || 0;
+          else if (src === "plant") plantAmt += item.amount || 0;
+        }
+        if (siteAmt > 0 && plantAmt > 0) {
+          rows += `<tr class="summary-row"><td colspan="${colCount}" style="text-align:right;font-weight:normal;font-style:italic;font-size:11px;color:#444;">of which DPR Site: Rs. ${formatCurrency(siteAmt)} &nbsp;·&nbsp; Plant Shift: Rs. ${formatCurrency(plantAmt)}</td></tr>`;
+        }
+      }
     }
 
     const totalQty = bill.items.reduce((s: number, it: any) => s + (it.qty || 0), 0);
