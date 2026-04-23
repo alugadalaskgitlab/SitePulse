@@ -484,7 +484,7 @@ export interface IStorage {
   finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined>;
   deletePlantShiftLog(id: number): Promise<boolean>;
   getDailyPlantSummary(date: string, plantName?: string): Promise<unknown>;
-  getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string }): Promise<Array<{
+  getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string; parties?: number[]; mixTypes?: string[] }): Promise<Array<{
     date: string;
     plantName: string;
     hasDispatches: boolean;
@@ -7990,7 +7990,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string }): Promise<Array<{
+  async getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string; parties?: number[]; mixTypes?: string[] }): Promise<Array<{
     date: string; plantName: string;
     hasDispatches: boolean; hasEquipment: boolean; hasShiftLog: boolean;
     hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
@@ -8000,11 +8000,45 @@ export class DatabaseStorage implements IStorage {
     const from = filters?.from;
     const to = filters?.to;
     const plant = filters?.plant;
+    const partyIds = Array.from(new Set((filters?.parties || []).filter((n) => Number.isFinite(n))));
+    const mixTypeNames = Array.from(new Set((filters?.mixTypes || []).map((s) => String(s)).filter(Boolean)));
+    const hasPartyOrMixFilter = partyIds.length > 0 || mixTypeNames.length > 0;
+    // Resolve mix-template IDs for the requested mix types once and reuse below.
+    const matchingMixIds: number[] | null = mixTypeNames.length
+      ? (await db.select({ id: mixTemplates.id }).from(mixTemplates)
+          .where(inArray(mixTemplates.mixType, mixTypeNames))).map((r) => r.id)
+      : null;
+    if (mixTypeNames.length && (matchingMixIds?.length ?? 0) === 0) {
+      // Mix-type filter requested but no template matches → empty result.
+      return [];
+    }
     const dateRange = (col: any) => and(
       from ? gte(col, from) : undefined,
       to ? lte(col, to) : undefined,
     );
     const plantEq = (col: any) => (plant ? eq(col, plant) : undefined);
+
+    // When party/mix-type filters are present we restrict the index to (date, plant)
+    // combinations that have at least one matching truck dispatch. Other tables
+    // (shift log, equipment, fuel) don't carry party/mix info, so we only surface
+    // their flags for those same matching keys.
+    let allowedKeys: Set<string> | null = null;
+    if (hasPartyOrMixFilter) {
+      allowedKeys = new Set<string>();
+      const matchingDispKeys = await db.select({
+        date: truckDispatches.date,
+        plantName: truckDispatches.plantName,
+      }).from(truckDispatches)
+        .where(and(
+          dateRange(truckDispatches.date),
+          plantEq(truckDispatches.plantName),
+          partyIds.length ? inArray(truckDispatches.partyId, partyIds) : undefined,
+          matchingMixIds ? inArray(truckDispatches.mixTemplateId, matchingMixIds) : undefined,
+        ))
+        .groupBy(truckDispatches.date, truckDispatches.plantName);
+      for (const r of matchingDispKeys) allowedKeys.add(`${r.date}|${r.plantName}`);
+      if (allowedKeys.size === 0) return [];
+    }
 
     type Row = {
       date: string; plantName: string;
@@ -8036,7 +8070,12 @@ export class DatabaseStorage implements IStorage {
       loads: sql<number>`COUNT(*)::int`,
       mt: sql<number>`COALESCE(SUM(${truckDispatches.loadWeight}),0)::float`,
     }).from(truckDispatches)
-      .where(and(dateRange(truckDispatches.date), plantEq(truckDispatches.plantName)))
+      .where(and(
+        dateRange(truckDispatches.date),
+        plantEq(truckDispatches.plantName),
+        partyIds.length ? inArray(truckDispatches.partyId, partyIds) : undefined,
+        matchingMixIds ? inArray(truckDispatches.mixTemplateId, matchingMixIds) : undefined,
+      ))
       .groupBy(truckDispatches.date, truckDispatches.plantName);
     for (const r of dispRows) {
       const row = get(r.date, r.plantName);
@@ -8091,7 +8130,11 @@ export class DatabaseStorage implements IStorage {
       .groupBy(ldoFlowReadings.date);
     for (const r of ldoRows) get(r.date, defaultPlant).hasLdoMeter = true;
 
-    return Array.from(map.values()).sort(
+    let result = Array.from(map.values());
+    if (allowedKeys) {
+      result = result.filter((r) => allowedKeys!.has(`${r.date}|${r.plantName}`));
+    }
+    return result.sort(
       (a, b) => b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName)
     );
   }

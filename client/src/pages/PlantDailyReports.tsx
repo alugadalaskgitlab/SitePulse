@@ -6,10 +6,76 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
+import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+
+type PartyOpt = { id: number; name: string };
+type MixTypeOpt = { id: number; name: string };
+
+function MultiSelect<T extends { value: string; label: string }>({
+  label, options, selected, onChange, testId,
+}: {
+  label: string;
+  options: T[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  testId: string;
+}) {
+  const summary = selected.length === 0
+    ? `All ${label.toLowerCase()}`
+    : selected.length === 1
+      ? (options.find((o) => o.value === selected[0])?.label || selected[0])
+      : `${selected.length} selected`;
+  const toggle = (v: string) => {
+    if (selected.includes(v)) onChange(selected.filter((x) => x !== v));
+    else onChange([...selected, v]);
+  };
+  return (
+    <div>
+      <label className="text-xs text-muted-foreground block mb-1">{label}</label>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="h-10 min-w-[12rem] justify-between font-normal" data-testid={`${testId}-trigger`}>
+            <span className="truncate">{summary}</span>
+            <ChevronDown className="w-4 h-4 ml-2 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-2" align="start">
+          <div className="flex items-center justify-between px-1 pb-1">
+            <span className="text-xs text-muted-foreground">{selected.length} selected</span>
+            {selected.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onChange([])} data-testid={`${testId}-clear`}>
+                <X className="w-3 h-3 mr-1" /> Clear
+              </Button>
+            )}
+          </div>
+          <div className="max-h-64 overflow-auto">
+            {options.length === 0 && (
+              <div className="text-xs text-muted-foreground px-2 py-3">No options</div>
+            )}
+            {options.map((o) => {
+              const checked = selected.includes(o.value);
+              return (
+                <label
+                  key={o.value}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded hover-elevate cursor-pointer"
+                  data-testid={`${testId}-option-${o.value}`}
+                >
+                  <Checkbox checked={checked} onCheckedChange={() => toggle(o.value)} />
+                  <span className="text-sm truncate">{o.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
 
 type IndexRow = {
   date: string;
@@ -33,6 +99,8 @@ export default function PlantDailyReports() {
   const [from, setFrom] = useState(format(subDays(new Date(), 90), "yyyy-MM-dd"));
   const [to, setTo] = useState(today);
   const [plant, setPlant] = useState<string>("");
+  const [selectedParties, setSelectedParties] = useState<string[]>([]); // party ids as strings
+  const [selectedMixTypes, setSelectedMixTypes] = useState<string[]>([]); // mix type names
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string>("");
   type BulkStatus = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
@@ -47,13 +115,31 @@ export default function PlantDailyReports() {
     },
   });
 
+  const { data: partiesList } = useQuery<PartyOpt[]>({
+    queryKey: ["/api/plant-module/parties"],
+  });
+  const { data: mixTypesList } = useQuery<MixTypeOpt[]>({
+    queryKey: ["/api/plant-module/mix-types"],
+  });
+
+  const partiesSorted = useMemo(
+    () => [...(partiesList || [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [partiesList],
+  );
+  const mixTypesSorted = useMemo(
+    () => [...(mixTypesList || [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [mixTypesList],
+  );
+
   const { data: rows, isLoading } = useQuery<IndexRow[]>({
-    queryKey: ["/api/plant-module/daily-reports-index", from, to, plant],
+    queryKey: ["/api/plant-module/daily-reports-index", from, to, plant, selectedParties, selectedMixTypes],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (plant) params.set("plant", plant);
+      for (const p of selectedParties) params.append("party", p);
+      for (const m of selectedMixTypes) params.append("mixType", m);
       const res = await fetch(`/api/plant-module/daily-reports-index?${params.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -189,6 +275,20 @@ export default function PlantDailyReports() {
               ))}
             </select>
           </div>
+          <MultiSelect
+            label="Party"
+            testId="multiselect-party"
+            selected={selectedParties}
+            onChange={setSelectedParties}
+            options={partiesSorted.map((p) => ({ value: String(p.id), label: p.name }))}
+          />
+          <MultiSelect
+            label="Mix Type"
+            testId="multiselect-mix-type"
+            selected={selectedMixTypes}
+            onChange={setSelectedMixTypes}
+            options={mixTypesSorted.map((m) => ({ value: m.name, label: m.name }))}
+          />
           <div className="flex gap-1">
             <Button variant="outline" size="sm" onClick={() => setQuickRange(7)} data-testid="button-range-7">7d</Button>
             <Button variant="outline" size="sm" onClick={() => setQuickRange(30)} data-testid="button-range-30">30d</Button>

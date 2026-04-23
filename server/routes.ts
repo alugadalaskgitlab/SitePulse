@@ -2410,7 +2410,15 @@ export async function registerRoutes(
       const from = (req.query.from as string) || undefined;
       const to = (req.query.to as string) || undefined;
       const plant = (req.query.plant as string) || undefined;
-      const rows = await storage.getDailyPlantReportIndex({ from, to, plant });
+      // `party` and `mixType` may be repeated (?party=1&party=2) or comma-separated.
+      const splitMulti = (v: unknown): string[] => {
+        if (Array.isArray(v)) return v.flatMap((x) => String(x).split(",")).map((s) => s.trim()).filter(Boolean);
+        if (typeof v === "string") return v.split(",").map((s) => s.trim()).filter(Boolean);
+        return [];
+      };
+      const parties = splitMulti(req.query.party).map((s) => Number(s)).filter((n) => Number.isFinite(n));
+      const mixTypes = splitMulti(req.query.mixType);
+      const rows = await storage.getDailyPlantReportIndex({ from, to, plant, parties, mixTypes });
       res.json(rows);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to load daily reports index" });
