@@ -1401,3 +1401,19 @@ export const plantAlertThresholdsSchema = z.object({
   sessionsVsShiftMismatchL: z.number().positive(),
 });
 export type PlantAlertThresholds = z.infer<typeof plantAlertThresholdsSchema>;
+
+// ============================================
+// VARIANCE HIGHLIGHT THRESHOLD (stored in app_settings)
+// ============================================
+// Used by the PlantEquipmentUsage daily footer (and monthly rollup) to decide
+// when |variance %| of actual-vs-expected diesel is large enough to highlight
+// a row. Persisted as a plain numeric percent under app_settings key
+// `variance_highlight_threshold_pct`. Admin-tunable from Admin Settings.
+export const VARIANCE_HIGHLIGHT_THRESHOLD_KEY = "variance_highlight_threshold_pct";
+
+export const VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT = 15;
+
+export const varianceHighlightThresholdSchema = z.object({
+  thresholdPct: z.number().min(0).max(100),
+});
+export type VarianceHighlightThreshold = z.infer<typeof varianceHighlightThresholdSchema>;

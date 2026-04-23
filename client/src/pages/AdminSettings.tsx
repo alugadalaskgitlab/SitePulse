@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X, Percent } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -33,6 +33,10 @@ export default function AdminSettings() {
   // Manager PIN change state
   const [newManagerPin, setNewManagerPin] = useState("");
   const [confirmManagerPin, setConfirmManagerPin] = useState("");
+
+  // Variance highlight threshold state
+  const [varianceThresholdInput, setVarianceThresholdInput] = useState("");
+  const [varianceThresholdDirty, setVarianceThresholdDirty] = useState(false);
 
   const changeAdminPinMutation = useMutation({
     mutationFn: async (data: { currentPin: string; newPin: string }) => {
@@ -84,6 +88,40 @@ export default function AdminSettings() {
         description: error.message || "Failed to update manager PIN",
         variant: "destructive",
       });
+    },
+  });
+
+  // Variance highlight threshold queries/mutations
+  const { data: varianceThresholdData, isLoading: varianceThresholdLoading } = useQuery<{ thresholdPct: number }>({
+    queryKey: ["/api/plant-module/variance-highlight-threshold"],
+    enabled: authenticated,
+  });
+
+  useEffect(() => {
+    if (!varianceThresholdDirty && varianceThresholdData?.thresholdPct != null) {
+      setVarianceThresholdInput(String(varianceThresholdData.thresholdPct));
+    }
+  }, [varianceThresholdData, varianceThresholdDirty]);
+
+  const updateVarianceThresholdMutation = useMutation({
+    mutationFn: async (thresholdPct: number) => {
+      const response = await apiRequest("PUT", "/api/plant-module/variance-highlight-threshold", {
+        pin: authenticatedPin,
+        thresholdPct,
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update threshold");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/variance-highlight-threshold"] });
+      setVarianceThresholdDirty(false);
+      toast({ title: "Threshold Updated", description: "Variance highlight threshold has been saved." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -372,6 +410,89 @@ export default function AdminSettings() {
                 <>
                   <Save className="w-4 h-4" />
                   Update Manager PIN
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Percent className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <CardTitle>Variance Highlight Threshold</CardTitle>
+              <CardDescription>
+                Equipment Usage rows are highlighted when |actual − expected diesel| as a % of expected meets or exceeds this value.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const num = Number(varianceThresholdInput);
+              if (!Number.isFinite(num) || num < 0 || num > 100) {
+                toast({
+                  title: "Invalid Threshold",
+                  description: "Enter a number between 0 and 100.",
+                  variant: "destructive",
+                });
+                return;
+              }
+              updateVarianceThresholdMutation.mutate(num);
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="varianceThreshold">Threshold (%)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="varianceThreshold"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={varianceThresholdInput}
+                  onChange={(e) => {
+                    setVarianceThresholdInput(e.target.value);
+                    setVarianceThresholdDirty(true);
+                  }}
+                  placeholder="e.g. 15"
+                  className="w-32"
+                  disabled={varianceThresholdLoading}
+                  data-testid="input-variance-threshold"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Default is 15%. Lower values flag more rows; higher values flag fewer.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={
+                updateVarianceThresholdMutation.isPending
+                || varianceThresholdLoading
+                || !varianceThresholdInput
+              }
+              className="w-full gap-2"
+              data-testid="button-save-variance-threshold"
+            >
+              {updateVarianceThresholdMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Threshold
                 </>
               )}
             </Button>

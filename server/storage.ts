@@ -57,6 +57,8 @@ import {
   PLANT_ALERT_THRESHOLD_DEFAULTS,
   plantAlertThresholdsSchema,
   type PlantAlertThresholds,
+  VARIANCE_HIGHLIGHT_THRESHOLD_KEY,
+  VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT,
 } from "@shared/schema";
 import { sendPushToAll } from "./push";
 import {
@@ -588,6 +590,8 @@ export interface IStorage {
   // Plant alert thresholds (stored in app_settings)
   getPlantAlertThresholds(): Promise<PlantAlertThresholds>;
   setPlantAlertThresholds(thresholds: PlantAlertThresholds): Promise<PlantAlertThresholds>;
+  getVarianceHighlightThresholdPct(): Promise<number>;
+  setVarianceHighlightThresholdPct(thresholdPct: number): Promise<number>;
 }
 
 export type HeatingTrendsBucket = {
@@ -9331,6 +9335,24 @@ export class DatabaseStorage implements IStorage {
     const validated = plantAlertThresholdsSchema.parse(thresholds);
     await this.setSetting(PLANT_ALERT_THRESHOLDS_KEY, JSON.stringify(validated));
     return validated;
+  }
+
+  async getVarianceHighlightThresholdPct(): Promise<number> {
+    const raw = await this.getSetting(VARIANCE_HIGHLIGHT_THRESHOLD_KEY);
+    if (!raw) return VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      return VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
+    }
+    return parsed;
+  }
+
+  async setVarianceHighlightThresholdPct(thresholdPct: number): Promise<number> {
+    if (!Number.isFinite(thresholdPct) || thresholdPct < 0 || thresholdPct > 100) {
+      throw new Error("Threshold must be between 0 and 100");
+    }
+    await this.setSetting(VARIANCE_HIGHLIGHT_THRESHOLD_KEY, String(thresholdPct));
+    return thresholdPct;
   }
 
   // Post-save hook: check thresholds against the just-saved heating session

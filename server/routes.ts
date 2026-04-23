@@ -661,6 +661,37 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // VARIANCE HIGHLIGHT THRESHOLD (PlantEquipmentUsage daily/monthly footer)
+  // ============================================
+  // GET is open (read-only), PUT requires admin PIN.
+  app.get("/api/plant-module/variance-highlight-threshold", async (_req, res) => {
+    try {
+      const thresholdPct = await storage.getVarianceHighlightThresholdPct();
+      res.json({ thresholdPct });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to fetch variance threshold" });
+    }
+  });
+
+  app.put("/api/plant-module/variance-highlight-threshold", async (req, res) => {
+    try {
+      const { pin, thresholdPct } = req.body || {};
+      if (!pin) return res.status(403).json({ message: "Admin PIN required" });
+      if (!(await storage.verifyPin("admin", pin))) {
+        return res.status(403).json({ message: "Invalid admin PIN" });
+      }
+      const num = Number(thresholdPct);
+      if (!Number.isFinite(num) || num < 0 || num > 100) {
+        return res.status(400).json({ message: "Threshold must be a number between 0 and 100", field: "thresholdPct" });
+      }
+      const saved = await storage.setVarianceHighlightThresholdPct(num);
+      res.json({ thresholdPct: saved });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to update variance threshold" });
+    }
+  });
+
   // Change Manager PIN (admin only)
   app.post("/api/admin/change-manager-pin", async (req, res) => {
     try {

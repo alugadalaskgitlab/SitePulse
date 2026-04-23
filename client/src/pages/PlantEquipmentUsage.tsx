@@ -22,7 +22,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { EquipmentMasterType, EquipmentUsage, Site } from "@shared/schema";
-import { METER_TYPES } from "@shared/schema";
+import { METER_TYPES, VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
@@ -549,7 +549,10 @@ export default function PlantEquipmentUsage() {
 
   const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
-  const MONTHLY_VARIANCE_THRESHOLD_PCT = 15;
+  const { data: varianceThresholdData } = useQuery<{ thresholdPct: number }>({
+    queryKey: ["/api/plant-module/variance-highlight-threshold"],
+  });
+  const MONTHLY_VARIANCE_THRESHOLD_PCT = varianceThresholdData?.thresholdPct ?? VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
   const MONTHLY_MIN_DAYS = 2;
 
   const availableMonths = useMemo(() => {
@@ -642,7 +645,7 @@ export default function PlantEquipmentUsage() {
       const bv = b.variancePct ?? -Infinity;
       return bv - av;
     });
-  }, [filteredUsage, equipment, effectiveRollupMonth]);
+  }, [filteredUsage, equipment, effectiveRollupMonth, MONTHLY_VARIANCE_THRESHOLD_PCT]);
 
   const isPersistentOffender = (r: { variancePct: number | null; overshootDays: number }) =>
     r.variancePct != null
@@ -1715,7 +1718,7 @@ export default function PlantEquipmentUsage() {
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {
                 const dayUsage = groupedUsage[dateKey];
-                const VARIANCE_THRESHOLD_PCT = 15;
+                const VARIANCE_THRESHOLD_PCT = MONTHLY_VARIANCE_THRESHOLD_PCT;
                 const varianceRows = (() => {
                   const map = new Map<number, { name: string; meterUnit: string; runtime: number; actual: number; expected: number }>();
                   dayUsage.forEach((entry) => {
