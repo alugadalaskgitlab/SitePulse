@@ -2402,6 +2402,18 @@ export async function registerRoutes(
         }
       }
 
+      if (summary.manpowerByContractor?.length) {
+        section("Manpower by Contractor / Category");
+        let mpTotal = 0;
+        for (const g of summary.manpowerByContractor) {
+          doc.fontSize(10).font("Helvetica").text(
+            `• ${g.contractor}  —  ${g.category} / ${g.gender}:  ${g.count}`
+          );
+          mpTotal += g.count;
+        }
+        doc.fontSize(10).font("Helvetica-Bold").text(`Total: ${mpTotal}`);
+      }
+
       section("Manpower");
       if (!summary.manpower.length) {
         doc.fontSize(10).font("Helvetica").text("No manpower entries.");
@@ -2753,6 +2765,18 @@ export async function registerRoutes(
             `${e.equipmentName || `Eqp #${e.equipmentId}`}  Hrs: ${e.hours ?? "—"}  Open/Close: ${e.opening ?? "—"}/${e.closing ?? "—"}  Issued: ${e.issued ?? 0}L  Consumed: ${e.consumed ?? "—"}L  L/hr: ${e.lPerHr ?? "—"}  Op: ${e.operator ?? "—"}`
           );
         }
+      }
+
+      if (summary.manpowerByContractor?.length) {
+        section("Manpower by Contractor / Category");
+        let mpTotal = 0;
+        for (const g of summary.manpowerByContractor) {
+          doc.fontSize(10).font("Helvetica").text(
+            `• ${g.contractor}  —  ${g.category} / ${g.gender}:  ${g.count}`
+          );
+          mpTotal += g.count;
+        }
+        doc.fontSize(10).font("Helvetica-Bold").text(`Total: ${mpTotal}`);
       }
 
       section("Manpower");

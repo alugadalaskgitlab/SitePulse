@@ -52,7 +52,8 @@ type DailyPlantSummary = {
   }>;
   totalDieselIssued: number;
   generators: { items: Array<{ id: number; generatorName: string; hoursRun: number | null; opening: number | null; issued: number; closing: number | null; consumed: number | null; lPerHr: number | null; derivedSource: string; efficiency: number | null }>; totalDieselConsumedL: number };
-  manpower: Array<{ name: string; role: string | null }>;
+  manpower: Array<{ name: string; role: string | null; contractorName?: string | null; category?: string | null; gender?: string | null }>;
+  manpowerByContractor: Array<{ contractor: string; category: string; gender: string; count: number }>;
   idle: { events: Array<{ startTime: string; endTime: string | null; reason: string; remarks: string | null; minutes: number }>; byReason: Record<string, number>; totalMinutes: number };
   boilerHeating?: {
     sessionCount: number;
@@ -424,6 +425,38 @@ export default function PlantDailyReport() {
               )}
             </CardContent>
           </Card>
+
+          {data.manpowerByContractor?.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Manpower by Contractor / Category</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Contractor</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Gender</TableHead>
+                    <TableHead className="text-right">Head Count</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {data.manpowerByContractor.map((g, i) => (
+                      <TableRow key={i} data-testid={`row-manpower-group-${i}`}>
+                        <TableCell>{g.contractor}</TableCell>
+                        <TableCell><Badge variant="outline">{g.category}</Badge></TableCell>
+                        <TableCell>{g.gender}</TableCell>
+                        <TableCell className="text-right font-semibold" data-testid={`text-manpower-count-${i}`}>{g.count}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-right font-semibold">Total</TableCell>
+                      <TableCell className="text-right font-semibold" data-testid="text-manpower-total">
+                        {data.manpowerByContractor.reduce((s, g) => s + g.count, 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>Manpower ({data.manpower.length})</CardTitle></CardHeader>

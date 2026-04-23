@@ -8678,6 +8678,24 @@ export class DatabaseStorage implements IStorage {
       totalDieselIssued,
       generators: { items: generatorSummary, totalDieselConsumedL: generatorTotalDieselConsumed },
       manpower: shift?.manpower || [],
+      manpowerByContractor: (() => {
+        const rows = (shift?.manpower || []) as Array<{ contractorName?: string | null; category?: string | null; gender?: string | null }>;
+        const map = new Map<string, { contractor: string; category: string; gender: string; count: number }>();
+        for (const r of rows) {
+          const contractor = (r.contractorName && r.contractorName.trim()) || "Unassigned";
+          const category = (r.category && r.category.trim()) || "—";
+          const gender = (r.gender && r.gender.trim()) || "—";
+          const key = `${contractor}||${category}||${gender}`;
+          const existing = map.get(key);
+          if (existing) existing.count += 1;
+          else map.set(key, { contractor, category, gender, count: 1 });
+        }
+        return Array.from(map.values()).sort((a, b) =>
+          a.contractor.localeCompare(b.contractor) ||
+          a.category.localeCompare(b.category) ||
+          a.gender.localeCompare(b.gender)
+        );
+      })(),
       idle: {
         events: shift?.idleEvents || [],
         byReason: idleByReason,
