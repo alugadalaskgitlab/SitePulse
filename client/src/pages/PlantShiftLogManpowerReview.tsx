@@ -26,7 +26,19 @@ type ReviewRow = {
   shiftLogIds: number[];
 };
 
-type LearnedAliasEntry = { a: string; b: string; count: number };
+type LearnedAliasExample = {
+  batchId: number;
+  from: string;
+  to: string;
+  actor: string;
+  createdAt: string;
+};
+type LearnedAliasEntry = {
+  a: string;
+  b: string;
+  count: number;
+  examples: LearnedAliasExample[];
+};
 type LearnedAliases = {
   pairs: LearnedAliasEntry[];
   tokenPairs: LearnedAliasEntry[];
@@ -36,7 +48,7 @@ type CustomAlias = {
   id: number;
   tokenA: string;
   tokenB: string;
-  kind: "alias" | "suppress_learned";
+  kind: "alias" | "suppress_learned" | "suppress_learned_pair";
   createdBy: string;
   createdAt: string;
 };
@@ -434,18 +446,27 @@ function buildClusters(
   // accumulating learned counts so a suppress entry hides the matching mined
   // pair from the suggester without touching the underlying merge history.
   const suppressedTokenKeys = new Set<string>();
+  // Suppressed full-name pair keys (admin-muted learned full-name aliases).
+  const suppressedFullPairKeys = new Set<string>();
   if (customAliases) {
     for (const c of customAliases) {
-      if (c.kind !== "suppress_learned") continue;
-      const ua = c.tokenA.toUpperCase().trim();
-      const ub = c.tokenB.toUpperCase().trim();
-      if (!ua || !ub || ua === ub) continue;
-      suppressedTokenKeys.add(ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`);
+      if (c.kind === "suppress_learned") {
+        const ua = c.tokenA.toUpperCase().trim();
+        const ub = c.tokenB.toUpperCase().trim();
+        if (!ua || !ub || ua === ub) continue;
+        suppressedTokenKeys.add(ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`);
+      } else if (c.kind === "suppress_learned_pair") {
+        const ua = c.tokenA.toUpperCase().trim();
+        const ub = c.tokenB.toUpperCase().trim();
+        if (!ua || !ub || ua === ub) continue;
+        suppressedFullPairKeys.add(ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`);
+      }
     }
   }
   if (learned) {
     for (const p of learned.pairs) {
       const k = pairKey(p.a, p.b);
+      if (suppressedFullPairKeys.has(k)) continue;
       learnedPairCounts.set(k, Math.max(learnedPairCounts.get(k) || 0, p.count || 1));
     }
     for (const p of learned.tokenPairs) {
@@ -565,6 +586,7 @@ export default function PlantShiftLogManpowerReview() {
   const [savingAlias, setSavingAlias] = useState(false);
   const [deletingAliasId, setDeletingAliasId] = useState<number | null>(null);
   const [suppressingTokenKey, setSuppressingTokenKey] = useState<string | null>(null);
+  const [suppressingPairKey, setSuppressingPairKey] = useState<string | null>(null);
   const [savingDismissalKey, setSavingDismissalKey] = useState<string | null>(null);
   const [restoringDismissalId, setRestoringDismissalId] = useState<number | null>(null);
   const [showDismissedList, setShowDismissedList] = useState(false);
@@ -759,6 +781,40 @@ export default function PlantShiftLogManpowerReview() {
       toast({ title: "Failed to remove", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setDeletingAliasId(null);
+    }
+  };
+
+  const suppressLearnedFullPair = async (a: string, b: string) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    const ua = a.toUpperCase().trim();
+    const ub = b.toUpperCase().trim();
+    const key = ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+    setSuppressingPairKey(key);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/add-custom-alias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pin: adminPin, actor: actor.trim(), tokenA: a, tokenB: b, kind: "suppress_learned_pair",
+        }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { added: boolean };
+      toast({
+        title: result.added ? "Learned name-pair suppressed" : "Already suppressed",
+        description: `${a} ↔ ${b} will no longer trigger duplicate suggestions.`,
+      });
+      await fetchCustomAliases();
+    } catch (err) {
+      toast({ title: "Failed to suppress", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setSuppressingPairKey(null);
     }
   };
 
@@ -1624,6 +1680,93 @@ export default function PlantShiftLogManpowerReview() {
 
             <div>
               <div className="text-sm font-semibold mb-1.5">
+                Auto-learned full-name pairs ({learnedAliases?.pairs.length || 0})
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-2">
+                Whole-name equivalences mined from past merges. Click <span className="font-mono">Mute</span> to
+                stop a noisy pattern from biasing future suggestions without undoing the merges that taught it.
+              </div>
+              {!learnedAliases ? (
+                <div className="text-xs text-muted-foreground py-2">Loading…</div>
+              ) : learnedAliases.pairs.length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-learned-full-pairs-empty">
+                  No learned full-name pairs yet. They appear here automatically as you confirm merges.
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-auto" data-testid="list-learned-full-pairs">
+                  {learnedAliases.pairs.map(p => {
+                    const ua = p.a.toUpperCase().trim();
+                    const ub = p.b.toUpperCase().trim();
+                    const fullKey = ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+                    const suppressed = (customAliases || []).some(
+                      c => c.kind === "suppress_learned_pair"
+                        && ((c.tokenA === ua && c.tokenB === ub) || (c.tokenA === ub && c.tokenB === ua))
+                    );
+                    return (
+                      <div
+                        key={fullKey}
+                        className={
+                          "rounded px-2 py-1 text-xs border " +
+                          (suppressed
+                            ? "bg-slate-100 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700 opacity-70"
+                            : "bg-white/70 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900")
+                        }
+                        data-testid={`learned-full-pair-${fullKey}`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono">{p.a}</span>
+                          <span className="text-muted-foreground">↔</span>
+                          <span className="font-mono">{p.b}</span>
+                          <span className="text-muted-foreground ml-2">
+                            confirmed {p.count}× by past merge{p.count === 1 ? "" : "s"}
+                          </span>
+                          {suppressed && (
+                            <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                              muted
+                            </span>
+                          )}
+                          {!suppressed && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 ml-auto text-amber-700 dark:text-amber-300"
+                              disabled={suppressingPairKey === fullKey || actor.trim().length < 2}
+                              onClick={() => suppressLearnedFullPair(p.a, p.b)}
+                              data-testid={`button-suppress-learned-pair-${fullKey}`}
+                            >
+                              {suppressingPairKey === fullKey
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <><X className="w-3.5 h-3.5 mr-1" />Mute</>}
+                            </Button>
+                          )}
+                        </div>
+                        {p.examples && p.examples.length > 0 && (
+                          <div className="mt-1 pl-2 border-l border-emerald-200 dark:border-emerald-900 space-y-0.5">
+                            {p.examples.map(ex => {
+                              const when = new Date(ex.createdAt);
+                              return (
+                                <div
+                                  key={ex.batchId}
+                                  className="text-[11px] text-muted-foreground"
+                                  data-testid={`learned-full-pair-example-${fullKey}-${ex.batchId}`}
+                                >
+                                  e.g. <span className="font-mono">{ex.from}</span> →{" "}
+                                  <span className="font-mono">{ex.to}</span>
+                                  <span> · by {ex.actor} on {when.toLocaleDateString()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold mb-1.5">
                 Auto-learned token aliases ({learnedAliases?.tokenPairs.length || 0})
               </div>
               <div className="text-[11px] text-muted-foreground mb-2">
@@ -1650,37 +1793,57 @@ export default function PlantShiftLogManpowerReview() {
                       <div
                         key={tokenKey}
                         className={
-                          "flex flex-wrap items-center gap-2 rounded px-2 py-1 text-xs border " +
+                          "rounded px-2 py-1 text-xs border " +
                           (suppressed
                             ? "bg-slate-100 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700 opacity-70"
                             : "bg-white/70 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900")
                         }
                         data-testid={`learned-token-pair-${tokenKey}`}
                       >
-                        <span className="font-mono">{p.a}</span>
-                        <span className="text-muted-foreground">↔</span>
-                        <span className="font-mono">{p.b}</span>
-                        <span className="text-muted-foreground ml-2">
-                          confirmed {p.count}× by past merge{p.count === 1 ? "" : "s"}
-                        </span>
-                        {suppressed && (
-                          <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                            muted
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono">{p.a}</span>
+                          <span className="text-muted-foreground">↔</span>
+                          <span className="font-mono">{p.b}</span>
+                          <span className="text-muted-foreground ml-2">
+                            confirmed {p.count}× by past merge{p.count === 1 ? "" : "s"}
                           </span>
-                        )}
-                        {!suppressed && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-2 ml-auto text-amber-700 dark:text-amber-300"
-                            disabled={suppressingTokenKey === tokenKey || actor.trim().length < 2}
-                            onClick={() => suppressLearnedTokenPair(p.a, p.b)}
-                            data-testid={`button-suppress-learned-${tokenKey}`}
-                          >
-                            {suppressingTokenKey === tokenKey
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <><X className="w-3.5 h-3.5 mr-1" />Mute</>}
-                          </Button>
+                          {suppressed && (
+                            <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                              muted
+                            </span>
+                          )}
+                          {!suppressed && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 ml-auto text-amber-700 dark:text-amber-300"
+                              disabled={suppressingTokenKey === tokenKey || actor.trim().length < 2}
+                              onClick={() => suppressLearnedTokenPair(p.a, p.b)}
+                              data-testid={`button-suppress-learned-${tokenKey}`}
+                            >
+                              {suppressingTokenKey === tokenKey
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <><X className="w-3.5 h-3.5 mr-1" />Mute</>}
+                            </Button>
+                          )}
+                        </div>
+                        {p.examples && p.examples.length > 0 && (
+                          <div className="mt-1 pl-2 border-l border-emerald-200 dark:border-emerald-900 space-y-0.5">
+                            {p.examples.map(ex => {
+                              const when = new Date(ex.createdAt);
+                              return (
+                                <div
+                                  key={ex.batchId}
+                                  className="text-[11px] text-muted-foreground"
+                                  data-testid={`learned-token-pair-example-${tokenKey}-${ex.batchId}`}
+                                >
+                                  e.g. <span className="font-mono">{ex.from}</span> →{" "}
+                                  <span className="font-mono">{ex.to}</span>
+                                  <span> · by {ex.actor} on {when.toLocaleDateString()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     );
@@ -1689,17 +1852,17 @@ export default function PlantShiftLogManpowerReview() {
               )}
             </div>
 
-            {(customAliases || []).some(c => c.kind === "suppress_learned") && (
+            {(customAliases || []).some(c => c.kind === "suppress_learned" || c.kind === "suppress_learned_pair") && (
               <div>
                 <div className="text-sm font-semibold mb-1.5">
-                  Muted learned aliases ({(customAliases || []).filter(c => c.kind === "suppress_learned").length})
+                  Muted learned aliases ({(customAliases || []).filter(c => c.kind === "suppress_learned" || c.kind === "suppress_learned_pair").length})
                 </div>
                 <div className="text-[11px] text-muted-foreground mb-2">
-                  These auto-mined token-pairs are currently suppressed. Remove a row to let them
-                  trigger duplicate suggestions again.
+                  These auto-mined patterns (token-pairs and full-name pairs) are currently
+                  suppressed. Remove a row to let them trigger duplicate suggestions again.
                 </div>
                 <div className="space-y-1 max-h-48 overflow-auto" data-testid="list-suppressed-learned">
-                  {(customAliases || []).filter(c => c.kind === "suppress_learned").map(c => {
+                  {(customAliases || []).filter(c => c.kind === "suppress_learned" || c.kind === "suppress_learned_pair").map(c => {
                     const when = new Date(c.createdAt);
                     return (
                       <div
@@ -1710,6 +1873,9 @@ export default function PlantShiftLogManpowerReview() {
                         <span className="font-mono">{c.tokenA}</span>
                         <span className="text-muted-foreground">↔</span>
                         <span className="font-mono">{c.tokenB}</span>
+                        <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                          {c.kind === "suppress_learned_pair" ? "full name" : "token"}
+                        </span>
                         <span className="text-muted-foreground ml-2">
                           muted by {c.createdBy} · {when.toLocaleDateString()}
                         </span>

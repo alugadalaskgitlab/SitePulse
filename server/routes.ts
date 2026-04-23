@@ -2225,7 +2225,13 @@ export async function registerRoutes(
     }
   });
 
-  // Admin: add a custom alias or suppress a learned alias.
+  // Admin: add a custom alias or suppress a learned alias. The same endpoint
+  // covers three operations, distinguished by `kind` in the body:
+  //   - "alias"                 → add an explicit token equivalence
+  //   - "suppress_learned"      → mute an auto-mined token-pair
+  //   - "suppress_learned_pair" → mute an auto-mined full-name pair (admin
+  //                               library: prune a bad learned pattern without
+  //                               undoing the merges that taught it)
   app.post("/api/plant-module/shift-log-manpower/add-custom-alias", async (req, res) => {
     try {
       const { pin, actor, tokenA, tokenB, kind } = req.body || {};
@@ -2235,7 +2241,10 @@ export async function registerRoutes(
       if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
         return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
       }
-      const k = kind === "suppress_learned" ? "suppress_learned" : "alias";
+      const k =
+        kind === "suppress_learned" ? "suppress_learned"
+        : kind === "suppress_learned_pair" ? "suppress_learned_pair"
+        : "alias";
       const result = await storage.addShiftLogManpowerCustomAlias({
         tokenA: String(tokenA || ""),
         tokenB: String(tokenB || ""),

@@ -361,8 +361,18 @@ export interface IStorage {
   // pair — repeat patterns get a higher count and are treated with higher
   // confidence by the cluster builder.
   getShiftLogManpowerLearnedAliases(): Promise<{
-    pairs: Array<{ a: string; b: string; count: number }>;
-    tokenPairs: Array<{ a: string; b: string; count: number }>;
+    pairs: Array<{
+      a: string;
+      b: string;
+      count: number;
+      examples: Array<{ batchId: number; from: string; to: string; actor: string; createdAt: string }>;
+    }>;
+    tokenPairs: Array<{
+      a: string;
+      b: string;
+      count: number;
+      examples: Array<{ batchId: number; from: string; to: string; actor: string; createdAt: string }>;
+    }>;
   }>;
 
   // Admin: bulk-set name/contractor/category/gender for every shift-log row whose
@@ -432,10 +442,19 @@ export interface IStorage {
   // 'suppress_learned'). Both kinds live in the same table; the cleanup screen
   // uses them to extend / mute the auto-mined dictionary.
   listShiftLogManpowerCustomAliases(): Promise<PlantShiftLogManpowerCustomAlias[]>;
+  /** Adds a custom alias or suppression entry to the duplicate-suggester
+   * dictionary.
+   * - `alias`: explicit token equivalence (e.g. CHIKKU↔CHANDRA)
+   * - `suppress_learned`: mute an auto-mined token-pair without undoing the
+   *    merge that created it
+   * - `suppress_learned_pair`: mute an auto-mined full-name pair (preserves
+   *    spaces inside the pair so e.g. "MD KAREEM" ↔ "MOHAMMED KAREEM" matches
+   *    the corresponding entry returned by getShiftLogManpowerLearnedAliases)
+   */
   addShiftLogManpowerCustomAlias(input: {
     tokenA: string;
     tokenB: string;
-    kind: "alias" | "suppress_learned";
+    kind: "alias" | "suppress_learned" | "suppress_learned_pair";
     actor: string;
   }): Promise<{ added: boolean; alias: PlantShiftLogManpowerCustomAlias | null }>;
   deleteShiftLogManpowerCustomAlias(id: number): Promise<{ removed: boolean }>;
@@ -7011,16 +7030,29 @@ export class DatabaseStorage implements IStorage {
   // pairs that re-use these learned aliases as duplicate suggestions even when
   // they would otherwise fail the typo / phonetic checks.
   async getShiftLogManpowerLearnedAliases(): Promise<{
-    pairs: Array<{ a: string; b: string; count: number }>;
-    tokenPairs: Array<{ a: string; b: string; count: number }>;
+    pairs: Array<{
+      a: string;
+      b: string;
+      count: number;
+      examples: Array<{ batchId: number; from: string; to: string; actor: string; createdAt: string }>;
+    }>;
+    tokenPairs: Array<{
+      a: string;
+      b: string;
+      count: number;
+      examples: Array<{ batchId: number; from: string; to: string; actor: string; createdAt: string }>;
+    }>;
   }> {
     const batches = await db.select({
       id: plantShiftLogManpowerRelabelBatches.id,
       fromNames: plantShiftLogManpowerRelabelBatches.fromNames,
       toName: plantShiftLogManpowerRelabelBatches.toName,
+      actor: plantShiftLogManpowerRelabelBatches.actor,
+      createdAt: plantShiftLogManpowerRelabelBatches.createdAt,
     })
       .from(plantShiftLogManpowerRelabelBatches)
-      .where(isNull(plantShiftLogManpowerRelabelBatches.undoneAt));
+      .where(isNull(plantShiftLogManpowerRelabelBatches.undoneAt))
+      .orderBy(desc(plantShiftLogManpowerRelabelBatches.createdAt));
     // Mirror the client-side normalizeName(): strip trailing/embedded
     // punctuation and collapse whitespace so mined aliases ("MD." vs the
     // client's normalized "MD") share the same key.
@@ -7035,18 +7067,27 @@ export class DatabaseStorage implements IStorage {
     // batchPairKeys[batchId] tracks pair-keys already credited to that batch
     // so two source-spellings that resolve to the same canonical pair don't
     // double-count one merge as confidence "2".
-    const pairCount = new Map<string, { a: string; b: string; batches: Set<number> }>();
-    const tokenPairCount = new Map<string, { a: string; b: string; batches: Set<number> }>();
+    type Example = { batchId: number; from: string; to: string; actor: string; createdAt: string };
+    const MAX_EXAMPLES = 3;
+    const pairCount = new Map<string, { a: string; b: string; batches: Set<number>; examples: Example[] }>();
+    const tokenPairCount = new Map<string, { a: string; b: string; batches: Set<number>; examples: Example[] }>();
+    // Batches arrive newest-first (orderBy desc(createdAt)); push examples in
+    // arrival order and keep only the first MAX_EXAMPLES so admins see the most
+    // recent merges that taught each pattern.
     for (const b of batches) {
       const to = normalize(b.toName);
       if (!to) continue;
+      const createdAtIso = b.createdAt instanceof Date ? b.createdAt.toISOString() : String(b.createdAt);
       for (const rawFrom of b.fromNames || []) {
         const from = normalize(rawFrom);
         if (!from || from === to) continue;
         const k = pairKey(from, to);
         const [pa, pb] = from < to ? [from, to] : [to, from];
         let pe = pairCount.get(k);
-        if (!pe) { pe = { a: pa, b: pb, batches: new Set() }; pairCount.set(k, pe); }
+        if (!pe) { pe = { a: pa, b: pb, batches: new Set(), examples: [] }; pairCount.set(k, pe); }
+        if (!pe.batches.has(b.id) && pe.examples.length < MAX_EXAMPLES) {
+          pe.examples.push({ batchId: b.id, from: rawFrom, to: b.toName, actor: b.actor, createdAt: createdAtIso });
+        }
         pe.batches.add(b.id);
         const ta = from.split(/\s+/).filter(Boolean);
         const tb = to.split(/\s+/).filter(Boolean);
@@ -7065,16 +7106,19 @@ export class DatabaseStorage implements IStorage {
           const tk = pairKey(ta[i], tb[i]);
           const [tpa, tpb] = ta[i] < tb[i] ? [ta[i], tb[i]] : [tb[i], ta[i]];
           let te = tokenPairCount.get(tk);
-          if (!te) { te = { a: tpa, b: tpb, batches: new Set() }; tokenPairCount.set(tk, te); }
+          if (!te) { te = { a: tpa, b: tpb, batches: new Set(), examples: [] }; tokenPairCount.set(tk, te); }
+          if (!te.batches.has(b.id) && te.examples.length < MAX_EXAMPLES) {
+            te.examples.push({ batchId: b.id, from: rawFrom, to: b.toName, actor: b.actor, createdAt: createdAtIso });
+          }
           te.batches.add(b.id);
         }
       }
     }
     const pairs = Array.from(pairCount.values())
-      .map(v => ({ a: v.a, b: v.b, count: v.batches.size }))
+      .map(v => ({ a: v.a, b: v.b, count: v.batches.size, examples: v.examples }))
       .sort((x, y) => y.count - x.count || x.a.localeCompare(y.a));
     const tokenPairs = Array.from(tokenPairCount.values())
-      .map(v => ({ a: v.a, b: v.b, count: v.batches.size }))
+      .map(v => ({ a: v.a, b: v.b, count: v.batches.size, examples: v.examples }))
       .sort((x, y) => y.count - x.count || x.a.localeCompare(y.a));
     return { pairs, tokenPairs };
   }
@@ -7402,19 +7446,36 @@ export class DatabaseStorage implements IStorage {
   async addShiftLogManpowerCustomAlias(input: {
     tokenA: string;
     tokenB: string;
-    kind: "alias" | "suppress_learned";
+    kind: "alias" | "suppress_learned" | "suppress_learned_pair";
     actor: string;
   }): Promise<{ added: boolean; alias: PlantShiftLogManpowerCustomAlias | null }> {
     const actorTrim = String(input.actor || "").trim();
     if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
-    if (input.kind !== "alias" && input.kind !== "suppress_learned") {
-      throw new Error("kind must be 'alias' or 'suppress_learned'");
+    if (
+      input.kind !== "alias"
+      && input.kind !== "suppress_learned"
+      && input.kind !== "suppress_learned_pair"
+    ) {
+      throw new Error("kind must be 'alias', 'suppress_learned', or 'suppress_learned_pair'");
     }
-    const norm = (s: string) =>
+    // Token-pair kinds collapse all non-alphanumerics (one token only).
+    // Full-name pair suppression preserves the inner whitespace structure so
+    // it can be matched against the normalized full-name pairs surfaced by
+    // getShiftLogManpowerLearnedAliases (which collapse punctuation but keep
+    // word boundaries).
+    const normToken = (s: string) =>
       String(s || "")
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "")
         .trim();
+    const normFullName = (s: string) =>
+      String(s || "")
+        .toUpperCase()
+        .replace(/[.,;:!?\-_/\\]+$/g, "")
+        .replace(/[.,;:!?]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const norm = input.kind === "suppress_learned_pair" ? normFullName : normToken;
     const a0 = norm(input.tokenA);
     const b0 = norm(input.tokenB);
     if (!a0 || !b0) throw new Error("Both tokens must contain at least one letter or digit");
