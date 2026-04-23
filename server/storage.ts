@@ -351,9 +351,12 @@ export interface IStorage {
   // Mine past (non-undone) merge batches to learn name-pair and token-pair
   // equivalences ("MD." merged into "MOHAMMED" once → flag the same pair next
   // time it appears). Used by the cleanup screen's smarter suggester.
+  // `count` is the number of distinct merge batches that contributed to the
+  // pair — repeat patterns get a higher count and are treated with higher
+  // confidence by the cluster builder.
   getShiftLogManpowerLearnedAliases(): Promise<{
-    pairs: Array<[string, string]>;
-    tokenPairs: Array<[string, string]>;
+    pairs: Array<{ a: string; b: string; count: number }>;
+    tokenPairs: Array<{ a: string; b: string; count: number }>;
   }>;
 
   // Admin: bulk-set name/contractor/category/gender for every shift-log row whose
@@ -6970,10 +6973,11 @@ export class DatabaseStorage implements IStorage {
   // pairs that re-use these learned aliases as duplicate suggestions even when
   // they would otherwise fail the typo / phonetic checks.
   async getShiftLogManpowerLearnedAliases(): Promise<{
-    pairs: Array<[string, string]>;
-    tokenPairs: Array<[string, string]>;
+    pairs: Array<{ a: string; b: string; count: number }>;
+    tokenPairs: Array<{ a: string; b: string; count: number }>;
   }> {
     const batches = await db.select({
+      id: plantShiftLogManpowerRelabelBatches.id,
       fromNames: plantShiftLogManpowerRelabelBatches.fromNames,
       toName: plantShiftLogManpowerRelabelBatches.toName,
     })
@@ -6990,10 +6994,11 @@ export class DatabaseStorage implements IStorage {
         .replace(/\s+/g, " ")
         .trim();
     const pairKey = (a: string, b: string) => (a < b ? `${a}||${b}` : `${b}||${a}`);
-    const seenPairs = new Set<string>();
-    const pairs: Array<[string, string]> = [];
-    const seenTokenPairs = new Set<string>();
-    const tokenPairs: Array<[string, string]> = [];
+    // batchPairKeys[batchId] tracks pair-keys already credited to that batch
+    // so two source-spellings that resolve to the same canonical pair don't
+    // double-count one merge as confidence "2".
+    const pairCount = new Map<string, { a: string; b: string; batches: Set<number> }>();
+    const tokenPairCount = new Map<string, { a: string; b: string; batches: Set<number> }>();
     for (const b of batches) {
       const to = normalize(b.toName);
       if (!to) continue;
@@ -7001,7 +7006,10 @@ export class DatabaseStorage implements IStorage {
         const from = normalize(rawFrom);
         if (!from || from === to) continue;
         const k = pairKey(from, to);
-        if (!seenPairs.has(k)) { seenPairs.add(k); pairs.push([from, to]); }
+        const [pa, pb] = from < to ? [from, to] : [to, from];
+        let pe = pairCount.get(k);
+        if (!pe) { pe = { a: pa, b: pb, batches: new Set() }; pairCount.set(k, pe); }
+        pe.batches.add(b.id);
         const ta = from.split(/\s+/).filter(Boolean);
         const tb = to.split(/\s+/).filter(Boolean);
         if (ta.length !== tb.length) continue;
@@ -7017,10 +7025,19 @@ export class DatabaseStorage implements IStorage {
           }
           if (!othersMatch) continue;
           const tk = pairKey(ta[i], tb[i]);
-          if (!seenTokenPairs.has(tk)) { seenTokenPairs.add(tk); tokenPairs.push([ta[i], tb[i]]); }
+          const [tpa, tpb] = ta[i] < tb[i] ? [ta[i], tb[i]] : [tb[i], ta[i]];
+          let te = tokenPairCount.get(tk);
+          if (!te) { te = { a: tpa, b: tpb, batches: new Set() }; tokenPairCount.set(tk, te); }
+          te.batches.add(b.id);
         }
       }
     }
+    const pairs = Array.from(pairCount.values())
+      .map(v => ({ a: v.a, b: v.b, count: v.batches.size }))
+      .sort((x, y) => y.count - x.count || x.a.localeCompare(y.a));
+    const tokenPairs = Array.from(tokenPairCount.values())
+      .map(v => ({ a: v.a, b: v.b, count: v.batches.size }))
+      .sort((x, y) => y.count - x.count || x.a.localeCompare(y.a));
     return { pairs, tokenPairs };
   }
 

@@ -26,9 +26,10 @@ type ReviewRow = {
   shiftLogIds: number[];
 };
 
+type LearnedAliasEntry = { a: string; b: string; count: number };
 type LearnedAliases = {
-  pairs: Array<[string, string]>;
-  tokenPairs: Array<[string, string]>;
+  pairs: LearnedAliasEntry[];
+  tokenPairs: LearnedAliasEntry[];
 };
 
 function getErrorMessage(err: unknown): string {
@@ -175,19 +176,45 @@ function isShortFormDup(a: string, b: string): boolean {
 
 // Per-token learned-alias dup. Mirrors isPhoneticDup but uses the historical
 // token-pair equivalences mined from past merges instead of phonetic keys.
-function isLearnedTokenDup(a: string, b: string, learnedTokenSet: Set<string>): boolean {
-  if (learnedTokenSet.size === 0) return false;
+// Returns the matching learned token-pairs (with confidence count) so the UI
+// can show "matched a previously-confirmed pattern (X↔Y, used N×)".
+//
+// Confidence boost: if every learned token-pair used has count ≥ 2 (the same
+// substitution has been confirmed by admins more than once — a "repeat
+// pattern"), we relax the requirement that other tokens match exactly and
+// allow up to one Levenshtein-1 difference among the remaining tokens. This
+// is the "higher confidence over time" lever — well-established patterns get
+// applied more aggressively.
+function matchLearnedTokenDup(
+  a: string,
+  b: string,
+  learnedTokenCounts: Map<string, number>,
+): { matched: boolean; uses: Array<{ a: string; b: string; count: number }> } {
+  if (learnedTokenCounts.size === 0) return { matched: false, uses: [] };
   const ta = a.split(" ").filter(Boolean);
   const tb = b.split(" ").filter(Boolean);
-  if (ta.length === 0 || ta.length !== tb.length) return false;
-  let usedLearned = false;
+  if (ta.length === 0 || ta.length !== tb.length) return { matched: false, uses: [] };
+  const uses: Array<{ a: string; b: string; count: number }> = [];
+  const fuzzyDiffs: number[] = [];
   for (let i = 0; i < ta.length; i++) {
     if (ta[i] === tb[i]) continue;
     const k = ta[i] < tb[i] ? `${ta[i]}||${tb[i]}` : `${tb[i]}||${ta[i]}`;
-    if (!learnedTokenSet.has(k)) return false;
-    usedLearned = true;
+    const c = learnedTokenCounts.get(k);
+    if (c !== undefined) {
+      uses.push({ a: ta[i], b: tb[i], count: c });
+    } else {
+      fuzzyDiffs.push(i);
+    }
   }
-  return usedLearned;
+  if (uses.length === 0) return { matched: false, uses: [] };
+  if (fuzzyDiffs.length === 0) return { matched: true, uses };
+  // Confidence-boost relaxation: only when every learned use is "repeat"
+  // (count ≥ 2), allow one extra Levenshtein-1 token difference.
+  const allRepeat = uses.every(u => u.count >= 2);
+  if (!allRepeat || fuzzyDiffs.length > 1) return { matched: false, uses: [] };
+  const i = fuzzyDiffs[0];
+  if (levenshtein(ta[i], tb[i]) > 1) return { matched: false, uses: [] };
+  return { matched: true, uses };
 }
 
 // Strong shared-context signal: both names share the same single role AND at
@@ -199,26 +226,26 @@ function isLearnedTokenDup(a: string, b: string, learnedTokenSet: Set<string>): 
 // precision high we also require some shared name structure: either two
 // ≥3-letter tokens that match (exactly or phonetically) — protecting against
 // distinct workers who only share a single common surname.
-function isCoOccurrenceDup(rowA: ReviewRow, rowB: ReviewRow): boolean {
-  if (rowA.roles.length !== 1 || rowB.roles.length !== 1) return false;
-  if (rowA.roles[0] !== rowB.roles[0]) return false;
+function detectCoOccurrenceDup(rowA: ReviewRow, rowB: ReviewRow): { sharedShifts: number } | null {
+  if (rowA.roles.length !== 1 || rowB.roles.length !== 1) return null;
+  if (rowA.roles[0] !== rowB.roles[0]) return null;
   const realContractorsA = rowA.currentContractors.filter(c => c && c !== "UNKNOWN CONTRACTOR");
   const realContractorsB = rowB.currentContractors.filter(c => c && c !== "UNKNOWN CONTRACTOR");
-  if (realContractorsA.length === 0 || realContractorsB.length === 0) return false;
+  if (realContractorsA.length === 0 || realContractorsB.length === 0) return null;
   const contractorOverlap = realContractorsA.some(c => realContractorsB.includes(c));
-  if (!contractorOverlap) return false;
+  if (!contractorOverlap) return null;
   // Must have appeared on the same shift log at least once — that's the
   // "shared dates" evidence.
   const idsB = new Set(rowB.shiftLogIds);
   const sharedShifts = rowA.shiftLogIds.filter(id => idsB.has(id)).length;
-  if (sharedShifts === 0) return false;
+  if (sharedShifts === 0) return null;
   // Count shared / phonetically-equal ≥3-letter tokens. Single shared-token
   // matches (typically a common surname like "KUMAR") are too noisy on their
   // own — require either two name overlaps or a single overlap backed up by
   // multiple shared shifts.
   const ta = normalizeName(rowA.name).split(" ").filter(t => t.length >= 3);
   const tb = normalizeName(rowB.name).split(" ").filter(t => t.length >= 3);
-  if (ta.length === 0 || tb.length === 0) return false;
+  if (ta.length === 0 || tb.length === 0) return null;
   let nameOverlaps = 0;
   const usedB = new Set<number>();
   for (const x of ta) {
@@ -234,46 +261,92 @@ function isCoOccurrenceDup(rowA: ReviewRow, rowB: ReviewRow): boolean {
       }
     }
   }
-  if (nameOverlaps >= 2) return true;
-  if (nameOverlaps >= 1 && sharedShifts >= 2) return true;
-  return false;
+  if (nameOverlaps >= 2) return { sharedShifts };
+  if (nameOverlaps >= 1 && sharedShifts >= 2) return { sharedShifts };
+  return null;
 }
 
-function isLikelyDup(
+// Per-edge dup reason. Keep the strings short — they're rendered as small
+// chips on the suggestions panel and as tooltips on the row badge.
+type DupReason =
+  | { kind: "exact" }
+  | { kind: "typo" }
+  | { kind: "extraInitial" }
+  | { kind: "phonetic" }
+  | { kind: "reorder" }
+  | { kind: "shortForm" }
+  | { kind: "learnedFullPair"; count: number }
+  | { kind: "learnedTokenPair"; uses: Array<{ a: string; b: string; count: number }> }
+  | { kind: "coOccurrence"; sharedShifts: number };
+
+function describeReason(r: DupReason): string {
+  switch (r.kind) {
+    case "exact": return "exact match after normalization";
+    case "typo": return "1-letter typo";
+    case "extraInitial": return "same name + extra initial";
+    case "phonetic": return "phonetic spelling variant";
+    case "reorder": return "tokens reordered";
+    case "shortForm": return "short-form alias (e.g. MD./MOHAMMED)";
+    case "learnedFullPair": return r.count >= 2
+      ? `previously merged ${r.count}× by an admin`
+      : "previously merged by an admin";
+    case "learnedTokenPair": {
+      const parts = r.uses.map(u => `${u.a}↔${u.b}${u.count >= 2 ? ` (${u.count}×)` : ""}`).join(", ");
+      const anyRepeat = r.uses.some(u => u.count >= 2);
+      return anyRepeat
+        ? `matches a previously-confirmed pattern ${parts}`
+        : `matches a prior-merge pattern ${parts}`;
+    }
+    case "coOccurrence": return `same role + contractor on ${r.sharedShifts} shared shift${r.sharedShifts === 1 ? "" : "s"}`;
+  }
+}
+
+function detectDupReason(
   rawA: string,
   rawB: string,
-  learnedPairKeys?: Set<string>,
-  learnedTokenSet?: Set<string>,
-): boolean {
+  learnedPairCounts?: Map<string, number>,
+  learnedTokenCounts?: Map<string, number>,
+): DupReason | null {
   const a = normalizeName(rawA);
   const b = normalizeName(rawB);
-  if (!a || !b) return false;
-  if (a === b) return true;
+  if (!a || !b) return null;
+  if (a === b) return { kind: "exact" };
   // Past merges already unified these two names — flag every recurrence.
-  if (learnedPairKeys && learnedPairKeys.has(pairKey(a, b))) return true;
+  if (learnedPairCounts) {
+    const c = learnedPairCounts.get(pairKey(a, b));
+    if (c !== undefined) return { kind: "learnedFullPair", count: c };
+  }
   const partsA = a.split(" ");
   const partsB = b.split(" ");
-  // Same first token + the other has just one extra short trailing token (initial / suffix)
   if (partsA[0] === partsB[0]) {
     const longer = partsA.length >= partsB.length ? partsA : partsB;
     const shorter = partsA.length >= partsB.length ? partsB : partsA;
-    if (shorter.length === 1 && longer.length === 2 && longer[1].length <= 3) return true;
-    if (shorter.length === 2 && longer.length === 3 && longer[2].length <= 3 && shorter[1] === longer[1]) return true;
+    if (shorter.length === 1 && longer.length === 2 && longer[1].length <= 3) return { kind: "extraInitial" };
+    if (shorter.length === 2 && longer.length === 3 && longer[2].length <= 3 && shorter[1] === longer[1]) return { kind: "extraInitial" };
   }
-  // Levenshtein distance ≤ 1 between normalized full strings
-  if (levenshtein(a, b) <= 1) return true;
-  // Phonetic match for Indian-name spelling variants ≥ 2 edits apart
-  if (isPhoneticDup(a, b)) return true;
-  // Reordered tokens: "RAVI KUMAR" vs "KUMAR RAVI"
-  if (isTokenReorder(a, b)) return true;
-  // Hard-coded short-form aliases ("MD." vs "MOHAMMED")
-  if (isShortFormDup(a, b)) return true;
-  // Token equivalences learned from past merges
-  if (learnedTokenSet && isLearnedTokenDup(a, b, learnedTokenSet)) return true;
-  return false;
+  if (levenshtein(a, b) <= 1) return { kind: "typo" };
+  if (isPhoneticDup(a, b)) return { kind: "phonetic" };
+  if (isTokenReorder(a, b)) return { kind: "reorder" };
+  if (isShortFormDup(a, b)) return { kind: "shortForm" };
+  if (learnedTokenCounts) {
+    const m = matchLearnedTokenDup(a, b, learnedTokenCounts);
+    if (m.matched) return { kind: "learnedTokenPair", uses: m.uses };
+  }
+  return null;
 }
 
-type Cluster = { key: string; names: string[]; canonical: string };
+type Cluster = {
+  key: string;
+  names: string[];
+  canonical: string;
+  // Aggregated short labels (deduped, ordered) describing why this cluster
+  // was suggested. Rendered as small chips on the suggestion panel and as
+  // a hover-tooltip on the per-row "possible dup" badge.
+  reasonLabels: string[];
+  // Did any edge in this cluster fire because of a previously-confirmed
+  // merge pattern? Used to surface a separate "learned" badge.
+  fromLearnedPattern: boolean;
+};
 
 function pairKey(a: string, b: string): string {
   const ua = a.toUpperCase().trim();
@@ -300,25 +373,42 @@ function buildClusters(
     const rb = find(b);
     if (ra !== rb) parent[ra] = rb;
   };
-  const learnedPairKeys = new Set<string>();
-  const learnedTokenSet = new Set<string>();
+  const learnedPairCounts = new Map<string, number>();
+  const learnedTokenCounts = new Map<string, number>();
   if (learned) {
-    for (const [a, b] of learned.pairs) learnedPairKeys.add(pairKey(a, b));
-    for (const [a, b] of learned.tokenPairs) {
-      const ua = a.toUpperCase().trim();
-      const ub = b.toUpperCase().trim();
+    for (const p of learned.pairs) {
+      const k = pairKey(p.a, p.b);
+      learnedPairCounts.set(k, Math.max(learnedPairCounts.get(k) || 0, p.count || 1));
+    }
+    for (const p of learned.tokenPairs) {
+      const ua = p.a.toUpperCase().trim();
+      const ub = p.b.toUpperCase().trim();
       if (!ua || !ub || ua === ub) continue;
-      learnedTokenSet.add(ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`);
+      const k = ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+      learnedTokenCounts.set(k, Math.max(learnedTokenCounts.get(k) || 0, p.count || 1));
     }
   }
+  // edgeReasons[clusterRoot index] → list of reasons collected. We collect
+  // by source-pair index first, then re-bucket by post-union root.
+  const edgesByPair: Array<{ i: number; j: number; reason: DupReason }> = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const dup = isLikelyDup(rows[i].name, rows[j].name, learnedPairKeys, learnedTokenSet)
-        || isCoOccurrenceDup(rows[i], rows[j]);
-      if (!dup) continue;
       if (dismissedPairKeys.has(pairKey(rows[i].name, rows[j].name))) continue;
+      let reason = detectDupReason(rows[i].name, rows[j].name, learnedPairCounts, learnedTokenCounts);
+      if (!reason) {
+        const co = detectCoOccurrenceDup(rows[i], rows[j]);
+        if (co) reason = { kind: "coOccurrence", sharedShifts: co.sharedShifts };
+      }
+      if (!reason) continue;
       union(i, j);
+      edgesByPair.push({ i, j, reason });
     }
+  }
+  const reasonsByRoot = new Map<number, DupReason[]>();
+  for (const e of edgesByPair) {
+    const r = find(e.i);
+    if (!reasonsByRoot.has(r)) reasonsByRoot.set(r, []);
+    reasonsByRoot.get(r)!.push(e.reason);
   }
   const groups = new Map<number, number[]>();
   for (let i = 0; i < n; i++) {
@@ -327,7 +417,7 @@ function buildClusters(
     groups.get(r)!.push(i);
   }
   const clusters: Cluster[] = [];
-  Array.from(groups.values()).forEach((idxs: number[]) => {
+  Array.from(groups.entries()).forEach(([root, idxs]: [number, number[]]) => {
     if (idxs.length < 2) return;
     const members: ReviewRow[] = idxs.map((i: number) => rows[i]);
     // Canonical: highest count → shortest length → alphabetical
@@ -338,10 +428,24 @@ function buildClusters(
     });
     const canonical = sorted[0].name;
     const names = members.map((m: ReviewRow) => m.name).sort();
-    clusters.push({ key: names.join("||"), names, canonical });
+    const reasons = reasonsByRoot.get(root) || [];
+    const seen = new Set<string>();
+    const reasonLabels: string[] = [];
+    let fromLearnedPattern = false;
+    for (const r of reasons) {
+      if (r.kind === "learnedFullPair" || r.kind === "learnedTokenPair") fromLearnedPattern = true;
+      const label = describeReason(r);
+      if (!seen.has(label)) { seen.add(label); reasonLabels.push(label); }
+    }
+    clusters.push({ key: names.join("||"), names, canonical, reasonLabels, fromLearnedPattern });
   });
-  // Largest clusters first
-  clusters.sort((a, b) => b.names.length - a.names.length);
+  // Largest clusters first; tie-break: learned-pattern clusters first (most
+  // actionable signal).
+  clusters.sort((a, b) => {
+    if (b.names.length !== a.names.length) return b.names.length - a.names.length;
+    if (b.fromLearnedPattern !== a.fromLearnedPattern) return b.fromLearnedPattern ? 1 : -1;
+    return a.canonical.localeCompare(b.canonical);
+  });
   return clusters;
 }
 
@@ -1299,6 +1403,24 @@ export default function PlantShiftLogManpowerReview() {
                     >
                       <span className="font-medium">Keep <span className="font-mono">{c.canonical}</span>, merge:</span>
                       <span className="font-mono">{c.names.filter(n => n !== c.canonical).join(", ")}</span>
+                      {c.reasonLabels.length > 0 && (
+                        <div className="basis-full flex flex-wrap gap-1 mt-0.5" data-testid={`suggestion-reasons-${c.canonical}`}>
+                          <span className="text-[10px] uppercase tracking-wide text-purple-900/70 dark:text-purple-200/70 mr-1">Why:</span>
+                          {c.reasonLabels.map((label, idx) => (
+                            <span
+                              key={idx}
+                              className={
+                                /previously-confirmed|previously merged|prior-merge/.test(label)
+                                  ? "text-[10px] rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700"
+                                  : "text-[10px] rounded px-1.5 py-0.5 bg-purple-100/70 text-purple-900 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-800"
+                              }
+                              data-testid={`suggestion-reason-chip-${c.canonical}-${idx}`}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div className="ml-auto flex items-center gap-1">
                         <Button
                           size="sm"
@@ -1426,24 +1548,37 @@ export default function PlantShiftLogManpowerReview() {
                             {(() => {
                               const c = nameToCluster.get(r.name);
                               if (!c) return null;
+                              const why = c.reasonLabels.length > 0 ? `Why: ${c.reasonLabels.join("; ")}` : "";
                               if (c.canonical === r.name) {
                                 return (
                                   <div
                                     className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
                                     data-testid={`badge-canonical-${r.name}`}
+                                    title={why || "Suggested canonical spelling"}
                                   >
                                     <Sparkles className="w-3 h-3" /> suggested keep
                                   </div>
                                 );
                               }
                               return (
-                                <div
-                                  className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700"
-                                  data-testid={`badge-dup-${r.name}`}
-                                  title={`Possible duplicate of ${c.canonical}`}
-                                >
-                                  possible dup of {c.canonical}
-                                </div>
+                                <span className="inline-flex items-center gap-1 flex-wrap">
+                                  <span
+                                    className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700"
+                                    data-testid={`badge-dup-${r.name}`}
+                                    title={why ? `Possible duplicate of ${c.canonical}\n${why}` : `Possible duplicate of ${c.canonical}`}
+                                  >
+                                    possible dup of {c.canonical}
+                                  </span>
+                                  {c.fromLearnedPattern && (
+                                    <span
+                                      className="inline-flex items-center gap-1 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700"
+                                      data-testid={`badge-learned-${r.name}`}
+                                      title={why || "Matched a previously-confirmed merge pattern"}
+                                    >
+                                      <Sparkles className="w-3 h-3" /> learned
+                                    </span>
+                                  )}
+                                </span>
                               );
                             })()}
                             {r.roles.length > 0 && (
