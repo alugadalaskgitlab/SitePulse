@@ -14,7 +14,7 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check } from "lucide-react";
+import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -44,7 +44,7 @@ export default function PlantDispatches() {
     const sp = new URLSearchParams(window.location.search);
     return PLANT_DISPATCHES_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
-  const [persistedFilters, setPersistedFilters] = usePersistedFilters(
+  const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
     "plant-dispatches:last-filters:v1",
     {
       filterDateFrom: "",
@@ -1087,6 +1087,19 @@ export default function PlantDispatches() {
       {/* Filter Bar */}
       <Card>
         <CardContent className="pt-6">
+          {isFiltered && (
+            <div className="flex justify-end mb-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetPersistedFilters}
+                data-testid="button-reset-filters"
+                aria-label="Reset filters to defaults"
+              >
+                <X className="w-3.5 h-3.5 mr-1" /> Reset filters
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
               <Label className="text-sm text-muted-foreground">DATE FROM</Label>

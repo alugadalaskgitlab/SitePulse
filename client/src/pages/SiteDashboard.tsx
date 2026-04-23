@@ -82,7 +82,7 @@ export default function SiteDashboard() {
     const sp = new URLSearchParams(window.location.search);
     return SITE_DPR_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
-  const [filters, setFilters] = usePersistedFilters(
+  const [filters, setFilters, resetDprFilters] = usePersistedFilters(
     "site-dashboard:dpr-filters:v1",
     {
       site: "",
@@ -112,7 +112,7 @@ export default function SiteDashboard() {
     const sp = new URLSearchParams(window.location.search);
     return SITE_MATERIAL_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
-  const [materialFilters, setMaterialFilters] = usePersistedFilters(
+  const [materialFilters, setMaterialFilters, resetMaterialFilters] = usePersistedFilters(
     "site-dashboard:material-filters:v1",
     {
       materialDateFrom: today,
@@ -418,20 +418,18 @@ export default function SiteDashboard() {
   }, [materialTrips]);
 
   const clearFilters = () => {
-    setFilters({
-      site: "",
-      engineer: "",
-      dateFrom: "",
-      dateTo: "",
-      activity: "",
-      equipment: "",
-      hasDiesel: false,
-      material: "",
-      supplier: "",
-    });
+    resetDprFilters();
   };
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier;
+
+  const hasActiveMaterialFilters =
+    materialDateFrom !== today ||
+    materialDateTo !== today ||
+    !!materialSiteFilter ||
+    !!materialNameFilter ||
+    !!materialSupplierFilter ||
+    !!materialStockOwnerFilter;
 
   // Export action handlers - ALWAYS requires manager or admin PIN
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
@@ -1027,9 +1025,9 @@ export default function SiteDashboard() {
                 <Filter className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filters</span>
                 {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto gap-1" data-testid="button-clear-filters">
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto gap-1" data-testid="button-reset-filters" aria-label="Reset filters to defaults">
                     <X className="w-3 h-3" />
-                    Clear
+                    Reset filters
                   </Button>
                 )}
               </div>
@@ -1464,6 +1462,19 @@ export default function SiteDashboard() {
               <div className="flex items-center gap-2 mb-4">
                 <Filter className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filters</span>
+                {hasActiveMaterialFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetMaterialFilters}
+                    className="ml-auto gap-1"
+                    data-testid="button-reset-material-filters"
+                    aria-label="Reset material filters to defaults"
+                  >
+                    <X className="w-3 h-3" />
+                    Reset filters
+                  </Button>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="space-y-2">

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock, Ruler, BarChart3, TrendingDown, TrendingUp, Info, Scale } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock, Ruler, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -49,7 +49,7 @@ export default function PlantLdoFlowMeter() {
     const sp = new URLSearchParams(window.location.search);
     return PLANT_LDO_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
-  const [persistedFilters, setPersistedFilters] = usePersistedFilters(
+  const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
     "plant-ldo-flow-meter:last-filters:v1",
     {
       filterDateFrom: "",
@@ -1846,7 +1846,7 @@ export default function PlantLdoFlowMeter() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2 mb-4 flex-wrap">
+          <div className="flex gap-2 mb-4 flex-wrap items-center">
             <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-40" data-testid="input-filter-date-from" />
             <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
             <Select value={filterTank} onValueChange={setFilterTank}>
@@ -1859,6 +1859,17 @@ export default function PlantLdoFlowMeter() {
                 <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
               </SelectContent>
             </Select>
+            {(filterDateFrom || filterDateTo || filterTank !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetPersistedFilters}
+                data-testid="button-reset-filters"
+                aria-label="Reset filters to defaults"
+              >
+                <X className="w-3.5 h-3.5 mr-1" /> Reset filters
+              </Button>
+            )}
           </div>
 
           {isLoading ? (

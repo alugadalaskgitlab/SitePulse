@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, X } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -46,7 +46,7 @@ export default function PlantStock() {
     const sp = new URLSearchParams(window.location.search);
     return PLANT_STOCK_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
-  const [persistedFilters, setPersistedFilters] = usePersistedFilters(
+  const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
     "plant-stock:last-filters:v1",
     {
       dateFrom: "",
@@ -982,10 +982,23 @@ export default function PlantStock() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="w-5 h-5" />
-            Filters
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <Search className="w-5 h-5" />
+              Filters
+            </CardTitle>
+            {(dateFrom || dateTo || selectedPartyId !== "all" || selectedMaterialId !== "all" || selectedTransactionType !== "all" || issuedToFilter.trim()) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetPersistedFilters}
+                data-testid="button-reset-filters"
+                aria-label="Reset filters to defaults"
+              >
+                <X className="w-3.5 h-3.5 mr-1" /> Reset filters
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
