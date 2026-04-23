@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine } from "lucide-react";
+import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -30,6 +30,102 @@ function getErrorMessage(err: unknown): string {
   return typeof err === "string" ? err : "Unknown error";
 }
 
+function normalizeName(s: string): string {
+  return s
+    .toUpperCase()
+    .replace(/[.,;:!?\-_/\\]+$/g, "")
+    .replace(/[.,;:!?]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const al = a.length;
+  const bl = b.length;
+  if (Math.abs(al - bl) > 2) return 99;
+  if (al === 0) return bl;
+  if (bl === 0) return al;
+  let prev = new Array(bl + 1);
+  let curr = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) prev[j] = j;
+  for (let i = 1; i <= al; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= bl; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[bl];
+}
+
+function isLikelyDup(rawA: string, rawB: string): boolean {
+  const a = normalizeName(rawA);
+  const b = normalizeName(rawB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const partsA = a.split(" ");
+  const partsB = b.split(" ");
+  // Same first token + the other has just one extra short trailing token (initial / suffix)
+  if (partsA[0] === partsB[0]) {
+    const longer = partsA.length >= partsB.length ? partsA : partsB;
+    const shorter = partsA.length >= partsB.length ? partsB : partsA;
+    if (shorter.length === 1 && longer.length === 2 && longer[1].length <= 3) return true;
+    if (shorter.length === 2 && longer.length === 3 && longer[2].length <= 3 && shorter[1] === longer[1]) return true;
+  }
+  // Levenshtein distance ≤ 1 between normalized full strings
+  if (levenshtein(a, b) <= 1) return true;
+  return false;
+}
+
+type Cluster = { key: string; names: string[]; canonical: string };
+
+function buildClusters(rows: ReviewRow[]): Cluster[] {
+  const n = rows.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (isLikelyDup(rows[i].name, rows[j].name)) union(i, j);
+    }
+  }
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r)!.push(i);
+  }
+  const clusters: Cluster[] = [];
+  Array.from(groups.values()).forEach((idxs: number[]) => {
+    if (idxs.length < 2) return;
+    const members: ReviewRow[] = idxs.map((i: number) => rows[i]);
+    // Canonical: highest count → shortest length → alphabetical
+    const sorted = [...members].sort((x, y) => {
+      if (y.count !== x.count) return y.count - x.count;
+      if (x.name.length !== y.name.length) return x.name.length - y.name.length;
+      return x.name.localeCompare(y.name);
+    });
+    const canonical = sorted[0].name;
+    const names = members.map((m: ReviewRow) => m.name).sort();
+    clusters.push({ key: names.join("||"), names, canonical });
+  });
+  // Largest clusters first
+  clusters.sort((a, b) => b.names.length - a.names.length);
+  return clusters;
+}
+
 export default function PlantShiftLogManpowerReview() {
   const { toast } = useToast();
   const [adminPin, setAdminPin] = useState<string | null>(null);
@@ -47,6 +143,7 @@ export default function PlantShiftLogManpowerReview() {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [mergeTarget, setMergeTarget] = useState<string>("");
   const [merging, setMerging] = useState(false);
+  const [dismissedClusters, setDismissedClusters] = useState<Record<string, boolean>>({});
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
@@ -85,6 +182,7 @@ export default function PlantShiftLogManpowerReview() {
       setEdits(initial);
       setSelected({});
       setMergeTarget("");
+      setDismissedClusters({});
     } catch (err) {
       toast({ title: "Failed to load list", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -210,6 +308,47 @@ export default function PlantShiftLogManpowerReview() {
     return rows.filter(r => r.name.includes(q));
   }, [rows, filterText]);
 
+  const clusters = useMemo(() => (rows ? buildClusters(rows) : []), [rows]);
+  const visibleClusters = useMemo(
+    () => clusters.filter(c => !dismissedClusters[c.key]),
+    [clusters, dismissedClusters]
+  );
+  const nameToCluster = useMemo(() => {
+    const m = new Map<string, Cluster>();
+    for (const c of visibleClusters) {
+      for (const n of c.names) m.set(n, c);
+    }
+    return m;
+  }, [visibleClusters]);
+
+  const acceptCluster = (c: Cluster) => {
+    const next: Record<string, boolean> = {};
+    for (const n of c.names) next[n] = true;
+    setSelected(next);
+    setMergeTarget(c.canonical);
+    if (typeof window !== "undefined") {
+      const el = document.querySelector('[data-testid="merge-bar"]');
+      if (el) (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  const dismissCluster = (c: Cluster) => {
+    setDismissedClusters(prev => ({ ...prev, [c.key]: true }));
+    // Also clear any selection that came from this cluster
+    setSelected(prev => {
+      const next = { ...prev };
+      let touched = false;
+      for (const n of c.names) {
+        if (next[n]) {
+          delete next[n];
+          touched = true;
+        }
+      }
+      return touched ? next : prev;
+    });
+    if (c.names.includes(mergeTarget)) setMergeTarget("");
+  };
+
   const totals = useMemo(() => {
     if (!rows) return { workers: 0, items: 0 };
     return { workers: rows.length, items: rows.reduce((a, r) => a + r.count, 0) };
@@ -292,6 +431,53 @@ export default function PlantShiftLogManpowerReview() {
             <CardTitle className="text-base">Workers</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {visibleClusters.length > 0 && (
+              <div className="rounded-md border border-purple-300 bg-purple-50 dark:bg-purple-950/40 dark:border-purple-800 p-3 space-y-2" data-testid="suggestions-panel">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-700 dark:text-purple-300" />
+                  <div className="text-sm font-semibold text-purple-900 dark:text-purple-200">
+                    {visibleClusters.length} suggested duplicate group{visibleClusters.length === 1 ? "" : "s"}
+                  </div>
+                  <div className="text-xs text-purple-900/70 dark:text-purple-200/70">
+                    (trailing punctuation, single trailing token, or 1-character typo)
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {visibleClusters.map(c => (
+                    <div
+                      key={c.key}
+                      className="flex flex-wrap items-center gap-2 text-xs bg-white/60 dark:bg-purple-900/30 rounded px-2 py-1.5"
+                      data-testid={`suggestion-${c.canonical}`}
+                    >
+                      <span className="font-medium">Keep <span className="font-mono">{c.canonical}</span>, merge:</span>
+                      <span className="font-mono">{c.names.filter(n => n !== c.canonical).join(", ")}</span>
+                      <div className="ml-auto flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900"
+                          onClick={() => acceptCluster(c)}
+                          data-testid={`button-accept-suggestion-${c.canonical}`}
+                        >
+                          <Combine className="w-3.5 h-3.5 mr-1" />
+                          Pre-select
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-muted-foreground"
+                          onClick={() => dismissCluster(c)}
+                          data-testid={`button-dismiss-suggestion-${c.canonical}`}
+                          aria-label="Dismiss suggestion"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {(() => {
               const selectedNames = Object.keys(selected).filter(n => selected[n]);
               if (selectedNames.length < 2) return null;
@@ -385,6 +571,29 @@ export default function PlantShiftLogManpowerReview() {
                           </td>
                           <td className="p-2 font-medium">
                             {r.name}
+                            {(() => {
+                              const c = nameToCluster.get(r.name);
+                              if (!c) return null;
+                              if (c.canonical === r.name) {
+                                return (
+                                  <div
+                                    className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
+                                    data-testid={`badge-canonical-${r.name}`}
+                                  >
+                                    <Sparkles className="w-3 h-3" /> suggested keep
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div
+                                  className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700"
+                                  data-testid={`badge-dup-${r.name}`}
+                                  title={`Possible duplicate of ${c.canonical}`}
+                                >
+                                  possible dup of {c.canonical}
+                                </div>
+                              );
+                            })()}
                             {r.roles.length > 0 && (
                               <div className="text-xs text-muted-foreground mt-0.5">role: {r.roles.join(", ")}</div>
                             )}
