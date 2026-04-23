@@ -2367,31 +2367,57 @@ export async function registerRoutes(
     }
   });
 
-  // Bulk PDF export — accepts a list of dates and streams a STORE-mode ZIP of PDFs.
+  // Bulk PDF export — accepts a list of (date, plant) entries and streams ONE STORE-mode ZIP
+  // containing all PDFs (across plants). Per-date success/failure is reported in two ways:
+  //   1. Response headers `X-Bulk-Total`, `X-Bulk-Succeeded`, `X-Bulk-Failed` and `X-Bulk-Status`
+  //      (a JSON array of { date, plant, ok, error? }).
+  //   2. A `manifest.json` file embedded inside the ZIP with the same per-entry status list.
+  // Backward-compat: also accepts the old { plant, dates: [...] } shape.
   app.post("/api/plant-module/daily-reports/bulk-zip", async (req, res) => {
     try {
-      const plantName = (req.body?.plant as string) || "Main Plant";
-      const dates: string[] = Array.isArray(req.body?.dates) ? req.body.dates : [];
-      if (!dates.length) {
-        return res.status(400).json({ message: "Provide at least one date" });
+      type Entry = { date: string; plant: string };
+      let entries: Entry[] = [];
+      if (Array.isArray(req.body?.entries)) {
+        entries = (req.body.entries as any[])
+          .map((e) => ({ date: String(e?.date || "").trim(), plant: String(e?.plant || "Main Plant").trim() || "Main Plant" }))
+          .filter((e) => e.date);
+      } else if (Array.isArray(req.body?.dates)) {
+        const plantName = (req.body?.plant as string) || "Main Plant";
+        entries = (req.body.dates as any[]).map((d) => ({ date: String(d), plant: plantName }));
+      }
+      if (!entries.length) {
+        return res.status(400).json({ message: "Provide at least one entry" });
       }
       // Guard rail: cap each request to keep memory bounded (each PDF ≈ 150-200 KB).
-      const MAX_DATES = 200;
-      if (dates.length > MAX_DATES) {
-        return res.status(400).json({ message: `Too many dates (${dates.length}). Max ${MAX_DATES} per ZIP — narrow the date range and try again.` });
+      const MAX_ENTRIES = 200;
+      if (entries.length > MAX_ENTRIES) {
+        return res.status(400).json({ message: `Too many reports (${entries.length}). Max ${MAX_ENTRIES} per ZIP — narrow the date range and try again.` });
       }
 
       // Build PDFs sequentially to keep memory reasonable.
+      type Status = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
+      const status: Status[] = [];
       const files: Array<{ name: string; data: Buffer }> = [];
-      for (const date of dates) {
+      const slugPlant = (p: string) => p.replace(/[^A-Za-z0-9._-]+/g, "_");
+      for (const e of entries) {
         try {
-          const buf = await buildDailyPlantReportPdfBuffer(date, plantName);
-          files.push({ name: `daily-plant-report-${date}.pdf`, data: buf });
-        } catch (e: any) {
-          // Add a tiny error placeholder so the user sees which dates failed.
-          files.push({ name: `ERROR-${date}.txt`, data: Buffer.from(`Failed to build PDF for ${date}: ${e?.message || e}`) });
+          const buf = await buildDailyPlantReportPdfBuffer(e.date, e.plant);
+          files.push({ name: `daily-plant-report-${slugPlant(e.plant)}-${e.date}.pdf`, data: buf });
+          status.push({ date: e.date, plant: e.plant, ok: true, bytes: buf.length });
+        } catch (err: any) {
+          const msg = err?.message || String(err);
+          files.push({ name: `ERROR-${slugPlant(e.plant)}-${e.date}.txt`, data: Buffer.from(`Failed to build PDF for ${e.plant} on ${e.date}: ${msg}`) });
+          status.push({ date: e.date, plant: e.plant, ok: false, error: msg });
         }
       }
+      const manifest = {
+        generatedAt: new Date().toISOString(),
+        total: status.length,
+        succeeded: status.filter((s) => s.ok).length,
+        failed: status.filter((s) => !s.ok).length,
+        entries: status,
+      };
+      files.push({ name: "manifest.json", data: Buffer.from(JSON.stringify(manifest, null, 2)) });
 
       // Minimal STORE-mode ZIP encoder (no compression, supports any byte data).
       const crc32Table = (() => {
@@ -2467,10 +2493,20 @@ export async function registerRoutes(
       eocd.writeUInt16LE(0, 20);             // comment length
 
       const zip = Buffer.concat([...localParts, centralBuf, eocd]);
-      const filename = `daily-plant-reports-${dates[0]}_to_${dates[dates.length - 1]}.zip`;
+      const sortedDates = entries.map((e) => e.date).sort();
+      const fromD = sortedDates[0];
+      const toD = sortedDates[sortedDates.length - 1];
+      const filename = `daily-plant-reports-${fromD}_to_${toD}.zip`;
+      const statusJson = JSON.stringify(status);
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Length", String(zip.length));
+      res.setHeader("X-Bulk-Total", String(manifest.total));
+      res.setHeader("X-Bulk-Succeeded", String(manifest.succeeded));
+      res.setHeader("X-Bulk-Failed", String(manifest.failed));
+      // Encode as base64 to avoid header-unsafe characters in error messages.
+      res.setHeader("X-Bulk-Status", Buffer.from(statusJson, "utf8").toString("base64"));
+      res.setHeader("Access-Control-Expose-Headers", "X-Bulk-Total, X-Bulk-Succeeded, X-Bulk-Failed, X-Bulk-Status, Content-Disposition");
       res.end(zip);
     } catch (err: any) {
       console.error("Bulk ZIP error", err);

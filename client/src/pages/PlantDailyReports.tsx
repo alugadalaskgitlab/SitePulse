@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, FileDown, Loader2, ExternalLink } from "lucide-react";
+import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,6 +35,8 @@ export default function PlantDailyReports() {
   const [plant, setPlant] = useState<string>("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string>("");
+  type BulkStatus = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
+  const [bulkResult, setBulkResult] = useState<{ total: number; succeeded: number; failed: number; entries: BulkStatus[] } | null>(null);
 
   const { data: plantsList } = useQuery<string[]>({
     queryKey: ["/api/plant-module/shift-logs/plants"],
@@ -79,40 +81,49 @@ export default function PlantDailyReports() {
       return;
     }
     setBulkBusy(true);
-    setBulkProgress(`Building ZIP for ${rows.length} report${rows.length === 1 ? "" : "s"}…`);
+    setBulkResult(null);
+    setBulkProgress(`Building ONE ZIP for ${rows.length} report${rows.length === 1 ? "" : "s"}…`);
     try {
-      // Group dates by plant — server endpoint accepts a single plant per call.
-      const byPlant = new Map<string, string[]>();
-      for (const r of rows) {
-        if (!byPlant.has(r.plantName)) byPlant.set(r.plantName, []);
-        byPlant.get(r.plantName)!.push(r.date);
+      // Send ALL visible rows in a single request — server returns one ZIP across all plants.
+      const entries = rows.map((r) => ({ date: r.date, plant: r.plantName }));
+      const res = await fetch("/api/plant-module/daily-reports/bulk-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ entries }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(`Bulk ZIP failed: ${msg}`);
       }
-      let okCount = 0;
-      for (const [plantName, dates] of byPlant.entries()) {
-        setBulkProgress(`Building PDFs for ${plantName} (${dates.length} dates)…`);
-        const res = await fetch("/api/plant-module/daily-reports/bulk-zip", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ plant: plantName, dates }),
-        });
-        if (!res.ok) {
-          const msg = await res.text().catch(() => "");
-          throw new Error(`Bulk ZIP failed for ${plantName}: ${msg}`);
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `daily-plant-reports-${plantName.replace(/\s+/g, "_")}-${dates[dates.length - 1]}_to_${dates[0]}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        okCount += dates.length;
+      // Parse per-date status from response headers (base64-encoded JSON).
+      const total = Number(res.headers.get("X-Bulk-Total") || "0");
+      const succeeded = Number(res.headers.get("X-Bulk-Succeeded") || "0");
+      const failed = Number(res.headers.get("X-Bulk-Failed") || "0");
+      const statusB64 = res.headers.get("X-Bulk-Status") || "";
+      let statusEntries: BulkStatus[] = [];
+      if (statusB64) {
+        try { statusEntries = JSON.parse(atob(statusB64)); } catch { /* ignore */ }
       }
+
+      const blob = await res.blob();
+      const sortedDates = [...new Set(rows.map((r) => r.date))].sort();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `daily-plant-reports-${sortedDates[0]}_to_${sortedDates[sortedDates.length - 1]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      setBulkResult({ total, succeeded, failed, entries: statusEntries });
       setBulkProgress("");
-      toast({ title: "Bulk export complete", description: `Downloaded ${okCount} PDF${okCount === 1 ? "" : "s"} as ZIP.` });
+      toast({
+        title: failed > 0 ? `Export finished with ${failed} failure${failed === 1 ? "" : "s"}` : "Bulk export complete",
+        description: `${succeeded} of ${total} PDF${total === 1 ? "" : "s"} included in the ZIP.`,
+        variant: failed > 0 ? "destructive" : "default",
+      });
     } catch (err: any) {
       setBulkProgress("");
       toast({ title: "Bulk export failed", description: err?.message || "Unknown error", variant: "destructive" });
@@ -189,6 +200,56 @@ export default function PlantDailyReports() {
           )}
         </CardContent>
       </Card>
+
+      {bulkResult && (
+        <Card data-testid="card-bulk-result" className={bulkResult.failed > 0 ? "border-destructive/50" : "border-green-600/40"}>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              {bulkResult.failed > 0
+                ? <XCircle className="w-4 h-4 text-destructive" />
+                : <CheckCircle2 className="w-4 h-4 text-green-600" />}
+              Last bulk export — {bulkResult.succeeded} of {bulkResult.total} succeeded
+              {bulkResult.failed > 0 && (
+                <Badge variant="destructive" className="ml-1">{bulkResult.failed} failed</Badge>
+              )}
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setBulkResult(null)} data-testid="button-dismiss-bulk-result">Dismiss</Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-64 overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Status</TableHead>
+                    <TableHead className="w-40">Date</TableHead>
+                    <TableHead>Plant</TableHead>
+                    <TableHead>Detail</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bulkResult.entries.map((s, i) => (
+                    <TableRow key={`${s.date}-${s.plant}-${i}`} data-testid={`row-bulk-status-${s.date}-${s.plant}`}>
+                      <TableCell>
+                        {s.ok
+                          ? <Badge className="bg-green-600 hover:bg-green-600">OK</Badge>
+                          : <Badge variant="destructive">Failed</Badge>}
+                      </TableCell>
+                      <TableCell className="font-medium">{format(parseISO(s.date), "dd MMM yyyy")}</TableCell>
+                      <TableCell>{s.plant}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {s.ok ? `${s.bytes ? Math.round(s.bytes / 1024) : "?"} KB` : (s.error || "Unknown error")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              The ZIP also includes <code>manifest.json</code> with this same status list.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
