@@ -1771,6 +1771,133 @@ export async function registerRoutes(
     }
   });
 
+  // Unified DG candidates for Heating-Session "Link existing DG" dropdown.
+  // Returns ANY generator run already captured on the given date/plant —
+  // whether it came via generator_logs (manual or past heating sessions)
+  // OR via equipment_usage for an equipment_master row with
+  // equipmentType='generator'. Equipment-usage candidates are returned
+  // with source='equipment_usage' and carry equipmentUsageId so the
+  // client can materialize them into generator_logs before linking.
+  app.get("/api/plant-module/generator-candidates", async (req, res) => {
+    try {
+      const date = req.query.date as string | undefined;
+      const plantName = (req.query.plant as string) || "Main Plant";
+      if (!date) return res.status(400).json({ message: "date is required" });
+
+      const [glogs, usage, equipment] = await Promise.all([
+        storage.getGeneratorLogs({ dateFrom: date, dateTo: date }),
+        storage.getEquipmentUsage({ dateFrom: date, dateTo: date }),
+        storage.getEquipmentMaster(false),
+      ]);
+      const equipById = new Map<number, any>(equipment.map((e: any) => [e.id, e]));
+
+      const fromLogs = glogs
+        .filter((g: any) => !plantName || g.plantName === plantName)
+        .map((g: any) => ({
+          source: "generator_log" as const,
+          id: g.id,
+          equipmentUsageId: null as number | null,
+          date: g.date,
+          plantName: g.plantName,
+          generatorName: g.generatorName,
+          startTime: g.startTime,
+          endTime: g.endTime,
+          hoursRun: g.hoursRun,
+          dieselConsumed: g.dieselConsumed,
+          sourceHeatingSessionId: g.sourceHeatingSessionId ?? null,
+        }));
+
+      const fromUsage = (usage as any[])
+        .filter(u => {
+          if (plantName && u.plantName !== plantName) return false;
+          const eq = equipById.get(u.equipmentId);
+          return eq && String(eq.equipmentType || "").toLowerCase() === "generator";
+        })
+        .map(u => {
+          const eq = equipById.get(u.equipmentId);
+          const consumed = (u.closingDiesel != null)
+            ? Math.max(0, (u.openingDiesel || 0) + (u.dieselIssued || 0) - u.closingDiesel)
+            : (u.expectedDiesel ?? null);
+          return {
+            source: "equipment_usage" as const,
+            id: null as number | null,
+            equipmentUsageId: u.id,
+            date: u.date,
+            plantName: u.plantName,
+            generatorName: eq?.name || "Generator",
+            startTime: u.startTime,
+            endTime: u.endTime,
+            hoursRun: u.hoursOrKmRun ?? null,
+            dieselConsumed: consumed,
+            sourceHeatingSessionId: null,
+          };
+        });
+
+      // If an equipment_usage row corresponds to a generator_log already
+      // (same plant/date/generator name/start/end), drop the usage duplicate
+      // so we don't show the same run twice.
+      const logKey = (x: any) => `${x.plantName}|${x.generatorName}|${x.startTime || ""}|${x.endTime || ""}`;
+      const logKeys = new Set(fromLogs.map(logKey));
+      const usageDeduped = fromUsage.filter(u => !logKeys.has(logKey(u)));
+
+      res.json([...fromLogs, ...usageDeduped]);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to list DG candidates" });
+    }
+  });
+
+  // Materialize an equipment_usage DG row into generator_logs so it can
+  // be referenced via generator_log_id FK from a heating session.
+  app.post("/api/plant-module/generator-logs/from-equipment-usage", async (req, res) => {
+    try {
+      const id = Number(req.body?.equipmentUsageId);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "equipmentUsageId is required" });
+
+      const usageList = await storage.getEquipmentUsage();
+      const usage = (usageList as any[]).find(u => u.id === id);
+      if (!usage) return res.status(404).json({ message: "Equipment usage row not found" });
+
+      const equipment = await storage.getEquipmentMaster(false);
+      const eq = (equipment as any[]).find(e => e.id === usage.equipmentId);
+      if (!eq || String(eq.equipmentType || "").toLowerCase() !== "generator") {
+        return res.status(400).json({ message: "Equipment is not a generator" });
+      }
+
+      // Reuse an existing mirror if we have already materialized this usage row.
+      const existing = await storage.getGeneratorLogs({ dateFrom: usage.date, dateTo: usage.date });
+      const match = (existing as any[]).find(g =>
+        g.plantName === usage.plantName &&
+        g.generatorName === eq.name &&
+        (g.startTime || "") === (usage.startTime || "") &&
+        (g.endTime || "") === (usage.endTime || "")
+      );
+      if (match) return res.json(match);
+
+      const consumed = (usage.closingDiesel != null)
+        ? Math.max(0, (usage.openingDiesel || 0) + (usage.dieselIssued || 0) - usage.closingDiesel)
+        : (usage.expectedDiesel ?? 0);
+
+      const created = await storage.createGeneratorLog({
+        date: usage.date,
+        generatorName: eq.name,
+        startTime: usage.startTime || null,
+        endTime: usage.endTime || null,
+        hoursRun: usage.hoursOrKmRun ?? 0,
+        openingDiesel: usage.openingDiesel ?? 0,
+        dieselIssued: usage.dieselIssued ?? 0,
+        closingDiesel: usage.closingDiesel ?? null,
+        plantName: usage.plantName,
+      } as any);
+
+      // Hint: the closing/consumed may not match exactly if storage recalculates;
+      // the heating session just needs the id to link to.
+      // If the caller expects dieselConsumed to reflect usage closing, surface it.
+      res.status(201).json({ ...created, dieselConsumed: created.dieselConsumed ?? consumed });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to materialize generator log" });
+    }
+  });
+
   // LDO Logs
   app.get("/api/plant-module/ldo-logs", async (req, res) => {
     try {

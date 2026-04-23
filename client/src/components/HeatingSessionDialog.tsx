@@ -44,6 +44,7 @@ function emptyForm(date: string, plantName: string) {
     dgIssuedDiesel: "",
     dgClosingDiesel: "",
     generatorLogId: null as number | null,
+    linkSelection: "" as string,
     remarks: "",
     isFinalized: 0,
     autoFilledOpening: false,
@@ -93,6 +94,7 @@ function sessionToForm(s: BitumenHeatingSession): FormState {
     dgIssuedDiesel: s.dgIssuedDiesel?.toString() || "",
     dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
     generatorLogId: s.generatorLogId,
+    linkSelection: s.generatorLogId ? `gl-${s.generatorLogId}` : "",
     remarks: s.remarks || "",
     isFinalized: s.isFinalized,
     autoFilledOpening: false,
@@ -127,9 +129,30 @@ export function HeatingSessionDialog({
     setForm(prev => ({ ...prev, [k]: v }));
   };
 
-  const { data: existingGenerators } = useQuery<GeneratorLog[]>({
-    queryKey: ["/api/plant-module/generator-logs"],
-    enabled: open,
+  type DgCandidate = {
+    source: "generator_log" | "equipment_usage";
+    id: number | null;
+    equipmentUsageId: number | null;
+    date: string;
+    plantName: string;
+    generatorName: string;
+    startTime: string | null;
+    endTime: string | null;
+    hoursRun: number | null;
+    dieselConsumed: number | null;
+    sourceHeatingSessionId: number | null;
+  };
+  const { data: dgCandidates } = useQuery<DgCandidate[]>({
+    queryKey: ["/api/plant-module/generator-candidates", { date: form.date, plant: form.plantName }],
+    enabled: open && !!form.date && !!form.plantName,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/plant-module/generator-candidates?date=${encodeURIComponent(form.date)}&plant=${encodeURIComponent(form.plantName)}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Failed to fetch DG candidates");
+      return res.json();
+    },
   });
   const { data: generatorMasters } = useQuery<{ id: number | null; name: string }[]>({
     queryKey: ["/api/plant-module/generators"],
@@ -137,12 +160,16 @@ export function HeatingSessionDialog({
   });
 
   const generatorOptionsForDate = useMemo(
-    () => (existingGenerators || []).filter(g =>
-      g.date === form.date &&
-      (g.sourceHeatingSessionId == null || g.sourceHeatingSessionId === form.id)
+    () => (dgCandidates || []).filter(g =>
+      // Show generator_log rows not already tied to a different session,
+      // plus every equipment_usage row (they're not tied to sessions yet).
+      g.source === "equipment_usage" ||
+      g.sourceHeatingSessionId == null ||
+      g.sourceHeatingSessionId === form.id
     ),
-    [existingGenerators, form.date, form.id]
+    [dgCandidates, form.id]
   );
+  const optionKey = (c: DgCandidate) => c.source === "generator_log" ? `gl-${c.id}` : `eu-${c.equipmentUsageId}`;
 
   const selectedGeneratorEquipmentId = useMemo(() => {
     if (form.dgMode !== "inline") return null;
@@ -216,7 +243,7 @@ export function HeatingSessionDialog({
   })();
   const dgLPerHr = (dgConsumed != null && dgHoursUsed && dgHoursUsed > 0) ? dgConsumed / dgHoursUsed : null;
 
-  const buildPayload = () => {
+  const buildPayload = (overrideGeneratorLogId?: number | null) => {
     const ldoOpen = numOrNull(form.ldoTank1OpeningMeter);
     const ldoClose = numOrNull(form.ldoTank1ClosingMeter);
     if (ldoOpen != null && ldoClose != null && ldoClose < ldoOpen) {
@@ -254,7 +281,9 @@ export function HeatingSessionDialog({
       dgOpeningDiesel: form.dgMode === "inline" ? numOrNull(form.dgOpeningDiesel) : null,
       dgIssuedDiesel: form.dgMode === "inline" ? numOrNull(form.dgIssuedDiesel) : null,
       dgClosingDiesel: form.dgMode === "inline" ? numOrNull(form.dgClosingDiesel) : null,
-      generatorLogId: form.dgMode === "link" ? form.generatorLogId : null,
+      generatorLogId: form.dgMode === "link"
+        ? (overrideGeneratorLogId !== undefined ? overrideGeneratorLogId : form.generatorLogId)
+        : null,
       remarks: form.remarks || null,
       editedBy: "operator",
     };
@@ -264,7 +293,27 @@ export function HeatingSessionDialog({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = buildPayload();
+      // If the operator picked an Equipment Usage DG row in "link" mode,
+      // materialize it into a generator_logs row first so we have an id
+      // to reference from the heating session.
+      let mirroredId: number | undefined;
+      if (form.dgMode === "link" && form.linkSelection?.startsWith("eu-")) {
+        const eqUsageId = parseInt(form.linkSelection.slice(3));
+        const mirrorRes = await fetch("/api/plant-module/generator-logs/from-equipment-usage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ equipmentUsageId: eqUsageId }),
+          credentials: "include",
+        });
+        if (!mirrorRes.ok) {
+          let body: any = {};
+          try { body = await mirrorRes.json(); } catch {}
+          throw new Error(body?.message || "Failed to mirror equipment usage DG into generator logs");
+        }
+        const mirrored = await mirrorRes.json();
+        mirroredId = mirrored.id;
+      }
+      const payload = buildPayload(mirroredId);
       const url = form.id ? `/api/plant-module/heating-sessions/${form.id}` : "/api/plant-module/heating-sessions";
       const method = form.id ? "PUT" : "POST";
       const res = await fetch(url, {
@@ -467,18 +516,38 @@ export function HeatingSessionDialog({
 
               {form.dgMode === "link" && (
                 <div>
-                  <Label>Existing Generator Log (same date)</Label>
-                  <Select value={form.generatorLogId ? String(form.generatorLogId) : ""} onValueChange={v => setField("generatorLogId", parseInt(v))}>
-                    <SelectTrigger data-testid="select-link-dg"><SelectValue placeholder="Pick a generator log" /></SelectTrigger>
+                  <Label>Existing DG Run (same date)</Label>
+                  <Select
+                    value={
+                      form.linkSelection
+                        || (form.generatorLogId ? `gl-${form.generatorLogId}` : "")
+                    }
+                    onValueChange={v => setForm(p => ({
+                      ...p,
+                      linkSelection: v,
+                      generatorLogId: v.startsWith("gl-") ? parseInt(v.slice(3)) : null,
+                    }))}
+                  >
+                    <SelectTrigger data-testid="select-link-dg"><SelectValue placeholder="Pick a generator run" /></SelectTrigger>
                     <SelectContent>
-                      {generatorOptionsForDate.map(g => (
-                        <SelectItem key={g.id} value={String(g.id)}>
-                          #{g.id} {g.generatorName} {g.startTime}-{g.endTime} ({g.hoursRun?.toFixed(1) || "?"}h, {g.dieselConsumed?.toFixed(1) || "?"}L)
-                        </SelectItem>
-                      ))}
-                      {!generatorOptionsForDate.length && <SelectItem value="0" disabled>No generator logs for this date</SelectItem>}
+                      {generatorOptionsForDate.map(g => {
+                        const key = optionKey(g);
+                        const labelId = g.source === "generator_log" ? `#${g.id}` : `EU#${g.equipmentUsageId}`;
+                        const suffix = g.source === "equipment_usage" ? " · from Equipment Usage" : "";
+                        return (
+                          <SelectItem key={key} value={key}>
+                            {labelId} {g.generatorName} {g.startTime || "?"}-{g.endTime || "?"} ({g.hoursRun?.toFixed(1) || "?"}h, {g.dieselConsumed?.toFixed(1) || "?"}L){suffix}
+                          </SelectItem>
+                        );
+                      })}
+                      {!generatorOptionsForDate.length && <SelectItem value="__none__" disabled>No DG runs for this date</SelectItem>}
                     </SelectContent>
                   </Select>
+                  {form.linkSelection?.startsWith("eu-") && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This is an Equipment Usage entry — on Save it will be mirrored into Generator Logs and linked to this session.
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
