@@ -2792,6 +2792,159 @@ export async function registerRoutes(
     }
   });
 
+  // CSV/Excel export of the Daily Reports list page — multi-day, self-contained:
+  // includes a Summary section/sheet that mirrors the bulk-zip cover-sheet PDF
+  // (date, plant, loads, MT, party/mix breakdown) plus a Detail section/sheet with
+  // one row per (date, plant, party, mix) breakdown entry. Empty days render as "—"
+  // instead of being silently dropped, matching the cover-sheet behaviour. Same
+  // filter query params as /api/plant-module/daily-reports-index. `format=csv|xlsx`
+  // (defaults to xlsx).
+  app.get("/api/plant-module/daily-reports-export", async (req, res) => {
+    try {
+      const from = (req.query.from as string) || undefined;
+      const to = (req.query.to as string) || undefined;
+      const plant = (req.query.plant as string) || undefined;
+      const splitMulti = (v: unknown): string[] => {
+        if (Array.isArray(v)) return v.flatMap((x) => String(x).split(",")).map((s) => s.trim()).filter(Boolean);
+        if (typeof v === "string") return v.split(",").map((s) => s.trim()).filter(Boolean);
+        return [];
+      };
+      const parties = splitMulti(req.query.party).map((s) => Number(s)).filter((n) => Number.isFinite(n));
+      const mixTypes = splitMulti(req.query.mixType);
+      const format = (String(req.query.format || "xlsx").toLowerCase() === "csv") ? "csv" : "xlsx";
+
+      const rows = await storage.getDailyPlantReportIndex({ from, to, plant, parties, mixTypes });
+      // Match the cover-sheet sort order: most recent first, then plant name.
+      const sorted = [...rows].sort((a, b) =>
+        b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName)
+      );
+
+      const grandLoads = sorted.reduce((s, r) => s + (r.totalLoads || 0), 0);
+      const grandMt = sorted.reduce((s, r) => s + (r.totalProductionMt || 0), 0);
+      const grandSessions = sorted.reduce((s, r) => s + (r.sessionsCount || 0), 0);
+      const daysWithData = sorted.filter((r) => r.hasDispatches).length;
+
+      const sortedDatesAll = sorted.map((r) => r.date).sort();
+      const fromD = from || sortedDatesAll[0] || "";
+      const toD = to || sortedDatesAll[sortedDatesAll.length - 1] || "";
+      const rangeLabel = !fromD && !toD ? "all dates"
+        : fromD === toD ? fromD
+        : `${fromD || "…"} → ${toD || "…"}`;
+      const generatedAt = new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
+      const filenameRange = fromD && toD
+        ? (fromD === toD ? fromD : `${fromD}_to_${toD}`)
+        : "all-dates";
+
+      // Summary table — one row per (date, plant) with totals + breakdown joined.
+      type SummaryRow = {
+        Date: string; Plant: string; Loads: string | number; MT: string;
+        "Party / Mix Breakdown": string; "Heat Sess.": string | number;
+      };
+      const summaryRows: SummaryRow[] = sorted.map((r) => ({
+        Date: r.date,
+        Plant: r.plantName,
+        Loads: r.hasDispatches ? r.totalLoads : "—",
+        MT: r.hasDispatches && r.totalProductionMt ? r.totalProductionMt.toFixed(2) : "—",
+        "Party / Mix Breakdown": r.breakdown.length > 0
+          ? r.breakdown.map((b) => `${b.partyName}: ${b.loads} load${b.loads === 1 ? "" : "s"} / ${b.mt.toFixed(2)} MT (${b.mixType})`).join(" | ")
+          : "—",
+        "Heat Sess.": r.sessionsCount || "—",
+      }));
+
+      // Detail breakdown — one row per party/mix entry. Empty days get a "—" row
+      // so accountants can still see the date appears in the export.
+      type DetailRow = {
+        Date: string; Plant: string; Party: string; "Mix Type": string;
+        Loads: string | number; MT: string;
+      };
+      const detailRows: DetailRow[] = sorted.flatMap((r) =>
+        r.breakdown.length > 0
+          ? r.breakdown.map((b) => ({
+              Date: r.date, Plant: r.plantName, Party: b.partyName,
+              "Mix Type": b.mixType, Loads: b.loads, MT: b.mt.toFixed(2),
+            }))
+          : [{ Date: r.date, Plant: r.plantName, Party: "—", "Mix Type": "—", Loads: "—", MT: "—" }]
+      );
+
+      if (format === "csv") {
+        const escape = (v: any) => {
+          const s = v == null ? "" : String(v);
+          return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const toLine = (cells: any[]) => cells.map(escape).join(",");
+        const lines: string[] = [];
+        // Cover header — mirrors the cover-sheet PDF top strip.
+        lines.push(toLine(["Daily Plant Reports — Cover Sheet"]));
+        lines.push(toLine(["High Lane Constructions Pvt Ltd"]));
+        lines.push(toLine([`Range: ${rangeLabel}`]));
+        lines.push(toLine([`Entries: ${sorted.length} (${daysWithData} with data)`]));
+        lines.push(toLine([`Totals: ${grandLoads || "—"} loads / ${grandMt ? grandMt.toFixed(2) : "—"} MT / ${grandSessions || "—"} heat sessions`]));
+        lines.push(toLine([`Generated: ${generatedAt}`]));
+        lines.push("");
+        lines.push(toLine(["== SUMMARY =="]));
+        lines.push(toLine(["Date", "Plant", "Loads", "MT", "Party / Mix Breakdown", "Heat Sess."]));
+        for (const r of summaryRows) {
+          lines.push(toLine([r.Date, r.Plant, r.Loads, r.MT, r["Party / Mix Breakdown"], r["Heat Sess."]]));
+        }
+        lines.push(toLine(["Totals", `${sorted.length} entr${sorted.length === 1 ? "y" : "ies"} (${daysWithData} with data)`, grandLoads || "—", grandMt ? grandMt.toFixed(2) : "—", "", grandSessions || "—"]));
+        lines.push("");
+        lines.push(toLine(["== DETAIL (party / mix breakdown) =="]));
+        lines.push(toLine(["Date", "Plant", "Party", "Mix Type", "Loads", "MT"]));
+        for (const r of detailRows) {
+          lines.push(toLine([r.Date, r.Plant, r.Party, r["Mix Type"], r.Loads, r.MT]));
+        }
+        const body = "\uFEFF" + lines.join("\r\n") + "\r\n";
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="daily-plant-reports-${filenameRange}.csv"`);
+        res.send(body);
+        return;
+      }
+
+      // xlsx — Summary sheet (with cover header rows) + Detail sheet.
+      const wb = xlsx.utils.book_new();
+      const summaryAoa: any[][] = [
+        ["Daily Plant Reports — Cover Sheet"],
+        ["High Lane Constructions Pvt Ltd"],
+        [`Range: ${rangeLabel}`],
+        [`Entries: ${sorted.length} (${daysWithData} with data)`],
+        [`Totals: ${grandLoads || "—"} loads / ${grandMt ? grandMt.toFixed(2) : "—"} MT / ${grandSessions || "—"} heat sessions`],
+        [`Generated: ${generatedAt}`],
+        [],
+        ["Date", "Plant", "Loads", "MT", "Party / Mix Breakdown", "Heat Sess."],
+        ...summaryRows.map((r) => [r.Date, r.Plant, r.Loads, r.MT, r["Party / Mix Breakdown"], r["Heat Sess."]]),
+        [
+          "Totals",
+          `${sorted.length} entr${sorted.length === 1 ? "y" : "ies"} (${daysWithData} with data)`,
+          grandLoads || "—",
+          grandMt ? grandMt.toFixed(2) : "—",
+          "",
+          grandSessions || "—",
+        ],
+      ];
+      const summarySheet = xlsx.utils.aoa_to_sheet(summaryAoa);
+      // Set sensible column widths so the breakdown column stays readable.
+      (summarySheet as any)["!cols"] = [
+        { wch: 12 }, { wch: 18 }, { wch: 8 }, { wch: 10 }, { wch: 70 }, { wch: 10 },
+      ];
+      xlsx.utils.book_append_sheet(wb, summarySheet, "Summary");
+
+      const detailSheet = xlsx.utils.json_to_sheet(detailRows, {
+        header: ["Date", "Plant", "Party", "Mix Type", "Loads", "MT"],
+      });
+      (detailSheet as any)["!cols"] = [
+        { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 8 }, { wch: 10 },
+      ];
+      xlsx.utils.book_append_sheet(wb, detailSheet, "Detail");
+
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="daily-plant-reports-${filenameRange}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to export daily reports" });
+    }
+  });
+
   // Bulk PDF export — accepts a list of (date, plant) entries and streams ONE STORE-mode ZIP
   // containing all PDFs (across plants). Per-date success/failure is reported in two ways:
   //   1. Response headers `X-Bulk-Total`, `X-Bulk-Succeeded`, `X-Bulk-Failed` and `X-Bulk-Status`

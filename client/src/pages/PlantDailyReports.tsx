@@ -262,6 +262,43 @@ export default function PlantDailyReports() {
     updateFilters({ from: format(subDays(new Date(), days), "yyyy-MM-dd"), to: today });
   };
 
+  const handleSpreadsheetExport = async (format: "csv" | "xlsx") => {
+    if (!rows?.length) {
+      toast({ title: "Nothing to export", description: "Adjust the filters to include some dates." });
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (plant) params.set("plant", plant);
+      for (const p of selectedParties) params.append("party", p);
+      for (const m of selectedMixTypes) params.append("mixType", m);
+      params.set("format", format);
+      const res = await fetch(`/api/plant-module/daily-reports-export?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const sortedDates = [...new Set(rows.map((r) => r.date))].sort();
+      const fromD = from || sortedDates[0];
+      const toD = to || sortedDates[sortedDates.length - 1];
+      const range = fromD === toD ? fromD : `${fromD}_to_${toD}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `daily-plant-reports-${range}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: `Exported ${format.toUpperCase()}`, description: `${rows.length} row${rows.length === 1 ? "" : "s"} included with summary cover.` });
+    } catch (err: any) {
+      toast({ title: "Export failed", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
   const handleBulkExport = async () => {
     if (!rows?.length) {
       toast({ title: "No reports to export", description: "Adjust the filters to include some dates." });
@@ -338,15 +375,35 @@ export default function PlantDailyReports() {
             </p>
           </div>
         </div>
-        <Button
-          variant="default"
-          onClick={handleBulkExport}
-          disabled={bulkBusy || !rows?.length}
-          data-testid="button-bulk-zip"
-        >
-          {bulkBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
-          Bulk Export PDFs (ZIP)
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => handleSpreadsheetExport("csv")}
+            disabled={!rows?.length}
+            data-testid="button-export-csv"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => handleSpreadsheetExport("xlsx")}
+            disabled={!rows?.length}
+            data-testid="button-export-excel"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export Excel
+          </Button>
+          <Button
+            variant="default"
+            onClick={handleBulkExport}
+            disabled={bulkBusy || !rows?.length}
+            data-testid="button-bulk-zip"
+          >
+            {bulkBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
+            Bulk Export PDFs (ZIP)
+          </Button>
+        </div>
       </div>
 
       <Card>
