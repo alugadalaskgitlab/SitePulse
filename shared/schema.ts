@@ -1310,3 +1310,24 @@ export const vendorRateCards = pgTable("vendor_rate_cards", {
 export const insertVendorRateCardSchema = createInsertSchema(vendorRateCards).omit({ id: true, updatedAt: true });
 export type VendorRateCard = typeof vendorRateCards.$inferSelect;
 export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
+
+// ============================================
+// PLANT ALERT THRESHOLDS (stored in app_settings)
+// ============================================
+// Used by the boiler / heating session post-save alert hook to decide when
+// to fire push + inbox notifications. Values are persisted as JSON under the
+// app_settings key `plant_alert_thresholds`.
+export const PLANT_ALERT_THRESHOLDS_KEY = "plant_alert_thresholds";
+
+export const PLANT_ALERT_THRESHOLD_DEFAULTS = {
+  hotOilEndTempMinC: 200,
+  ldoLitersPerHourMax: 25,
+  sessionsVsShiftMismatchL: 5,
+} as const;
+
+export const plantAlertThresholdsSchema = z.object({
+  hotOilEndTempMinC: z.number().nonnegative(),
+  ldoLitersPerHourMax: z.number().positive(),
+  sessionsVsShiftMismatchL: z.number().positive(),
+});
+export type PlantAlertThresholds = z.infer<typeof plantAlertThresholdsSchema>;

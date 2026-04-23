@@ -629,6 +629,38 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // PLANT ALERT THRESHOLDS (boiler / heating session post-save alerts)
+  // ============================================
+  // GET is open (read-only), PUT requires admin PIN.
+  app.get("/api/plant-module/alert-thresholds", async (_req, res) => {
+    try {
+      const thresholds = await storage.getPlantAlertThresholds();
+      res.json(thresholds);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to fetch alert thresholds" });
+    }
+  });
+
+  app.put("/api/plant-module/alert-thresholds", async (req, res) => {
+    try {
+      const { plantAlertThresholdsSchema } = await import("@shared/schema");
+      const { pin, ...rest } = req.body || {};
+      if (!pin) return res.status(403).json({ message: "Admin PIN required" });
+      if (!(await storage.verifyPin("admin", pin))) {
+        return res.status(403).json({ message: "Invalid admin PIN" });
+      }
+      const parsed = plantAlertThresholdsSchema.parse(rest);
+      const saved = await storage.setPlantAlertThresholds(parsed);
+      res.json(saved);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      res.status(500).json({ message: err?.message || "Failed to update alert thresholds" });
+    }
+  });
+
   // Change Manager PIN (admin only)
   app.post("/api/admin/change-manager-pin", async (req, res) => {
     try {

@@ -48,6 +48,13 @@ import {
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import {
+  PLANT_ALERT_THRESHOLDS_KEY,
+  PLANT_ALERT_THRESHOLD_DEFAULTS,
+  plantAlertThresholdsSchema,
+  type PlantAlertThresholds,
+} from "@shared/schema";
+import { sendPushToAll } from "./push";
+import {
   type CreateDprRequest,
   type Dpr,
   type DprWithDetails,
@@ -497,6 +504,10 @@ export interface IStorage {
   deleteBitumenHeatingSession(id: number): Promise<boolean>;
   getHeatingTrends(filters: { dateFrom: string; dateTo: string; plantName?: string }): Promise<HeatingTrendsResult>;
   getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName?: string): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null>;
+
+  // Plant alert thresholds (stored in app_settings)
+  getPlantAlertThresholds(): Promise<PlantAlertThresholds>;
+  setPlantAlertThresholds(thresholds: PlantAlertThresholds): Promise<PlantAlertThresholds>;
 }
 
 export type HeatingTrendsBucket = {
@@ -8419,7 +8430,103 @@ export class DatabaseStorage implements IStorage {
       }
 
       return saved;
+    }).then(async (saved) => {
+      // Fire-and-forget alert hook: never let notifications break a save.
+      this._emitHeatingSessionAlerts(saved).catch((err) => {
+        console.error("[HeatingAlerts] Failed to emit alerts:", err?.message || err);
+      });
+      return saved;
     });
+  }
+
+  // ============================================================
+  // PLANT ALERT THRESHOLDS (admin-configurable)
+  // ============================================================
+  async getPlantAlertThresholds(): Promise<PlantAlertThresholds> {
+    const raw = await this.getSetting(PLANT_ALERT_THRESHOLDS_KEY);
+    if (!raw) return { ...PLANT_ALERT_THRESHOLD_DEFAULTS };
+    try {
+      const parsed = plantAlertThresholdsSchema.parse(JSON.parse(raw));
+      return parsed;
+    } catch {
+      return { ...PLANT_ALERT_THRESHOLD_DEFAULTS };
+    }
+  }
+
+  async setPlantAlertThresholds(thresholds: PlantAlertThresholds): Promise<PlantAlertThresholds> {
+    const validated = plantAlertThresholdsSchema.parse(thresholds);
+    await this.setSetting(PLANT_ALERT_THRESHOLDS_KEY, JSON.stringify(validated));
+    return validated;
+  }
+
+  // Post-save hook: check thresholds against the just-saved heating session
+  // and any related shift-meter data, then push + write inbox entries for
+  // each violated threshold. Each alert is independent so multiple may fire
+  // for a single save.
+  private async _emitHeatingSessionAlerts(saved: BitumenHeatingSession): Promise<void> {
+    const thresholds = await this.getPlantAlertThresholds();
+    const url = `/plant/heating-sessions/${saved.date}`;
+    const plantTag = saved.plantName ? ` [${saved.plantName}]` : "";
+    const dateTag = saved.date ? ` ${saved.date}` : "";
+
+    type Alert = { type: "warning" | "error"; title: string; message: string };
+    const alerts: Alert[] = [];
+
+    // 1. Hot-oil end temperature out of band (low end temp = boiler underperforming)
+    if (saved.hotOilTempEnd != null && saved.hotOilTempEnd < thresholds.hotOilEndTempMinC) {
+      alerts.push({
+        type: "warning",
+        title: "Hot-oil end temp below target",
+        message: `Session #${saved.id}${plantTag}${dateTag}: end temp ${saved.hotOilTempEnd}°C < ${thresholds.hotOilEndTempMinC}°C target`,
+      });
+    }
+
+    // 2. LDO L/Hour above limit (boiler burning too much fuel)
+    if (saved.ldoTank1Consumed != null && saved.durationHours != null && saved.durationHours > 0) {
+      const lPerHour = saved.ldoTank1Consumed / saved.durationHours;
+      if (lPerHour > thresholds.ldoLitersPerHourMax) {
+        alerts.push({
+          type: "warning",
+          title: "Boiler LDO L/hour above limit",
+          message: `Session #${saved.id}${plantTag}${dateTag}: ${lPerHour.toFixed(1)} L/hr > ${thresholds.ldoLitersPerHourMax} L/hr limit (${saved.ldoTank1Consumed.toFixed(1)} L over ${saved.durationHours.toFixed(2)} hr)`,
+        });
+      }
+    }
+
+    // 3. Sessions vs shift-meter Tank-1 mismatch (totals across the day)
+    try {
+      const sameDaySessions = await this.getBitumenHeatingSessions({
+        date: saved.date,
+        plantName: saved.plantName,
+      });
+      const sessionsLdoT1L = sameDaySessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
+      const shift = await this.getPlantShiftLogByDate(saved.date, undefined, saved.plantName);
+      let shiftLdoT1L: number | null = null;
+      if (shift?.ldoTank1OpeningMeter != null && shift?.ldoTank1ClosingMeter != null) {
+        shiftLdoT1L = Math.max(0, shift.ldoTank1ClosingMeter - shift.ldoTank1OpeningMeter);
+      }
+      if (shiftLdoT1L != null && sessionsLdoT1L > 0) {
+        const diff = sessionsLdoT1L - shiftLdoT1L;
+        if (Math.abs(diff) > thresholds.sessionsVsShiftMismatchL) {
+          alerts.push({
+            type: "error",
+            title: "Boiler LDO mismatch vs shift meter",
+            message: `${saved.date}${plantTag}: heating sessions ${sessionsLdoT1L.toFixed(1)} L vs shift Tank-1 ${shiftLdoT1L.toFixed(1)} L (Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(1)} L > ±${thresholds.sessionsVsShiftMismatchL} L)`,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("[HeatingAlerts] Mismatch check failed:", err?.message || err);
+    }
+
+    for (const a of alerts) {
+      try {
+        await this.createNotification({ type: a.type, title: a.title, message: a.message });
+      } catch (err: any) {
+        console.error("[HeatingAlerts] createNotification failed:", err?.message || err);
+      }
+      sendPushToAll(a.title, a.message, url).catch(() => {});
+    }
   }
 
   async finalizeBitumenHeatingSession(id: number, finalizedBy: string): Promise<BitumenHeatingSession | undefined> {
