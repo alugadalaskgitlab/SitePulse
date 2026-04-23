@@ -1496,6 +1496,46 @@ export default function PlantEquipmentUsage() {
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {
                 const dayUsage = groupedUsage[dateKey];
+                const VARIANCE_THRESHOLD_PCT = 15;
+                const varianceRows = (() => {
+                  const map = new Map<number, { name: string; meterUnit: string; runtime: number; actual: number; expected: number }>();
+                  dayUsage.forEach((entry) => {
+                    if (entry.dieselIncluded === true) return;
+                    if (isPartialEntry(entry)) return;
+                    if (entry.entryType === "shifting") return;
+                    const equip = equipment?.find(e => e.id === entry.equipmentId);
+                    if (!equip) return;
+                    const openingDieselVal = entry.openingDiesel ?? 0;
+                    const dieselIssuedVal = entry.dieselIssued ?? 0;
+                    // Closing tank reading may live on closingDiesel OR dieselBalanceInTank.
+                    const closingDieselEntry = entry.closingDiesel ?? entry.dieselBalanceInTank;
+                    const expected = entry.expectedDiesel ?? 0;
+                    const consumed = closingDieselEntry != null
+                      ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
+                      : expected;
+                    const totalKmVal = entry.totalKm ?? 0;
+                    const runtime = entry.hoursOrKmRun || totalKmVal || 0;
+                    if (runtime <= 0 && consumed <= 0 && expected <= 0) return;
+                    const isTripBased = !entry.hoursOrKmRun && totalKmVal > 0;
+                    const meterUnit = isTripBased ? "km" : (equip.meterType === "hour_meter" ? "hrs" : "km");
+                    const key = entry.equipmentId;
+                    const existing = map.get(key);
+                    if (existing) {
+                      existing.runtime += runtime;
+                      existing.actual += consumed;
+                      existing.expected += expected;
+                    } else {
+                      map.set(key, {
+                        name: equip.name + (equip.registrationNumber ? ` (${equip.registrationNumber})` : ""),
+                        meterUnit,
+                        runtime,
+                        actual: consumed,
+                        expected,
+                      });
+                    }
+                  });
+                  return Array.from(map.values());
+                })();
                 return (
                   <div key={dateKey}>
                     <h3 className="font-semibold text-lg mb-3 border-b pb-2">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
@@ -1701,6 +1741,55 @@ export default function PlantEquipmentUsage() {
                         );
                       })}
                     </div>
+                    {varianceRows.length > 0 && (
+                      <div className="mt-3 border rounded-md overflow-hidden" data-testid={`variance-summary-${dateKey}`}>
+                        <div className="px-3 py-2 bg-muted/40 text-sm font-medium">Norm vs Actual — {format(new Date(dateKey), "dd MMM")}</div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/20 text-muted-foreground">
+                              <tr>
+                                <th className="text-left px-3 py-2 font-medium">Equipment</th>
+                                <th className="text-right px-3 py-2 font-medium">Run</th>
+                                <th className="text-right px-3 py-2 font-medium">Actual L</th>
+                                <th className="text-right px-3 py-2 font-medium">Norm L</th>
+                                <th className="text-right px-3 py-2 font-medium">Variance L</th>
+                                <th className="text-right px-3 py-2 font-medium">±%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {varianceRows.map((row, idx) => {
+                                const variance = row.actual - row.expected;
+                                const variancePct = row.expected > 0 ? (variance / row.expected) * 100 : null;
+                                const isOutlier = variancePct != null && Math.abs(variancePct) >= VARIANCE_THRESHOLD_PCT;
+                                const isOver = variance > 0;
+                                const highlightCls = isOutlier
+                                  ? (isOver ? "bg-red-50 dark:bg-red-900/20" : "bg-amber-50 dark:bg-amber-900/20")
+                                  : "";
+                                const pctCls = variancePct == null
+                                  ? "text-muted-foreground"
+                                  : isOutlier
+                                    ? (isOver ? "text-red-700 dark:text-red-300 font-semibold" : "text-amber-700 dark:text-amber-300 font-semibold")
+                                    : "text-green-700 dark:text-green-400";
+                                return (
+                                  <tr key={idx} className={`border-t ${highlightCls}`} data-testid={`variance-row-${dateKey}-${idx}`}>
+                                    <td className="px-3 py-2">{row.name}</td>
+                                    <td className="px-3 py-2 text-right">{row.runtime.toFixed(2)} {row.meterUnit}</td>
+                                    <td className="px-3 py-2 text-right">{row.actual.toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-right">{row.expected.toFixed(2)}</td>
+                                    <td className={`px-3 py-2 text-right ${variance > 0 ? "text-red-700 dark:text-red-300" : variance < 0 ? "text-amber-700 dark:text-amber-300" : ""}`}>
+                                      {variance > 0 ? "+" : ""}{variance.toFixed(2)}
+                                    </td>
+                                    <td className={`px-3 py-2 text-right ${pctCls}`}>
+                                      {variancePct == null ? "—" : `${variancePct > 0 ? "+" : ""}${variancePct.toFixed(1)}%`}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
