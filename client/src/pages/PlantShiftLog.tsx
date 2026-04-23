@@ -15,7 +15,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
-import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails } from "@shared/schema";
+import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
 
 type ManpowerRow = {
   name: string;
@@ -368,19 +368,36 @@ export default function PlantShiftLog() {
     },
   });
 
+  // Reactive query: heating sessions for the current date/plant drive the
+  // Boiler Meter auto-prefill. Using useQuery ensures the shift log picks up
+  // new/edited sessions via cache invalidation (e.g. after saving a session).
+  const { data: heatingSessionsForDate } = useQuery<BitumenHeatingSession[]>({
+    queryKey: ["/api/plant-module/heating-sessions", { date, plant: plantName }],
+    enabled: !existing && !!date,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/plant-module/heating-sessions?date=${date}&plant=${encodeURIComponent(plantName)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   // Auto-fill Boiler Meter opening/closing from heating sessions for the date
   // (first opening / last closing). Falls back to /ldo-meter/last for opening
-  // when no heating sessions exist yet. Dryer Meter opening uses yesterday's
-  // closing as before. Manually-typed values are never overwritten.
-  // Re-runs when plantStartTime changes so the opening cutoff matches the
-  // actual shift start.
+  // only when no heating sessions exist yet. Dryer Meter opening uses
+  // yesterday's closing as before. Manually-typed values are never
+  // overwritten. Re-runs when plantStartTime or the sessions query data
+  // changes so the cutoff matches the actual shift start and any newly
+  // created session immediately populates the shift log.
   useEffect(() => {
     if (existing) return; // never overwrite when loaded from DB
     if (!date) return;
     let cancelled = false;
 
     // Boiler Meter (Tank-1) opening + closing: prefer heating sessions for the
-    // date; fall back to /ldo-meter/last for the opening only.
+    // date; fall back to /ldo-meter/last for the opening only when none.
     const t1OpenIsEmpty = !ldoTank1OpeningMeter;
     const t1OpenIsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
     const t1CloseIsEmpty = !ldoTank1ClosingMeter;
@@ -388,68 +405,63 @@ export default function PlantShiftLog() {
     const wantT1Open = t1OpenIsEmpty || t1OpenIsAutoFilled;
     const wantT1Close = t1CloseIsEmpty || t1CloseIsAutoFilled;
 
-    if (wantT1Open || wantT1Close) {
-      fetch(`/api/plant-module/heating-sessions?date=${date}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : [])
-        .then((sessions: any[]) => {
-          if (cancelled) return;
-          const safe = Array.isArray(sessions) ? sessions : [];
-          // First opening of the day (earliest startTime) with a meter value.
-          const openCandidates = safe
-            .filter(s => s && s.ldoTank1OpeningMeter != null)
-            .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
-          const closeCandidates = safe
-            .filter(s => s && s.ldoTank1ClosingMeter != null)
-            .sort((a, b) => String(b.endTime || b.startTime || "").localeCompare(String(a.endTime || a.startTime || "")));
-          const sessOpen = openCandidates[0]?.ldoTank1OpeningMeter;
-          const sessClose = closeCandidates[0]?.ldoTank1ClosingMeter;
+    const safe: BitumenHeatingSession[] = Array.isArray(heatingSessionsForDate) ? heatingSessionsForDate : [];
+    // First opening of the day (earliest startTime) with a meter value.
+    const openCandidates = safe
+      .filter(s => s && s.ldoTank1OpeningMeter != null)
+      .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
+    const closeCandidates = safe
+      .filter(s => s && s.ldoTank1ClosingMeter != null)
+      .sort((a, b) => String(b.endTime || b.startTime || "").localeCompare(String(a.endTime || a.startTime || "")));
+    const sessOpen = openCandidates[0]?.ldoTank1OpeningMeter;
+    const sessClose = closeCandidates[0]?.ldoTank1ClosingMeter;
 
-          if (wantT1Open && typeof sessOpen === "number") {
-            const next = String(sessOpen);
+    if (wantT1Open && typeof sessOpen === "number") {
+      const next = String(sessOpen);
+      setLdoTank1OpeningMeter(prev => {
+        if (prev && prev !== autoFilledT1ValueRef.current) return prev;
+        autoFilledT1ValueRef.current = next;
+        setAutoFillT1Source("Heating Sessions");
+        return next;
+      });
+    } else if (wantT1Open && safe.length === 0 && heatingSessionsForDate !== undefined) {
+      // Fallback only once the sessions query has resolved and the day has
+      // zero heating sessions: use the most recent meter reading before
+      // shift start.
+      const before = `${date}T${plantStartTime || "23:59"}`;
+      type LdoLast = { value: number; source: string };
+      fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+        .then(r => r.ok ? (r.json() as Promise<LdoLast | null>) : null)
+        .then((data) => {
+          if (cancelled) return;
+          if (data && typeof data.value === "number") {
+            const next = String(data.value);
             setLdoTank1OpeningMeter(prev => {
               if (prev && prev !== autoFilledT1ValueRef.current) return prev;
               autoFilledT1ValueRef.current = next;
-              setAutoFillT1Source("Heating Sessions");
-              return next;
-            });
-          } else if (wantT1Open && safe.length === 0) {
-            // Fallback only when the day has zero heating sessions: use the
-            // most recent meter reading before shift start.
-            const before = `${date}T${plantStartTime || "23:59"}`;
-            fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
-              .then(r => r.ok ? r.json() : null)
-              .then((data: any) => {
-                if (cancelled) return;
-                if (data && typeof data.value === "number") {
-                  const next = String(data.value);
-                  setLdoTank1OpeningMeter(prev => {
-                    if (prev && prev !== autoFilledT1ValueRef.current) return prev;
-                    autoFilledT1ValueRef.current = next;
-                    setAutoFillT1Source(data.source);
-                    return next;
-                  });
-                }
-              })
-              .catch(() => {});
-          }
-
-          if (wantT1Close && typeof sessClose === "number") {
-            const next = String(sessClose);
-            setLdoTank1ClosingMeter(prev => {
-              if (prev && prev !== autoFilledT1ClosingValueRef.current) return prev;
-              autoFilledT1ClosingValueRef.current = next;
-              setAutoFillT1ClosingSource("Heating Sessions");
+              setAutoFillT1Source(data.source);
               return next;
             });
           }
         })
         .catch(() => {});
     }
+
+    if (wantT1Close && typeof sessClose === "number") {
+      const next = String(sessClose);
+      setLdoTank1ClosingMeter(prev => {
+        if (prev && prev !== autoFilledT1ClosingValueRef.current) return prev;
+        autoFilledT1ClosingValueRef.current = next;
+        setAutoFillT1ClosingSource("Heating Sessions");
+        return next;
+      });
+    }
     if (!ldoTank2OpeningMeter) {
       const before = `${date}T00:00`;
+      type LdoLastT2 = { value: number; source: string };
       fetch(`/api/plant-module/ldo-meter/last?tank=2&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : null)
-        .then((data: any) => {
+        .then(r => r.ok ? (r.json() as Promise<LdoLastT2 | null>) : null)
+        .then((data) => {
           if (cancelled) return;
           if (data && typeof data.value === "number") {
             const next = String(data.value);
@@ -465,7 +477,7 @@ export default function PlantShiftLog() {
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existing, date, plantName, plantStartTime]);
+  }, [existing, date, plantName, plantStartTime, heatingSessionsForDate]);
 
   // Derived
   const ldoTotal = useMemo(() => {

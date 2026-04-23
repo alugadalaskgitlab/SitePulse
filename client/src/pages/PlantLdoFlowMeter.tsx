@@ -872,12 +872,12 @@ export default function PlantLdoFlowMeter() {
 
     const summaryData = dailySummary.map(d => ({
       Date: d.date,
-      "T1 Opening (L)": d.t1Opening?.meterReading ?? "",
-      "T1 Closing (L)": d.t1Closing?.meterReading ?? "",
-      "T1 Consumption (L)": d.t1Consumption ?? "",
-      "T2 Opening (L)": d.t2Opening?.meterReading ?? "",
-      "T2 Closing (L)": d.t2Closing?.meterReading ?? "",
-      "T2 Consumption (L)": d.t2Consumption ?? "",
+      "Boiler Meter Opening (L)": d.t1Opening?.meterReading ?? "",
+      "Boiler Meter Closing (L)": d.t1Closing?.meterReading ?? "",
+      "Boiler Meter Consumption (L)": d.t1Consumption ?? "",
+      "Dryer Meter Opening (L)": d.t2Opening?.meterReading ?? "",
+      "Dryer Meter Closing (L)": d.t2Closing?.meterReading ?? "",
+      "Dryer Meter Consumption (L)": d.t2Consumption ?? "",
       "Total (L)": d.totalConsumption || "",
       "Total (kg)": d.totalConsumptionKg ?? "",
     }));
@@ -1141,8 +1141,8 @@ export default function PlantLdoFlowMeter() {
                   <span className="font-bold text-2xl text-blue-700 dark:text-blue-300">{((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L</span>
                 </div>
                 <div className="text-xs text-muted-foreground flex gap-3">
-                  <span>T1: {tankStock.tank1 ? `${tankStock.tank1.stockL.toFixed(0)} L` : "—"}</span>
-                  <span>T2: {tankStock.tank2 ? `${tankStock.tank2.stockL.toFixed(0)} L` : "—"}</span>
+                  <span>Boiler: {tankStock.tank1 ? `${tankStock.tank1.stockL.toFixed(0)} L` : "—"}</span>
+                  <span>Dryer: {tankStock.tank2 ? `${tankStock.tank2.stockL.toFixed(0)} L` : "—"}</span>
                 </div>
               </>
             )}
@@ -1293,7 +1293,7 @@ export default function PlantLdoFlowMeter() {
                         <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{reconciliationData.totalReceiptsL.toFixed(0)} L</div>
                         {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
                           <div className="text-base text-muted-foreground">
-                            T1: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | T2: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
+                            Boiler: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | Dryer: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
                           </div>
                         )}
                         <div className="text-base text-muted-foreground">
@@ -1308,7 +1308,7 @@ export default function PlantLdoFlowMeter() {
                         <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{allTimeLdoReceiptsL.toFixed(0)} L</div>
                         {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
                           <div className="text-base text-muted-foreground">
-                            T1: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | T2: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
+                            Boiler: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | Dryer: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
                           </div>
                         )}
                         <div className="text-base text-muted-foreground">All time</div>
@@ -1502,8 +1502,8 @@ export default function PlantLdoFlowMeter() {
                     ? `${((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L`
                     : "No dip readings"}
                 </div>
-                <div className="text-xs text-muted-foreground">T1: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</div>
-                <div className="text-xs text-muted-foreground">T2: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
+                <div className="text-xs text-muted-foreground">Boiler: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</div>
+                <div className="text-xs text-muted-foreground">Dryer: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
                 <div className="text-muted-foreground text-xs mb-1">Difference (Physical − Book)</div>
@@ -1616,7 +1616,7 @@ export default function PlantLdoFlowMeter() {
 
                 <div>
                   <Label className="text-xs">Notes (optional)</Label>
-                  <Input value={ldoCorrNotes} onChange={e => setLdoCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — T1: 1500L, T2: 1000L" data-testid="input-ldo-corr-notes" />
+                  <Input value={ldoCorrNotes} onChange={e => setLdoCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — Boiler: 1500L, Dryer: 1000L" data-testid="input-ldo-corr-notes" />
                 </div>
 
                 <div className="flex gap-2">
@@ -1636,7 +1636,7 @@ export default function PlantLdoFlowMeter() {
                         physicalQty: totalMT,
                         uom: "MT",
                         date: ldoCorrDate,
-                        notes: ldoCorrNotes || `LDO dip reconciliation — T1: ${t1L.toFixed(0)} L, T2: ${t2L.toFixed(0)} L (${partyName})`,
+                        notes: ldoCorrNotes || `LDO dip reconciliation — Boiler: ${t1L.toFixed(0)} L, Dryer: ${t2L.toFixed(0)} L (${partyName})`,
                         correctedBy: "admin",
                       });
                     }}
@@ -1667,8 +1667,8 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Date</th>
                     <th className="text-right p-2">Production (MT)</th>
                     <th className="text-right p-2">Norm (L)</th>
-                    <th className="text-right p-2">Actual T1 (L)</th>
-                    <th className="text-right p-2">Actual T2 (L)</th>
+                    <th className="text-right p-2">Actual Boiler (L)</th>
+                    <th className="text-right p-2">Actual Dryer (L)</th>
                     <th className="text-right p-2">Actual Total (L)</th>
                     <th className="text-right p-2">L/Ton</th>
                     <th className="text-right p-2">Variance (L)</th>
@@ -1898,7 +1898,7 @@ export default function PlantLdoFlowMeter() {
                       <td className="p-2">{r.time || "-"}</td>
                       <td className="p-2">
                         <Badge variant={r.tankNumber === 1 ? "default" : "secondary"} data-testid={`badge-tank-${r.id}`}>
-                          T{r.tankNumber} ({TANK_LABELS[r.tankNumber]})
+                          {TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}
                         </Badge>
                       </td>
                       <td className="p-2 text-right font-medium">{r.readingType === "stock" ? "-" : r.meterReading.toFixed(3)}</td>

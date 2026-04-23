@@ -9313,7 +9313,7 @@ export class DatabaseStorage implements IStorage {
       // re-insert opening/closing if values are present.
       await tx.delete(ldoFlowReadings)
         .where(eq(ldoFlowReadings.sourceHeatingSessionId, saved.id));
-      const ldoRows: any[] = [];
+      const ldoRows: InsertLdoFlowReading[] = [];
       // startTime/endTime are stored as plain "HH:mm" text — use as-is.
       const startTimeStr = saved.startTime || null;
       const endTimeStr = saved.endTime || null;
