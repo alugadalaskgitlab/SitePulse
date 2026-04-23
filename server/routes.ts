@@ -1905,13 +1905,15 @@ export async function registerRoutes(
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER for review.
   app.post("/api/plant-module/shift-log-manpower/review-list", async (req, res) => {
     try {
-      const { pin, dateFrom, dateTo } = req.body || {};
+      const { pin, dateFrom, dateTo, plantName } = req.body || {};
       if (!pin || !(await storage.verifyPin("admin", pin))) {
         return res.status(401).json({ message: "Admin PIN required" });
       }
+      const plantTrim = String(plantName || "").trim();
       const rows = await storage.listShiftLogManpowerNeedingReview({
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        plantName: plantTrim || undefined,
       });
       res.json(rows);
     } catch (err) {
@@ -2009,6 +2011,92 @@ export async function registerRoutes(
     } catch (err) {
       console.error("shift-log-manpower undo-merge error:", err);
       const msg = err instanceof Error ? err.message : "Failed to undo merge";
+      res.status(400).json({ message: msg });
+    }
+  });
+
+  // Admin: list "not a duplicate" name-pairs that have been dismissed on the
+  // worker-cleanup screen. Used to suppress repeated false-positive suggestions
+  // across sessions and devices.
+  app.post("/api/plant-module/shift-log-manpower/dismissed-pairs", async (req, res) => {
+    try {
+      const { pin, plantName } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      const plant = String(plantName || "").trim();
+      if (!plant) return res.status(400).json({ message: "plantName is required" });
+      const pairs = await storage.listShiftLogManpowerDismissedDuplicatePairs(plant);
+      res.json(pairs);
+    } catch (err) {
+      console.error("shift-log-manpower dismissed-pairs error:", err);
+      res.status(500).json({ message: "Failed to load dismissed duplicate pairs" });
+    }
+  });
+
+  // Admin: persist one or more "not a duplicate" decisions. Body: { pairs:
+  // [[nameA, nameB], ...] }. Each pair is normalized (UPPER + trim) and stored
+  // unordered; existing entries are preserved (ON CONFLICT DO NOTHING).
+  app.post("/api/plant-module/shift-log-manpower/dismiss-pairs", async (req, res) => {
+    try {
+      const { pin, actor, pairs, plantName } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      const plant = String(plantName || "").trim();
+      if (!plant) return res.status(400).json({ message: "plantName is required" });
+      if (!Array.isArray(pairs) || pairs.length === 0) {
+        return res.status(400).json({ message: "pairs must be a non-empty array of [nameA, nameB] tuples" });
+      }
+      const normalizedPairs: Array<[string, string]> = [];
+      for (const p of pairs) {
+        if (Array.isArray(p) && p.length === 2) {
+          normalizedPairs.push([String(p[0] || ""), String(p[1] || "")]);
+        }
+      }
+      const result = await storage.addShiftLogManpowerDismissedDuplicatePairs({
+        plantName: plant,
+        pairs: normalizedPairs,
+        actor: actor.trim(),
+      });
+      console.info(
+        `[ShiftLogManpowerDismissDup] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} plant="${plant}" dismissed=${result.added} of=${normalizedPairs.length}`
+      );
+      res.json({ message: "Dismissals saved", ...result });
+    } catch (err) {
+      console.error("shift-log-manpower dismiss-pairs error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to save dismissals";
+      res.status(500).json({ message: msg });
+    }
+  });
+
+  // Admin: undo a previous dismissal so the pair can suggest itself again.
+  app.post("/api/plant-module/shift-log-manpower/restore-dismissed-pair", async (req, res) => {
+    try {
+      const { pin, actor, id } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
+        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
+      }
+      const pairId = Number(id);
+      if (!Number.isFinite(pairId) || pairId <= 0) {
+        return res.status(400).json({ message: "Valid id is required" });
+      }
+      const result = await storage.removeShiftLogManpowerDismissedDuplicatePair(pairId);
+      console.info(
+        `[ShiftLogManpowerDismissDup] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} restored id=${pairId} removed=${result.removed}`
+      );
+      res.json({ message: result.removed ? "Dismissal removed" : "Dismissal not found", ...result });
+    } catch (err) {
+      console.error("shift-log-manpower restore-dismissed-pair error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to restore dismissed pair";
       res.status(400).json({ message: msg });
     }
   });

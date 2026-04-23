@@ -37,7 +37,9 @@ import {
   plantShiftLogManpower,
   plantShiftLogManpowerRelabelBatches,
   plantShiftLogManpowerRelabelSnapshots,
+  plantShiftLogManpowerDismissedDups,
   type PlantShiftLogManpowerRelabelBatch,
+  type PlantShiftLogManpowerDismissedDup,
   plantShiftLogIdle,
   plantShiftLogVersions,
   type PlantShiftLog,
@@ -372,6 +374,18 @@ export interface IStorage {
     batchId: number;
     actor: string;
   }): Promise<{ restored: number }>;
+
+  // Persisted "not a duplicate" decisions for the worker-cleanup screen.
+  // Scoped per-plant ("site"): the same name-pair can be marked
+  // not-a-duplicate on Plant A while still being suggested on Plant B. Use
+  // ALL_PLANTS_SENTINEL when the cleanup screen is in cross-plant view.
+  listShiftLogManpowerDismissedDuplicatePairs(plantName: string): Promise<PlantShiftLogManpowerDismissedDup[]>;
+  addShiftLogManpowerDismissedDuplicatePairs(input: {
+    plantName: string;
+    pairs: Array<[string, string]>;
+    actor: string;
+  }): Promise<{ added: number }>;
+  removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{ removed: boolean }>;
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
@@ -6832,7 +6846,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string }): Promise<Array<{
+  async listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
     name: string;
     count: number;
     earliestDate: string;
@@ -6852,6 +6866,9 @@ export class DatabaseStorage implements IStorage {
     ];
     if (opts?.dateFrom) conds.push(gte(plantShiftLogs.date, opts.dateFrom));
     if (opts?.dateTo) conds.push(lte(plantShiftLogs.date, opts.dateTo));
+    if (opts?.plantName && opts.plantName.trim()) {
+      conds.push(eq(plantShiftLogs.plantName, opts.plantName.trim()));
+    }
 
     const rows = await db.select({
       id: plantShiftLogManpower.id,
@@ -7107,6 +7124,53 @@ export class DatabaseStorage implements IStorage {
 
       return { restored };
     });
+  }
+
+  async listShiftLogManpowerDismissedDuplicatePairs(plantName: string): Promise<PlantShiftLogManpowerDismissedDup[]> {
+    const plant = String(plantName || "").trim();
+    if (!plant) throw new Error("plantName is required");
+    return await db.select().from(plantShiftLogManpowerDismissedDups)
+      .where(eq(plantShiftLogManpowerDismissedDups.plantName, plant))
+      .orderBy(desc(plantShiftLogManpowerDismissedDups.dismissedAt));
+  }
+
+  async addShiftLogManpowerDismissedDuplicatePairs(input: {
+    plantName: string;
+    pairs: Array<[string, string]>;
+    actor: string;
+  }): Promise<{ added: number }> {
+    const actorTrim = String(input.actor || "").trim();
+    if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
+    const plant = String(input.plantName || "").trim();
+    if (!plant) throw new Error("plantName is required");
+    const norm = (s: string) => String(s || "").toUpperCase().trim();
+    const seen = new Set<string>();
+    const values: Array<{ plantName: string; nameA: string; nameB: string; dismissedBy: string }> = [];
+    for (const p of input.pairs || []) {
+      if (!Array.isArray(p) || p.length !== 2) continue;
+      const a = norm(p[0]);
+      const b = norm(p[1]);
+      if (!a || !b || a === b) continue;
+      const [nameA, nameB] = a < b ? [a, b] : [b, a];
+      const k = `${nameA}||${nameB}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      values.push({ plantName: plant, nameA, nameB, dismissedBy: actorTrim });
+    }
+    if (values.length === 0) return { added: 0 };
+    const inserted = await db.insert(plantShiftLogManpowerDismissedDups)
+      .values(values)
+      .onConflictDoNothing({ target: [plantShiftLogManpowerDismissedDups.plantName, plantShiftLogManpowerDismissedDups.nameA, plantShiftLogManpowerDismissedDups.nameB] })
+      .returning({ id: plantShiftLogManpowerDismissedDups.id });
+    return { added: inserted.length };
+  }
+
+  async removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{ removed: boolean }> {
+    if (!Number.isFinite(id) || id <= 0) throw new Error("Valid id is required");
+    const res = await db.delete(plantShiftLogManpowerDismissedDups)
+      .where(eq(plantShiftLogManpowerDismissedDups.id, id))
+      .returning({ id: plantShiftLogManpowerDismissedDups.id });
+    return { removed: res.length > 0 };
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {

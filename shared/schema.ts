@@ -848,6 +848,32 @@ export const plantShiftLogManpowerRelabelSnapshots = pgTable("plant_shift_log_ma
   batchIdx: index("psl_relabel_snap_batch_idx").on(t.batchId),
 }));
 
+// Persisted "not a duplicate" decisions made on the worker-cleanup screen.
+// Each row is an unordered name-pair (nameA <= nameB after UPPER+trim) that an
+// admin has dismissed as a false-positive duplicate suggestion. Subsequent
+// loads of the cleanup screen suppress any cluster edge between these names so
+// the same noisy pair stops re-appearing forever.
+// `plantName` scopes the dismissal to a single plant ("site"). The sentinel
+// value `__ALL_PLANTS__` represents the cross-plant view that combines every
+// plant's workers (the default on the cleanup screen). Suppression only
+// applies to the matching plant view, so dismissing "RAJU vs RAJU K" on Plant
+// A never silences the same pair on Plant B.
+export const plantShiftLogManpowerDismissedDups = pgTable("plant_shift_log_manpower_dismissed_dups", {
+  id: serial("id").primaryKey(),
+  plantName: text("plant_name").notNull(),
+  nameA: text("name_a").notNull(),
+  nameB: text("name_b").notNull(),
+  dismissedBy: text("dismissed_by").notNull(),
+  dismissedAt: timestamp("dismissed_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqPair: uniqueIndex("psl_dup_dismiss_pair_uq").on(t.plantName, t.nameA, t.nameB),
+  createdAtIdx: index("psl_dup_dismiss_created_idx").on(t.dismissedAt),
+}));
+
+export const ALL_PLANTS_SENTINEL = "__ALL_PLANTS__";
+
+export type PlantShiftLogManpowerDismissedDup = typeof plantShiftLogManpowerDismissedDups.$inferSelect;
+
 export const insertPlantShiftLogSchema = createInsertSchema(plantShiftLogs).omit({ id: true, createdAt: true, updatedAt: true, finalizedAt: true, isFinalized: true, finalizedBy: true });
 export const insertPlantShiftLogManpowerSchema = createInsertSchema(plantShiftLogManpower).omit({ id: true });
 export const insertPlantShiftLogIdleSchema = createInsertSchema(plantShiftLogIdle).omit({ id: true });

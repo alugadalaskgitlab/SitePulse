@@ -10,7 +10,7 @@ import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Spark
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
-import { LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { LABOUR_CATEGORIES, LABOUR_GENDERS, ALL_PLANTS_SENTINEL } from "@shared/schema";
 
 type ReviewRow = {
   name: string;
@@ -81,7 +81,13 @@ function isLikelyDup(rawA: string, rawB: string): boolean {
 
 type Cluster = { key: string; names: string[]; canonical: string };
 
-function buildClusters(rows: ReviewRow[]): Cluster[] {
+function pairKey(a: string, b: string): string {
+  const ua = a.toUpperCase().trim();
+  const ub = b.toUpperCase().trim();
+  return ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
+}
+
+function buildClusters(rows: ReviewRow[], dismissedPairKeys: Set<string>): Cluster[] {
   const n = rows.length;
   const parent = Array.from({ length: n }, (_, i) => i);
   const find = (x: number): number => {
@@ -98,7 +104,9 @@ function buildClusters(rows: ReviewRow[]): Cluster[] {
   };
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      if (isLikelyDup(rows[i].name, rows[j].name)) union(i, j);
+      if (!isLikelyDup(rows[i].name, rows[j].name)) continue;
+      if (dismissedPairKeys.has(pairKey(rows[i].name, rows[j].name))) continue;
+      union(i, j);
     }
   }
   const groups = new Map<number, number[]>();
@@ -134,6 +142,12 @@ export default function PlantShiftLogManpowerReview() {
   const [dateTo, setDateTo] = useState<string>("");
   const [filterText, setFilterText] = useState<string>("");
   const [actor, setActor] = useState<string>("");
+  // Plant scope. Empty string = "All plants" (uses ALL_PLANTS_SENTINEL when
+  // saving dismissals). All review-list / dismissal queries are scoped to this
+  // plant so dismissing "RAJU vs RAJU K" on one site never silences it on
+  // another.
+  const [plantFilter, setPlantFilter] = useState<string>("");
+  const dismissalsScopeKey = plantFilter || ALL_PLANTS_SENTINEL;
 
   const [rows, setRows] = useState<ReviewRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -143,10 +157,20 @@ export default function PlantShiftLogManpowerReview() {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [mergeTarget, setMergeTarget] = useState<string>("");
   const [merging, setMerging] = useState(false);
-  const [dismissedClusters, setDismissedClusters] = useState<Record<string, boolean>>({});
+
+  type DismissedPair = { id: number; nameA: string; nameB: string; dismissedBy: string; dismissedAt: string };
+  const [dismissedPairs, setDismissedPairs] = useState<DismissedPair[] | null>(null);
+  const [savingDismissalKey, setSavingDismissalKey] = useState<string | null>(null);
+  const [restoringDismissalId, setRestoringDismissalId] = useState<number | null>(null);
+  const [showDismissedList, setShowDismissedList] = useState(false);
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
+    enabled: !!adminPin,
+  });
+
+  const { data: plantNames } = useQuery<string[]>({
+    queryKey: ["/api/plant-module/shift-logs/plants"],
     enabled: !!adminPin,
   });
 
@@ -186,10 +210,37 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
+  const fetchDismissedPairs = async () => {
+    if (!adminPin) return;
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/dismissed-pairs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin, plantName: dismissalsScopeKey }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      setDismissedPairs((await res.json()) as DismissedPair[]);
+    } catch (err) {
+      toast({ title: "Failed to load dismissed pairs", description: getErrorMessage(err), variant: "destructive" });
+    }
+  };
+
   useEffect(() => {
-    if (adminPin) fetchRecentMerges();
+    if (adminPin) {
+      fetchRecentMerges();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPin]);
+
+  // Refetch dismissed pairs whenever the plant scope changes (or on unlock).
+  useEffect(() => {
+    if (adminPin) {
+      fetchDismissedPairs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminPin, dismissalsScopeKey]);
 
   const undoMerge = async (m: RecentMerge) => {
     if (!adminPin) return;
@@ -237,7 +288,12 @@ export default function PlantShiftLogManpowerReview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+        body: JSON.stringify({
+          pin: adminPin,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          plantName: plantFilter || undefined,
+        }),
       });
       if (res.status === 401) {
         setAdminPin(null);
@@ -261,7 +317,6 @@ export default function PlantShiftLogManpowerReview() {
       setEdits(initial);
       setSelected({});
       setMergeTarget("");
-      setDismissedClusters({});
     } catch (err) {
       toast({ title: "Failed to load list", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -387,11 +442,16 @@ export default function PlantShiftLogManpowerReview() {
     return rows.filter(r => r.name.includes(q));
   }, [rows, filterText]);
 
-  const clusters = useMemo(() => (rows ? buildClusters(rows) : []), [rows]);
-  const visibleClusters = useMemo(
-    () => clusters.filter(c => !dismissedClusters[c.key]),
-    [clusters, dismissedClusters]
+  const dismissedPairKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of dismissedPairs || []) s.add(pairKey(p.nameA, p.nameB));
+    return s;
+  }, [dismissedPairs]);
+  const clusters = useMemo(
+    () => (rows ? buildClusters(rows, dismissedPairKeys) : []),
+    [rows, dismissedPairKeys]
   );
+  const visibleClusters = clusters;
   const nameToCluster = useMemo(() => {
     const m = new Map<string, Cluster>();
     for (const c of visibleClusters) {
@@ -411,21 +471,85 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
-  const dismissCluster = (c: Cluster) => {
-    setDismissedClusters(prev => ({ ...prev, [c.key]: true }));
-    // Also clear any selection that came from this cluster
-    setSelected(prev => {
-      const next = { ...prev };
-      let touched = false;
-      for (const n of c.names) {
-        if (next[n]) {
-          delete next[n];
-          touched = true;
-        }
+  const dismissCluster = async (c: Cluster) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    // Persist every pair-edge in this cluster so it stays dismissed across
+    // sessions. For a cluster {A,B,C} we save AB, AC and BC — that way
+    // suppressing one pair never accidentally re-merges the others.
+    const pairs: Array<[string, string]> = [];
+    for (let i = 0; i < c.names.length; i++) {
+      for (let j = i + 1; j < c.names.length; j++) {
+        pairs.push([c.names[i], c.names[j]]);
       }
-      return touched ? next : prev;
-    });
-    if (c.names.includes(mergeTarget)) setMergeTarget("");
+    }
+    setSavingDismissalKey(c.key);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/dismiss-pairs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), pairs, plantName: dismissalsScopeKey }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { added: number };
+      toast({
+        title: "Suggestion dismissed",
+        description: result.added > 0
+          ? `Saved ${result.added} name-pair${result.added === 1 ? "" : "s"} as 'not a duplicate'.`
+          : "These names were already marked as 'not a duplicate'.",
+      });
+      await fetchDismissedPairs();
+      // Also clear any selection that came from this cluster
+      setSelected(prev => {
+        const next = { ...prev };
+        let touched = false;
+        for (const n of c.names) {
+          if (next[n]) {
+            delete next[n];
+            touched = true;
+          }
+        }
+        return touched ? next : prev;
+      });
+      if (c.names.includes(mergeTarget)) setMergeTarget("");
+    } catch (err) {
+      toast({ title: "Failed to dismiss suggestion", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setSavingDismissalKey(null);
+    }
+  };
+
+  const restoreDismissedPair = async (p: DismissedPair) => {
+    if (!adminPin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    setRestoringDismissalId(p.id);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/restore-dismissed-pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), id: p.id }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      toast({
+        title: "Dismissal removed",
+        description: `${p.nameA} ↔ ${p.nameB} can suggest itself again.`,
+      });
+      await fetchDismissedPairs();
+    } catch (err) {
+      toast({ title: "Failed to restore", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setRestoringDismissalId(null);
+    }
   };
 
   const totals = useMemo(() => {
@@ -474,6 +598,23 @@ export default function PlantShiftLogManpowerReview() {
       <Card>
         <CardHeader><CardTitle className="text-base">Filters</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-1.5">
+            <Label>Plant (site)</Label>
+            <Select value={plantFilter || "__all__"} onValueChange={(v) => setPlantFilter(v === "__all__" ? "" : v)}>
+              <SelectTrigger data-testid="select-plant-filter">
+                <SelectValue placeholder="All plants" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All plants</SelectItem>
+                {(plantNames || []).map(p => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="text-[11px] text-muted-foreground">
+              Dismissals are remembered per plant — switching here changes which 'not a duplicate' decisions are loaded.
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label>Date from</Label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="input-date-from" />
@@ -596,6 +737,61 @@ export default function PlantShiftLogManpowerReview() {
             <CardTitle className="text-base">Workers</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {dismissedPairs && dismissedPairs.length > 0 && (
+              <div
+                className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-2 text-xs"
+                data-testid="dismissed-pairs-panel"
+              >
+                <div className="flex items-center gap-2">
+                  <Undo2 className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
+                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                    {dismissedPairs.length} name-pair{dismissedPairs.length === 1 ? "" : "s"} marked 'not a duplicate'
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 ml-auto text-slate-700 dark:text-slate-300"
+                    onClick={() => setShowDismissedList(s => !s)}
+                    data-testid="button-toggle-dismissed-list"
+                  >
+                    {showDismissedList ? "Hide" : "Show / restore"}
+                  </Button>
+                </div>
+                {showDismissedList && (
+                  <div className="mt-2 space-y-1 max-h-60 overflow-auto">
+                    {dismissedPairs.map(p => {
+                      const when = new Date(p.dismissedAt);
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-slate-800/40 rounded px-2 py-1"
+                          data-testid={`dismissed-pair-${p.id}`}
+                        >
+                          <span className="font-mono">{p.nameA}</span>
+                          <span className="text-muted-foreground">↔</span>
+                          <span className="font-mono">{p.nameB}</span>
+                          <span className="text-muted-foreground ml-2">
+                            by {p.dismissedBy} · {when.toLocaleDateString()}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 ml-auto text-emerald-700 dark:text-emerald-300"
+                            disabled={restoringDismissalId === p.id || actor.trim().length < 2}
+                            onClick={() => restoreDismissedPair(p)}
+                            data-testid={`button-restore-dismissed-${p.id}`}
+                          >
+                            {restoringDismissalId === p.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <><Undo2 className="w-3.5 h-3.5 mr-1" />Restore</>}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             {visibleClusters.length > 0 && (
               <div className="rounded-md border border-purple-300 bg-purple-50 dark:bg-purple-950/40 dark:border-purple-800 p-3 space-y-2" data-testid="suggestions-panel">
                 <div className="flex items-center gap-2">
@@ -632,10 +828,14 @@ export default function PlantShiftLogManpowerReview() {
                           variant="ghost"
                           className="h-7 px-2 text-muted-foreground"
                           onClick={() => dismissCluster(c)}
+                          disabled={savingDismissalKey === c.key || actor.trim().length < 2}
+                          title={actor.trim().length < 2 ? "Enter operator name first" : "Mark as 'not a duplicate' (saved permanently)"}
                           data-testid={`button-dismiss-suggestion-${c.canonical}`}
                           aria-label="Dismiss suggestion"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          {savingDismissalKey === c.key
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <X className="w-3.5 h-3.5" />}
                         </Button>
                       </div>
                     </div>
