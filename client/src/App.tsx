@@ -32,6 +32,7 @@ import PlantLdoFlowMeter from "@/pages/PlantLdoFlowMeter";
 import PlantStockReassign from "@/pages/PlantStockReassign";
 import PlantShiftLog from "@/pages/PlantShiftLog";
 import PlantDailyReport from "@/pages/PlantDailyReport";
+import PlantDailyReports from "@/pages/PlantDailyReports";
 import PlantHeatingSessions from "@/pages/PlantHeatingSessions";
 import PlantHeatingTrends from "@/pages/PlantHeatingTrends";
 import PurchaseIndents from "@/pages/PurchaseIndents";
@@ -117,6 +118,7 @@ function Router() {
             <Route path="/plant/stock-reassign" component={PlantStockReassign} />
             <Route path="/plant/shift-log" component={PlantShiftLog} />
             <Route path="/plant/shift-log/:date" component={PlantShiftLog} />
+            <Route path="/plant/daily-reports" component={PlantDailyReports} />
             <Route path="/plant/daily-report" component={PlantDailyReport} />
             <Route path="/plant/daily-report/:date" component={PlantDailyReport} />
             <Route path="/plant/heating-sessions" component={PlantHeatingSessions} />

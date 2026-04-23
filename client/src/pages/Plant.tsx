@@ -310,6 +310,21 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      <Link href={appendOrigin("/plant/daily-reports")}>
+        <Card className="hover-elevate cursor-pointer h-full border-slate-200 dark:border-slate-800" data-testid="tile-historical-daily-reports">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center">
+              <FileText className="w-7 h-7 text-slate-700 dark:text-slate-300" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Historical Daily Reports</h3>
+              <p className="text-sm text-muted-foreground">Browse every past date with plant data – open or download PDF</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
       <Link href={appendOrigin("/plant/diesel-requirements")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
           <CardContent className="p-6 flex items-center gap-4">

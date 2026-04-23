@@ -2178,6 +2178,306 @@ export async function registerRoutes(
     }
   });
 
+  // Render the Daily Plant Report into a given PDFDocument (shared by single + bulk endpoints).
+  const renderDailyPlantPdfBody = (doc: PDFKit.PDFDocument, date: string, summary: any) => {
+      // Header with company logo (matches DPR/bill print style)
+      const logoPath = path.join(process.cwd(), "attached_assets", "1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg");
+      try {
+        if (fs.existsSync(logoPath)) {
+          doc.image(logoPath, 40, 35, { width: 50, height: 50 });
+        }
+      } catch {}
+      doc.fontSize(16).font("Helvetica-Bold").text("Daily Plant Report", 100, 40);
+      doc.fontSize(11).font("Helvetica").text("High Lane Constructions Pvt Ltd", 100, 60);
+      doc.fontSize(10).text(`Date: ${date}    Shift: ${summary.shift?.shiftCode || "DAY"}    Status: ${summary.shift?.isFinalized ? "Finalized" : (summary.shift ? "Draft" : "No log")}`, 100, 75);
+      doc.moveTo(40, 95).lineTo(555, 95).stroke();
+      doc.y = 105;
+      doc.x = 40;
+
+      const line = (label: string, value: string | number | null | undefined) => {
+        doc.fontSize(10).font("Helvetica-Bold").text(`${label}: `, { continued: true });
+        doc.font("Helvetica").text(value === null || value === undefined || value === "" ? "—" : String(value));
+      };
+      const section = (title: string) => {
+        doc.moveDown(0.4);
+        doc.fontSize(12).font("Helvetica-Bold").text(title);
+        doc.moveTo(doc.x, doc.y).lineTo(550, doc.y).stroke();
+        doc.moveDown(0.2);
+      };
+
+      section("Shift Header");
+      line("Operator", summary.shift?.operatorName);
+      line("Supervisor", summary.shift?.supervisorName);
+      line("Plant Start", summary.shift?.plantStartTime);
+      line("Plant Stop", summary.shift?.plantStopTime);
+      line("Running Hours", summary.runningHours);
+      line("Productive Hours (running − idle)", summary.productiveHours);
+      line("Weather", summary.shift?.weather);
+      line("Ambient Temp (°C)", summary.shift?.ambientTemp);
+
+      section("Production");
+      line("Loads", summary.production.totalLoads);
+      line("Total Production (MT)", summary.production.totalProductionMT?.toFixed(2));
+      line("Theoretical Bitumen (MT)", summary.production.theoreticalBitumenMT?.toFixed(3));
+      line("Theoretical LDO (L)", summary.production.theoreticalLdoL?.toFixed(1));
+
+      if (summary.production.byMix?.length) {
+        section("Production by Mix");
+        for (const m of summary.production.byMix) {
+          doc.fontSize(10).font("Helvetica").text(`• ${m.mixName} (${m.mixType})  ${m.loads} loads  ${m.mt.toFixed(2)} MT`);
+        }
+      }
+
+      if (summary.dispatches?.length) {
+        section(`Dispatches (${summary.dispatches.length})`);
+        for (const d of summary.dispatches) {
+          doc.fontSize(9).font("Helvetica").text(
+            `${d.time || "—"}  ${d.truckNumber}  ${d.partyName}  ${d.mixName}  ${d.loadWeight?.toFixed(2)} MT  ${d.deliveryLocation || ""}`
+          );
+        }
+      }
+
+      if (summary.receipts?.byMaterial?.length) {
+        section(`Material Receipts (${summary.receipts.totalLines} lines)`);
+        for (const r of summary.receipts.byMaterial) {
+          doc.fontSize(10).font("Helvetica").text(`• ${r.materialName}: ${r.quantity.toFixed(2)} ${r.uom} (${r.lines} lines)`);
+        }
+      }
+
+      section(`LDO Consumption (Shift Meters / Source: ${summary.ldo.source})`);
+      line("Tank 1 Boiler (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
+      line("Tank 2 Dryer (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
+      line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
+      line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
+      line("Dryer L / MT Production (Tank-2 only)", summary.ldo.dryerLPerMT ?? "—");
+      line("Boiler L / MT Production (Tank-1 only)", summary.ldo.boilerLPerMT ?? "—");
+
+      section("Bitumen Tank Status");
+      line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
+      line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
+      line("Tank 1 Approx Stock (MT)", summary.shift?.bitumenTank1StockApproxMt);
+      line("Tank 2 Approx Stock (MT)", summary.shift?.bitumenTank2StockApproxMt);
+      line("Tank 1 Opening Dip (cm)", summary.shift?.bitumenTank1OpeningDip);
+      line("Tank 1 Closing Dip (cm)", summary.shift?.bitumenTank1ClosingDip);
+      line("Tank 2 Opening Dip (cm)", summary.shift?.bitumenTank2OpeningDip);
+      line("Tank 2 Closing Dip (cm)", summary.shift?.bitumenTank2ClosingDip);
+
+      if (summary.generators?.items?.length) {
+        section(`Generator Logs (${summary.generators.items.length})  Total Diesel: ${summary.generators.totalDieselConsumedL?.toFixed(1) || 0} L`);
+        for (const g of summary.generators.items) {
+          const variance = (g.lPerHr != null && g.efficiency != null && g.efficiency > 0)
+            ? Math.round(((g.lPerHr - g.efficiency) / g.efficiency) * 1000) / 10
+            : null;
+          doc.fontSize(9).font("Helvetica").text(
+            `${g.generatorName}  Hrs: ${g.hoursRun ?? "—"}  Open/Issued/Close: ${g.opening ?? "—"}/${g.issued}/${g.closing ?? "—"}  Consumed: ${g.consumed ?? "—"}L  L/hr derived: ${g.lPerHr ?? "—"}  L/hr recorded: ${g.efficiency ?? "—"}  Δ: ${variance != null ? variance + "%" : "—"}`
+          );
+        }
+      }
+
+      section(`Equipment Usage  Total Diesel Issued: ${summary.totalDieselIssued?.toFixed(1) || 0} L`);
+      if (!summary.equipment.length) {
+        doc.fontSize(10).font("Helvetica").text("No equipment logged.");
+      } else {
+        for (const e of summary.equipment) {
+          doc.fontSize(9).font("Helvetica").text(
+            `${e.equipmentName || `Eqp #${e.equipmentId}`}  Hrs: ${e.hours ?? "—"}  Open/Close: ${e.opening ?? "—"}/${e.closing ?? "—"}  Issued: ${e.issued ?? 0}L  Consumed: ${e.consumed ?? "—"}L  L/hr: ${e.lPerHr ?? "—"}  Op: ${e.operator ?? "—"}`
+          );
+        }
+      }
+
+      section("Manpower");
+      if (!summary.manpower.length) {
+        doc.fontSize(10).font("Helvetica").text("No manpower entries.");
+      } else {
+        for (const m of summary.manpower) {
+          doc.fontSize(10).font("Helvetica").text(`• ${m.name}${m.role ? " — " + m.role : ""}`);
+        }
+      }
+
+      section(`Idle Events (${summary.idle.totalMinutes} min total)`);
+      if (!summary.idle.events.length) {
+        doc.fontSize(10).font("Helvetica").text("No idle events.");
+      } else {
+        for (const ev of summary.idle.events) {
+          doc.fontSize(10).font("Helvetica").text(
+            `${ev.startTime} → ${ev.endTime || "ongoing"}  [${ev.reason}]  ${ev.remarks || ""}`
+          );
+        }
+        doc.moveDown(0.2);
+        doc.fontSize(10).font("Helvetica-Bold").text("By Reason:");
+        for (const [reason, mins] of Object.entries(summary.idle.byReason)) {
+          doc.font("Helvetica").text(`  • ${reason}: ${mins} min`);
+        }
+      }
+
+      if (summary.shift?.remarks) {
+        section("Remarks");
+        doc.fontSize(10).font("Helvetica").text(summary.shift.remarks);
+      }
+
+      // Boiler / Heating section
+      if (summary.boilerHeating) {
+        const bh = summary.boilerHeating;
+        section(`Boiler / Heating Sessions (${bh.sessionCount})`);
+        line("Total Heating Hours", bh.totalHours);
+        line("Tank-1 LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
+        line("Boiler L / Hour (Tank-1)", bh.lPerHour ?? "—");
+        line("Boiler L / MT Production (Tank-1)", bh.lPerMT ?? "—");
+        line("Dryer L / MT Production (Tank-2)", summary.ldo.dryerLPerMT ?? "—");
+        line("DG Diesel Attributable (L)", bh.dgDieselL?.toFixed(1) ?? "—");
+        line("Shift Log Tank-1 LDO (L)", bh.shiftLogT1L?.toFixed(1) ?? "—");
+        if (bh.mismatchL != null && Math.abs(bh.mismatchL) > 5) {
+          line("⚠ Reconciliation mismatch (L)", `${bh.mismatchL > 0 ? "+" : ""}${bh.mismatchL}`);
+        }
+        if (bh.sessions?.length) {
+          for (const s of bh.sessions) {
+            doc.fontSize(9).font("Helvetica").text(
+              `• ${s.sessionType}  ${s.startTime || "—"}→${s.endTime || "—"}  ${s.durationHours ?? 0}h  LDO ${s.ldoTank1Consumed?.toFixed(1) ?? 0}L  DG ${s.dgDieselConsumed?.toFixed(1) ?? 0}L  ${s.staffName || ""}${s.isFinalized ? "  [Finalized]" : ""}`
+            );
+          }
+        }
+      }
+  };
+
+  const buildDailyPlantReportPdfBuffer = async (date: string, plantName: string): Promise<Buffer> => {
+    const summary: any = await storage.getDailyPlantSummary(date, plantName);
+    return await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      const chunks: Buffer[] = [];
+      doc.on("data", (c: Buffer) => chunks.push(c));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+      try {
+        renderDailyPlantPdfBody(doc, date, summary);
+        doc.end();
+      } catch (e) { reject(e); }
+    });
+  };
+
+  // Index of historical Daily Plant Reports — every (date, plant) that has any source data.
+  app.get("/api/plant-module/daily-reports-index", async (req, res) => {
+    try {
+      const from = (req.query.from as string) || undefined;
+      const to = (req.query.to as string) || undefined;
+      const plant = (req.query.plant as string) || undefined;
+      const rows = await storage.getDailyPlantReportIndex({ from, to, plant });
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to load daily reports index" });
+    }
+  });
+
+  // Bulk PDF export — accepts a list of dates and streams a STORE-mode ZIP of PDFs.
+  app.post("/api/plant-module/daily-reports/bulk-zip", async (req, res) => {
+    try {
+      const plantName = (req.body?.plant as string) || "Main Plant";
+      const dates: string[] = Array.isArray(req.body?.dates) ? req.body.dates : [];
+      if (!dates.length) {
+        return res.status(400).json({ message: "Provide at least one date" });
+      }
+      // Guard rail: cap each request to keep memory bounded (each PDF ≈ 150-200 KB).
+      const MAX_DATES = 200;
+      if (dates.length > MAX_DATES) {
+        return res.status(400).json({ message: `Too many dates (${dates.length}). Max ${MAX_DATES} per ZIP — narrow the date range and try again.` });
+      }
+
+      // Build PDFs sequentially to keep memory reasonable.
+      const files: Array<{ name: string; data: Buffer }> = [];
+      for (const date of dates) {
+        try {
+          const buf = await buildDailyPlantReportPdfBuffer(date, plantName);
+          files.push({ name: `daily-plant-report-${date}.pdf`, data: buf });
+        } catch (e: any) {
+          // Add a tiny error placeholder so the user sees which dates failed.
+          files.push({ name: `ERROR-${date}.txt`, data: Buffer.from(`Failed to build PDF for ${date}: ${e?.message || e}`) });
+        }
+      }
+
+      // Minimal STORE-mode ZIP encoder (no compression, supports any byte data).
+      const crc32Table = (() => {
+        const t = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          t[n] = c >>> 0;
+        }
+        return t;
+      })();
+      const crc32 = (buf: Buffer): number => {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < buf.length; i++) c = (crc32Table[(c ^ buf[i]) & 0xFF] ^ (c >>> 8)) >>> 0;
+        return (c ^ 0xFFFFFFFF) >>> 0;
+      };
+
+      const localParts: Buffer[] = [];
+      const centralParts: Buffer[] = [];
+      let offset = 0;
+      for (const f of files) {
+        const nameBuf = Buffer.from(f.name, "utf8");
+        const crc = crc32(f.data);
+        const size = f.data.length;
+
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0); // local header sig
+        local.writeUInt16LE(20, 4);          // version needed
+        local.writeUInt16LE(0x0800, 6);      // flags (UTF-8 name)
+        local.writeUInt16LE(0, 8);           // method = STORE
+        local.writeUInt16LE(0, 10);          // mod time
+        local.writeUInt16LE(0, 12);          // mod date
+        local.writeUInt32LE(crc, 14);
+        local.writeUInt32LE(size, 18);
+        local.writeUInt32LE(size, 22);
+        local.writeUInt16LE(nameBuf.length, 26);
+        local.writeUInt16LE(0, 28);          // extra length
+        localParts.push(local, nameBuf, f.data);
+
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);
+        central.writeUInt16LE(20, 4);        // version made by
+        central.writeUInt16LE(20, 6);        // version needed
+        central.writeUInt16LE(0x0800, 8);    // flags
+        central.writeUInt16LE(0, 10);        // method
+        central.writeUInt16LE(0, 12);        // mod time
+        central.writeUInt16LE(0, 14);        // mod date
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(size, 20);
+        central.writeUInt32LE(size, 24);
+        central.writeUInt16LE(nameBuf.length, 28);
+        central.writeUInt16LE(0, 30);        // extra
+        central.writeUInt16LE(0, 32);        // comment
+        central.writeUInt16LE(0, 34);        // disk #
+        central.writeUInt16LE(0, 36);        // internal attrs
+        central.writeUInt32LE(0, 38);        // external attrs
+        central.writeUInt32LE(offset, 42);
+        centralParts.push(central, nameBuf);
+
+        offset += local.length + nameBuf.length + size;
+      }
+
+      const centralStart = offset;
+      const centralBuf = Buffer.concat(centralParts);
+      const eocd = Buffer.alloc(22);
+      eocd.writeUInt32LE(0x06054b50, 0);
+      eocd.writeUInt16LE(0, 4);              // disk #
+      eocd.writeUInt16LE(0, 6);              // disk w/ central
+      eocd.writeUInt16LE(files.length, 8);
+      eocd.writeUInt16LE(files.length, 10);
+      eocd.writeUInt32LE(centralBuf.length, 12);
+      eocd.writeUInt32LE(centralStart, 16);
+      eocd.writeUInt16LE(0, 20);             // comment length
+
+      const zip = Buffer.concat([...localParts, centralBuf, eocd]);
+      const filename = `daily-plant-reports-${dates[0]}_to_${dates[dates.length - 1]}.zip`;
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", String(zip.length));
+      res.end(zip);
+    } catch (err: any) {
+      console.error("Bulk ZIP error", err);
+      res.status(500).json({ message: err.message || "Failed to build bulk ZIP" });
+    }
+  });
+
   app.get("/api/plant-module/daily-reports/:date/pdf", async (req, res) => {
     try {
       const date = req.params.date;

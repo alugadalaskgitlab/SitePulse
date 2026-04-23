@@ -474,6 +474,20 @@ export interface IStorage {
   finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined>;
   deletePlantShiftLog(id: number): Promise<boolean>;
   getDailyPlantSummary(date: string, plantName?: string): Promise<unknown>;
+  getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string }): Promise<Array<{
+    date: string;
+    plantName: string;
+    hasDispatches: boolean;
+    hasEquipment: boolean;
+    hasShiftLog: boolean;
+    hasBitumenDips: boolean;
+    hasLdoMeter: boolean;
+    hasHeatingSessions: boolean;
+    totalLoads: number;
+    totalProductionMt: number;
+    sessionsCount: number;
+    shiftLogFinalized: boolean;
+  }>>;
 
   // Bitumen Heating Sessions
   getBitumenHeatingSessions(filters?: { dateFrom?: string; dateTo?: string; date?: string; plantName?: string }): Promise<BitumenHeatingSession[]>;
@@ -7767,6 +7781,112 @@ export class DatabaseStorage implements IStorage {
       const result = await tx.delete(plantShiftLogs).where(eq(plantShiftLogs.id, id)).returning();
       return result.length > 0;
     });
+  }
+
+  async getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string }): Promise<Array<{
+    date: string; plantName: string;
+    hasDispatches: boolean; hasEquipment: boolean; hasShiftLog: boolean;
+    hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
+    totalLoads: number; totalProductionMt: number; sessionsCount: number;
+    shiftLogFinalized: boolean;
+  }>> {
+    const from = filters?.from;
+    const to = filters?.to;
+    const plant = filters?.plant;
+    const dateRange = (col: any) => and(
+      from ? gte(col, from) : undefined,
+      to ? lte(col, to) : undefined,
+    );
+    const plantEq = (col: any) => (plant ? eq(col, plant) : undefined);
+
+    type Row = {
+      date: string; plantName: string;
+      hasDispatches: boolean; hasEquipment: boolean; hasShiftLog: boolean;
+      hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
+      totalLoads: number; totalProductionMt: number; sessionsCount: number;
+      shiftLogFinalized: boolean;
+    };
+    const map = new Map<string, Row>();
+    const get = (date: string, plantName: string): Row => {
+      const key = `${date}|${plantName}`;
+      let r = map.get(key);
+      if (!r) {
+        r = {
+          date, plantName,
+          hasDispatches: false, hasEquipment: false, hasShiftLog: false,
+          hasBitumenDips: false, hasLdoMeter: false, hasHeatingSessions: false,
+          totalLoads: 0, totalProductionMt: 0, sessionsCount: 0,
+          shiftLogFinalized: false,
+        };
+        map.set(key, r);
+      }
+      return r;
+    };
+
+    const dispRows = await db.select({
+      date: truckDispatches.date,
+      plantName: truckDispatches.plantName,
+      loads: sql<number>`COUNT(*)::int`,
+      mt: sql<number>`COALESCE(SUM(${truckDispatches.loadWeight}),0)::float`,
+    }).from(truckDispatches)
+      .where(and(dateRange(truckDispatches.date), plantEq(truckDispatches.plantName)))
+      .groupBy(truckDispatches.date, truckDispatches.plantName);
+    for (const r of dispRows) {
+      const row = get(r.date, r.plantName);
+      row.hasDispatches = true;
+      row.totalLoads = Number(r.loads) || 0;
+      row.totalProductionMt = Number(r.mt) || 0;
+    }
+
+    const eqRows = await db.select({
+      date: equipmentUsage.date,
+      plantName: equipmentUsage.plantName,
+    }).from(equipmentUsage)
+      .where(and(dateRange(equipmentUsage.date), plantEq(equipmentUsage.plantName)))
+      .groupBy(equipmentUsage.date, equipmentUsage.plantName);
+    for (const r of eqRows) get(r.date, r.plantName).hasEquipment = true;
+
+    const slRows = await db.select({
+      date: plantShiftLogs.date,
+      plantName: plantShiftLogs.plantName,
+      isFinalized: plantShiftLogs.isFinalized,
+    }).from(plantShiftLogs)
+      .where(and(dateRange(plantShiftLogs.date), plantEq(plantShiftLogs.plantName)));
+    for (const r of slRows) {
+      const row = get(r.date, r.plantName);
+      row.hasShiftLog = true;
+      if (r.isFinalized) row.shiftLogFinalized = true;
+    }
+
+    const hsRows = await db.select({
+      date: bitumenHeatingSessions.date,
+      plantName: bitumenHeatingSessions.plantName,
+      cnt: sql<number>`COUNT(*)::int`,
+    }).from(bitumenHeatingSessions)
+      .where(and(dateRange(bitumenHeatingSessions.date), plantEq(bitumenHeatingSessions.plantName)))
+      .groupBy(bitumenHeatingSessions.date, bitumenHeatingSessions.plantName);
+    for (const r of hsRows) {
+      const row = get(r.date, r.plantName);
+      row.hasHeatingSessions = true;
+      row.sessionsCount = Number(r.cnt) || 0;
+    }
+
+    // Bitumen dip readings & LDO flow readings have no plant_name column.
+    // Attribute them to the requested plant filter, or "Main Plant" by default.
+    const defaultPlant = plant ?? "Main Plant";
+    const bdRows = await db.select({ date: bitumenDipReadings.date }).from(bitumenDipReadings)
+      .where(dateRange(bitumenDipReadings.date))
+      .groupBy(bitumenDipReadings.date);
+    for (const r of bdRows) get(r.date, defaultPlant).hasBitumenDips = true;
+
+    const ldoRows = await db.select({ date: ldoFlowReadings.date }).from(ldoFlowReadings)
+      .where(dateRange(ldoFlowReadings.date))
+      .groupBy(ldoFlowReadings.date);
+    for (const r of ldoRows) get(r.date, defaultPlant).hasLdoMeter = true;
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName)
+    );
   }
 
   async getDailyPlantSummary(date: string, plantName: string = "Main Plant"): Promise<unknown> {

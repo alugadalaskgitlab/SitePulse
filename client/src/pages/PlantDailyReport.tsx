@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, Edit, Loader2 } from "lucide-react";
+import { ChevronLeft, Download, Edit, Loader2, History } from "lucide-react";
 import { format } from "date-fns";
 import type { PlantShiftLogWithDetails } from "@shared/schema";
 
@@ -126,6 +126,9 @@ export default function PlantDailyReport() {
           </select>
           <Link href={`${appendOrigin(`/plant/shift-log/${date}`)}${appendOrigin(`/plant/shift-log/${date}`).includes("?") ? "&" : "?"}tab=${backTab}${backRole ? `&role=${backRole}` : ""}`}>
             <Button variant="outline" size="sm" data-testid="button-edit-shift-log"><Edit className="w-4 h-4 mr-1" />Shift Log</Button>
+          </Link>
+          <Link href={appendOrigin("/plant/daily-reports")}>
+            <Button variant="outline" size="sm" data-testid="button-browse-all-dates"><History className="w-4 h-4 mr-1" />Browse all dates</Button>
           </Link>
           <a href={`/api/plant-module/daily-reports/${date}/pdf?plant=${encodeURIComponent(plantName)}`} target="_blank" rel="noreferrer">
             <Button variant="default" size="sm" data-testid="button-download-pdf"><Download className="w-4 h-4 mr-1" />PDF</Button>
