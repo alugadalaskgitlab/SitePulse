@@ -9445,6 +9445,49 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // Equipment Usage mirror: when the operator captures a DG run inline
+      // inside the heating session, also create the matching equipment_usage
+      // row so reports / fuel-stock ledgers see it. Keyed by
+      // sourceHeatingSessionId for idempotent upsert. For link/none modes,
+      // any previously mirrored row is removed.
+      await tx.delete(equipmentUsage)
+        .where(eq(equipmentUsage.sourceHeatingSessionId, saved.id));
+      if (saved.dgMode === "inline" && saved.dgGeneratorName) {
+        const [genEquip] = await tx.select().from(equipmentMaster)
+          .where(eq(equipmentMaster.name, saved.dgGeneratorName))
+          .limit(1);
+        if (genEquip) {
+          const hours = saved.dgHoursRun ?? null;
+          const opening = saved.dgOpeningDiesel ?? null;
+          const issued = saved.dgIssuedDiesel ?? 0;
+          const closing = saved.dgClosingDiesel ?? null;
+          const consumed = saved.dgDieselConsumed ?? null;
+          const expected = (hours != null && genEquip.consumptionNorm != null)
+            ? Math.round(hours * genEquip.consumptionNorm * 100) / 100
+            : (consumed ?? null);
+          await tx.insert(equipmentUsage).values({
+            date: saved.date,
+            equipmentId: genEquip.id,
+            entryType: "time_meter",
+            startTime: saved.dgStartTime || null,
+            endTime: saved.dgEndTime || null,
+            hoursOrKmRun: hours ?? 0,
+            openingReading: saved.dgOpeningHourMeter ?? null,
+            closingReading: saved.dgClosingHourMeter ?? null,
+            openingDiesel: opening ?? 0,
+            dieselIssued: issued ?? 0,
+            closingDiesel: closing,
+            expectedDiesel: expected,
+            variance: (consumed != null && expected != null)
+              ? Math.round((consumed - expected) * 100) / 100
+              : null,
+            plantName: saved.plantName,
+            remarks: `Auto from heating session #${saved.id}`,
+            sourceHeatingSessionId: saved.id,
+          } as any);
+        }
+      }
+
       // LDO Boiler Meter sync: tag opening/closing flow-meter rows for this
       // session so the LDO Flow Meter ledger reflects boiler usage automatically.
       // Idempotent: drop any rows previously tagged for this session, then
@@ -9610,6 +9653,7 @@ export class DatabaseStorage implements IStorage {
   async deleteBitumenHeatingSession(id: number): Promise<boolean> {
     return db.transaction(async (tx) => {
       await tx.delete(generatorLogs).where(eq(generatorLogs.sourceHeatingSessionId, id));
+      await tx.delete(equipmentUsage).where(eq(equipmentUsage.sourceHeatingSessionId, id));
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceHeatingSessionId, id));
       await tx.delete(plantHeatingSessionVersions).where(eq(plantHeatingSessionVersions.sessionId, id));
       const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();

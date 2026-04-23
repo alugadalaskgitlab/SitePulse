@@ -349,9 +349,13 @@ export const equipmentUsage = pgTable("equipment_usage", {
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for transport vehicle
   transportDistance: real("transport_distance"), // One-way distance in km for mobilization
   plantName: text("plant_name").notNull().default("Main Plant"),
+  // Set when this row is auto-created by a heating session inline-DG entry,
+  // so it can be updated/deleted in lockstep without duplicating data.
+  sourceHeatingSessionId: integer("source_heating_session_id"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("equipment_usage_date_idx").on(table.date),
+  sourceHeatingSessionIdx: index("equipment_usage_source_heating_session_idx").on(table.sourceHeatingSessionId),
 }));
 
 // Generator Diesel Tracking
