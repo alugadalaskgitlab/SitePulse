@@ -2345,6 +2345,39 @@ export async function registerRoutes(
         }
       }
 
+      // Party / Mix Breakdown — mirrors the per-row breakdown shown on the
+      // Daily Reports list page so archived/shared PDFs carry the same context.
+      {
+        const mixTypeByName = new Map<string, string>();
+        for (const m of (summary.production?.byMix || []) as Array<{ mixName?: string; mixType?: string }>) {
+          if (m?.mixName) mixTypeByName.set(m.mixName, m.mixType || "—");
+        }
+        const breakdownMap = new Map<string, { partyName: string; mixType: string; loads: number; mt: number }>();
+        for (const d of (summary.dispatches || []) as Array<{ partyName?: string; mixName?: string; loadWeight?: number }>) {
+          const partyName = d.partyName || "—";
+          const mixType = (d.mixName ? mixTypeByName.get(d.mixName) : undefined) || "—";
+          const key = `${partyName}||${mixType}`;
+          const cur = breakdownMap.get(key) || { partyName, mixType, loads: 0, mt: 0 };
+          cur.loads += 1;
+          cur.mt += d.loadWeight || 0;
+          breakdownMap.set(key, cur);
+        }
+        const breakdown = Array.from(breakdownMap.values()).sort((a, b) =>
+          (b.mt - a.mt)
+          || a.partyName.localeCompare(b.partyName)
+          || a.mixType.localeCompare(b.mixType)
+        );
+        if (breakdown.length) {
+          section("Party / Mix Breakdown");
+          for (const b of breakdown) {
+            const loadsLabel = `${b.loads} load${b.loads === 1 ? "" : "s"}`;
+            doc.fontSize(10).font("Helvetica").text(
+              `• ${b.partyName}: ${loadsLabel} / ${b.mt.toFixed(2)} MT (${b.mixType})`
+            );
+          }
+        }
+      }
+
       if (summary.dispatches?.length) {
         section(`Dispatches (${summary.dispatches.length})`);
         for (const d of summary.dispatches) {
@@ -2662,176 +2695,7 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `inline; filename="daily-plant-report-${date}.pdf"`);
       doc.pipe(res);
 
-      // Header with company logo (matches DPR/bill print style)
-      const logoPath = path.join(process.cwd(), "attached_assets", "1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg");
-      try {
-        if (fs.existsSync(logoPath)) {
-          doc.image(logoPath, 40, 35, { width: 50, height: 50 });
-        }
-      } catch {}
-      doc.fontSize(16).font("Helvetica-Bold").text("Daily Plant Report", 100, 40);
-      doc.fontSize(11).font("Helvetica").text("High Lane Constructions Pvt Ltd", 100, 60);
-      doc.fontSize(10).text(`Date: ${date}    Shift: ${summary.shift?.shiftCode || "DAY"}    Status: ${summary.shift?.isFinalized ? "Finalized" : (summary.shift ? "Draft" : "No log")}`, 100, 75);
-      doc.moveTo(40, 95).lineTo(555, 95).stroke();
-      doc.y = 105;
-      doc.x = 40;
-
-      const line = (label: string, value: string | number | null | undefined) => {
-        doc.fontSize(10).font("Helvetica-Bold").text(`${label}: `, { continued: true });
-        doc.font("Helvetica").text(value === null || value === undefined || value === "" ? "—" : String(value));
-      };
-      const section = (title: string) => {
-        doc.moveDown(0.4);
-        doc.fontSize(12).font("Helvetica-Bold").text(title);
-        doc.moveTo(doc.x, doc.y).lineTo(550, doc.y).stroke();
-        doc.moveDown(0.2);
-      };
-
-      section("Shift Header");
-      line("Operator", summary.shift?.operatorName);
-      line("Supervisor", summary.shift?.supervisorName);
-      line("Plant Start", summary.shift?.plantStartTime);
-      line("Plant Stop", summary.shift?.plantStopTime);
-      line("Running Hours", summary.runningHours);
-      line("Productive Hours (running − idle)", summary.productiveHours);
-      line("Weather", summary.shift?.weather);
-      line("Ambient Temp (°C)", summary.shift?.ambientTemp);
-
-      section("Production");
-      line("Loads", summary.production.totalLoads);
-      line("Total Production (MT)", summary.production.totalProductionMT?.toFixed(2));
-      line("Theoretical Bitumen (MT)", summary.production.theoreticalBitumenMT?.toFixed(3));
-      line("Theoretical LDO (L)", summary.production.theoreticalLdoL?.toFixed(1));
-
-      if (summary.production.byMix?.length) {
-        section("Production by Mix");
-        for (const m of summary.production.byMix) {
-          doc.fontSize(10).font("Helvetica").text(`• ${m.mixName} (${m.mixType})  ${m.loads} loads  ${m.mt.toFixed(2)} MT`);
-        }
-      }
-
-      if (summary.dispatches?.length) {
-        section(`Dispatches (${summary.dispatches.length})`);
-        for (const d of summary.dispatches) {
-          doc.fontSize(9).font("Helvetica").text(
-            `${d.time || "—"}  ${d.truckNumber}  ${d.partyName}  ${d.mixName}  ${d.loadWeight?.toFixed(2)} MT  ${d.deliveryLocation || ""}`
-          );
-        }
-      }
-
-      if (summary.receipts?.byMaterial?.length) {
-        section(`Material Receipts (${summary.receipts.totalLines} lines)`);
-        for (const r of summary.receipts.byMaterial) {
-          doc.fontSize(10).font("Helvetica").text(`• ${r.materialName}: ${r.quantity.toFixed(2)} ${r.uom} (${r.lines} lines)`);
-        }
-      }
-
-      section(`LDO Consumption (Shift Meters / Source: ${summary.ldo.source})`);
-      line("Tank 1 Boiler (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
-      line("Tank 2 Dryer (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
-      line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
-      line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
-      line("Dryer L / MT Production (Tank-2 only)", summary.ldo.dryerLPerMT ?? "—");
-      line("Boiler L / MT Production (Tank-1 only)", summary.ldo.boilerLPerMT ?? "—");
-
-      section("Bitumen Tank Status");
-      line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
-      line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
-      line("Tank 1 Approx Stock (MT)", summary.shift?.bitumenTank1StockApproxMt);
-      line("Tank 2 Approx Stock (MT)", summary.shift?.bitumenTank2StockApproxMt);
-      line("Tank 1 Opening Dip (cm)", summary.shift?.bitumenTank1OpeningDip);
-      line("Tank 1 Closing Dip (cm)", summary.shift?.bitumenTank1ClosingDip);
-      line("Tank 2 Opening Dip (cm)", summary.shift?.bitumenTank2OpeningDip);
-      line("Tank 2 Closing Dip (cm)", summary.shift?.bitumenTank2ClosingDip);
-
-      if (summary.generators?.items?.length) {
-        section(`Generator Logs (${summary.generators.items.length})  Total Diesel: ${summary.generators.totalDieselConsumedL?.toFixed(1) || 0} L`);
-        for (const g of summary.generators.items) {
-          const variance = (g.lPerHr != null && g.efficiency != null && g.efficiency > 0)
-            ? Math.round(((g.lPerHr - g.efficiency) / g.efficiency) * 1000) / 10
-            : null;
-          doc.fontSize(9).font("Helvetica").text(
-            `${g.generatorName}  Hrs: ${g.hoursRun ?? "—"}  Open/Issued/Close: ${g.opening ?? "—"}/${g.issued}/${g.closing ?? "—"}  Consumed: ${g.consumed ?? "—"}L  L/hr derived: ${g.lPerHr ?? "—"}  L/hr recorded: ${g.efficiency ?? "—"}  Δ: ${variance != null ? variance + "%" : "—"}`
-          );
-        }
-      }
-
-      section(`Equipment Usage  Total Diesel Issued: ${summary.totalDieselIssued?.toFixed(1) || 0} L`);
-      if (!summary.equipment.length) {
-        doc.fontSize(10).font("Helvetica").text("No equipment logged.");
-      } else {
-        for (const e of summary.equipment) {
-          doc.fontSize(9).font("Helvetica").text(
-            `${e.equipmentName || `Eqp #${e.equipmentId}`}  Hrs: ${e.hours ?? "—"}  Open/Close: ${e.opening ?? "—"}/${e.closing ?? "—"}  Issued: ${e.issued ?? 0}L  Consumed: ${e.consumed ?? "—"}L  L/hr: ${e.lPerHr ?? "—"}  Op: ${e.operator ?? "—"}`
-          );
-        }
-      }
-
-      if (summary.manpowerByContractor?.length) {
-        section("Manpower by Contractor / Category");
-        let mpTotal = 0;
-        for (const g of summary.manpowerByContractor) {
-          doc.fontSize(10).font("Helvetica").text(
-            `• ${g.contractor}  —  ${g.category} / ${g.gender}:  ${g.count}`
-          );
-          mpTotal += g.count;
-        }
-        doc.fontSize(10).font("Helvetica-Bold").text(`Total: ${mpTotal}`);
-      }
-
-      section("Manpower");
-      if (!summary.manpower.length) {
-        doc.fontSize(10).font("Helvetica").text("No manpower entries.");
-      } else {
-        for (const m of summary.manpower) {
-          doc.fontSize(10).font("Helvetica").text(`• ${m.name}${m.role ? " — " + m.role : ""}`);
-        }
-      }
-
-      section(`Idle Events (${summary.idle.totalMinutes} min total)`);
-      if (!summary.idle.events.length) {
-        doc.fontSize(10).font("Helvetica").text("No idle events.");
-      } else {
-        for (const ev of summary.idle.events) {
-          doc.fontSize(10).font("Helvetica").text(
-            `${ev.startTime} → ${ev.endTime || "ongoing"}  [${ev.reason}]  ${ev.remarks || ""}`
-          );
-        }
-        doc.moveDown(0.2);
-        doc.fontSize(10).font("Helvetica-Bold").text("By Reason:");
-        for (const [reason, mins] of Object.entries(summary.idle.byReason)) {
-          doc.font("Helvetica").text(`  • ${reason}: ${mins} min`);
-        }
-      }
-
-      if (summary.shift?.remarks) {
-        section("Remarks");
-        doc.fontSize(10).font("Helvetica").text(summary.shift.remarks);
-      }
-
-      // Boiler / Heating section
-      if (summary.boilerHeating) {
-        const bh = summary.boilerHeating;
-        section(`Boiler / Heating Sessions (${bh.sessionCount})`);
-        line("Total Heating Hours", bh.totalHours);
-        line("Tank-1 LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
-        line("Boiler L / Hour (Tank-1)", bh.lPerHour ?? "—");
-        line("Boiler L / MT Production (Tank-1)", bh.lPerMT ?? "—");
-        line("Dryer L / MT Production (Tank-2)", summary.ldo.dryerLPerMT ?? "—");
-        line("DG Diesel Attributable (L)", bh.dgDieselL?.toFixed(1) ?? "—");
-        line("Shift Log Tank-1 LDO (L)", bh.shiftLogT1L?.toFixed(1) ?? "—");
-        if (bh.mismatchL != null && Math.abs(bh.mismatchL) > 5) {
-          line("⚠ Reconciliation mismatch (L)", `${bh.mismatchL > 0 ? "+" : ""}${bh.mismatchL}`);
-        }
-        if (bh.sessions?.length) {
-          for (const s of bh.sessions) {
-            doc.fontSize(9).font("Helvetica").text(
-              `• ${s.sessionType}  ${s.startTime || "—"}→${s.endTime || "—"}  ${s.durationHours ?? 0}h  LDO ${s.ldoTank1Consumed?.toFixed(1) ?? 0}L  DG ${s.dgDieselConsumed?.toFixed(1) ?? 0}L  ${s.staffName || ""}${s.isFinalized ? "  [Finalized]" : ""}`
-            );
-          }
-        }
-      }
-
+      renderDailyPlantPdfBody(doc, date, summary);
       doc.end();
     } catch (err: any) {
       console.error("PDF error", err);
