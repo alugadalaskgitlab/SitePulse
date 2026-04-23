@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2 } from "lucide-react";
+import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -44,6 +44,9 @@ export default function PlantShiftLogManpowerReview() {
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   const [edits, setEdits] = useState<Record<string, { contractor: string; category: string; gender: string }>>({});
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [mergeTarget, setMergeTarget] = useState<string>("");
+  const [merging, setMerging] = useState(false);
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
@@ -80,6 +83,8 @@ export default function PlantShiftLogManpowerReview() {
         };
       }
       setEdits(initial);
+      setSelected({});
+      setMergeTarget("");
     } catch (err) {
       toast({ title: "Failed to load list", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -126,6 +131,75 @@ export default function PlantShiftLogManpowerReview() {
       toast({ title: "Relabel failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setSubmitting(null);
+    }
+  };
+
+  const submitMerge = async () => {
+    if (!adminPin) return;
+    const fromNames = Object.keys(selected).filter(n => selected[n]);
+    if (fromNames.length < 2) {
+      toast({ title: "Pick at least two name groups to merge", variant: "destructive" });
+      return;
+    }
+    const target = mergeTarget.trim();
+    if (!target) {
+      toast({ title: "Pick a target name (the spelling to keep)", variant: "destructive" });
+      return;
+    }
+    if (!fromNames.some(n => n.toUpperCase() === target.toUpperCase())) {
+      toast({ title: "Target must be one of the selected names", variant: "destructive" });
+      return;
+    }
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    const targetRow = rows?.find(r => r.name.toUpperCase() === target.toUpperCase());
+    const targetEdit = targetRow ? edits[targetRow.name] : undefined;
+    const pickFirst = (arr: (string | undefined)[], skip: (s: string) => boolean): string => {
+      for (const v of arr) {
+        if (v && !skip(v)) return v;
+      }
+      return "";
+    };
+    const allEdits = fromNames.map(n => edits[n]).filter(Boolean) as { contractor: string; category: string; gender: string }[];
+    const contractor = (targetEdit?.contractor && targetEdit.contractor !== "UNKNOWN CONTRACTOR" ? targetEdit.contractor : "")
+      || pickFirst(allEdits.map(e => e.contractor), s => !s || s === "UNKNOWN CONTRACTOR");
+    const category = (targetEdit?.category && targetEdit.category !== "OTHER" ? targetEdit.category : "")
+      || pickFirst(allEdits.map(e => e.category), s => !s || s === "OTHER");
+    const gender = targetEdit?.gender || pickFirst(allEdits.map(e => e.gender), s => !s) || "MALE";
+    if (!contractor || !category || !gender) {
+      toast({ title: "Fill contractor + category on the target row first", variant: "destructive" });
+      return;
+    }
+    setMerging(true);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-relabel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pin: adminPin,
+          actor: actor.trim(),
+          fromNames,
+          toName: target,
+          contractorName: contractor.trim(),
+          category,
+          gender,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { updated: number };
+      toast({
+        title: "Names merged",
+        description: `${fromNames.length} name(s) → ${target.toUpperCase()} · ${result.updated} row(s) updated`,
+      });
+      await fetchRows();
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+    } catch (err) {
+      toast({ title: "Merge failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setMerging(false);
     }
   };
 
@@ -217,7 +291,54 @@ export default function PlantShiftLogManpowerReview() {
           <CardHeader>
             <CardTitle className="text-base">Workers</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {(() => {
+              const selectedNames = Object.keys(selected).filter(n => selected[n]);
+              if (selectedNames.length < 2) return null;
+              return (
+                <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/40 dark:border-blue-800 p-3 flex flex-wrap items-end gap-3" data-testid="merge-bar">
+                  <div className="flex-1 min-w-[220px]">
+                    <div className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                      Merge {selectedNames.length} duplicate name(s) into one
+                    </div>
+                    <div className="text-xs text-blue-900/80 dark:text-blue-200/80 mt-0.5">
+                      Selected: {selectedNames.join(", ")}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Keep this spelling</Label>
+                    <Select value={mergeTarget} onValueChange={setMergeTarget}>
+                      <SelectTrigger className="min-w-[180px]" data-testid="select-merge-target">
+                        <SelectValue placeholder="Pick canonical name" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectedNames.map(n => (
+                          <SelectItem key={n} value={n}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={submitMerge}
+                    disabled={merging || !mergeTarget || actor.trim().length < 2}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    data-testid="button-merge"
+                  >
+                    {merging
+                      ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      : <Combine className="w-4 h-4 mr-2" />}
+                    Merge into {mergeTarget || "…"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setSelected({}); setMergeTarget(""); }}
+                    data-testid="button-clear-selection"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              );
+            })()}
             {filteredRows.length === 0 ? (
               <div className="p-3 text-center text-muted-foreground text-sm" data-testid="text-empty">
                 Nothing to clean up — every worker already has a real contractor and category. Nice.
@@ -227,6 +348,9 @@ export default function PlantShiftLogManpowerReview() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/60 border-b sticky top-0">
                     <tr>
+                      <th className="text-left p-2 w-8" title="Select to merge">
+                        <span className="sr-only">Select</span>
+                      </th>
                       <th className="text-left p-2">Worker name</th>
                       <th className="text-left p-2">Rows</th>
                       <th className="text-left p-2">Date range</th>
@@ -245,6 +369,20 @@ export default function PlantShiftLogManpowerReview() {
                       };
                       return (
                         <tr key={r.name} className="border-b last:border-0 align-top" data-testid={`row-worker-${r.name}`}>
+                          <td className="p-2">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 cursor-pointer"
+                              checked={!!selected[r.name]}
+                              onChange={(ev) => {
+                                const checked = ev.target.checked;
+                                setSelected(prev => ({ ...prev, [r.name]: checked }));
+                                if (!checked && mergeTarget === r.name) setMergeTarget("");
+                              }}
+                              data-testid={`checkbox-select-${r.name}`}
+                              aria-label={`Select ${r.name} for merge`}
+                            />
+                          </td>
                           <td className="p-2 font-medium">
                             {r.name}
                             {r.roles.length > 0 && (

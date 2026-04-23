@@ -342,9 +342,13 @@ export interface IStorage {
     needsCategory: boolean;
   }>>;
 
-  // Admin: bulk-set contractor/category/gender for every shift-log row of a worker name
+  // Admin: bulk-set name/contractor/category/gender for every shift-log row whose
+  // worker name (case-insensitive, trimmed) matches one of `fromNames`. `toName`
+  // becomes the new canonical worker name for every matched row. When `fromNames`
+  // contains more than one entry this performs a merge of duplicate spellings.
   bulkRelabelShiftLogManpowerByName(input: {
-    name: string;
+    fromNames: string[];
+    toName: string;
     contractorName: string;
     category: string;
     gender: string;
@@ -6886,13 +6890,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async bulkRelabelShiftLogManpowerByName(input: {
-    name: string;
+    fromNames: string[];
+    toName: string;
     contractorName: string;
     category: string;
     gender: string;
   }): Promise<{ updated: number }> {
-    const nameTrim = String(input.name || "").trim();
-    if (!nameTrim) throw new Error("Worker name is required");
+    const fromNamesUpper = Array.from(
+      new Set(
+        (input.fromNames || [])
+          .map(n => String(n || "").trim().toUpperCase())
+          .filter(n => n.length > 0)
+      )
+    );
+    if (fromNamesUpper.length === 0) throw new Error("At least one source worker name is required");
+    const toNameTrim = String(input.toName || "").trim();
+    if (!toNameTrim) throw new Error("Target (canonical) worker name is required");
+    const toNameUpper = toNameTrim.toUpperCase();
     const contractorRaw = String(input.contractorName || "").trim();
     if (!contractorRaw) throw new Error("Contractor is required");
     const category = String(input.category || "").trim().toUpperCase();
@@ -6909,11 +6923,18 @@ export class DatabaseStorage implements IStorage {
     const upperContractor = contractorRaw.toUpperCase().replace(/\s+/g, " ");
     const canonicalContractor = aliasToCanonical.get(upperContractor) || upperContractor;
 
-    const result = await db.update(plantShiftLogManpower)
-      .set({ contractorName: canonicalContractor, category, gender })
-      .where(sql`UPPER(TRIM(${plantShiftLogManpower.name})) = ${nameTrim.toUpperCase()}`)
-      .returning({ id: plantShiftLogManpower.id });
-    return { updated: result.length };
+    return await db.transaction(async (tx) => {
+      const result = await tx.update(plantShiftLogManpower)
+        .set({
+          name: toNameUpper,
+          contractorName: canonicalContractor,
+          category,
+          gender,
+        })
+        .where(sql`UPPER(TRIM(${plantShiftLogManpower.name})) IN (${sql.join(fromNamesUpper.map(n => sql`${n}`), sql`, `)})`)
+        .returning({ id: plantShiftLogManpower.id });
+      return { updated: result.length };
+    });
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
