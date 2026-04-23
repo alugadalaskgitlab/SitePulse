@@ -39,7 +39,7 @@ function emptyForm(date: string) {
     ldoTank1OpeningMeter: "",
     ldoTank1ClosingMeter: "",
     dgMode: "inline" as DgMode,
-    dgGeneratorName: "600 KVA",
+    dgGeneratorName: "",
     dgStartTime: "",
     dgEndTime: "",
     dgOpeningHourMeter: "",
@@ -103,14 +103,41 @@ export default function PlantHeatingSessions() {
     queryKey: ["/api/plant-module/generator-logs"],
   });
 
-  const { data: generatorNames } = useQuery<string[]>({
+  // Generator master entries (id + name) — sourced from Equipment Master so the
+  // names line up with Equipment Usage / reports.
+  const { data: generatorMasters } = useQuery<{ id: number | null; name: string }[]>({
     queryKey: ["/api/plant-module/generators"],
   });
 
+  // For the "Link existing generator log" dropdown: any generator log on this
+  // date that isn't already linked to a *different* heating session. Inline
+  // logs from earlier sessions on the same date are still selectable so the
+  // operator can re-attach a stray DG run.
   const generatorOptionsForDate = useMemo(
-    () => (existingGenerators || []).filter(g => g.date === form.date && (g.sourceHeatingSessionId == null || g.sourceHeatingSessionId === form.id)),
+    () => (existingGenerators || []).filter(g =>
+      g.date === form.date &&
+      (g.sourceHeatingSessionId == null || g.sourceHeatingSessionId === form.id)
+    ),
     [existingGenerators, form.date, form.id]
   );
+
+  // Resolve the equipment id behind the chosen DG name so we can query its
+  // last diesel-tank balance — same data the Equipment Usage form uses.
+  const selectedGeneratorEquipmentId = useMemo(() => {
+    if (form.dgMode !== "inline") return null;
+    const match = (generatorMasters || []).find(g => g.name === form.dgGeneratorName);
+    return match?.id ?? null;
+  }, [generatorMasters, form.dgGeneratorName, form.dgMode]);
+
+  const { data: dgPrevBalance } = useQuery<{ previousBalance: number; previousClosingReading: number }>({
+    queryKey: ["/api/plant-module/equipment-usage/previous-balance", selectedGeneratorEquipmentId],
+    enabled: selectedGeneratorEquipmentId != null,
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/equipment-usage/previous-balance/${selectedGeneratorEquipmentId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch DG tank balance");
+      return res.json();
+    },
+  });
 
   const setField = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -306,7 +333,7 @@ export default function PlantHeatingSessions() {
       ldoTank1OpeningMeter: s.ldoTank1OpeningMeter?.toString() || "",
       ldoTank1ClosingMeter: s.ldoTank1ClosingMeter?.toString() || "",
       dgMode: (s.dgMode as DgMode) || "none",
-      dgGeneratorName: s.dgGeneratorName || "600 KVA",
+      dgGeneratorName: s.dgGeneratorName || "",
       dgStartTime: s.dgStartTime || "",
       dgEndTime: s.dgEndTime || "",
       dgOpeningHourMeter: s.dgOpeningHourMeter?.toString() || "",
@@ -448,10 +475,9 @@ export default function PlantHeatingSessions() {
             <Card>
               <CardHeader className="py-3"><CardTitle className="text-base">Hot-Oil & Bitumen Temperatures</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div><Label>Hot-Oil Temp Start °C</Label><Input type="number" step="0.1" value={form.hotOilTempStart} onChange={e => setField("hotOilTempStart", e.target.value)} data-testid="input-hot-oil-start" /></div>
-                <div><Label>Hot-Oil Temp End °C</Label><Input type="number" step="0.1" value={form.hotOilTempEnd} onChange={e => setField("hotOilTempEnd", e.target.value)} data-testid="input-hot-oil-end" /></div>
-                <div><Label>Hot-Oil Supply °C (opt)</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
-                <div><Label>Hot-Oil Return °C (opt)</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+                <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
+                <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+                <div className="md:col-span-2" />
                 <div><Label>Bitumen T1 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" /></div>
                 <div><Label>Bitumen T1 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" /></div>
                 <div><Label>Bitumen T2 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" /></div>
@@ -499,27 +525,24 @@ export default function PlantHeatingSessions() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div className="md:col-span-2"><Label>Generator</Label>
                         <Select
-                          value={form.dgGeneratorName}
+                          value={form.dgGeneratorName || undefined}
                           onValueChange={v => {
                             if (v === "__new__") {
-                              const name = window.prompt("Enter new generator name (e.g. '125 KVA')")?.trim();
+                              const name = window.prompt("Enter new generator name (e.g. '125 KVA GENERATOR')")?.trim();
                               if (name) setField("dgGeneratorName", name);
                             } else {
                               setField("dgGeneratorName", v);
                             }
                           }}
                         >
-                          <SelectTrigger data-testid="select-dg-generator"><SelectValue /></SelectTrigger>
+                          <SelectTrigger data-testid="select-dg-generator"><SelectValue placeholder="Pick a generator" /></SelectTrigger>
                           <SelectContent>
-                            {(generatorNames && generatorNames.length > 0
-                              ? generatorNames
-                              : ["600 KVA", "40-30 KVA"]
-                            ).map(n => (
-                              <SelectItem key={n} value={n}>{n}</SelectItem>
+                            {(generatorMasters || []).map(g => (
+                              <SelectItem key={g.name} value={g.name}>{g.name}</SelectItem>
                             ))}
                             {form.dgGeneratorName &&
-                              !(generatorNames || ["600 KVA", "40-30 KVA"]).includes(form.dgGeneratorName) && (
-                                <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
+                              !(generatorMasters || []).some(g => g.name === form.dgGeneratorName) && (
+                                <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (legacy)</SelectItem>
                               )}
                             <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
                           </SelectContent>
@@ -536,11 +559,32 @@ export default function PlantHeatingSessions() {
                       <div><Label>HSD Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
                       <div><Label>HSD Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
                       <div><Label>HSD Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
-                      <div className="md:col-span-3" />
+                      <div>
+                        <Label>Diesel Balance in Tank (last)</Label>
+                        <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-prev-balance">
+                          {selectedGeneratorEquipmentId == null
+                            ? "—"
+                            : dgPrevBalance
+                              ? `${dgPrevBalance.previousBalance.toFixed(2)} L`
+                              : "…"}
+                        </div>
+                      </div>
+                      <div>
+                        <Label>New Balance in Tank</Label>
+                        <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-new-balance">
+                          {(() => {
+                            if (selectedGeneratorEquipmentId == null || !dgPrevBalance) return "—";
+                            const issued = parseFloat(form.dgIssuedDiesel) || 0;
+                            const consumed = dgConsumed ?? 0;
+                            const next = dgPrevBalance.previousBalance + issued - consumed;
+                            return `${next.toFixed(2)} L`;
+                          })()}
+                        </div>
+                      </div>
                       <div><Label>HSD L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Tip: enter both clock time and hour-meter readings — the system uses the hour-meter when available and falls back to time. The shown DG Hours Used drives the L/Hr metric and reporting.
+                      Tip: enter both clock time and hour-meter readings — the system uses the hour-meter when available and falls back to time. DG Hours Used drives the L/Hr metric. The "Diesel Balance in Tank (last)" chip is the most recent tank reading from Equipment Usage; "New Balance" is last + Issued − Consumed.
                     </p>
                   </>
                 )}

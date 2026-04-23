@@ -1686,8 +1686,21 @@ export async function registerRoutes(
   });
 
   // Distinct list of generator names for DG dropdowns. Falls back to canonical defaults if empty.
+  // Returns active generators from the Equipment Master so the heating-session
+  // and generator-log forms use the *same* names that appear on the Equipment
+  // Usage screen. Falls back to historical generator-log names when the master
+  // hasn't been populated yet.
   app.get("/api/plant-module/generators", async (_req, res) => {
     try {
+      const all = await storage.getEquipmentMaster(false);
+      const generators = all
+        .filter((e: any) => (e.equipmentType || "").toLowerCase() === "generator")
+        .map((e: any) => ({ id: e.id, name: e.name }));
+      if (generators.length > 0) {
+        generators.sort((a, b) => a.name.localeCompare(b.name));
+        return res.json(generators);
+      }
+      // Legacy fallback — derive from past generator logs.
       const logs = await storage.getGeneratorLogs();
       const names = Array.from(
         new Set(
@@ -1696,9 +1709,9 @@ export async function registerRoutes(
             .filter(Boolean)
         )
       );
-      const merged = Array.from(new Set([...names, "600 KVA", "40-30 KVA"]));
+      const merged = Array.from(new Set([...names, "600 KVA GENERATOR", "40-30 KVA GENERATOR"]));
       merged.sort();
-      res.json(merged);
+      res.json(merged.map(n => ({ id: null, name: n })));
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Failed to list generators" });
     }

@@ -9244,7 +9244,7 @@ export class DatabaseStorage implements IStorage {
           .where(eq(generatorLogs.sourceHeatingSessionId, saved.id)).limit(1);
         const dgRow = {
           date: saved.date,
-          generatorName: saved.dgGeneratorName || "600 KVA",
+          generatorName: saved.dgGeneratorName || "600 KVA GENERATOR",
           startTime: saved.dgStartTime,
           endTime: saved.dgEndTime,
           hoursRun: saved.dgHoursRun,
