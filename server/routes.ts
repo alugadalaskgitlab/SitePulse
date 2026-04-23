@@ -1631,9 +1631,14 @@ export async function registerRoutes(
       // Filter out only the excluded entry (when editing)
       const filteredUsage = excludeId ? usage.filter(u => u.id !== excludeId) : usage;
       
-      // Get the most recent entry for this equipment (includes same-day entries)
-      const previousBalance = filteredUsage.length > 0 ? filteredUsage[0].closingDiesel || 0 : 0;
-      const previousClosingReading = filteredUsage.length > 0 ? filteredUsage[0].closingReading || 0 : 0;
+      // Get the most recent entry for this equipment (includes same-day entries).
+      // Prefer the operator's actual Diesel Balance in Tank dip; fall back to
+      // closingDiesel when no dip was recorded.
+      const last = filteredUsage.length > 0 ? filteredUsage[0] : null;
+      const previousBalance = last
+        ? (last.dieselBalanceInTank ?? last.closingDiesel ?? 0)
+        : 0;
+      const previousClosingReading = last ? last.closingReading || 0 : 0;
       res.json({ previousBalance, previousClosingReading });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch previous balance", previousBalance: 0, previousClosingReading: 0 });

@@ -1225,8 +1225,8 @@ export default function PlantEquipmentUsage() {
                         const avgPerHr = runtime > 0 ? consumed / runtime : null;
                         return (
                           <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm space-y-1" data-testid="panel-actual-consumption">
-                            <p>Net Consumed: <strong data-testid="text-net-consumed">{consumed.toFixed(3)} L</strong></p>
-                            <p>Average L/Hr: <strong data-testid="text-avg-per-hr">{avgPerHr != null ? avgPerHr.toFixed(3) : "—"}</strong></p>
+                            <p>Actual Consumption (L): <strong data-testid="text-actual-consumption">{consumed.toFixed(3)}</strong></p>
+                            <p>L/Hr: <strong data-testid="text-actual-l-per-hr">{avgPerHr != null ? avgPerHr.toFixed(3) : "—"}</strong></p>
                           </div>
                         );
                       })()}

@@ -2110,6 +2110,13 @@ export class DatabaseStorage implements IStorage {
         
         closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
         variance = dieselIssued - expectedDiesel;
+
+        // If the operator entered a Diesel Balance in Tank dip, that is the
+        // source of truth for the closing-tank value (overrides the
+        // norm-derived estimate above).
+        if (usage.dieselBalanceInTank != null) {
+          closingDiesel = usage.dieselBalanceInTank;
+        }
       }
       
       const [result] = await tx.insert(equipmentUsage).values({
@@ -2284,6 +2291,16 @@ export class DatabaseStorage implements IStorage {
         
         closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
         variance = newDieselIssued - expectedDiesel;
+
+        // Operator's Diesel Balance in Tank dip overrides the norm-derived
+        // closing value. Prefer the new value, falling back to the existing
+        // stored dip when not changed in this update.
+        const effectiveDip = usage.dieselBalanceInTank !== undefined
+          ? usage.dieselBalanceInTank
+          : existing.dieselBalanceInTank;
+        if (effectiveDip != null) {
+          closingDiesel = effectiveDip;
+        }
       }
       
       const [result] = await tx.update(equipmentUsage)
@@ -8633,14 +8650,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Equipment usage with derived diesel efficiency (DG fuel).
-    // When closingDiesel is null but the operator recorded a closing-tank dip
-    // (dieselBalanceInTank), use the dip as the closing-tank value so DG days
-    // with a dip-but-no-issue still show consumed and L/hr.
+    // closingDiesel is now persisted as the operator's actual dip when one
+    // was entered, so the dip-first fallback below is defensive (kept to
+    // protect any historic rows written before that change).
     const equipmentSummary = equipment.map(e => {
       const opening = e.openingDiesel ?? null;
-      // Operator-recorded closing dip is the source of truth for actual
-      // consumption — `closingDiesel` is computed from the norm at write time
-      // (opening + issued − expected), so it must NOT win over a real dip.
+      // Defensive: prefer dieselBalanceInTank for legacy rows where
+      // closingDiesel was the norm-derived estimate.
       const closing = e.dieselBalanceInTank ?? e.closingDiesel ?? null;
       const issued = e.dieselIssued ?? 0;
       const hours = e.hoursOrKmRun ?? null;
@@ -8743,8 +8759,9 @@ export class DatabaseStorage implements IStorage {
       if (!eqp) continue;
       const open = e.openingDiesel ?? null;
       const iss = e.dieselIssued ?? 0;
-      // Operator dip beats the norm-derived `closingDiesel` (which is computed
-      // at write time from expected consumption) so DG actuals reflect reality.
+      // Defensive: closingDiesel is now persisted as the dip when one was
+      // entered, but for legacy rows it may still be the norm-derived value
+      // — prefer dieselBalanceInTank when present.
       const close = e.dieselBalanceInTank ?? e.closingDiesel ?? null;
       const hrs = e.hoursOrKmRun ?? 0;
       const cons = (open != null && close != null) ? Math.max(0, open + iss - close) : 0;
