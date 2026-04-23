@@ -537,14 +537,24 @@ export default function PlantHeatingSessions() {
 
             <Card>
               <CardHeader className="py-3"><CardTitle className="text-base">Hot-Oil & Bitumen Temperatures</CardTitle></CardHeader>
-              <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
-                <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
-                <div className="md:col-span-2" />
-                <div><Label>Bitumen T1 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" /></div>
-                <div><Label>Bitumen T1 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" /></div>
-                <div><Label>Bitumen T2 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" /></div>
-                <div><Label>Bitumen T2 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" /></div>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
+                  <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+                </div>
+                <div className="grid grid-cols-[80px_1fr_1fr] md:grid-cols-[120px_1fr_1fr] gap-3 items-end">
+                  <div className="text-sm font-medium text-muted-foreground pb-2">Tank</div>
+                  <div className="text-sm font-medium text-muted-foreground pb-2">Start °C</div>
+                  <div className="text-sm font-medium text-muted-foreground pb-2">End °C</div>
+
+                  <Label className="pb-2">Bitumen T1</Label>
+                  <Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" />
+                  <Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" />
+
+                  <Label className="pb-2">Bitumen T2</Label>
+                  <Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" />
+                  <Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" />
+                </div>
               </CardContent>
             </Card>
 
