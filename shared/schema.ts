@@ -890,6 +890,8 @@ export type InsertBitumenHeatingSession = z.infer<typeof insertBitumenHeatingSes
 export type PlantHeatingSessionVersion = typeof plantHeatingSessionVersions.$inferSelect;
 
 export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSchema.extend({
+  id: z.number().optional(),
+  pin: z.string().optional(),
   editedBy: z.string().optional(),
 });
 export type UpsertBitumenHeatingSessionInput = z.infer<typeof upsertBitumenHeatingSessionSchema>;

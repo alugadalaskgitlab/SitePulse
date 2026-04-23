@@ -2394,11 +2394,7 @@ export async function registerRoutes(
         else return res.status(403).json({ message: "Invalid PIN" });
       }
       try {
-        const saved = await storage.upsertBitumenHeatingSession(
-          { ...parsed, ...(req.body.id ? { id: req.body.id } : {}) } as any,
-          editedBy,
-          authorizedRole,
-        );
+        const saved = await storage.upsertBitumenHeatingSession(parsed, editedBy, authorizedRole);
         res.status(201).json(saved);
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
@@ -2423,7 +2419,7 @@ export async function registerRoutes(
       }
       try {
         const saved = await storage.upsertBitumenHeatingSession(
-          { ...parsed, id: parseInt(req.params.id) } as any,
+          { ...parsed, id: parseInt(req.params.id) },
           editedBy,
           authorizedRole,
         );

@@ -43,6 +43,7 @@ import {
   type PlantShiftLogIdle,
   type UpsertPlantShiftLogInput,
   type BitumenHeatingSession,
+  type InsertBitumenHeatingSession,
   type UpsertBitumenHeatingSessionInput,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -8043,10 +8044,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertBitumenHeatingSession(input: UpsertBitumenHeatingSessionInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<BitumenHeatingSession> {
-    const { editedBy: _e, ...payload } = input as any;
-    const id = (payload.id as number | undefined) || undefined;
-    delete payload.id;
-    delete payload.pin;
+    const { id, pin: _pin, editedBy: _e, ...rest } = input;
+    const payload: Partial<InsertBitumenHeatingSession> = { ...rest };
 
     // Derived numbers
     const durationHours = this._computeDurationHours(payload.startTime, payload.endTime);
@@ -8061,6 +8060,12 @@ export class DatabaseStorage implements IStorage {
       const cl = payload.dgClosingDiesel ?? null;
       const iss = payload.dgIssuedDiesel ?? 0;
       if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
+    } else if (payload.dgMode === "link" && payload.generatorLogId != null) {
+      // Pull totals from the linked generator log so reports attribute DG diesel correctly
+      const [linked] = await db.select().from(generatorLogs)
+        .where(eq(generatorLogs.id, payload.generatorLogId)).limit(1);
+      payload.dgHoursRun = linked?.hoursRun ?? null;
+      payload.dgDieselConsumed = linked?.dieselConsumed ?? null;
     } else {
       payload.dgDieselConsumed = null;
       payload.dgHoursRun = null;
@@ -8081,7 +8086,7 @@ export class DatabaseStorage implements IStorage {
       if (existing) {
         await tx.insert(plantHeatingSessionVersions).values({
           sessionId: existing.id,
-          snapshot: existing as any,
+          snapshot: existing as Record<string, unknown>,
           editedBy: editedBy || "operator",
         });
         const [updated] = await tx.update(bitumenHeatingSessions)
@@ -8191,13 +8196,32 @@ export class DatabaseStorage implements IStorage {
       const t = sh.plantStopTime || "23:59";
       const sk = `${sh.date}T${t}`;
       if (sk > cutoff) continue;
-      candidates.push({ value: closeVal, date: sh.date, time: sh.plantStopTime, source: `Plant Shift Log ${sh.date}`, sourceId: sh.id, sortKey: sk });
+      candidates.push({ value: closeVal, date: sh.date, time: sh.plantStopTime, source: `Plant Shift Log ${sh.date} (closing)`, sourceId: sh.id, sortKey: sk });
     }
 
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
-    const top = candidates[0];
-    return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
+    if (candidates.length) {
+      candidates.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+      const top = candidates[0];
+      return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
+    }
+
+    // Tank-1 fallback: if no prior closing, use the SAME-DAY morning shift-log Tank-1 OPENING meter
+    if (tank === 1) {
+      const sameDayShifts = shifts.filter(sh => sh.date === cutoffDate && sh.ldoTank1OpeningMeter != null);
+      if (sameDayShifts.length) {
+        sameDayShifts.sort((a, b) => (a.plantStartTime || "00:00").localeCompare(b.plantStartTime || "00:00"));
+        const morning = sameDayShifts[0];
+        return {
+          value: morning.ldoTank1OpeningMeter as number,
+          date: morning.date,
+          time: morning.plantStartTime,
+          source: `Plant Shift Log ${morning.date} (opening)`,
+          sourceId: morning.id,
+        };
+      }
+    }
+
+    return null;
   }
 
   private async _getBoilerHeatingSummary(

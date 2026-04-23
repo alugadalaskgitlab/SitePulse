@@ -39,7 +39,7 @@ function emptyForm(date: string) {
     bitumenTank2TempEnd: "",
     ldoTank1OpeningMeter: "",
     ldoTank1ClosingMeter: "",
-    dgMode: "none" as DgMode,
+    dgMode: "inline" as DgMode,
     dgGeneratorName: "600 KVA",
     dgStartTime: "",
     dgEndTime: "",
