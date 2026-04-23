@@ -373,7 +373,7 @@ export default function PlantShiftLog() {
   // new/edited sessions via cache invalidation (e.g. after saving a session).
   const { data: heatingSessionsForDate } = useQuery<BitumenHeatingSession[]>({
     queryKey: ["/api/plant-module/heating-sessions", { date, plant: plantName }],
-    enabled: !existing && !!date,
+    enabled: viewMode === "edit" && !!date,
     queryFn: async () => {
       const res = await fetch(
         `/api/plant-module/heating-sessions?date=${date}&plant=${encodeURIComponent(plantName)}`,
@@ -691,6 +691,77 @@ export default function PlantShiftLog() {
           <div><Label>Dryer Meter Closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
           <div><Label>Dryer Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              Heating Sessions for this date
+              <Badge variant="secondary" data-testid="badge-heating-session-count">
+                {(heatingSessionsForDate || []).length}
+              </Badge>
+            </CardTitle>
+            <Link href={appendOrigin(`/plant/heating-sessions/${date}`)}>
+              <Button size="sm" variant="outline" data-testid="button-open-heating-sessions">
+                <Plus className="w-4 h-4 mr-1" />Add / Edit Sessions
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {!(heatingSessionsForDate || []).length && (
+            <p className="text-sm text-muted-foreground">
+              No heating sessions recorded for {date}. Use "Add / Edit Sessions" to log boiler runs — session values (bitumen temps, hot-oil, DG) feed the Plant Daily Report automatically.
+            </p>
+          )}
+          {(heatingSessionsForDate || []).length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-2 pr-2">Type</th>
+                    <th className="py-2 pr-2">Time</th>
+                    <th className="py-2 pr-2">Staff</th>
+                    <th className="py-2 pr-2 text-right">Boiler LDO (L)</th>
+                    <th className="py-2 pr-2 text-right">DG</th>
+                    <th className="py-2 pr-2">Hot-Oil End °C</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(heatingSessionsForDate || [])
+                    .slice()
+                    .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""))
+                    .map(s => (
+                      <tr key={s.id} className="border-b last:border-b-0" data-testid={`row-shift-heating-${s.id}`}>
+                        <td className="py-2 pr-2">
+                          <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"} className="text-xs">
+                            {s.sessionType === "NIGHT_PREHEAT" ? "Night" : "Day"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 pr-2 whitespace-nowrap">{s.startTime || "—"} → {s.endTime || "—"}</td>
+                        <td className="py-2 pr-2">{s.staffName || "—"}</td>
+                        <td className="py-2 pr-2 text-right">{s.ldoTank1Consumed?.toFixed(1) ?? "—"}</td>
+                        <td className="py-2 pr-2 text-right">
+                          {s.generatorLogId != null ? (
+                            <Badge variant="outline" className="text-xs border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-shift-dg-${s.id}`}>
+                              #{s.generatorLogId}
+                            </Badge>
+                          ) : s.dgMode === "none" ? "—" : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-2">{s.hotOilTempEnd ?? "—"}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-muted-foreground mt-2">
+                Boiler Meter opening/closing above is auto-filled from these sessions. Bitumen tank temperatures and DG runs recorded inside a session are the source of truth for the Daily Plant Report.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

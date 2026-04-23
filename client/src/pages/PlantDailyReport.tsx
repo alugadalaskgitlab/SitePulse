@@ -51,7 +51,7 @@ type DailyPlantSummary = {
     remarks: string | null;
   }>;
   totalDieselIssued: number;
-  generators: { items: Array<{ id: number; generatorName: string; hoursRun: number | null; opening: number | null; issued: number; closing: number | null; consumed: number | null; lPerHr: number | null; derivedSource: string; efficiency: number | null }>; totalDieselConsumedL: number };
+  generators: { items: Array<{ id: number; generatorName: string; hoursRun: number | null; opening: number | null; issued: number; closing: number | null; consumed: number | null; lPerHr: number | null; derivedSource: string; efficiency: number | null; sourceHeatingSessionId: number | null }>; totalDieselConsumedL: number };
   manpower: Array<{ name: string; role: string | null; contractorName?: string | null; category?: string | null; gender?: string | null }>;
   manpowerByContractor: Array<{ contractor: string; category: string; gender: string; count: number }>;
   idle: { events: Array<{ startTime: string; endTime: string | null; reason: string; remarks: string | null; minutes: number }>; byReason: Record<string, number>; totalMinutes: number };
@@ -276,7 +276,16 @@ export default function PlantDailyReport() {
                         : null;
                       return (
                       <TableRow key={g.id} data-testid={`row-generator-${g.id}`}>
-                        <TableCell>{g.generatorName}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{g.generatorName}</span>
+                            {g.sourceHeatingSessionId != null && (
+                              <Badge variant="secondary" className="text-xs" data-testid={`badge-generator-session-${g.id}`}>
+                                🔥 Session #{g.sourceHeatingSessionId}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">{fmt(g.hoursRun)}</TableCell>
                         <TableCell className="text-right">{fmt(g.opening)}</TableCell>
                         <TableCell className="text-right">{fmt(g.issued)}</TableCell>

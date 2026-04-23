@@ -20,7 +20,7 @@ PostgreSQL is the primary database, managed with Drizzle ORM and `drizzle-zod` f
 ### Core Features
 - **Daily Progress Reports (DPRs)**: Comprehensive logging of daily activities, equipment, labor, materials, and water tanker tracking, with versioning.
 - **Plant Module**: Features detailed operations (shift logs, heating sessions), management (stock, variance, audit), reports (daily plant reports, heating trends), and master data. Includes contractor-aware manpower tracking, automated LDO meter readings, and bulk PDF export for daily reports.
-- **Boiler/Heating Management**: Tracks heating sessions, provides trend analysis, and generates alerts based on configurable thresholds for temperature, fuel consumption, and discrepancies.
+- **Boiler/Heating Management**: Tracks heating sessions, provides trend analysis, and generates alerts based on configurable thresholds for temperature, fuel consumption, and discrepancies. Heating sessions are surfaced inline inside the Plant Shift Log edit view, and inline-DG runs tagged with `generator_logs.source_heating_session_id` are badged on the heating-sessions list and the Plant Daily Report generator table so the link is always visible.
 - **Plant Production Module**: Manages material receipts, mix templates, truck dispatches with owner-first stock routing and borrowing logic, and detailed equipment usage including fuel stock tracking. Includes a stock ledger reassignment tool.
 - **Procurement & Finance Module**: Handles Purchase Indents, Daily Diesel Requirements with approval workflows, and Vendor Bills with duplicate billing detection and rate card integration, supporting equipment, material, transport, and labor categories.
 - **Rate Calculators**:

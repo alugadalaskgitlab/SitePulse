@@ -417,6 +417,16 @@ export default function PlantHeatingSessions() {
                               <span className="font-medium">{s.startTime || "—"} → {s.endTime || "—"}</span>
                               <span className="text-sm text-muted-foreground">({s.durationHours ?? 0} h)</span>
                               <span className="text-xs text-muted-foreground">{s.plantName}</span>
+                              {s.generatorLogId != null && (
+                                <Badge variant="outline" className="text-xs border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-dg-linked-${s.id}`}>
+                                  DG #{s.generatorLogId}{s.dgGeneratorName ? ` · ${s.dgGeneratorName}` : ""}
+                                </Badge>
+                              )}
+                              {s.generatorLogId == null && s.dgMode === "inline" && (
+                                <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dg-pending-${s.id}`}>
+                                  DG inline (unsaved)
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                               <span>Staff: {s.staffName || "—"}</span>

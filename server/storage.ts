@@ -9046,6 +9046,7 @@ export class DatabaseStorage implements IStorage {
         opening, issued, closing, consumed, lPerHr,
         derivedSource: usage ? "equipment_usage" : "generator_logs",
         efficiency: g.efficiency ?? null,
+        sourceHeatingSessionId: g.sourceHeatingSessionId ?? null,
       };
     });
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
