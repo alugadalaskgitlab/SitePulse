@@ -599,7 +599,24 @@ export default function PlantShiftLogManpowerReview() {
     rowCount: number;
     isMerge: boolean;
   };
+  type DupActivity = {
+    id: number;
+    createdAt: string;
+    actor: string;
+    plantName: string;
+    action: "dismiss" | "restore" | "bulk_restore";
+    pairs: Array<[string, string]>;
+    pairCount: number;
+  };
+  // Unified recent-activity feed entry. Merges and dismissal/restore actions
+  // share the same row layout; the `kind` discriminator drives which fields
+  // are rendered and whether the Undo button is available.
+  type RecentActivityEntry =
+    | { kind: "merge"; createdAt: string; actor: string; merge: RecentMerge }
+    | { kind: "dup"; createdAt: string; actor: string; activity: DupActivity };
+
   const [recentMerges, setRecentMerges] = useState<RecentMerge[] | null>(null);
+  const [recentDupActivity, setRecentDupActivity] = useState<DupActivity[] | null>(null);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [undoingId, setUndoingId] = useState<number | null>(null);
 
@@ -615,13 +632,37 @@ export default function PlantShiftLogManpowerReview() {
       });
       if (res.status === 401) { setAdminPin(null); return; }
       if (!res.ok) throw new Error(await res.text());
-      setRecentMerges((await res.json()) as RecentMerge[]);
+      const body = await res.json();
+      // Backwards-compatible: older builds returned a bare array of merges.
+      if (Array.isArray(body)) {
+        setRecentMerges(body as RecentMerge[]);
+        setRecentDupActivity([]);
+      } else {
+        setRecentMerges((body.merges || []) as RecentMerge[]);
+        setRecentDupActivity((body.dupActivity || []) as DupActivity[]);
+      }
     } catch (err) {
-      toast({ title: "Failed to load recent merges", description: getErrorMessage(err), variant: "destructive" });
+      toast({ title: "Failed to load recent activity", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setLoadingRecent(false);
     }
   };
+
+  // Combined, newest-first feed of merges/relabels and dismiss/restore actions
+  // for the recent-activity card. Memoized so re-renders during Undo don't
+  // re-sort on every keystroke.
+  const recentActivityFeed = useMemo<RecentActivityEntry[] | null>(() => {
+    if (recentMerges === null && recentDupActivity === null) return null;
+    const items: RecentActivityEntry[] = [];
+    for (const m of recentMerges || []) {
+      items.push({ kind: "merge", createdAt: m.createdAt, actor: m.actor, merge: m });
+    }
+    for (const a of recentDupActivity || []) {
+      items.push({ kind: "dup", createdAt: a.createdAt, actor: a.actor, activity: a });
+    }
+    items.sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
+    return items;
+  }, [recentMerges, recentDupActivity]);
 
   const fetchLearnedAliases = async () => {
     if (!adminPin) return;
@@ -1323,7 +1364,7 @@ export default function PlantShiftLogManpowerReview() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base flex items-center gap-2">
             <History className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-            Recent merges (last 30 days)
+            Recent activity (last 30 days)
           </CardTitle>
           <Button
             size="sm"
@@ -1337,16 +1378,17 @@ export default function PlantShiftLogManpowerReview() {
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="text-xs text-muted-foreground">
-            Did you merge the wrong two names? Hit Undo within 30 days to restore every affected
-            shift-log row to its original worker name, contractor, category and gender.
+            Every merge, relabel, "not a duplicate" dismissal and restore done from this screen
+            shows up here. Hit Undo within 30 days to restore every affected shift-log row to its
+            original worker name, contractor, category and gender.
           </div>
-          {recentMerges === null ? (
+          {recentActivityFeed === null ? (
             <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-merges-loading">
               Loading…
             </div>
-          ) : recentMerges.length === 0 ? (
+          ) : recentActivityFeed.length === 0 ? (
             <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-merges-empty">
-              No merges or relabels in the last 30 days.
+              No merges, dismissals or restores in the last 30 days.
             </div>
           ) : (
             <div className="overflow-auto border rounded-md">
@@ -1361,40 +1403,95 @@ export default function PlantShiftLogManpowerReview() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentMerges.map(m => {
-                    const when = new Date(m.createdAt);
-                    const fromList = m.fromNames.join(", ");
+                  {recentActivityFeed.map(entry => {
+                    const when = new Date(entry.createdAt);
+                    if (entry.kind === "merge") {
+                      const m = entry.merge;
+                      const fromList = m.fromNames.join(", ");
+                      return (
+                        <tr key={`m-${m.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-merge-${m.id}`}>
+                          <td className="p-2 text-xs whitespace-nowrap">
+                            {when.toLocaleDateString()}<br />
+                            <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
+                          </td>
+                          <td className="p-2 text-xs">{m.actor}</td>
+                          <td className="p-2 text-xs">
+                            <div className="font-medium">
+                              {m.isMerge ? "Merge" : "Relabel"}: <span className="font-mono">{fromList}</span> → <span className="font-mono">{m.toName}</span>
+                            </div>
+                            <div className="text-muted-foreground">
+                              {m.contractorName} · {m.category} · {m.gender}
+                            </div>
+                          </td>
+                          <td className="p-2 tabular-nums">{m.rowCount}</td>
+                          <td className="p-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                              disabled={undoingId === m.id || actor.trim().length < 2}
+                              onClick={() => undoMerge(m)}
+                              data-testid={`button-undo-merge-${m.id}`}
+                            >
+                              {undoingId === m.id
+                                ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                : <Undo2 className="w-4 h-4 mr-2" />}
+                              Undo
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    const a = entry.activity;
+                    const plantText = a.plantName === ALL_PLANTS_SENTINEL ? "All plants" : a.plantName;
+                    const actionLabel =
+                      a.action === "dismiss" ? "Marked not-a-duplicate"
+                      : a.action === "restore" ? "Restored dismissal"
+                      : "Bulk restored dismissals";
+                    const actionColor =
+                      a.action === "dismiss" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                      : "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200";
+                    // Single-pair actions get the full "A ↔ B" rendered. Bulk
+                    // actions are summarised as a count, with the first few
+                    // pairs shown for context — same row, no extra UI.
+                    const previewPairs = a.pairs.slice(0, 3);
+                    const overflow = a.pairs.length - previewPairs.length;
                     return (
-                      <tr key={m.id} className="border-b last:border-0 align-top" data-testid={`row-recent-merge-${m.id}`}>
+                      <tr key={`d-${a.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-dup-${a.id}`}>
                         <td className="p-2 text-xs whitespace-nowrap">
                           {when.toLocaleDateString()}<br />
                           <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
                         </td>
-                        <td className="p-2 text-xs">{m.actor}</td>
+                        <td className="p-2 text-xs">{a.actor}</td>
                         <td className="p-2 text-xs">
-                          <div className="font-medium">
-                            {m.isMerge ? "Merge" : "Relabel"}: <span className="font-mono">{fromList}</span> → <span className="font-mono">{m.toName}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                            <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${actionColor}`}>
+                              {actionLabel}
+                            </span>
+                            {a.action === "bulk_restore" && (
+                              <span className="text-muted-foreground text-[11px]">
+                                {a.pairCount} pair{a.pairCount === 1 ? "" : "s"}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-muted-foreground">
-                            {m.contractorName} · {m.category} · {m.gender}
+                          <div className="space-y-0.5">
+                            {previewPairs.map((p, i) => (
+                              <div key={i} className="font-mono text-xs">
+                                {p[0]} <span className="text-muted-foreground">↔</span> {p[1]}
+                              </div>
+                            ))}
+                            {overflow > 0 && (
+                              <div className="text-muted-foreground text-[11px]">
+                                + {overflow} more pair{overflow === 1 ? "" : "s"}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-muted-foreground text-[11px] mt-0.5">
+                            scope: {plantText}
                           </div>
                         </td>
-                        <td className="p-2 tabular-nums">{m.rowCount}</td>
-                        <td className="p-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                            disabled={undoingId === m.id || actor.trim().length < 2}
-                            onClick={() => undoMerge(m)}
-                            data-testid={`button-undo-merge-${m.id}`}
-                          >
-                            {undoingId === m.id
-                              ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              : <Undo2 className="w-4 h-4 mr-2" />}
-                            Undo
-                          </Button>
-                        </td>
+                        <td className="p-2 tabular-nums text-muted-foreground">—</td>
+                        <td className="p-2"></td>
                       </tr>
                     );
                   })}

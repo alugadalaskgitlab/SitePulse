@@ -895,6 +895,31 @@ export const plantShiftLogManpowerCustomAliases = pgTable("plant_shift_log_manpo
 
 export type PlantShiftLogManpowerCustomAlias = typeof plantShiftLogManpowerCustomAliases.$inferSelect;
 
+// Audit feed for "not a duplicate" dismissals and their restores (single +
+// bulk). Mirrors the merge audit kept in plantShiftLogManpowerRelabelBatches
+// so the worker-cleanup screen can show every action in a single recent-
+// activity timeline. Each row captures the operator (actor), plant scope, the
+// affected name-pairs (snapshotted as JSON so a later delete of the dismissed
+// row does not lose the context), and a precomputed pairCount for fast UI
+// rendering of bulk operations. `action` is one of:
+//   - 'dismiss'      → admin marked one or more pairs as not-a-duplicate.
+//   - 'restore'      → admin un-dismissed a single pair.
+//   - 'bulk_restore' → admin un-dismissed many pairs in one click (multi-
+//                       select restore or "older than N days" purge).
+export const plantShiftLogManpowerDupActivity = pgTable("plant_shift_log_manpower_dup_activity", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  actor: text("actor").notNull(),
+  plantName: text("plant_name").notNull(),
+  action: text("action").notNull(),
+  pairs: jsonb("pairs").notNull(),
+  pairCount: integer("pair_count").notNull(),
+}, (t) => ({
+  createdAtIdx: index("psl_dup_activity_created_idx").on(t.createdAt),
+}));
+
+export type PlantShiftLogManpowerDupActivity = typeof plantShiftLogManpowerDupActivity.$inferSelect;
+
 export const insertPlantShiftLogSchema = createInsertSchema(plantShiftLogs).omit({ id: true, createdAt: true, updatedAt: true, finalizedAt: true, isFinalized: true, finalizedBy: true });
 export const insertPlantShiftLogManpowerSchema = createInsertSchema(plantShiftLogManpower).omit({ id: true });
 export const insertPlantShiftLogIdleSchema = createInsertSchema(plantShiftLogIdle).omit({ id: true });

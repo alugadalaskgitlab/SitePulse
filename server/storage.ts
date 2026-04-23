@@ -39,9 +39,11 @@ import {
   plantShiftLogManpowerRelabelSnapshots,
   plantShiftLogManpowerDismissedDups,
   plantShiftLogManpowerCustomAliases,
+  plantShiftLogManpowerDupActivity,
   type PlantShiftLogManpowerRelabelBatch,
   type PlantShiftLogManpowerDismissedDup,
   type PlantShiftLogManpowerCustomAlias,
+  type PlantShiftLogManpowerDupActivity,
   plantShiftLogIdle,
   plantShiftLogVersions,
   type PlantShiftLog,
@@ -400,13 +402,30 @@ export interface IStorage {
     plantName: string;
     pairs: Array<[string, string]>;
     actor: string;
-  }): Promise<{ added: number }>;
-  removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{ removed: boolean }>;
+  }): Promise<{ added: number; addedPairs: Array<[string, string]> }>;
+  removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{
+    removed: boolean;
+    pair: { plantName: string; nameA: string; nameB: string } | null;
+  }>;
   removeShiftLogManpowerDismissedDuplicatePairsBulk(input: {
     plantName: string;
     ids?: number[];
     olderThanDays?: number;
-  }): Promise<{ removed: number; removedIds: number[] }>;
+  }): Promise<{
+    removed: number;
+    removedIds: number[];
+    removedPairs: Array<[string, string]>;
+  }>;
+
+  // Audit feed of dismiss / restore / bulk-restore actions, used to render
+  // the worker-cleanup recent-activity timeline alongside merges.
+  addShiftLogManpowerDupActivity(input: {
+    actor: string;
+    plantName: string;
+    action: "dismiss" | "restore" | "bulk_restore";
+    pairs: Array<[string, string]>;
+  }): Promise<void>;
+  getRecentShiftLogManpowerDupActivity(days: number): Promise<PlantShiftLogManpowerDupActivity[]>;
 
   // Admin-managed custom token-equivalence pairs for the duplicate-suggester
   // (kind = 'alias') and admin-suppressed learned token-pairs (kind =
@@ -7256,7 +7275,7 @@ export class DatabaseStorage implements IStorage {
     plantName: string;
     pairs: Array<[string, string]>;
     actor: string;
-  }): Promise<{ added: number }> {
+  }): Promise<{ added: number; addedPairs: Array<[string, string]> }> {
     const actorTrim = String(input.actor || "").trim();
     if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
     const plant = String(input.plantName || "").trim();
@@ -7275,27 +7294,43 @@ export class DatabaseStorage implements IStorage {
       seen.add(k);
       values.push({ plantName: plant, nameA, nameB, dismissedBy: actorTrim });
     }
-    if (values.length === 0) return { added: 0 };
+    if (values.length === 0) return { added: 0, addedPairs: [] };
     const inserted = await db.insert(plantShiftLogManpowerDismissedDups)
       .values(values)
       .onConflictDoNothing({ target: [plantShiftLogManpowerDismissedDups.plantName, plantShiftLogManpowerDismissedDups.nameA, plantShiftLogManpowerDismissedDups.nameB] })
-      .returning({ id: plantShiftLogManpowerDismissedDups.id });
-    return { added: inserted.length };
+      .returning({ id: plantShiftLogManpowerDismissedDups.id, nameA: plantShiftLogManpowerDismissedDups.nameA, nameB: plantShiftLogManpowerDismissedDups.nameB });
+    return {
+      added: inserted.length,
+      addedPairs: inserted.map((r) => [r.nameA, r.nameB] as [string, string]),
+    };
   }
 
-  async removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{ removed: boolean }> {
+  async removeShiftLogManpowerDismissedDuplicatePair(id: number): Promise<{
+    removed: boolean;
+    pair: { plantName: string; nameA: string; nameB: string } | null;
+  }> {
     if (!Number.isFinite(id) || id <= 0) throw new Error("Valid id is required");
     const res = await db.delete(plantShiftLogManpowerDismissedDups)
       .where(eq(plantShiftLogManpowerDismissedDups.id, id))
-      .returning({ id: plantShiftLogManpowerDismissedDups.id });
-    return { removed: res.length > 0 };
+      .returning({
+        id: plantShiftLogManpowerDismissedDups.id,
+        plantName: plantShiftLogManpowerDismissedDups.plantName,
+        nameA: plantShiftLogManpowerDismissedDups.nameA,
+        nameB: plantShiftLogManpowerDismissedDups.nameB,
+      });
+    if (res.length === 0) return { removed: false, pair: null };
+    const r = res[0];
+    return {
+      removed: true,
+      pair: { plantName: r.plantName, nameA: r.nameA, nameB: r.nameB },
+    };
   }
 
   async removeShiftLogManpowerDismissedDuplicatePairsBulk(input: {
     plantName: string;
     ids?: number[];
     olderThanDays?: number;
-  }): Promise<{ removed: number; removedIds: number[] }> {
+  }): Promise<{ removed: number; removedIds: number[]; removedPairs: Array<[string, string]> }> {
     const plant = String(input.plantName || "").trim();
     if (!plant) throw new Error("plantName is required");
     const ids = Array.isArray(input.ids)
@@ -7316,8 +7351,47 @@ export class DatabaseStorage implements IStorage {
     }
     const res = await db.delete(plantShiftLogManpowerDismissedDups)
       .where(and(...conditions))
-      .returning({ id: plantShiftLogManpowerDismissedDups.id });
-    return { removed: res.length, removedIds: res.map((r) => r.id) };
+      .returning({
+        id: plantShiftLogManpowerDismissedDups.id,
+        nameA: plantShiftLogManpowerDismissedDups.nameA,
+        nameB: plantShiftLogManpowerDismissedDups.nameB,
+      });
+    return {
+      removed: res.length,
+      removedIds: res.map((r) => r.id),
+      removedPairs: res.map((r) => [r.nameA, r.nameB] as [string, string]),
+    };
+  }
+
+  async addShiftLogManpowerDupActivity(input: {
+    actor: string;
+    plantName: string;
+    action: "dismiss" | "restore" | "bulk_restore";
+    pairs: Array<[string, string]>;
+  }): Promise<void> {
+    const actorTrim = String(input.actor || "").trim();
+    const plant = String(input.plantName || "").trim();
+    if (!actorTrim || !plant) return;
+    const cleanPairs = (input.pairs || [])
+      .filter((p) => Array.isArray(p) && p.length === 2 && p[0] && p[1])
+      .map((p) => [String(p[0]), String(p[1])] as [string, string]);
+    if (cleanPairs.length === 0) return;
+    await db.insert(plantShiftLogManpowerDupActivity).values({
+      actor: actorTrim,
+      plantName: plant,
+      action: input.action,
+      pairs: cleanPairs,
+      pairCount: cleanPairs.length,
+    });
+  }
+
+  async getRecentShiftLogManpowerDupActivity(days: number): Promise<PlantShiftLogManpowerDupActivity[]> {
+    const safeDays = Math.max(1, Math.min(365, Math.floor(days || 30)));
+    const cutoff = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+    return await db.select().from(plantShiftLogManpowerDupActivity)
+      .where(gte(plantShiftLogManpowerDupActivity.createdAt, cutoff))
+      .orderBy(desc(plantShiftLogManpowerDupActivity.createdAt))
+      .limit(200);
   }
 
   async listShiftLogManpowerCustomAliases(): Promise<PlantShiftLogManpowerCustomAlias[]> {

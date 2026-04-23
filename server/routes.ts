@@ -2024,8 +2024,11 @@ export async function registerRoutes(
       if (!pin || !(await storage.verifyPin("admin", pin))) {
         return res.status(401).json({ message: "Admin PIN required" });
       }
-      const batches = await storage.getRecentShiftLogManpowerRelabelBatches(30);
-      res.json(batches);
+      const [batches, dupActivity] = await Promise.all([
+        storage.getRecentShiftLogManpowerRelabelBatches(30),
+        storage.getRecentShiftLogManpowerDupActivity(30),
+      ]);
+      res.json({ merges: batches, dupActivity });
     } catch (err) {
       console.error("shift-log-manpower recent-merges error:", err);
       res.status(500).json({ message: "Failed to load recent merges" });
@@ -2199,6 +2202,20 @@ export async function registerRoutes(
         pairs: normalizedPairs,
         actor: actor.trim(),
       });
+      if (result.added > 0) {
+        // Audit write is best-effort: the underlying dismissal already
+        // succeeded, so a failure here should not fail the user request.
+        try {
+          await storage.addShiftLogManpowerDupActivity({
+            actor: actor.trim(),
+            plantName: plant,
+            action: "dismiss",
+            pairs: result.addedPairs,
+          });
+        } catch (auditErr) {
+          console.error("shift-log-manpower dismiss-pairs audit write failed:", auditErr);
+        }
+      }
       console.info(
         `[ShiftLogManpowerDismissDup] actor="${actor.trim()}" role=admin ` +
         `at=${new Date().toISOString()} plant="${plant}" dismissed=${result.added} of=${normalizedPairs.length}`
@@ -2226,6 +2243,18 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Valid id is required" });
       }
       const result = await storage.removeShiftLogManpowerDismissedDuplicatePair(pairId);
+      if (result.removed && result.pair) {
+        try {
+          await storage.addShiftLogManpowerDupActivity({
+            actor: actor.trim(),
+            plantName: result.pair.plantName,
+            action: "restore",
+            pairs: [[result.pair.nameA, result.pair.nameB]],
+          });
+        } catch (auditErr) {
+          console.error("shift-log-manpower restore-dismissed-pair audit write failed:", auditErr);
+        }
+      }
       console.info(
         `[ShiftLogManpowerDismissDup] actor="${actor.trim()}" role=admin ` +
         `at=${new Date().toISOString()} restored id=${pairId} removed=${result.removed}`
@@ -2268,6 +2297,18 @@ export async function registerRoutes(
         ids: idList.length > 0 ? idList : undefined,
         olderThanDays: days,
       });
+      if (result.removed > 0) {
+        try {
+          await storage.addShiftLogManpowerDupActivity({
+            actor: actor.trim(),
+            plantName: plant,
+            action: "bulk_restore",
+            pairs: result.removedPairs,
+          });
+        } catch (auditErr) {
+          console.error("shift-log-manpower bulk-restore audit write failed:", auditErr);
+        }
+      }
       console.info(
         `[ShiftLogManpowerDismissDup] actor="${actor.trim()}" role=admin ` +
         `at=${new Date().toISOString()} plant="${plant}" bulk-restored=${result.removed}` +
