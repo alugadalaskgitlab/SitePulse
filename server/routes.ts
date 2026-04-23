@@ -2633,8 +2633,8 @@ export async function registerRoutes(
       }
 
       section(`LDO Consumption (Shift Meters / Source: ${summary.ldo.source})`);
-      line("Tank 1 Boiler (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
-      line("Tank 2 Dryer (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
+      line("Boiler Meter (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
+      line("Dryer Meter (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
       line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
       line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
       line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
