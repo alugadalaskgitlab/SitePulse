@@ -23,7 +23,7 @@ import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate }
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume } from "@shared/ldo-dip-chart";
 
-const TANK_LABELS: Record<number, string> = { 1: "Boiler", 2: "Dryer" };
+const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
 
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
@@ -860,7 +860,7 @@ export default function PlantLdoFlowMeter() {
     const data = filteredReadings.map(r => ({
       Date: r.date,
       Time: r.time || "",
-      Tank: `Tank ${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})`,
+      Tank: TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
@@ -896,7 +896,7 @@ export default function PlantLdoFlowMeter() {
 
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "",
-      `T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})`,
+      TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
       r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
@@ -917,7 +917,7 @@ export default function PlantLdoFlowMeter() {
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>T${r.tankNumber} (${TANK_LABELS[r.tankNumber] || ""})</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -925,7 +925,7 @@ export default function PlantLdoFlowMeter() {
 
   const dialogTitle = editingReading
     ? "Edit LDO Reading"
-    : `Record LDO Reading - Tank ${tankNumber} (${TANK_LABELS[parseInt(tankNumber)] || ""})`;
+    : `Record LDO Reading - ${TANK_LABELS[parseInt(tankNumber)] || `Tank ${tankNumber}`}`;
 
   const isMutating = createMutation.isPending || updateMutation.isPending;
 
@@ -978,7 +978,7 @@ export default function PlantLdoFlowMeter() {
       </div>
 
       <div className="text-sm text-muted-foreground">
-        Tank 1 = Boiler (heats bitumen) | Tank 2 = Dryer (heats aggregates)
+        Boiler Meter (heats bitumen) and Dryer Meter (heats aggregates) — both meters draw from the main LDO tank.
       </div>
 
       <NegativeBalanceBanner
@@ -1007,7 +1007,7 @@ export default function PlantLdoFlowMeter() {
           return (
             <Card key={tankNum} className="overflow-visible" data-testid={`tank-card-${tankNum}`}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Tank {tankNum} ({TANK_LABELS[tankNum]})</CardTitle>
+                <CardTitle className="text-sm font-medium">{TANK_LABELS[tankNum]}</CardTitle>
                 {pageRole && (
                   <div className="flex gap-3 mt-1">
                     <button
@@ -1330,11 +1330,11 @@ export default function PlantLdoFlowMeter() {
                           Usable: {reconciliationData.latestDipReading.totalUsableL.toFixed(0)} L
                         </div>
                         <div className="text-base text-muted-foreground mt-1">
-                          T1 (Boiler): {reconciliationData.latestDipReading.tank1L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank1UsableL.toFixed(0)} L)
+                          Boiler Meter: {reconciliationData.latestDipReading.tank1L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank1UsableL.toFixed(0)} L)
                           {reconciliationData.latestDipReading.tank1Date ? ` — ${reconciliationData.latestDipReading.tank1Date}` : ""}
                         </div>
                         <div className="text-base text-muted-foreground">
-                          T2 (Dryer): {reconciliationData.latestDipReading.tank2L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank2UsableL.toFixed(0)} L)
+                          Dryer Meter: {reconciliationData.latestDipReading.tank2L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank2UsableL.toFixed(0)} L)
                           {reconciliationData.latestDipReading.tank2Date ? ` — ${reconciliationData.latestDipReading.tank2Date}` : ""}
                         </div>
                       </>
@@ -1372,8 +1372,8 @@ export default function PlantLdoFlowMeter() {
                 <thead>
                   <tr>
                     <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
-                    <th colSpan={4} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Tank 1 (Boiler)</th>
-                    <th colSpan={4} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Tank 2 (Dryer)</th>
+                    <th colSpan={4} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Boiler Meter</th>
+                    <th colSpan={4} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Dryer Meter</th>
                     <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (L)</th>
                     <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total Consumed (L)</th>
                   </tr>
@@ -1422,8 +1422,8 @@ export default function PlantLdoFlowMeter() {
                 <thead>
                   <tr>
                     <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
-                    <th colSpan={3} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Tank 1 (Boiler)</th>
-                    <th colSpan={3} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Tank 2 (Dryer)</th>
+                    <th colSpan={3} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Boiler Meter</th>
+                    <th colSpan={3} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Dryer Meter</th>
                     <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (L)</th>
                     <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total (L)</th>
                   </tr>
@@ -1562,7 +1562,7 @@ export default function PlantLdoFlowMeter() {
                   <Label className="text-xs mb-2 block">Physical Stock from Dip Readings (Liters)</Label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Tank 1</Label>
+                      <Label className="text-xs text-muted-foreground">Boiler Meter</Label>
                       <Input
                         type="number" step="1" min="0"
                         value={ldoCorrTank1L}
@@ -1573,7 +1573,7 @@ export default function PlantLdoFlowMeter() {
                       <p className="text-xs text-muted-foreground mt-1">Dip: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</p>
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">Tank 2</Label>
+                      <Label className="text-xs text-muted-foreground">Dryer Meter</Label>
                       <Input
                         type="number" step="1" min="0"
                         value={ldoCorrTank2L}
@@ -1782,7 +1782,7 @@ export default function PlantLdoFlowMeter() {
                         <td className="p-2">{r.time || "-"}</td>
                         <td className="p-2">
                           <Badge variant={r.tankNumber === 1 ? "default" : "secondary"} data-testid={`badge-dip-tank-${r.id}`}>
-                            T{r.tankNumber} ({TANK_LABELS[r.tankNumber]})
+                            {TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}
                           </Badge>
                         </td>
                         <td className="p-2 text-right font-medium" data-testid={`text-dip-depth-${r.id}`}>{r.depthCm}</td>
@@ -1855,8 +1855,8 @@ export default function PlantLdoFlowMeter() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Tanks</SelectItem>
-                <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
-                <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+                <SelectItem value="1">Boiler Meter</SelectItem>
+                <SelectItem value="2">Dryer Meter</SelectItem>
               </SelectContent>
             </Select>
             {(filterDateFrom || filterDateTo || filterTank !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
@@ -1962,7 +1962,7 @@ export default function PlantLdoFlowMeter() {
             <div>
               <Label>Tank</Label>
               <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm font-medium" data-testid="text-tank-number">
-                Tank {tankNumber} ({TANK_LABELS[parseInt(tankNumber)] || ""})
+                {TANK_LABELS[parseInt(tankNumber)] || `Tank ${tankNumber}`}
               </div>
             </div>
 
@@ -2062,7 +2062,7 @@ export default function PlantLdoFlowMeter() {
             <DialogTitle data-testid="text-dip-dialog-title">
               {dipEditingReading
                 ? "Edit Dip Reading"
-                : `Record Dip Reading - Tank ${dipTankNumber} (${TANK_LABELS[parseInt(dipTankNumber)] || ""})`}
+                : `Record Dip Reading - ${TANK_LABELS[parseInt(dipTankNumber)] || `Tank ${dipTankNumber}`}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -2084,8 +2084,8 @@ export default function PlantLdoFlowMeter() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
-                  <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+                  <SelectItem value="1">Boiler Meter</SelectItem>
+                  <SelectItem value="2">Dryer Meter</SelectItem>
                 </SelectContent>
               </Select>
             </div>

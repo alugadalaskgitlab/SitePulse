@@ -714,6 +714,7 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   quantityLiters: real("quantity_liters"),
   notes: text("notes"),
   sourceShiftLogId: integer("source_shift_log_id"),
+  sourceHeatingSessionId: integer("source_heating_session_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

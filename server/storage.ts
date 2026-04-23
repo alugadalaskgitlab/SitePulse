@@ -9307,6 +9307,42 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // LDO Boiler Meter sync: tag opening/closing flow-meter rows for this
+      // session so the LDO Flow Meter ledger reflects boiler usage automatically.
+      // Idempotent: drop any rows previously tagged for this session, then
+      // re-insert opening/closing if values are present.
+      await tx.delete(ldoFlowReadings)
+        .where(eq(ldoFlowReadings.sourceHeatingSessionId, saved.id));
+      const ldoRows: any[] = [];
+      // startTime/endTime are stored as plain "HH:mm" text — use as-is.
+      const startTimeStr = saved.startTime || null;
+      const endTimeStr = saved.endTime || null;
+      if (saved.ldoTank1OpeningMeter != null) {
+        ldoRows.push({
+          date: saved.date,
+          time: startTimeStr,
+          tankNumber: 1,
+          meterReading: saved.ldoTank1OpeningMeter,
+          readingType: "opening",
+          notes: `Auto from heating session #${saved.id}`,
+          sourceHeatingSessionId: saved.id,
+        });
+      }
+      if (saved.ldoTank1ClosingMeter != null) {
+        ldoRows.push({
+          date: saved.date,
+          time: endTimeStr,
+          tankNumber: 1,
+          meterReading: saved.ldoTank1ClosingMeter,
+          readingType: "closing",
+          notes: `Auto from heating session #${saved.id}`,
+          sourceHeatingSessionId: saved.id,
+        });
+      }
+      if (ldoRows.length > 0) {
+        await tx.insert(ldoFlowReadings).values(ldoRows);
+      }
+
       return saved;
     }).then(async (saved) => {
       // Fire-and-forget alert hook: never let notifications break a save.
@@ -9436,6 +9472,7 @@ export class DatabaseStorage implements IStorage {
   async deleteBitumenHeatingSession(id: number): Promise<boolean> {
     return db.transaction(async (tx) => {
       await tx.delete(generatorLogs).where(eq(generatorLogs.sourceHeatingSessionId, id));
+      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceHeatingSessionId, id));
       await tx.delete(plantHeatingSessionVersions).where(eq(plantHeatingSessionVersions.sessionId, id));
       const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();
       return result.length > 0;

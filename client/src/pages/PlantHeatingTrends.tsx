@@ -111,7 +111,7 @@ export default function PlantHeatingTrends() {
               Boiler Heating Efficiency Trends
             </h1>
             <p className="text-sm text-muted-foreground">
-              Daily L/Hour and L/MT for Tank-1 (boiler), split by night pre-heat vs daytime maintenance
+              Daily L/Hour and L/MT for the Boiler Meter, split by night pre-heat vs daytime maintenance
             </p>
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function PlantHeatingTrends() {
               <div className="text-xs text-muted-foreground">L/Hour: {fmt(data.summary.lPerHour)}</div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground">LDO Tank-1 (boiler)</div>
+              <div className="text-xs text-muted-foreground">LDO Boiler Meter</div>
               <div className="text-2xl font-bold" data-testid="kpi-ldo">{fmt(data.summary.totalLdoT1L, 1)} L</div>
               <div className="text-xs text-muted-foreground">DG Diesel: {fmt(data.summary.dgDieselL, 1)} L</div>
             </CardContent></Card>

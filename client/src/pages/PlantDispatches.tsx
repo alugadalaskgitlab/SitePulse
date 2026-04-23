@@ -974,8 +974,8 @@ export default function PlantDispatches() {
                       <SelectValue placeholder="Select tank" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Tank 1 (Boiler)</SelectItem>
-                      <SelectItem value="2">Tank 2 (Dryer)</SelectItem>
+                      <SelectItem value="1">Boiler Meter</SelectItem>
+                      <SelectItem value="2">Dryer Meter</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

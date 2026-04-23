@@ -486,7 +486,7 @@ export default function PlantHeatingSessions() {
             </Card>
 
             <Card>
-              <CardHeader className="py-3"><CardTitle className="text-base">LDO Tank-1 (Boiler) Flow Meter</CardTitle></CardHeader>
+              <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <Label>Opening Meter</Label>

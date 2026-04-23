@@ -148,11 +148,13 @@ export default function PlantShiftLog() {
   const [bitumenTank2StockApproxMt, setBitumenTank2StockApproxMt] = useState("");
   const [savedId, setSavedId] = useState<number | null>(null);
   const [autoFillT1Source, setAutoFillT1Source] = useState<string>("");
+  const [autoFillT1ClosingSource, setAutoFillT1ClosingSource] = useState<string>("");
   const [autoFillT2Source, setAutoFillT2Source] = useState<string>("");
   // Track values written by the auto-fill effect so a re-run with a more
   // accurate cutoff (after operator types plantStartTime) can replace them,
   // but a manually-typed value is never overwritten.
   const autoFilledT1ValueRef = useRef<string | null>(null);
+  const autoFilledT1ClosingValueRef = useRef<string | null>(null);
   const autoFilledT2ValueRef = useRef<string | null>(null);
 
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails | undefined>({
@@ -194,8 +196,9 @@ export default function PlantShiftLog() {
     setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
     setManpower([]); setIdleEvents([]);
     setBitumenTank1StockApproxMt(""); setBitumenTank2StockApproxMt("");
-    setAutoFillT1Source(""); setAutoFillT2Source("");
+    setAutoFillT1Source(""); setAutoFillT1ClosingSource(""); setAutoFillT2Source("");
     autoFilledT1ValueRef.current = null;
+    autoFilledT1ClosingValueRef.current = null;
     autoFilledT2ValueRef.current = null;
   };
 
@@ -243,8 +246,10 @@ export default function PlantShiftLog() {
     setLdoTank2ClosingMeter(existing.ldoTank2ClosingMeter?.toString() || "");
     // Loading a saved record — clear any auto-fill hint state from prior new-log session.
     setAutoFillT1Source("");
+    setAutoFillT1ClosingSource("");
     setAutoFillT2Source("");
     autoFilledT1ValueRef.current = null;
+    autoFilledT1ClosingValueRef.current = null;
     autoFilledT2ValueRef.current = null;
     setManpower(existing.manpower.map(m => ({
       name: m.name,
@@ -363,29 +368,77 @@ export default function PlantShiftLog() {
     },
   });
 
-  // Auto-fill Tank-1 opening (latest meter reading before shift start) and Tank-2 opening (yesterday's closing) for new logs.
-  // Re-run when plantStartTime becomes available so the cutoff is the actual shift start (not 00:00).
+  // Auto-fill Boiler Meter opening/closing from heating sessions for the date
+  // (first opening / last closing). Falls back to /ldo-meter/last for opening
+  // when no heating sessions exist yet. Dryer Meter opening uses yesterday's
+  // closing as before. Manually-typed values are never overwritten.
+  // Re-runs when plantStartTime changes so the opening cutoff matches the
+  // actual shift start.
   useEffect(() => {
     if (existing) return; // never overwrite when loaded from DB
     if (!date) return;
     let cancelled = false;
-    // Tank-1: refetch when plantStartTime changes so the cutoff matches the
-    // real shift start. Manually-typed values are protected via the ref.
-    const t1IsEmpty = !ldoTank1OpeningMeter;
-    const t1IsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
-    if (t1IsEmpty || t1IsAutoFilled) {
-      const before = `${date}T${plantStartTime || "23:59"}`;
-      fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : null)
-        .then((data: any) => {
+
+    // Boiler Meter (Tank-1) opening + closing: prefer heating sessions for the
+    // date; fall back to /ldo-meter/last for the opening only.
+    const t1OpenIsEmpty = !ldoTank1OpeningMeter;
+    const t1OpenIsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
+    const t1CloseIsEmpty = !ldoTank1ClosingMeter;
+    const t1CloseIsAutoFilled = ldoTank1ClosingMeter && ldoTank1ClosingMeter === autoFilledT1ClosingValueRef.current;
+    const wantT1Open = t1OpenIsEmpty || t1OpenIsAutoFilled;
+    const wantT1Close = t1CloseIsEmpty || t1CloseIsAutoFilled;
+
+    if (wantT1Open || wantT1Close) {
+      fetch(`/api/plant-module/heating-sessions?date=${date}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : [])
+        .then((sessions: any[]) => {
           if (cancelled) return;
-          if (data && typeof data.value === "number") {
-            const next = String(data.value);
+          const safe = Array.isArray(sessions) ? sessions : [];
+          // First opening of the day (earliest startTime) with a meter value.
+          const openCandidates = safe
+            .filter(s => s && s.ldoTank1OpeningMeter != null)
+            .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
+          const closeCandidates = safe
+            .filter(s => s && s.ldoTank1ClosingMeter != null)
+            .sort((a, b) => String(b.endTime || b.startTime || "").localeCompare(String(a.endTime || a.startTime || "")));
+          const sessOpen = openCandidates[0]?.ldoTank1OpeningMeter;
+          const sessClose = closeCandidates[0]?.ldoTank1ClosingMeter;
+
+          if (wantT1Open && typeof sessOpen === "number") {
+            const next = String(sessOpen);
             setLdoTank1OpeningMeter(prev => {
-              // Manual edit since last auto-fill — never overwrite.
               if (prev && prev !== autoFilledT1ValueRef.current) return prev;
               autoFilledT1ValueRef.current = next;
-              setAutoFillT1Source(data.source);
+              setAutoFillT1Source("Heating Sessions");
+              return next;
+            });
+          } else if (wantT1Open && safe.length === 0) {
+            // Fallback only when the day has zero heating sessions: use the
+            // most recent meter reading before shift start.
+            const before = `${date}T${plantStartTime || "23:59"}`;
+            fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+              .then(r => r.ok ? r.json() : null)
+              .then((data: any) => {
+                if (cancelled) return;
+                if (data && typeof data.value === "number") {
+                  const next = String(data.value);
+                  setLdoTank1OpeningMeter(prev => {
+                    if (prev && prev !== autoFilledT1ValueRef.current) return prev;
+                    autoFilledT1ValueRef.current = next;
+                    setAutoFillT1Source(data.source);
+                    return next;
+                  });
+                }
+              })
+              .catch(() => {});
+          }
+
+          if (wantT1Close && typeof sessClose === "number") {
+            const next = String(sessClose);
+            setLdoTank1ClosingMeter(prev => {
+              if (prev && prev !== autoFilledT1ClosingValueRef.current) return prev;
+              autoFilledT1ClosingValueRef.current = next;
+              setAutoFillT1ClosingSource("Heating Sessions");
               return next;
             });
           }
@@ -495,8 +548,8 @@ export default function PlantShiftLog() {
                               </div>
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                                 <span>Operator: {r.operatorName || "—"}</span>
-                                <span>LDO T1: {ldo1?.toFixed(1) ?? "—"} L{ldoLPerHr && <span className="ml-1">({ldoLPerHr} L/Hr)</span>}</span>
-                                <span>LDO T2: {ldo2?.toFixed(1) ?? "—"} L</span>
+                                <span>Boiler Meter: {ldo1?.toFixed(1) ?? "—"} L{ldoLPerHr && <span className="ml-1">({ldoLPerHr} L/Hr)</span>}</span>
+                                <span>Dryer Meter: {ldo2?.toFixed(1) ?? "—"} L</span>
                                 <span>Weather: {r.weather || "—"}</span>
                               </div>
                             </div>
@@ -595,27 +648,36 @@ export default function PlantShiftLog() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>LDO Flow Meters</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>LDO Flow Meters</CardTitle>
+          <p className="text-xs text-muted-foreground">Both meters draw from the main LDO tank.</p>
+        </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <Label>Tank 1 (Boiler) Opening</Label>
+            <Label>Boiler Meter Opening</Label>
             <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
               onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
               data-testid="input-ldo-t1-open" />
             {autoFillT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
           </div>
-          <div><Label>Tank 1 (Boiler) Closing</Label><Input type="number" step="0.01" value={ldoTank1ClosingMeter} onChange={e => setLdoTank1ClosingMeter(e.target.value)} data-testid="input-ldo-t1-close" /></div>
-          <div><Label>Tank 1 Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
+          <div>
+            <Label>Boiler Meter Closing</Label>
+            <Input type="number" step="0.01" value={ldoTank1ClosingMeter}
+              onChange={e => { setLdoTank1ClosingMeter(e.target.value); setAutoFillT1ClosingSource(""); }}
+              data-testid="input-ldo-t1-close" />
+            {autoFillT1ClosingSource && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
+          </div>
+          <div><Label>Boiler Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
           <div />
           <div>
-            <Label>Tank 2 (Dryer) Opening</Label>
+            <Label>Dryer Meter Opening</Label>
             <Input type="number" step="0.01" value={ldoTank2OpeningMeter}
               onChange={e => { setLdoTank2OpeningMeter(e.target.value); setAutoFillT2Source(""); }}
               data-testid="input-ldo-t2-open" />
             {autoFillT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
           </div>
-          <div><Label>Tank 2 (Dryer) Closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
-          <div><Label>Tank 2 Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
+          <div><Label>Dryer Meter Closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
+          <div><Label>Dryer Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
         </CardContent>
       </Card>

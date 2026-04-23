@@ -2637,8 +2637,8 @@ export async function registerRoutes(
       line("Tank 2 Dryer (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
       line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
       line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
-      line("Dryer L / MT Production (Tank-2 only)", summary.ldo.dryerLPerMT ?? "—");
-      line("Boiler L / MT Production (Tank-1 only)", summary.ldo.boilerLPerMT ?? "—");
+      line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
+      line("Boiler L / MT Production", summary.ldo.boilerLPerMT ?? "—");
 
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
@@ -2720,12 +2720,12 @@ export async function registerRoutes(
         const bh = summary.boilerHeating;
         section(`Boiler / Heating Sessions (${bh.sessionCount})`);
         line("Total Heating Hours", bh.totalHours);
-        line("Tank-1 LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
-        line("Boiler L / Hour (Tank-1)", bh.lPerHour ?? "—");
-        line("Boiler L / MT Production (Tank-1)", bh.lPerMT ?? "—");
-        line("Dryer L / MT Production (Tank-2)", summary.ldo.dryerLPerMT ?? "—");
+        line("Boiler Meter LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
+        line("Boiler L / Hour", bh.lPerHour ?? "—");
+        line("Boiler L / MT Production", bh.lPerMT ?? "—");
+        line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
         line("DG Diesel Attributable (L)", bh.dgDieselL?.toFixed(1) ?? "—");
-        line("Shift Log Tank-1 LDO (L)", bh.shiftLogT1L?.toFixed(1) ?? "—");
+        line("Shift Log Boiler Meter LDO (L)", bh.shiftLogT1L?.toFixed(1) ?? "—");
         if (bh.mismatchL != null && Math.abs(bh.mismatchL) > 5) {
           line("⚠ Reconciliation mismatch (L)", `${bh.mismatchL > 0 ? "+" : ""}${bh.mismatchL}`);
         }
@@ -3393,17 +3393,17 @@ export async function registerRoutes(
         "Production (MT)": r.productionMT,
         "Night Sessions": r.night.count,
         "Night Hours": r.night.hours,
-        "Night LDO T1 (L)": r.night.ldoT1L,
+        "Night Boiler Meter (L)": r.night.ldoT1L,
         "Night L/Hour": r.night.lPerHour ?? "",
         "Night L/MT": r.night.lPerMT ?? "",
         "Day Sessions": r.day.count,
         "Day Hours": r.day.hours,
-        "Day LDO T1 (L)": r.day.ldoT1L,
+        "Day Boiler Meter (L)": r.day.ldoT1L,
         "Day L/Hour": r.day.lPerHour ?? "",
         "Day L/MT": r.day.lPerMT ?? "",
         "Total Sessions": r.total.count,
         "Total Hours": r.total.hours,
-        "Total LDO T1 (L)": r.total.ldoT1L,
+        "Total Boiler Meter (L)": r.total.ldoT1L,
         "DG Diesel (L)": r.total.dgDieselL,
         "L/Hour (boiler)": r.total.lPerHour ?? "",
         "L/MT (boiler)": r.total.lPerMT ?? "",
@@ -3415,7 +3415,7 @@ export async function registerRoutes(
         Days: trends.summary.days,
         Sessions: trends.summary.sessionCount,
         "Total Hours": trends.summary.totalHours,
-        "Total LDO T1 (L)": trends.summary.totalLdoT1L,
+        "Total Boiler Meter (L)": trends.summary.totalLdoT1L,
         "DG Diesel (L)": trends.summary.dgDieselL,
         "Production (MT)": trends.summary.totalProductionMT,
         "L/Hour": trends.summary.lPerHour ?? "",
