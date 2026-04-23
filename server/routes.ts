@@ -2257,8 +2257,9 @@ export async function registerRoutes(
       line("Tank 1 Boiler (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
       line("Tank 2 Dryer (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
       line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
-      line("L / Hour", summary.ldo.lPerHour ?? "—");
-      line("L / MT Mix", summary.ldo.lPerMT ?? "—");
+      line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
+      line("Dryer L / MT Production (Tank-2 only)", summary.ldo.dryerLPerMT ?? "—");
+      line("Boiler L / MT Production (Tank-1 only)", summary.ldo.boilerLPerMT ?? "—");
 
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
@@ -2331,7 +2332,7 @@ export async function registerRoutes(
         line("Tank-1 LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
         line("Boiler L / Hour (Tank-1)", bh.lPerHour ?? "—");
         line("Boiler L / MT Production (Tank-1)", bh.lPerMT ?? "—");
-        line("Dryer L / MT Production (Tank-2)", summary.ldo.lPerMT ?? "—");
+        line("Dryer L / MT Production (Tank-2)", summary.ldo.dryerLPerMT ?? "—");
         line("DG Diesel Attributable (L)", bh.dgDieselL?.toFixed(1) ?? "—");
         line("Shift Log Tank-1 LDO (L)", bh.shiftLogT1L?.toFixed(1) ?? "—");
         if (bh.mismatchL != null && Math.abs(bh.mismatchL) > 5) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -62,6 +62,11 @@ export default function PlantShiftLog() {
   const [savedId, setSavedId] = useState<number | null>(null);
   const [autoFillT1Source, setAutoFillT1Source] = useState<string>("");
   const [autoFillT2Source, setAutoFillT2Source] = useState<string>("");
+  // Track values written by the auto-fill effect so a re-run with a more
+  // accurate cutoff (after operator types plantStartTime) can replace them,
+  // but a manually-typed value is never overwritten.
+  const autoFilledT1ValueRef = useRef<string | null>(null);
+  const autoFilledT2ValueRef = useRef<string | null>(null);
 
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails>({
     queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName],
@@ -213,18 +218,31 @@ export default function PlantShiftLog() {
     }
   };
 
-  // Auto-fill Tank-1 opening (latest meter reading) and Tank-2 opening (yesterday's closing) for new logs
+  // Auto-fill Tank-1 opening (latest meter reading before shift start) and Tank-2 opening (yesterday's closing) for new logs.
+  // Re-run when plantStartTime becomes available so the cutoff is the actual shift start (not 00:00).
   useEffect(() => {
     if (existing) return; // never overwrite when loaded from DB
     if (!date) return;
-    if (!ldoTank1OpeningMeter) {
-      const before = `${date}T${plantStartTime || "00:00"}`;
+    let cancelled = false;
+    // Tank-1: refetch when plantStartTime changes so the cutoff matches the
+    // real shift start. Manually-typed values are protected via the ref.
+    const t1IsEmpty = !ldoTank1OpeningMeter;
+    const t1IsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
+    if (t1IsEmpty || t1IsAutoFilled) {
+      const before = `${date}T${plantStartTime || "23:59"}`;
       fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null)
         .then((data: any) => {
+          if (cancelled) return;
           if (data && typeof data.value === "number") {
-            setLdoTank1OpeningMeter(prev => prev || String(data.value));
-            setAutoFillT1Source(data.source);
+            const next = String(data.value);
+            setLdoTank1OpeningMeter(prev => {
+              // Manual edit since last auto-fill — never overwrite.
+              if (prev && prev !== autoFilledT1ValueRef.current) return prev;
+              autoFilledT1ValueRef.current = next;
+              setAutoFillT1Source(data.source);
+              return next;
+            });
           }
         })
         .catch(() => {});
@@ -234,15 +252,22 @@ export default function PlantShiftLog() {
       fetch(`/api/plant-module/ldo-meter/last?tank=2&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null)
         .then((data: any) => {
+          if (cancelled) return;
           if (data && typeof data.value === "number") {
-            setLdoTank2OpeningMeter(prev => prev || String(data.value));
-            setAutoFillT2Source(data.source);
+            const next = String(data.value);
+            setLdoTank2OpeningMeter(prev => {
+              if (prev) return prev;
+              autoFilledT2ValueRef.current = next;
+              setAutoFillT2Source(data.source);
+              return next;
+            });
           }
         })
         .catch(() => {});
     }
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existing, date, plantName]);
+  }, [existing, date, plantName, plantStartTime]);
 
   // Derived
   const ldoTotal = useMemo(() => {

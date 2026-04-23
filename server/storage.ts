@@ -7829,6 +7829,13 @@ export class DatabaseStorage implements IStorage {
       ? Math.round((ldoConsumedTotalL / runningHours) * 100) / 100 : null;
     const ldoLPerMT = (totalProductionMT > 0 && ldoConsumedTotalL > 0)
       ? Math.round((ldoConsumedTotalL / totalProductionMT) * 1000) / 1000 : null;
+    // Tank-1 (boiler / bitumen heating) and Tank-2 (dryer / mix production) are
+    // physically separate consumers — keep per-MT metrics separated so reports
+    // never mix boiler heating with dryer production.
+    const dryerLPerMT = (totalProductionMT > 0 && (ldoConsumedT2 || 0) > 0)
+      ? Math.round(((ldoConsumedT2 as number) / totalProductionMT) * 1000) / 1000 : null;
+    const boilerLPerMT = (totalProductionMT > 0 && (ldoConsumedT1 || 0) > 0)
+      ? Math.round(((ldoConsumedT1 as number) / totalProductionMT) * 1000) / 1000 : null;
 
     // Idle minutes by reason
     const idleByReason: Record<string, number> = {};
@@ -7993,6 +8000,8 @@ export class DatabaseStorage implements IStorage {
         consumedTotalL: ldoConsumedTotalL || null,
         lPerHour: ldoLPerHour,
         lPerMT: ldoLPerMT,
+        dryerLPerMT,
+        boilerLPerMT,
         source: ldoSource,
       },
       bitumenDips,
