@@ -9,15 +9,22 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, Lock, FileText, Loader2 } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, Lock, FileText, Loader2, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
-import { SHIFT_IDLE_REASONS } from "@shared/schema";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
 import type { PlantShiftLogWithDetails } from "@shared/schema";
 
-type ManpowerRow = { name: string; role?: string | null };
+type ManpowerRow = {
+  name: string;
+  role?: string | null;
+  contractorName?: string | null;
+  category?: string | null;
+  gender?: string | null;
+};
 type IdleRow = { startTime: string; endTime?: string | null; reason: string; remarks?: string | null };
 
 export default function PlantShiftLog() {
@@ -56,6 +63,79 @@ export default function PlantShiftLog() {
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
+
+  // Manpower modal
+  const [mpDialogOpen, setMpDialogOpen] = useState(false);
+  const [mpEditingIdx, setMpEditingIdx] = useState<number | null>(null);
+  const [mpDraft, setMpDraft] = useState<ManpowerRow>({ name: "", role: "", contractorName: "", category: "", gender: "" });
+
+  // Idle modal
+  const [idleDialogOpen, setIdleDialogOpen] = useState(false);
+  const [idleEditingIdx, setIdleEditingIdx] = useState<number | null>(null);
+  const [idleDraft, setIdleDraft] = useState<IdleRow>({ startTime: "", endTime: "", reason: "Material Shortage", remarks: "" });
+
+  const openAddManpower = () => {
+    setMpEditingIdx(null);
+    setMpDraft({ name: "", role: "", contractorName: "", category: "", gender: "" });
+    setMpDialogOpen(true);
+  };
+  const openEditManpower = (idx: number) => {
+    setMpEditingIdx(idx);
+    setMpDraft({ ...manpower[idx] });
+    setMpDialogOpen(true);
+  };
+  const saveManpowerDraft = () => {
+    if (!mpDraft.name?.trim() || !mpDraft.contractorName?.trim() || !mpDraft.category || !mpDraft.gender) {
+      toast({ title: "Name, contractor, category, and gender are required", variant: "destructive" });
+      return;
+    }
+    const row: ManpowerRow = {
+      name: mpDraft.name.trim(),
+      role: mpDraft.role || null,
+      contractorName: mpDraft.contractorName.trim().toUpperCase(),
+      category: (mpDraft.category || "").toUpperCase(),
+      gender: (mpDraft.gender || "").toUpperCase(),
+    };
+    if (mpEditingIdx === null) setManpower([...manpower, row]);
+    else {
+      const c = [...manpower]; c[mpEditingIdx] = row; setManpower(c);
+    }
+    setMpDialogOpen(false);
+  };
+  const removeManpower = (idx: number) => setManpower(manpower.filter((_, i) => i !== idx));
+  const rateCardKeyForRow = (m: ManpowerRow) =>
+    m.category && m.gender ? `LAB_${m.category}_${m.gender}` : m.category ? `LAB_${m.category}` : "";
+
+  const openAddIdle = () => {
+    setIdleEditingIdx(null);
+    setIdleDraft({ startTime: "", endTime: "", reason: "Material Shortage", remarks: "" });
+    setIdleDialogOpen(true);
+  };
+  const openEditIdle = (idx: number) => {
+    setIdleEditingIdx(idx);
+    setIdleDraft({ ...idleEvents[idx] });
+    setIdleDialogOpen(true);
+  };
+  const saveIdleDraft = () => {
+    if (!idleDraft.startTime || !idleDraft.reason) {
+      toast({ title: "Start time and reason are required", variant: "destructive" });
+      return;
+    }
+    if (idleEditingIdx === null) setIdleEvents([...idleEvents, idleDraft]);
+    else {
+      const c = [...idleEvents]; c[idleEditingIdx] = idleDraft; setIdleEvents(c);
+    }
+    setIdleDialogOpen(false);
+  };
+  const removeIdle = (idx: number) => setIdleEvents(idleEvents.filter((_, i) => i !== idx));
+
+  const idleMinutes = (e: IdleRow) => {
+    if (!e.startTime || !e.endTime) return null;
+    const [sh, sm] = e.startTime.split(":").map(Number);
+    const [eh, em] = e.endTime.split(":").map(Number);
+    const mins = (eh * 60 + em) - (sh * 60 + sm);
+    return mins > 0 ? mins : null;
+  };
 
   const [isFinalized, setIsFinalized] = useState(0);
   const [showPinAuth, setShowPinAuth] = useState(false);
@@ -112,7 +192,13 @@ export default function PlantShiftLog() {
     setAutoFillT2Source("");
     autoFilledT1ValueRef.current = null;
     autoFilledT2ValueRef.current = null;
-    setManpower(existing.manpower.map(m => ({ name: m.name, role: m.role })));
+    setManpower(existing.manpower.map(m => ({
+      name: m.name,
+      role: m.role,
+      contractorName: (m as any).contractorName ?? null,
+      category: (m as any).category ?? null,
+      gender: (m as any).gender ?? null,
+    })));
     setIdleEvents(existing.idleEvents.map(e => ({
       startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
     })));
@@ -126,8 +212,18 @@ export default function PlantShiftLog() {
 
   const editedBy = "operator";
 
+  const incompleteManpower = manpower.filter(
+    m => m.name?.trim() && (!m.contractorName?.trim() || !m.category || !m.gender)
+  );
+
   const saveMutation = useMutation({
     mutationFn: async (extra?: { pin?: string }) => {
+      if (incompleteManpower.length > 0) {
+        throw new Error(
+          `${incompleteManpower.length} manpower row(s) are missing Contractor / Category / Gender. ` +
+          `Open each row and complete the fields before saving (legacy rows must be backfilled).`
+        );
+      }
       const payload: Record<string, unknown> = {
         date, shiftCode, plantName,
         plantStartTime: plantStartTime || null,
@@ -149,7 +245,15 @@ export default function PlantShiftLog() {
         ldoTank1ClosingMeter: numOrNull(ldoTank1ClosingMeter),
         ldoTank2OpeningMeter: numOrNull(ldoTank2OpeningMeter),
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
-        manpower: manpower.filter(m => m.name?.trim()).map(m => ({ name: m.name.trim().toUpperCase(), role: m.role || null })),
+        manpower: manpower
+          .filter(m => m.name?.trim())
+          .map(m => ({
+            name: m.name.trim().toUpperCase(),
+            role: m.role || null,
+            contractorName: m.contractorName ? m.contractorName.trim().toUpperCase() : "",
+            category: m.category ? m.category.toUpperCase() : "",
+            gender: m.gender ? m.gender.toUpperCase() : "",
+          })),
         idleEvents: idleEvents.filter(e => e.startTime && e.reason),
         editedBy,
       };
@@ -388,63 +492,156 @@ export default function PlantShiftLog() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Manpower</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setManpower([...manpower, { name: "", role: "" }])} data-testid="button-add-manpower"><Plus className="w-4 h-4 mr-1" />Add</Button>
+            <CardTitle>Manpower ({manpower.length})</CardTitle>
+            <Button size="sm" variant="outline" onClick={openAddManpower} data-testid="button-add-manpower"><Plus className="w-4 h-4 mr-1" />Add</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {manpower.length === 0 && <p className="text-sm text-muted-foreground">No manpower added.</p>}
-          {manpower.map((m, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center" data-testid={`row-manpower-${i}`}>
-              <Input className="col-span-6" placeholder="Name" value={m.name} onChange={e => {
-                const c = [...manpower]; c[i] = { ...c[i], name: e.target.value }; setManpower(c);
-              }} data-testid={`input-manpower-name-${i}`} />
-              <Input className="col-span-5" placeholder="Role" value={m.role || ""} onChange={e => {
-                const c = [...manpower]; c[i] = { ...c[i], role: e.target.value }; setManpower(c);
-              }} data-testid={`input-manpower-role-${i}`} />
-              <Button className="col-span-1" variant="ghost" size="icon" onClick={() => setManpower(manpower.filter((_, idx) => idx !== i))} data-testid={`button-remove-manpower-${i}`}>
-                <Trash2 className="w-4 h-4 text-destructive" />
-              </Button>
+          {manpower.length === 0 && <p className="text-sm text-muted-foreground">No manpower added. Tap "Add" to record a worker for this shift.</p>}
+          {manpower.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-2 pr-2">Name</th>
+                    <th className="py-2 pr-2">Contractor</th>
+                    <th className="py-2 pr-2">Category</th>
+                    <th className="py-2 pr-2">Gender</th>
+                    <th className="py-2 pr-2">Rate-Card Key</th>
+                    <th className="py-2 pr-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {manpower.map((m, i) => (
+                    <tr key={i} className="border-b last:border-b-0" data-testid={`row-manpower-${i}`}>
+                      <td className="py-2 pr-2 font-medium">{m.name}{m.role ? <span className="text-xs text-muted-foreground"> ({m.role})</span> : null}</td>
+                      <td className="py-2 pr-2">{m.contractorName || <span className="text-amber-600 dark:text-amber-400">—</span>}</td>
+                      <td className="py-2 pr-2">{m.category || <span className="text-amber-600 dark:text-amber-400">—</span>}</td>
+                      <td className="py-2 pr-2">{m.gender || <span className="text-amber-600 dark:text-amber-400">—</span>}</td>
+                      <td className="py-2 pr-2"><Badge variant="outline" className="font-mono text-xs">{rateCardKeyForRow(m) || "—"}</Badge></td>
+                      <td className="py-2 pr-2 text-right">
+                        <Button variant="ghost" size="icon" onClick={() => openEditManpower(i)} data-testid={`button-edit-manpower-${i}`}><Pencil className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => removeManpower(i)} data-testid={`button-remove-manpower-${i}`}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Idle Events</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setIdleEvents([...idleEvents, { startTime: "", endTime: "", reason: "Material Shortage", remarks: "" }])} data-testid="button-add-idle"><Plus className="w-4 h-4 mr-1" />Add</Button>
+            <CardTitle>Idle Events ({idleEvents.length})</CardTitle>
+            <Button size="sm" variant="outline" onClick={openAddIdle} data-testid="button-add-idle"><Plus className="w-4 h-4 mr-1" />Add</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {idleEvents.length === 0 && <p className="text-sm text-muted-foreground">No idle events.</p>}
-          {idleEvents.map((ev, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center" data-testid={`row-idle-${i}`}>
-              <Input className="col-span-2" type="time" value={ev.startTime} onChange={e => {
-                const c = [...idleEvents]; c[i] = { ...c[i], startTime: e.target.value }; setIdleEvents(c);
-              }} data-testid={`input-idle-start-${i}`} />
-              <Input className="col-span-2" type="time" value={ev.endTime || ""} onChange={e => {
-                const c = [...idleEvents]; c[i] = { ...c[i], endTime: e.target.value }; setIdleEvents(c);
-              }} data-testid={`input-idle-end-${i}`} placeholder="(blank if ongoing)" />
-              <Select value={ev.reason} onValueChange={(v) => {
-                const c = [...idleEvents]; c[i] = { ...c[i], reason: v }; setIdleEvents(c);
-              }}>
-                <SelectTrigger className="col-span-3" data-testid={`select-idle-reason-${i}`}><SelectValue /></SelectTrigger>
+          {idleEvents.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-2 pr-2">Start</th>
+                    <th className="py-2 pr-2">End</th>
+                    <th className="py-2 pr-2">Duration</th>
+                    <th className="py-2 pr-2">Reason</th>
+                    <th className="py-2 pr-2">Remarks</th>
+                    <th className="py-2 pr-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {idleEvents.map((ev, i) => {
+                    const mins = idleMinutes(ev);
+                    return (
+                      <tr key={i} className="border-b last:border-b-0" data-testid={`row-idle-${i}`}>
+                        <td className="py-2 pr-2">{ev.startTime}</td>
+                        <td className="py-2 pr-2">{ev.endTime || <span className="text-muted-foreground italic">ongoing</span>}</td>
+                        <td className="py-2 pr-2">{mins != null ? `${mins} min` : "—"}</td>
+                        <td className="py-2 pr-2"><Badge variant="outline" className="text-xs">{ev.reason}</Badge></td>
+                        <td className="py-2 pr-2 text-muted-foreground">{ev.remarks || "—"}</td>
+                        <td className="py-2 pr-2 text-right">
+                          <Button variant="ghost" size="icon" onClick={() => openEditIdle(i)} data-testid={`button-edit-idle-${i}`}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeIdle(i)} data-testid={`button-remove-idle-${i}`}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Manpower modal */}
+      <Dialog open={mpDialogOpen} onOpenChange={setMpDialogOpen}>
+        <DialogContent data-testid="dialog-manpower">
+          <DialogHeader><DialogTitle>{mpEditingIdx === null ? "Add Manpower" : "Edit Manpower"}</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><Label>Name *</Label><Input value={mpDraft.name} onChange={e => setMpDraft({ ...mpDraft, name: e.target.value })} data-testid="input-mp-name" /></div>
+            <div><Label>Role / Trade</Label><Input value={mpDraft.role || ""} onChange={e => setMpDraft({ ...mpDraft, role: e.target.value })} placeholder="e.g. Plant Operator" data-testid="input-mp-role" /></div>
+            <div><Label>Contractor *</Label><Input value={mpDraft.contractorName || ""} onChange={e => setMpDraft({ ...mpDraft, contractorName: e.target.value })} placeholder="e.g. RAMU LABOUR CONTRACTOR" data-testid="input-mp-contractor" /></div>
+            <div>
+              <Label>Category *</Label>
+              <Select value={mpDraft.category || ""} onValueChange={v => setMpDraft({ ...mpDraft, category: v })}>
+                <SelectTrigger data-testid="select-mp-category"><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {LABOUR_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Gender *</Label>
+              <Select value={mpDraft.gender || ""} onValueChange={v => setMpDraft({ ...mpDraft, gender: v })}>
+                <SelectTrigger data-testid="select-mp-gender"><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {LABOUR_GENDERS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <p className="text-xs text-muted-foreground">
+                Vendor Bills (Labour) will pull this row using rate-card key:{" "}
+                <Badge variant="outline" className="font-mono text-xs ml-1" data-testid="text-mp-rate-card-key">{rateCardKeyForRow(mpDraft) || "—"}</Badge>
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMpDialogOpen(false)} data-testid="button-mp-cancel">Cancel</Button>
+            <Button onClick={saveManpowerDraft} data-testid="button-mp-save">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Idle modal */}
+      <Dialog open={idleDialogOpen} onOpenChange={setIdleDialogOpen}>
+        <DialogContent data-testid="dialog-idle">
+          <DialogHeader><DialogTitle>{idleEditingIdx === null ? "Add Idle Event" : "Edit Idle Event"}</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Start *</Label><Input type="time" value={idleDraft.startTime} onChange={e => setIdleDraft({ ...idleDraft, startTime: e.target.value })} data-testid="input-idle-start" /></div>
+            <div><Label>End</Label><Input type="time" value={idleDraft.endTime || ""} onChange={e => setIdleDraft({ ...idleDraft, endTime: e.target.value })} placeholder="(blank if ongoing)" data-testid="input-idle-end" /></div>
+            <div className="col-span-2">
+              <Label>Reason *</Label>
+              <Select value={idleDraft.reason} onValueChange={v => setIdleDraft({ ...idleDraft, reason: v })}>
+                <SelectTrigger data-testid="select-idle-reason"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {SHIFT_IDLE_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input className="col-span-4" placeholder="Remarks" value={ev.remarks || ""} onChange={e => {
-                const c = [...idleEvents]; c[i] = { ...c[i], remarks: e.target.value }; setIdleEvents(c);
-              }} data-testid={`input-idle-remarks-${i}`} />
-              <Button className="col-span-1" variant="ghost" size="icon" onClick={() => setIdleEvents(idleEvents.filter((_, idx) => idx !== i))} data-testid={`button-remove-idle-${i}`}>
-                <Trash2 className="w-4 h-4 text-destructive" />
-              </Button>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            <div className="col-span-2"><Label>Remarks</Label><Textarea rows={2} value={idleDraft.remarks || ""} onChange={e => setIdleDraft({ ...idleDraft, remarks: e.target.value })} data-testid="input-idle-remarks" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIdleDialogOpen(false)} data-testid="button-idle-cancel">Cancel</Button>
+            <Button onClick={saveIdleDraft} data-testid="button-idle-save">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader><CardTitle>Remarks (End-of-Day)</CardTitle></CardHeader>

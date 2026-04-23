@@ -7751,7 +7751,14 @@ export class DatabaseStorage implements IStorage {
 
       if (manpower.length) {
         await tx.insert(plantShiftLogManpower).values(
-          manpower.map((m: any) => ({ shiftLogId: saved.id, name: m.name, role: m.role || null }))
+          manpower.map((m: any) => ({
+            shiftLogId: saved.id,
+            name: m.name,
+            role: m.role || null,
+            contractorName: m.contractorName ? String(m.contractorName).toUpperCase().trim() : null,
+            category: m.category ? String(m.category).toUpperCase().trim() : null,
+            gender: m.gender ? String(m.gender).toUpperCase().trim() : null,
+          }))
         );
       }
       if (idleEvents.length) {

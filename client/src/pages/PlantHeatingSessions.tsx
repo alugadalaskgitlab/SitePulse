@@ -98,6 +98,10 @@ export default function PlantHeatingSessions() {
     queryKey: ["/api/plant-module/generator-logs"],
   });
 
+  const { data: generatorNames } = useQuery<string[]>({
+    queryKey: ["/api/plant-module/generators"],
+  });
+
   const generatorOptionsForDate = useMemo(
     () => (existingGenerators || []).filter(g => g.date === form.date && (g.sourceHeatingSessionId == null || g.sourceHeatingSessionId === form.id)),
     [existingGenerators, form.date, form.id]
@@ -464,8 +468,12 @@ export default function PlantHeatingSessions() {
                       <Select value={form.dgGeneratorName} onValueChange={v => setField("dgGeneratorName", v)}>
                         <SelectTrigger data-testid="select-dg-generator"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="600 KVA">600 KVA</SelectItem>
-                          <SelectItem value="40-30 KVA">40-30 KVA</SelectItem>
+                          {(generatorNames && generatorNames.length > 0
+                            ? generatorNames
+                            : ["600 KVA", "40-30 KVA"]
+                          ).map(n => (
+                            <SelectItem key={n} value={n}>{n}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

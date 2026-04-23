@@ -1680,7 +1680,25 @@ export async function registerRoutes(
     }
   });
 
-  // Generator Logs
+  // Distinct list of generator names for DG dropdowns. Falls back to canonical defaults if empty.
+  app.get("/api/plant-module/generators", async (_req, res) => {
+    try {
+      const logs = await storage.getGeneratorLogs();
+      const names = Array.from(
+        new Set(
+          logs
+            .map((l: any) => (l.generatorName || "").toString().trim())
+            .filter(Boolean)
+        )
+      );
+      const merged = Array.from(new Set([...names, "600 KVA", "40-30 KVA"]));
+      merged.sort();
+      res.json(merged);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to list generators" });
+    }
+  });
+
   app.get("/api/plant-module/generator-logs", async (req, res) => {
     try {
       const filters = {

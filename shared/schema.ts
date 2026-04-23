@@ -795,6 +795,9 @@ export const plantShiftLogManpower = pgTable("plant_shift_log_manpower", {
   shiftLogId: integer("shift_log_id").notNull(),
   name: text("name").notNull(),
   role: text("role"),
+  contractorName: text("contractor_name"),
+  category: text("category"),
+  gender: text("gender"),
 });
 
 export const plantShiftLogIdle = pgTable("plant_shift_log_idle", {
@@ -898,9 +901,15 @@ export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSche
 });
 export type UpsertBitumenHeatingSessionInput = z.infer<typeof upsertBitumenHeatingSessionSchema>;
 
+export const LABOUR_CATEGORIES = ["MASON", "HELPER", "MAZDOOR", "CARPENTER", "BAR-BENDER", "OPERATOR", "DRIVER", "ELECTRICIAN", "MECHANIC", "WATCHMAN", "OTHER"] as const;
+export const LABOUR_GENDERS = ["MALE", "FEMALE"] as const;
+
 export const plantShiftLogManpowerInputSchema = z.object({
   name: z.string().min(1, "Name required"),
   role: z.string().optional().nullable(),
+  contractorName: z.string().min(1, "Contractor required"),
+  category: z.enum(LABOUR_CATEGORIES, { errorMap: () => ({ message: "Category must be one of LABOUR_CATEGORIES" }) }),
+  gender: z.enum(LABOUR_GENDERS),
 });
 
 export const plantShiftLogIdleInputSchema = z.object({
