@@ -138,6 +138,12 @@ export default function PlantDailyReports() {
   const setPlant = (v: string) => updateFilters({ plant: v });
   const setSelectedParties = (v: string[]) => updateFilters({ parties: v });
   const setSelectedMixTypes = (v: string[]) => updateFilters({ mixTypes: v });
+  const hasActiveFilters =
+    from !== defaultFrom ||
+    to !== today ||
+    plant !== "" ||
+    selectedParties.length > 0 ||
+    selectedMixTypes.length > 0;
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string>("");
   type BulkStatus = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
@@ -331,6 +337,17 @@ export default function PlantDailyReports() {
             <Button variant="outline" size="sm" onClick={() => setQuickRange(90)} data-testid="button-range-90">90d</Button>
             <Button variant="outline" size="sm" onClick={() => setQuickRange(365)} data-testid="button-range-365">1y</Button>
           </div>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setLocation("/plant/daily-reports")}
+              data-testid="button-reset-filters"
+              aria-label="Reset filters to default 90-day view"
+            >
+              <X className="w-3.5 h-3.5 mr-1" /> Reset filters
+            </Button>
+          )}
           {bulkProgress && (
             <span className="text-xs text-muted-foreground" data-testid="text-bulk-progress">{bulkProgress}</span>
           )}
