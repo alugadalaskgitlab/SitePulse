@@ -2015,6 +2015,25 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: learned name-aliases mined from past (non-undone) merge batches.
+  // Returns full-name pairs and token-position pairs that were unified before;
+  // the cleanup screen uses these to flag the same patterns as duplicates next
+  // time they appear (e.g. once "MD KAREEM" was merged into "MOHAMMED KAREEM",
+  // any future "MD ..." vs "MOHAMMED ..." pair is suggested automatically).
+  app.post("/api/plant-module/shift-log-manpower/learned-aliases", async (req, res) => {
+    try {
+      const { pin } = req.body || {};
+      if (!pin || !(await storage.verifyPin("admin", pin))) {
+        return res.status(401).json({ message: "Admin PIN required" });
+      }
+      const aliases = await storage.getShiftLogManpowerLearnedAliases();
+      res.json(aliases);
+    } catch (err) {
+      console.error("shift-log-manpower learned-aliases error:", err);
+      res.status(500).json({ message: "Failed to load learned aliases" });
+    }
+  });
+
   // Admin: list "not a duplicate" name-pairs that have been dismissed on the
   // worker-cleanup screen. Used to suppress repeated false-positive suggestions
   // across sessions and devices.

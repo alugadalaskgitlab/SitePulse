@@ -334,7 +334,7 @@ export interface IStorage {
   migrateLegacyPlantShiftLogManpower(): Promise<{ updated: number; skipped: number; errors: number }>;
 
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
-  listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string }): Promise<Array<{
+  listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
     name: string;
     count: number;
     earliestDate: string;
@@ -345,7 +345,16 @@ export interface IStorage {
     roles: string[];
     needsContractor: boolean;
     needsCategory: boolean;
+    shiftLogIds: number[];
   }>>;
+
+  // Mine past (non-undone) merge batches to learn name-pair and token-pair
+  // equivalences ("MD." merged into "MOHAMMED" once → flag the same pair next
+  // time it appears). Used by the cleanup screen's smarter suggester.
+  getShiftLogManpowerLearnedAliases(): Promise<{
+    pairs: Array<[string, string]>;
+    tokenPairs: Array<[string, string]>;
+  }>;
 
   // Admin: bulk-set name/contractor/category/gender for every shift-log row whose
   // worker name (case-insensitive, trimmed) matches one of `fromNames`. `toName`
@@ -6857,6 +6866,7 @@ export class DatabaseStorage implements IStorage {
     roles: string[];
     needsContractor: boolean;
     needsCategory: boolean;
+    shiftLogIds: number[];
   }>> {
     const conds: any[] = [
       or(
@@ -6878,6 +6888,7 @@ export class DatabaseStorage implements IStorage {
       category: plantShiftLogManpower.category,
       gender: plantShiftLogManpower.gender,
       date: plantShiftLogs.date,
+      shiftLogId: plantShiftLogManpower.shiftLogId,
     })
       .from(plantShiftLogManpower)
       .innerJoin(plantShiftLogs, eq(plantShiftLogs.id, plantShiftLogManpower.shiftLogId))
@@ -6894,6 +6905,7 @@ export class DatabaseStorage implements IStorage {
       roles: Set<string>;
       needsContractor: boolean;
       needsCategory: boolean;
+      shiftLogIds: Set<number>;
     };
     const groups = new Map<string, Group>();
     for (const r of rows) {
@@ -6913,6 +6925,7 @@ export class DatabaseStorage implements IStorage {
           roles: new Set(),
           needsContractor: false,
           needsCategory: false,
+          shiftLogIds: new Set(),
         };
         groups.set(nameKey, g);
       }
@@ -6923,6 +6936,7 @@ export class DatabaseStorage implements IStorage {
       if (r.category) g.currentCategories.add(r.category);
       if (r.gender) g.currentGenders.add(r.gender);
       if (r.role) g.roles.add(r.role);
+      if (typeof r.shiftLogId === "number") g.shiftLogIds.add(r.shiftLogId);
       if (r.contractorName === "UNKNOWN CONTRACTOR") g.needsContractor = true;
       if (r.category === "OTHER") g.needsCategory = true;
     }
@@ -6938,8 +6952,71 @@ export class DatabaseStorage implements IStorage {
         roles: Array.from(g.roles),
         needsContractor: g.needsContractor,
         needsCategory: g.needsCategory,
+        shiftLogIds: Array.from(g.shiftLogIds),
       }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }
+
+  // Mine past (still-active) merge batches to derive name-pair and token-pair
+  // equivalences. Each non-undone batch with N source names + 1 target name
+  // contributes a learned alias for every (source, target) where source !=
+  // target, and for every token-position where source/target differ but the
+  // remaining tokens match exactly. The cleanup screen surfaces future name
+  // pairs that re-use these learned aliases as duplicate suggestions even when
+  // they would otherwise fail the typo / phonetic checks.
+  async getShiftLogManpowerLearnedAliases(): Promise<{
+    pairs: Array<[string, string]>;
+    tokenPairs: Array<[string, string]>;
+  }> {
+    const batches = await db.select({
+      fromNames: plantShiftLogManpowerRelabelBatches.fromNames,
+      toName: plantShiftLogManpowerRelabelBatches.toName,
+    })
+      .from(plantShiftLogManpowerRelabelBatches)
+      .where(isNull(plantShiftLogManpowerRelabelBatches.undoneAt));
+    // Mirror the client-side normalizeName(): strip trailing/embedded
+    // punctuation and collapse whitespace so mined aliases ("MD." vs the
+    // client's normalized "MD") share the same key.
+    const normalize = (s: string) =>
+      String(s || "")
+        .toUpperCase()
+        .replace(/[.,;:!?\-_/\\]+$/g, "")
+        .replace(/[.,;:!?]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const pairKey = (a: string, b: string) => (a < b ? `${a}||${b}` : `${b}||${a}`);
+    const seenPairs = new Set<string>();
+    const pairs: Array<[string, string]> = [];
+    const seenTokenPairs = new Set<string>();
+    const tokenPairs: Array<[string, string]> = [];
+    for (const b of batches) {
+      const to = normalize(b.toName);
+      if (!to) continue;
+      for (const rawFrom of b.fromNames || []) {
+        const from = normalize(rawFrom);
+        if (!from || from === to) continue;
+        const k = pairKey(from, to);
+        if (!seenPairs.has(k)) { seenPairs.add(k); pairs.push([from, to]); }
+        const ta = from.split(/\s+/).filter(Boolean);
+        const tb = to.split(/\s+/).filter(Boolean);
+        if (ta.length !== tb.length) continue;
+        for (let i = 0; i < ta.length; i++) {
+          if (ta[i] === tb[i]) continue;
+          // Only call out a token-pair equivalence when every other token
+          // already matches exactly — otherwise we'd over-generalise from
+          // multi-difference merges.
+          let othersMatch = true;
+          for (let j = 0; j < ta.length; j++) {
+            if (j === i) continue;
+            if (ta[j] !== tb[j]) { othersMatch = false; break; }
+          }
+          if (!othersMatch) continue;
+          const tk = pairKey(ta[i], tb[i]);
+          if (!seenTokenPairs.has(tk)) { seenTokenPairs.add(tk); tokenPairs.push([ta[i], tb[i]]); }
+        }
+      }
+    }
+    return { pairs, tokenPairs };
   }
 
   async bulkRelabelShiftLogManpowerByName(input: {

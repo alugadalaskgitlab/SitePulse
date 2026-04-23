@@ -23,6 +23,12 @@ type ReviewRow = {
   roles: string[];
   needsContractor: boolean;
   needsCategory: boolean;
+  shiftLogIds: number[];
+};
+
+type LearnedAliases = {
+  pairs: Array<[string, string]>;
+  tokenPairs: Array<[string, string]>;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -116,11 +122,135 @@ function isPhoneticDup(a: string, b: string): boolean {
   return true;
 }
 
-function isLikelyDup(rawA: string, rawB: string): boolean {
+// Token-reorder: same multiset of tokens (each ≥ 2 letters) but in a different
+// order. Catches "RAVI KUMAR" vs "KUMAR RAVI" without false-firing on
+// single-letter initials.
+function isTokenReorder(a: string, b: string): boolean {
+  const ta = a.split(" ").filter(Boolean);
+  const tb = b.split(" ").filter(Boolean);
+  if (ta.length < 2 || ta.length !== tb.length) return false;
+  if (ta.some(t => t.length < 2) || tb.some(t => t.length < 2)) return false;
+  const sa = [...ta].sort().join("|");
+  const sb = [...tb].sort().join("|");
+  return sa === sb && a !== b;
+}
+
+// Hard-coded short-form aliases common on Indian shift logs. Every variant is
+// mapped to the same canonical key — when both names share a canonical-keyed
+// first token AND the remaining tokens are identical, we treat them as a dup
+// even though edit distance is large.
+const SHORT_FORM_GROUPS: string[][] = [
+  ["MD", "MOHD", "MOHAMMED", "MOHAMMAD", "MOHAMED", "MOHAMAD", "MUHAMMAD", "MUHAMMED"],
+  ["SK", "SHEIKH", "SHAIKH"],
+  ["ABDUL", "ABD", "ABDULLA", "ABDULLAH"],
+  ["SYED", "SAYED", "SAYYED", "SAIYED"],
+  ["SRI", "SHRI", "SHREE"],
+  ["MR", "MISTER"],
+];
+const SHORT_FORM_KEY = new Map<string, string>();
+for (const grp of SHORT_FORM_GROUPS) {
+  const key = grp[0];
+  for (const v of grp) SHORT_FORM_KEY.set(v, key);
+}
+
+function shortFormCanonical(token: string): string {
+  return SHORT_FORM_KEY.get(token) || token;
+}
+
+function isShortFormDup(a: string, b: string): boolean {
+  const ta = a.split(" ").filter(Boolean);
+  const tb = b.split(" ").filter(Boolean);
+  if (ta.length === 0 || ta.length !== tb.length) return false;
+  let usedAlias = false;
+  for (let i = 0; i < ta.length; i++) {
+    if (ta[i] === tb[i]) continue;
+    const ka = shortFormCanonical(ta[i]);
+    const kb = shortFormCanonical(tb[i]);
+    if (ka !== kb) return false;
+    if (!SHORT_FORM_KEY.has(ta[i]) && !SHORT_FORM_KEY.has(tb[i])) return false;
+    usedAlias = true;
+  }
+  return usedAlias;
+}
+
+// Per-token learned-alias dup. Mirrors isPhoneticDup but uses the historical
+// token-pair equivalences mined from past merges instead of phonetic keys.
+function isLearnedTokenDup(a: string, b: string, learnedTokenSet: Set<string>): boolean {
+  if (learnedTokenSet.size === 0) return false;
+  const ta = a.split(" ").filter(Boolean);
+  const tb = b.split(" ").filter(Boolean);
+  if (ta.length === 0 || ta.length !== tb.length) return false;
+  let usedLearned = false;
+  for (let i = 0; i < ta.length; i++) {
+    if (ta[i] === tb[i]) continue;
+    const k = ta[i] < tb[i] ? `${ta[i]}||${tb[i]}` : `${tb[i]}||${ta[i]}`;
+    if (!learnedTokenSet.has(k)) return false;
+    usedLearned = true;
+  }
+  return usedLearned;
+}
+
+// Strong shared-context signal: both names share the same single role AND at
+// least one real (non-UNKNOWN) contractor AND were entered on at least one
+// common shift log. That last constraint is the "dates strongly" half of the
+// task — if two name spellings landed on the exact same shift under the same
+// role + contractor, it's almost always one worker double-entered (e.g.
+// "MD KAREEM" + "MOHAMMED KAREEM" on the same DPR shift). To keep the
+// precision high we also require some shared name structure: either two
+// ≥3-letter tokens that match (exactly or phonetically) — protecting against
+// distinct workers who only share a single common surname.
+function isCoOccurrenceDup(rowA: ReviewRow, rowB: ReviewRow): boolean {
+  if (rowA.roles.length !== 1 || rowB.roles.length !== 1) return false;
+  if (rowA.roles[0] !== rowB.roles[0]) return false;
+  const realContractorsA = rowA.currentContractors.filter(c => c && c !== "UNKNOWN CONTRACTOR");
+  const realContractorsB = rowB.currentContractors.filter(c => c && c !== "UNKNOWN CONTRACTOR");
+  if (realContractorsA.length === 0 || realContractorsB.length === 0) return false;
+  const contractorOverlap = realContractorsA.some(c => realContractorsB.includes(c));
+  if (!contractorOverlap) return false;
+  // Must have appeared on the same shift log at least once — that's the
+  // "shared dates" evidence.
+  const idsB = new Set(rowB.shiftLogIds);
+  const sharedShifts = rowA.shiftLogIds.filter(id => idsB.has(id)).length;
+  if (sharedShifts === 0) return false;
+  // Count shared / phonetically-equal ≥3-letter tokens. Single shared-token
+  // matches (typically a common surname like "KUMAR") are too noisy on their
+  // own — require either two name overlaps or a single overlap backed up by
+  // multiple shared shifts.
+  const ta = normalizeName(rowA.name).split(" ").filter(t => t.length >= 3);
+  const tb = normalizeName(rowB.name).split(" ").filter(t => t.length >= 3);
+  if (ta.length === 0 || tb.length === 0) return false;
+  let nameOverlaps = 0;
+  const usedB = new Set<number>();
+  for (const x of ta) {
+    const kx = phoneticToken(x);
+    for (let j = 0; j < tb.length; j++) {
+      if (usedB.has(j)) continue;
+      const y = tb[j];
+      const ky = phoneticToken(y);
+      if (x === y || (kx && ky && kx === ky && kx.length >= 2)) {
+        nameOverlaps += 1;
+        usedB.add(j);
+        break;
+      }
+    }
+  }
+  if (nameOverlaps >= 2) return true;
+  if (nameOverlaps >= 1 && sharedShifts >= 2) return true;
+  return false;
+}
+
+function isLikelyDup(
+  rawA: string,
+  rawB: string,
+  learnedPairKeys?: Set<string>,
+  learnedTokenSet?: Set<string>,
+): boolean {
   const a = normalizeName(rawA);
   const b = normalizeName(rawB);
   if (!a || !b) return false;
   if (a === b) return true;
+  // Past merges already unified these two names — flag every recurrence.
+  if (learnedPairKeys && learnedPairKeys.has(pairKey(a, b))) return true;
   const partsA = a.split(" ");
   const partsB = b.split(" ");
   // Same first token + the other has just one extra short trailing token (initial / suffix)
@@ -134,6 +264,12 @@ function isLikelyDup(rawA: string, rawB: string): boolean {
   if (levenshtein(a, b) <= 1) return true;
   // Phonetic match for Indian-name spelling variants ≥ 2 edits apart
   if (isPhoneticDup(a, b)) return true;
+  // Reordered tokens: "RAVI KUMAR" vs "KUMAR RAVI"
+  if (isTokenReorder(a, b)) return true;
+  // Hard-coded short-form aliases ("MD." vs "MOHAMMED")
+  if (isShortFormDup(a, b)) return true;
+  // Token equivalences learned from past merges
+  if (learnedTokenSet && isLearnedTokenDup(a, b, learnedTokenSet)) return true;
   return false;
 }
 
@@ -145,7 +281,11 @@ function pairKey(a: string, b: string): string {
   return ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`;
 }
 
-function buildClusters(rows: ReviewRow[], dismissedPairKeys: Set<string>): Cluster[] {
+function buildClusters(
+  rows: ReviewRow[],
+  dismissedPairKeys: Set<string>,
+  learned: LearnedAliases | null,
+): Cluster[] {
   const n = rows.length;
   const parent = Array.from({ length: n }, (_, i) => i);
   const find = (x: number): number => {
@@ -160,9 +300,22 @@ function buildClusters(rows: ReviewRow[], dismissedPairKeys: Set<string>): Clust
     const rb = find(b);
     if (ra !== rb) parent[ra] = rb;
   };
+  const learnedPairKeys = new Set<string>();
+  const learnedTokenSet = new Set<string>();
+  if (learned) {
+    for (const [a, b] of learned.pairs) learnedPairKeys.add(pairKey(a, b));
+    for (const [a, b] of learned.tokenPairs) {
+      const ua = a.toUpperCase().trim();
+      const ub = b.toUpperCase().trim();
+      if (!ua || !ub || ua === ub) continue;
+      learnedTokenSet.add(ua < ub ? `${ua}||${ub}` : `${ub}||${ua}`);
+    }
+  }
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      if (!isLikelyDup(rows[i].name, rows[j].name)) continue;
+      const dup = isLikelyDup(rows[i].name, rows[j].name, learnedPairKeys, learnedTokenSet)
+        || isCoOccurrenceDup(rows[i], rows[j]);
+      if (!dup) continue;
       if (dismissedPairKeys.has(pairKey(rows[i].name, rows[j].name))) continue;
       union(i, j);
     }
@@ -218,6 +371,7 @@ export default function PlantShiftLogManpowerReview() {
 
   type DismissedPair = { id: number; nameA: string; nameB: string; dismissedBy: string; dismissedAt: string };
   const [dismissedPairs, setDismissedPairs] = useState<DismissedPair[] | null>(null);
+  const [learnedAliases, setLearnedAliases] = useState<LearnedAliases | null>(null);
   const [savingDismissalKey, setSavingDismissalKey] = useState<string | null>(null);
   const [restoringDismissalId, setRestoringDismissalId] = useState<number | null>(null);
   const [showDismissedList, setShowDismissedList] = useState(false);
@@ -268,6 +422,23 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
+  const fetchLearnedAliases = async () => {
+    if (!adminPin) return;
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/learned-aliases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: adminPin }),
+      });
+      if (res.status === 401) { setAdminPin(null); return; }
+      if (!res.ok) throw new Error(await res.text());
+      setLearnedAliases((await res.json()) as LearnedAliases);
+    } catch (err) {
+      toast({ title: "Failed to load learned aliases", description: getErrorMessage(err), variant: "destructive" });
+    }
+  };
+
   const fetchDismissedPairs = async () => {
     if (!adminPin) return;
     try {
@@ -288,6 +459,7 @@ export default function PlantShiftLogManpowerReview() {
   useEffect(() => {
     if (adminPin) {
       fetchRecentMerges();
+      fetchLearnedAliases();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPin]);
@@ -329,7 +501,7 @@ export default function PlantShiftLogManpowerReview() {
         title: "Merge undone",
         description: `Restored ${result.restored} shift-log row(s) to their original worker info.`,
       });
-      await Promise.all([fetchRecentMerges(), fetchRows()]);
+      await Promise.all([fetchRecentMerges(), fetchRows(), fetchLearnedAliases()]);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
     } catch (err) {
       toast({ title: "Undo failed", description: getErrorMessage(err), variant: "destructive" });
@@ -415,7 +587,7 @@ export default function PlantShiftLogManpowerReview() {
         description: `${row.name}: updated ${result.updated} row(s) → ${e.contractor.trim().toUpperCase()} / ${e.category} / ${e.gender}`,
       });
       // Refresh list
-      await Promise.all([fetchRows(), fetchRecentMerges()]);
+      await Promise.all([fetchRows(), fetchRecentMerges(), fetchLearnedAliases()]);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
     } catch (err) {
       toast({ title: "Relabel failed", description: getErrorMessage(err), variant: "destructive" });
@@ -484,7 +656,7 @@ export default function PlantShiftLogManpowerReview() {
         title: "Names merged",
         description: `${fromNames.length} name(s) → ${target.toUpperCase()} · ${result.updated} row(s) updated`,
       });
-      await Promise.all([fetchRows(), fetchRecentMerges()]);
+      await Promise.all([fetchRows(), fetchRecentMerges(), fetchLearnedAliases()]);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
     } catch (err) {
       toast({ title: "Merge failed", description: getErrorMessage(err), variant: "destructive" });
@@ -506,8 +678,8 @@ export default function PlantShiftLogManpowerReview() {
     return s;
   }, [dismissedPairs]);
   const clusters = useMemo(
-    () => (rows ? buildClusters(rows, dismissedPairKeys) : []),
-    [rows, dismissedPairKeys]
+    () => (rows ? buildClusters(rows, dismissedPairKeys, learnedAliases) : []),
+    [rows, dismissedPairKeys, learnedAliases]
   );
   const visibleClusters = clusters;
   const nameToCluster = useMemo(() => {
@@ -858,7 +1030,7 @@ export default function PlantShiftLogManpowerReview() {
                     {visibleClusters.length} suggested duplicate group{visibleClusters.length === 1 ? "" : "s"}
                   </div>
                   <div className="text-xs text-purple-900/70 dark:text-purple-200/70">
-                    (trailing punctuation, single trailing token, or 1-character typo)
+                    (typos, phonetic spellings, reordered tokens, short-form aliases like MD./MOHAMMED, prior-merge patterns, or shared role + contractor with overlapping name tokens)
                   </div>
                 </div>
                 <div className="space-y-1.5">
