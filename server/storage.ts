@@ -8250,9 +8250,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName: string = "Main Plant"): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null> {
-    const cutoff = beforeDateTime; // ISO "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD"
-    const cutoffDate = cutoff.length >= 10 ? cutoff.slice(0, 10) : cutoff;
-    const cutoffTime = cutoff.length > 10 ? cutoff.slice(11, 16) : "23:59";
+    // Normalize to full "YYYY-MM-DDTHH:mm" so lexicographic comparisons against
+    // candidate sortKeys (which always include time) are correct. A date-only
+    // input is treated as end-of-day so all that day's readings are included.
+    const cutoffDate = beforeDateTime.length >= 10 ? beforeDateTime.slice(0, 10) : beforeDateTime;
+    const cutoffTime = beforeDateTime.length > 10 ? beforeDateTime.slice(11, 16) : "23:59";
+    const cutoff = `${cutoffDate}T${cutoffTime}`;
 
     const candidates: { value: number; date: string; time: string | null; source: string; sourceId: number; sortKey: string }[] = [];
 
