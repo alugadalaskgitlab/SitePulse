@@ -542,7 +542,7 @@ export default function PlantHeatingSessions() {
                             ))}
                             {form.dgGeneratorName &&
                               !(generatorMasters || []).some(g => g.name === form.dgGeneratorName) && (
-                                <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (legacy)</SelectItem>
+                                <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
                               )}
                             <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
                           </SelectContent>
