@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -103,21 +103,35 @@ export default function PlantHeatingSessions() {
     setForm(prev => ({ ...prev, [k]: v }));
   };
 
-  // Auto-fill Tank-1 opening meter when opening a NEW form
+  // Auto-fill Tank-1 opening meter when opening a NEW form. Re-runs when
+  // startTime changes so the cutoff matches the actual heating start. Manually
+  // typed values are protected via a ref; auto-filled values are replaced when
+  // a more accurate cutoff becomes available. Stale fetch responses are dropped.
+  const autoFilledOpeningRef = useRef<string | null>(null);
+  const fetchSeqRef = useRef(0);
   useEffect(() => {
     if (!dialogOpen || form.id) return;
-    if (form.ldoTank1OpeningMeter) return;
+    const isEmpty = !form.ldoTank1OpeningMeter;
+    const isAutoFilled = form.ldoTank1OpeningMeter && form.ldoTank1OpeningMeter === autoFilledOpeningRef.current;
+    if (!isEmpty && !isAutoFilled) return; // user typed it — never overwrite
     const before = form.startTime ? `${form.date}T${form.startTime}` : `${form.date}T23:59`;
+    const seq = ++fetchSeqRef.current;
     fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(form.plantName)}`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((data: any) => {
+        if (seq !== fetchSeqRef.current) return; // stale response, drop
         if (data && typeof data.value === "number") {
-          setForm(prev => prev.ldoTank1OpeningMeter ? prev : ({
-            ...prev,
-            ldoTank1OpeningMeter: String(data.value),
-            autoFilledOpening: true,
-            autoFilledSource: data.source,
-          }));
+          const next = String(data.value);
+          setForm(prev => {
+            if (prev.ldoTank1OpeningMeter && prev.ldoTank1OpeningMeter !== autoFilledOpeningRef.current) return prev;
+            autoFilledOpeningRef.current = next;
+            return {
+              ...prev,
+              ldoTank1OpeningMeter: next,
+              autoFilledOpening: true,
+              autoFilledSource: data.source,
+            };
+          });
         }
       })
       .catch(() => {});
