@@ -103,6 +103,11 @@ export default function PlantShiftLog() {
     setLdoTank1ClosingMeter(existing.ldoTank1ClosingMeter?.toString() || "");
     setLdoTank2OpeningMeter(existing.ldoTank2OpeningMeter?.toString() || "");
     setLdoTank2ClosingMeter(existing.ldoTank2ClosingMeter?.toString() || "");
+    // Loading a saved record — clear any auto-fill hint state from prior new-log session.
+    setAutoFillT1Source("");
+    setAutoFillT2Source("");
+    autoFilledT1ValueRef.current = null;
+    autoFilledT2ValueRef.current = null;
     setManpower(existing.manpower.map(m => ({ name: m.name, role: m.role })));
     setIdleEvents(existing.idleEvents.map(e => ({
       startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,

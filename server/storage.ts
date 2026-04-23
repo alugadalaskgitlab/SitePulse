@@ -8080,6 +8080,26 @@ export class DatabaseStorage implements IStorage {
     const { id, pin: _pin, editedBy: _e, ...rest } = input;
     const payload: Partial<InsertBitumenHeatingSession> = { ...rest };
 
+    // Server-side meter integrity: closing >= opening for LDO Tank-1, and DG diesel
+    // open + issued >= close. Defends against malformed (non-UI) clients.
+    if (payload.ldoTank1OpeningMeter != null && payload.ldoTank1ClosingMeter != null
+        && payload.ldoTank1ClosingMeter < payload.ldoTank1OpeningMeter) {
+      const err: any = new Error("LDO Tank-1 closing meter must be ≥ opening meter");
+      err.code = "METER_DECREASING";
+      throw err;
+    }
+    if (payload.dgMode === "inline"
+        && payload.dgOpeningDiesel != null && payload.dgClosingDiesel != null) {
+      const op = payload.dgOpeningDiesel;
+      const cl = payload.dgClosingDiesel;
+      const iss = payload.dgIssuedDiesel ?? 0;
+      if (cl > op + iss) {
+        const err: any = new Error("DG closing diesel cannot exceed opening + issued");
+        err.code = "DG_DIESEL_INCONSISTENT";
+        throw err;
+      }
+    }
+
     // Derived numbers
     const durationHours = this._computeDurationHours(payload.startTime, payload.endTime);
     if (durationHours != null) payload.durationHours = durationHours;
