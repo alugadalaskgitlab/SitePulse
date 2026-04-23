@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
@@ -96,11 +96,47 @@ export default function PlantDailyReports() {
   const { appendOrigin } = useOrigin();
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
-  const [from, setFrom] = useState(format(subDays(new Date(), 90), "yyyy-MM-dd"));
-  const [to, setTo] = useState(today);
-  const [plant, setPlant] = useState<string>("");
-  const [selectedParties, setSelectedParties] = useState<string[]>([]); // party ids as strings
-  const [selectedMixTypes, setSelectedMixTypes] = useState<string[]>([]); // mix type names
+  const defaultFrom = format(subDays(new Date(), 90), "yyyy-MM-dd");
+
+  const searchString = useSearch();
+  const [, setLocation] = useLocation();
+  const params = useMemo(() => new URLSearchParams(searchString || ""), [searchString]);
+
+  const from = params.get("from") || defaultFrom;
+  const to = params.get("to") || today;
+  const plant = params.get("plant") || "";
+  const selectedParties = params.getAll("party"); // party ids as strings
+  const selectedMixTypes = params.getAll("mixType"); // mix type names
+
+  const updateFilters = (
+    next: Partial<{
+      from: string;
+      to: string;
+      plant: string;
+      parties: string[];
+      mixTypes: string[];
+    }>,
+  ) => {
+    const p = new URLSearchParams();
+    const fromV = next.from ?? from;
+    const toV = next.to ?? to;
+    const plantV = next.plant ?? plant;
+    const partiesV = next.parties ?? selectedParties;
+    const mixTypesV = next.mixTypes ?? selectedMixTypes;
+    if (fromV && fromV !== defaultFrom) p.set("from", fromV);
+    if (toV && toV !== today) p.set("to", toV);
+    if (plantV) p.set("plant", plantV);
+    for (const x of partiesV) p.append("party", x);
+    for (const x of mixTypesV) p.append("mixType", x);
+    const qs = p.toString();
+    setLocation(qs ? `/plant/daily-reports?${qs}` : "/plant/daily-reports");
+  };
+
+  const setFrom = (v: string) => updateFilters({ from: v });
+  const setTo = (v: string) => updateFilters({ to: v });
+  const setPlant = (v: string) => updateFilters({ plant: v });
+  const setSelectedParties = (v: string[]) => updateFilters({ parties: v });
+  const setSelectedMixTypes = (v: string[]) => updateFilters({ mixTypes: v });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string>("");
   type BulkStatus = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
@@ -157,8 +193,7 @@ export default function PlantDailyReports() {
   }, [rows]);
 
   const setQuickRange = (days: number) => {
-    setTo(today);
-    setFrom(format(subDays(new Date(), days), "yyyy-MM-dd"));
+    updateFilters({ from: format(subDays(new Date(), days), "yyyy-MM-dd"), to: today });
   };
 
   const handleBulkExport = async () => {
