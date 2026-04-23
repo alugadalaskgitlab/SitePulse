@@ -2795,7 +2795,18 @@ export default function VendorBills() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredBills.map(bill => (
+          {filteredBills.map(bill => {
+            let labourSiteAmt = 0, labourPlantAmt = 0, labourTotal = 0;
+            for (const item of (bill.items || []) as any[]) {
+              if ((item.category || "other") !== "labour") continue;
+              const amt = item.amount || 0;
+              labourTotal += amt;
+              const src = getLabourSource(item);
+              if (src === "site") labourSiteAmt += amt;
+              else if (src === "plant") labourPlantAmt += amt;
+            }
+            const showLabourSplit = labourSiteAmt > 0 && labourPlantAmt > 0;
+            return (
             <Card
               key={bill.id}
               className="hover-elevate cursor-pointer"
@@ -2810,6 +2821,11 @@ export default function VendorBills() {
                       {bill.billNo} &bull; {getBillTypeLabel(bill.billType)}
                       {bill.periodFrom && bill.periodTo && ` \u2022 ${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}`}
                     </p>
+                    {showLabourSplit && (
+                      <p className="text-[11px] text-muted-foreground italic mt-0.5" data-testid={`text-bill-labour-split-${bill.id}`}>
+                        Labour {formatCurrency(labourTotal)} &mdash; DPR Site {formatCurrency(labourSiteAmt)} &middot; Plant Shift {formatCurrency(labourPlantAmt)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
@@ -2825,7 +2841,8 @@ export default function VendorBills() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
