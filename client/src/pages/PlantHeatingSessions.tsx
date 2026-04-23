@@ -10,11 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, Plus, Save, Lock, Loader2, Trash2, Flame, Pencil } from "lucide-react";
-import { format } from "date-fns";
+import { ChevronLeft, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "lucide-react";
+import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
 
 type DgMode = "none" | "inline" | "link";
@@ -43,6 +42,8 @@ function emptyForm(date: string) {
     dgGeneratorName: "600 KVA",
     dgStartTime: "",
     dgEndTime: "",
+    dgOpeningHourMeter: "",
+    dgClosingHourMeter: "",
     dgOpeningDiesel: "",
     dgIssuedDiesel: "",
     dgClosingDiesel: "",
@@ -70,25 +71,29 @@ export default function PlantHeatingSessions() {
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
-  const dateParam = params?.date || format(new Date(), "yyyy-MM-dd");
   const _sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const _backTab = _sp.get("tab") || "operations";
   const _backRole = _sp.get("role");
   const _dashBase = appendOrigin("/plant/dashboard");
   const backLink = `${_dashBase}${_dashBase.includes("?") ? "&" : "?"}tab=${_backTab}${_backRole ? `&role=${_backRole}` : ""}`;
 
-  const [filterDate, setFilterDate] = useState(dateParam);
+  const today = format(new Date(), "yyyy-MM-dd");
+  const defaultFrom = format(subDays(new Date(), 30), "yyyy-MM-dd");
+  // If a /:date is in the URL we still anchor the range there but show 30 days back to today.
+  const dateParam = params?.date;
+  const [filterDateFrom, setFilterDateFrom] = useState(dateParam || defaultFrom);
+  const [filterDateTo, setFilterDateTo] = useState(dateParam || today);
+
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(emptyForm(dateParam));
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinPurpose, setPinPurpose] = useState<"finalize" | "delete" | "edit-finalized">("finalize");
-  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
-  const [pendingFinalizeId, setPendingFinalizeId] = useState<number | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm(today));
 
   const { data: sessions, isLoading } = useQuery<BitumenHeatingSession[]>({
-    queryKey: ["/api/plant-module/heating-sessions", filterDate],
+    queryKey: ["/api/plant-module/heating-sessions", filterDateFrom, filterDateTo],
     queryFn: async () => {
-      const res = await fetch(`/api/plant-module/heating-sessions?date=${filterDate}`, { credentials: "include" });
+      const qs = new URLSearchParams();
+      if (filterDateFrom) qs.set("dateFrom", filterDateFrom);
+      if (filterDateTo) qs.set("dateTo", filterDateTo);
+      const res = await fetch(`/api/plant-module/heating-sessions?${qs.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
@@ -112,22 +117,20 @@ export default function PlantHeatingSessions() {
   };
 
   // Auto-fill Tank-1 opening meter when opening a NEW form. Re-runs when
-  // startTime changes so the cutoff matches the actual heating start. Manually
-  // typed values are protected via a ref; auto-filled values are replaced when
-  // a more accurate cutoff becomes available. Stale fetch responses are dropped.
+  // startTime changes so the cutoff matches the actual heating start.
   const autoFilledOpeningRef = useRef<string | null>(null);
   const fetchSeqRef = useRef(0);
   useEffect(() => {
     if (!dialogOpen || form.id) return;
     const isEmpty = !form.ldoTank1OpeningMeter;
     const isAutoFilled = form.ldoTank1OpeningMeter && form.ldoTank1OpeningMeter === autoFilledOpeningRef.current;
-    if (!isEmpty && !isAutoFilled) return; // user typed it — never overwrite
+    if (!isEmpty && !isAutoFilled) return;
     const before = form.startTime ? `${form.date}T${form.startTime}` : `${form.date}T23:59`;
     const seq = ++fetchSeqRef.current;
     fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(form.plantName)}`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((data: any) => {
-        if (seq !== fetchSeqRef.current) return; // stale response, drop
+        if (seq !== fetchSeqRef.current) return;
         if (data && typeof data.value === "number") {
           const next = String(data.value);
           setForm(prev => {
@@ -154,20 +157,35 @@ export default function PlantHeatingSessions() {
     if (isNaN(o) || isNaN(c)) return null;
     return Math.max(0, c - o);
   })();
-  const dgDur = durationHrs(form.dgStartTime, form.dgEndTime);
+  const ldoLPerHr = (ldoConsumed != null && dur && dur > 0) ? ldoConsumed / dur : null;
+
+  const dgDurFromTime = durationHrs(form.dgStartTime, form.dgEndTime);
+  const dgDurFromMeter = (() => {
+    const o = parseFloat(form.dgOpeningHourMeter), c = parseFloat(form.dgClosingHourMeter);
+    if (isNaN(o) || isNaN(c)) return null;
+    return Math.max(0, Math.round((c - o) * 100) / 100);
+  })();
+  // Prefer hour-meter reading if both provided; fall back to clock time.
+  const dgHoursUsed = dgDurFromMeter ?? dgDurFromTime;
   const dgConsumed = (() => {
     const o = parseFloat(form.dgOpeningDiesel), c = parseFloat(form.dgClosingDiesel), iss = parseFloat(form.dgIssuedDiesel) || 0;
     if (isNaN(o) || isNaN(c)) return null;
     return Math.max(0, o + iss - c);
   })();
+  const dgLPerHr = (dgConsumed != null && dgHoursUsed && dgHoursUsed > 0) ? dgConsumed / dgHoursUsed : null;
 
-  const buildPayload = (extra?: { pin?: string }) => {
+  const buildPayload = () => {
     const ldoOpen = numOrNull(form.ldoTank1OpeningMeter);
     const ldoClose = numOrNull(form.ldoTank1ClosingMeter);
     if (ldoOpen != null && ldoClose != null && ldoClose < ldoOpen) {
       throw new Error("Closing meter must be ≥ opening meter");
     }
-    const payload: any = {
+    const dgOpenHM = numOrNull(form.dgOpeningHourMeter);
+    const dgCloseHM = numOrNull(form.dgClosingHourMeter);
+    if (form.dgMode === "inline" && dgOpenHM != null && dgCloseHM != null && dgCloseHM < dgOpenHM) {
+      throw new Error("DG closing hour-meter must be ≥ opening hour-meter");
+    }
+    const payload: Record<string, unknown> = {
       date: form.date,
       sessionType: form.sessionType,
       plantName: form.plantName,
@@ -189,6 +207,8 @@ export default function PlantHeatingSessions() {
       dgGeneratorName: form.dgMode === "inline" ? form.dgGeneratorName : null,
       dgStartTime: form.dgMode === "inline" ? (form.dgStartTime || null) : null,
       dgEndTime: form.dgMode === "inline" ? (form.dgEndTime || null) : null,
+      dgOpeningHourMeter: form.dgMode === "inline" ? dgOpenHM : null,
+      dgClosingHourMeter: form.dgMode === "inline" ? dgCloseHM : null,
       dgOpeningDiesel: form.dgMode === "inline" ? numOrNull(form.dgOpeningDiesel) : null,
       dgIssuedDiesel: form.dgMode === "inline" ? numOrNull(form.dgIssuedDiesel) : null,
       dgClosingDiesel: form.dgMode === "inline" ? numOrNull(form.dgClosingDiesel) : null,
@@ -196,14 +216,14 @@ export default function PlantHeatingSessions() {
       remarks: form.remarks || null,
       editedBy: "operator",
     };
-    if (extra?.pin) payload.pin = extra.pin;
     if (form.id) payload.id = form.id;
     return payload;
   };
 
+  // Save = save + finalize + close dialog (returns to list).
   const saveMutation = useMutation({
-    mutationFn: async (extra?: { pin?: string }) => {
-      const payload = buildPayload(extra);
+    mutationFn: async () => {
+      const payload = buildPayload();
       const url = form.id ? `/api/plant-module/heating-sessions/${form.id}` : "/api/plant-module/heating-sessions";
       const method = form.id ? "PUT" : "POST";
       const res = await fetch(url, {
@@ -215,48 +235,36 @@ export default function PlantHeatingSessions() {
       if (!res.ok) {
         let body: any = {};
         try { body = await res.json(); } catch {}
-        const msg = body?.message || res.statusText;
-        const e = new Error(msg) as Error & { code?: string; locked?: boolean; status?: number };
-        e.code = body?.code;
-        e.status = res.status;
-        if (res.status === 403 && body?.code === "FINALIZED_LOCKED") e.locked = true;
-        throw e;
+        throw new Error(body?.message || res.statusText);
       }
-      return res.json();
-    },
-    onSuccess: (data: BitumenHeatingSession) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports", filterDate] });
-      toast({ title: "Heating session saved" });
-      setForm(prev => ({ ...prev, id: data.id, isFinalized: data.isFinalized }));
-    },
-    onError: (err: any) => {
-      if (err?.locked) {
-        setPinPurpose("edit-finalized");
-        setShowPinAuth(true);
-        toast({ title: "Finalized session — manager/admin PIN required to edit" });
-      } else {
-        toast({ title: "Save failed", description: err.message, variant: "destructive" });
+      const saved: BitumenHeatingSession = await res.json();
+      // Auto-finalize so the operator doesn't need a second click.
+      if (!saved.isFinalized) {
+        try {
+          await apiRequest("POST", `/api/plant-module/heating-sessions/${saved.id}/finalize`, { finalizedBy: "operator" });
+        } catch {
+          // Don't block the close — save already succeeded.
+        }
       }
-    },
-  });
-
-  const finalizeMutation = useMutation({
-    mutationFn: async ({ id, pin }: { id: number; pin: string }) => {
-      const res = await apiRequest("POST", `/api/plant-module/heating-sessions/${id}/finalize`, { pin });
-      return res.json();
+      return saved;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
-      toast({ title: "Heating session finalized" });
-      setForm(prev => ({ ...prev, isFinalized: 1 }));
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
+      toast({ title: "Heating session saved" });
+      setDialogOpen(false);
     },
-    onError: (err: any) => toast({ title: "Finalize failed", description: err.message, variant: "destructive" }),
+    onError: (err: any) => {
+      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async ({ id, pin }: { id: number; pin: string }) => {
+    mutationFn: async (id: number) => {
+      // Server still requires an admin PIN for deletes (destructive).
+      const pin = window.prompt("Enter admin PIN to delete this session");
+      if (!pin) throw new Error("Cancelled");
       const res = await apiRequest("DELETE", `/api/plant-module/heating-sessions/${id}`, { pin });
       return res.json();
     },
@@ -266,26 +274,14 @@ export default function PlantHeatingSessions() {
       toast({ title: "Heating session deleted" });
       setDialogOpen(false);
     },
-    onError: (err: any) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
+    onError: (err: any) => {
+      if (err?.message === "Cancelled") return;
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    },
   });
 
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (pinPurpose === "finalize" && pendingFinalizeId != null) {
-      finalizeMutation.mutate({ id: pendingFinalizeId, pin });
-    } else if (pinPurpose === "delete" && pendingDeleteId != null) {
-      if (role !== "admin") {
-        toast({ title: "Admin PIN required", variant: "destructive" });
-        return;
-      }
-      deleteMutation.mutate({ id: pendingDeleteId, pin });
-    } else if (pinPurpose === "edit-finalized") {
-      saveMutation.mutate({ pin });
-    }
-  };
-
   const openNew = () => {
-    setForm(emptyForm(filterDate));
+    setForm(emptyForm(today));
     setDialogOpen(true);
   };
 
@@ -313,6 +309,8 @@ export default function PlantHeatingSessions() {
       dgGeneratorName: s.dgGeneratorName || "600 KVA",
       dgStartTime: s.dgStartTime || "",
       dgEndTime: s.dgEndTime || "",
+      dgOpeningHourMeter: s.dgOpeningHourMeter?.toString() || "",
+      dgClosingHourMeter: s.dgClosingHourMeter?.toString() || "",
       dgOpeningDiesel: s.dgOpeningDiesel?.toString() || "",
       dgIssuedDiesel: s.dgIssuedDiesel?.toString() || "",
       dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
@@ -324,6 +322,17 @@ export default function PlantHeatingSessions() {
     });
     setDialogOpen(true);
   };
+
+  // Group sessions by date for the list.
+  const grouped = useMemo(() => {
+    const list = (sessions || []).slice().sort((a, b) => b.date.localeCompare(a.date) || (a.startTime || "").localeCompare(b.startTime || ""));
+    const out: Record<string, BitumenHeatingSession[]> = {};
+    for (const s of list) {
+      (out[s.date] = out[s.date] || []).push(s);
+    }
+    return out;
+  }, [sessions]);
+  const groupedDates = Object.keys(grouped);
 
   return (
     <div className="space-y-6">
@@ -337,8 +346,15 @@ export default function PlantHeatingSessions() {
             <p className="text-sm text-muted-foreground">Per-session boiler runs — night pre-heating + day-time maintenance</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className="w-40" data-testid="input-filter-date" />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1">
+            <Label className="text-xs whitespace-nowrap">From</Label>
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-40" data-testid="input-filter-date-from" />
+          </div>
+          <div className="flex items-center gap-1">
+            <Label className="text-xs whitespace-nowrap">To</Label>
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
+          </div>
           <Link href={appendOrigin("/plant/heating-trends")}>
             <Button variant="outline" data-testid="button-view-trends">View Trends</Button>
           </Link>
@@ -347,39 +363,54 @@ export default function PlantHeatingSessions() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Sessions for {filterDate}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Sessions {filterDateFrom} → {filterDateTo}</CardTitle></CardHeader>
         <CardContent>
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-            !sessions?.length ? <p className="text-sm text-muted-foreground">No heating sessions for this date.</p> :
-            <div className="space-y-2">
-              {sessions.map(s => (
-                <div key={s.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover-elevate" data-testid={`row-session-${s.id}`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"}>
-                        {s.sessionType === "NIGHT_PREHEAT" ? "Night Pre-heat" : "Day Maintenance"}
-                      </Badge>
-                      <span className="font-medium">{s.startTime || "—"} → {s.endTime || "—"}</span>
-                      <span className="text-sm text-muted-foreground">({s.durationHours ?? 0} h)</span>
-                      {s.isFinalized ? <Badge className="bg-green-600">Finalized</Badge> : <Badge variant="outline">Draft</Badge>}
-                    </div>
-                    <div className="flex flex-wrap gap-3 text-xs mt-1 text-muted-foreground">
-                      <span>Staff: {s.staffName || "—"}</span>
-                      <span>LDO T1 Consumed: {s.ldoTank1Consumed?.toFixed(1) ?? "—"} L</span>
-                      <span>DG Diesel: {s.dgDieselConsumed?.toFixed(1) ?? "—"} L</span>
-                      <span>Hot-oil end: {s.hotOilTempEnd ?? "—"} °C</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(s)} data-testid={`button-edit-${s.id}`}><Pencil className="w-4 h-4" /></Button>
-                    {!s.isFinalized && (
-                      <Button variant="ghost" size="icon" onClick={() => { setPendingFinalizeId(s.id); setPinPurpose("finalize"); setShowPinAuth(true); }} data-testid={`button-finalize-${s.id}`}>
-                        <Lock className="w-4 h-4" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={() => { setPendingDeleteId(s.id); setPinPurpose("delete"); setShowPinAuth(true); }} data-testid={`button-delete-${s.id}`}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+            !sessions?.length ? <p className="text-sm text-muted-foreground">No heating sessions in this date range.</p> :
+            <div className="space-y-4">
+              {groupedDates.map(date => (
+                <div key={date}>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{date}</div>
+                  <div className="space-y-2">
+                    {grouped[date].map(s => {
+                      const sessLdoLPerHr = (s.ldoTank1Consumed != null && s.durationHours && s.durationHours > 0)
+                        ? s.ldoTank1Consumed / s.durationHours : null;
+                      const sessDgHrs = (s.dgClosingHourMeter != null && s.dgOpeningHourMeter != null)
+                        ? Math.max(0, s.dgClosingHourMeter - s.dgOpeningHourMeter)
+                        : (s.dgHoursRun ?? null);
+                      const sessDgLPerHr = (s.dgDieselConsumed != null && sessDgHrs && sessDgHrs > 0)
+                        ? s.dgDieselConsumed / sessDgHrs : null;
+                      return (
+                        <div key={s.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover-elevate" data-testid={`row-session-${s.id}`}>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"}>
+                                {s.sessionType === "NIGHT_PREHEAT" ? "Night Pre-heat" : "Day Maintenance"}
+                              </Badge>
+                              <span className="font-medium">{s.startTime || "—"} → {s.endTime || "—"}</span>
+                              <span className="text-sm text-muted-foreground">({s.durationHours ?? 0} h)</span>
+                              <span className="text-xs text-muted-foreground">{s.plantName}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
+                              <span>Staff: {s.staffName || "—"}</span>
+                              <span>LDO: {s.ldoTank1Consumed?.toFixed(1) ?? "—"} L
+                                {sessLdoLPerHr != null && <span className="ml-1">({sessLdoLPerHr.toFixed(2)} L/Hr)</span>}
+                              </span>
+                              <span>DG Hrs: {sessDgHrs != null ? sessDgHrs.toFixed(2) : "—"}</span>
+                              <span>HSD: {s.dgDieselConsumed?.toFixed(1) ?? "—"} L
+                                {sessDgLPerHr != null && <span className="ml-1">({sessDgLPerHr.toFixed(2)} L/Hr)</span>}
+                              </span>
+                              <span>Hot-oil end: {s.hotOilTempEnd ?? "—"} °C</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openEdit(s)} data-testid={`button-open-${s.id}`}>
+                              <FolderOpen className="w-4 h-4 mr-1" />Open
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -391,7 +422,7 @@ export default function PlantHeatingSessions() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{form.id ? "Edit" : "New"} Heating Session{form.isFinalized ? " (Finalized)" : ""}</DialogTitle>
+            <DialogTitle>{form.id ? "Edit" : "New"} Heating Session</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
@@ -430,7 +461,7 @@ export default function PlantHeatingSessions() {
 
             <Card>
               <CardHeader className="py-3"><CardTitle className="text-base">LDO Tank-1 (Boiler) Flow Meter</CardTitle></CardHeader>
-              <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <Label>Opening Meter</Label>
                   <Input type="number" step="0.01" value={form.ldoTank1OpeningMeter}
@@ -443,7 +474,8 @@ export default function PlantHeatingSessions() {
                   )}
                 </div>
                 <div><Label>Closing Meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
-                <div><Label>Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
+                <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
+                <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
               </CardContent>
             </Card>
 
@@ -463,43 +495,54 @@ export default function PlantHeatingSessions() {
                 </div>
 
                 {form.dgMode === "inline" && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div><Label>Generator</Label>
-                      <Select
-                        value={form.dgGeneratorName}
-                        onValueChange={v => {
-                          if (v === "__new__") {
-                            const name = window.prompt("Enter new generator name (e.g. '125 KVA')")?.trim();
-                            if (name) setField("dgGeneratorName", name);
-                          } else {
-                            setField("dgGeneratorName", v);
-                          }
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-dg-generator"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {(generatorNames && generatorNames.length > 0
-                            ? generatorNames
-                            : ["600 KVA", "40-30 KVA"]
-                          ).map(n => (
-                            <SelectItem key={n} value={n}>{n}</SelectItem>
-                          ))}
-                          {form.dgGeneratorName &&
-                            !(generatorNames || ["600 KVA", "40-30 KVA"]).includes(form.dgGeneratorName) && (
-                              <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
-                            )}
-                          <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="md:col-span-2"><Label>Generator</Label>
+                        <Select
+                          value={form.dgGeneratorName}
+                          onValueChange={v => {
+                            if (v === "__new__") {
+                              const name = window.prompt("Enter new generator name (e.g. '125 KVA')")?.trim();
+                              if (name) setField("dgGeneratorName", name);
+                            } else {
+                              setField("dgGeneratorName", v);
+                            }
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-dg-generator"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {(generatorNames && generatorNames.length > 0
+                              ? generatorNames
+                              : ["600 KVA", "40-30 KVA"]
+                            ).map(n => (
+                              <SelectItem key={n} value={n}>{n}</SelectItem>
+                            ))}
+                            {form.dgGeneratorName &&
+                              !(generatorNames || ["600 KVA", "40-30 KVA"]).includes(form.dgGeneratorName) && (
+                                <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
+                              )}
+                            <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div><Label>DG Start</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
+                      <div><Label>DG End</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
+                      <div><Label>Hours from Time</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-time">{dgDurFromTime ?? "—"}</div></div>
+                      <div><Label>Hour-Meter Opening</Label><Input type="number" step="0.01" value={form.dgOpeningHourMeter} onChange={e => setField("dgOpeningHourMeter", e.target.value)} data-testid="input-dg-hm-open" /></div>
+                      <div><Label>Hour-Meter Closing</Label><Input type="number" step="0.01" value={form.dgClosingHourMeter} onChange={e => setField("dgClosingHourMeter", e.target.value)} data-testid="input-dg-hm-close" /></div>
+                      <div><Label>Hours from Meter</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-meter">{dgDurFromMeter ?? "—"}</div></div>
+                      <div><Label>DG Hours Used</Label><div className="px-3 py-2 rounded bg-emerald-50 dark:bg-emerald-950/30 font-semibold text-sm" data-testid="text-dg-hrs-used">{dgHoursUsed != null ? dgHoursUsed.toFixed(2) : "—"}</div></div>
+                      <div><Label>HSD Opening (L)</Label><Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" /></div>
+                      <div><Label>HSD Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
+                      <div><Label>HSD Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
+                      <div><Label>HSD Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
+                      <div className="md:col-span-3" />
+                      <div><Label>HSD L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
                     </div>
-                    <div><Label>DG Start</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
-                    <div><Label>DG End</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
-                    <div><Label>DG Hours</Label><div className="px-3 py-2 rounded bg-muted text-sm">{dgDur ?? "—"}</div></div>
-                    <div><Label>Opening (L)</Label><Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" /></div>
-                    <div><Label>Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
-                    <div><Label>Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
-                    <div><Label>Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
-                  </div>
+                    <p className="text-xs text-muted-foreground">
+                      Tip: enter both clock time and hour-meter readings — the system uses the hour-meter when available and falls back to time. The shown DG Hours Used drives the L/Hr metric and reporting.
+                    </p>
+                  </>
                 )}
 
                 {form.dgMode === "link" && (
@@ -528,34 +571,19 @@ export default function PlantHeatingSessions() {
 
             <div className="flex flex-wrap gap-2 justify-end">
               {form.id && (
-                <Button variant="outline" onClick={() => { setPendingDeleteId(form.id!); setPinPurpose("delete"); setShowPinAuth(true); }} data-testid="button-delete">
+                <Button variant="outline" onClick={() => deleteMutation.mutate(form.id!)} disabled={deleteMutation.isPending} data-testid="button-delete">
                   <Trash2 className="w-4 h-4 mr-1" />Delete
                 </Button>
               )}
-              <Button onClick={() => {
-                if (form.isFinalized) { setPinPurpose("edit-finalized"); setShowPinAuth(true); }
-                else saveMutation.mutate(undefined);
-              }} disabled={saveMutation.isPending} data-testid="button-save">
+              <Button variant="ghost" onClick={() => setDialogOpen(false)} data-testid="button-cancel">Cancel</Button>
+              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save">
                 {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
-                {form.id ? "Update" : "Save Draft"}
+                Save & Close
               </Button>
-              {form.id && !form.isFinalized && (
-                <Button onClick={() => { setPendingFinalizeId(form.id!); setPinPurpose("finalize"); setShowPinAuth(true); }} data-testid="button-finalize">
-                  <Lock className="w-4 h-4 mr-1" />Finalize (PIN)
-                </Button>
-              )}
             </div>
           </div>
         </DialogContent>
       </Dialog>
-
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinPurpose === "delete" ? "admin" : "any"}
-          onSuccess={handlePinSuccess}
-          onClose={() => setShowPinAuth(false)}
-        />
-      )}
     </div>
   );
 }

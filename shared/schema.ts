@@ -920,6 +920,8 @@ export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {
   dgStartTime: text("dg_start_time"),
   dgEndTime: text("dg_end_time"),
   dgHoursRun: real("dg_hours_run"),
+  dgOpeningHourMeter: real("dg_opening_hour_meter"),
+  dgClosingHourMeter: real("dg_closing_hour_meter"),
   dgOpeningDiesel: real("dg_opening_diesel"),
   dgIssuedDiesel: real("dg_issued_diesel"),
   dgClosingDiesel: real("dg_closing_diesel"),

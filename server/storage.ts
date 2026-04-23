@@ -9011,11 +9011,25 @@ export class DatabaseStorage implements IStorage {
       // default ("600 KVA") so its presence does not indicate that DG actually ran.
       const hasAnyDgInput = !!payload.dgStartTime || !!payload.dgEndTime
         || payload.dgOpeningDiesel != null || payload.dgClosingDiesel != null
-        || payload.dgIssuedDiesel != null;
+        || payload.dgIssuedDiesel != null
+        || payload.dgOpeningHourMeter != null || payload.dgClosingHourMeter != null;
       if (!hasAnyDgInput) {
         payload.dgMode = "none";
       } else {
-        const dgHours = this._computeDurationHours(payload.dgStartTime, payload.dgEndTime);
+        // Validate hour-meter range when both readings provided.
+        if (payload.dgOpeningHourMeter != null && payload.dgClosingHourMeter != null
+            && payload.dgClosingHourMeter < payload.dgOpeningHourMeter) {
+          const err: any = new Error("DG closing hour-meter must be ≥ opening hour-meter");
+          err.code = "DG_HOUR_METER_RANGE";
+          throw err;
+        }
+        // Prefer hour-meter reading for DG hours when both are provided; fall
+        // back to clock time. This drives reporting and L/Hr efficiency.
+        const dgHoursFromMeter = (payload.dgOpeningHourMeter != null && payload.dgClosingHourMeter != null)
+          ? Math.max(0, Math.round((payload.dgClosingHourMeter - payload.dgOpeningHourMeter) * 100) / 100)
+          : null;
+        const dgHoursFromTime = this._computeDurationHours(payload.dgStartTime, payload.dgEndTime);
+        const dgHours = dgHoursFromMeter ?? dgHoursFromTime;
         if (dgHours != null) payload.dgHoursRun = dgHours;
         const op = payload.dgOpeningDiesel ?? null;
         const cl = payload.dgClosingDiesel ?? null;
@@ -9090,7 +9104,7 @@ export class DatabaseStorage implements IStorage {
         saved = updated;
       } else {
         const [created] = await tx.insert(bitumenHeatingSessions)
-          .values({ ...payload, createdBy: editedBy || "operator" })
+          .values({ ...payload, createdBy: editedBy || "operator" } as any)
           .returning();
         saved = created;
       }

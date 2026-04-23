@@ -9,14 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, Lock, FileText, Loader2, Pencil, Users } from "lucide-react";
-import { format } from "date-fns";
+import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen } from "lucide-react";
+import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
-import type { PlantShiftLogWithDetails } from "@shared/schema";
+import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails } from "@shared/schema";
 
 type ManpowerRow = {
   name: string;
@@ -32,7 +31,13 @@ export default function PlantShiftLog() {
   const { appendOrigin } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
   const [, setLocation] = useLocation();
-  const dateParam = params?.date || format(new Date(), "yyyy-MM-dd");
+  const today = format(new Date(), "yyyy-MM-dd");
+  const dateParam = params?.date || today;
+
+  // View mode: list when no :date in URL, edit when specific date.
+  const [viewMode, setViewMode] = useState<"list" | "edit">(params?.date ? "edit" : "list");
+  const [listDateFrom, setListDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [listDateTo, setListDateTo] = useState(today);
   const _sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const _backTab = _sp.get("tab") || "operations";
   const _backRole = _sp.get("role");
@@ -138,8 +143,6 @@ export default function PlantShiftLog() {
   };
 
   const [isFinalized, setIsFinalized] = useState(0);
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinPurpose, setPinPurpose] = useState<"finalize" | "delete" | "edit-finalized">("finalize");
   const [plantName, setPlantName] = useState("Main Plant");
   const [bitumenTank1StockApproxMt, setBitumenTank1StockApproxMt] = useState("");
   const [bitumenTank2StockApproxMt, setBitumenTank2StockApproxMt] = useState("");
@@ -152,8 +155,9 @@ export default function PlantShiftLog() {
   const autoFilledT1ValueRef = useRef<string | null>(null);
   const autoFilledT2ValueRef = useRef<string | null>(null);
 
-  const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails>({
+  const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails | undefined>({
     queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName],
+    enabled: viewMode === "edit",
     queryFn: async () => {
       const res = await fetch(`/api/plant-module/shift-logs/by-date/${date}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" });
       if (res.status === 404) return undefined;
@@ -161,6 +165,56 @@ export default function PlantShiftLog() {
       return res.json();
     },
   });
+
+  // List view query: all shift logs in the chosen date range.
+  const { data: shiftLogs, isLoading: listLoading } = useQuery<PlantShiftLogRow[]>({
+    queryKey: ["/api/plant-module/shift-logs", listDateFrom, listDateTo],
+    enabled: viewMode === "list",
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (listDateFrom) qs.set("dateFrom", listDateFrom);
+      if (listDateTo) qs.set("dateTo", listDateTo);
+      const res = await fetch(`/api/plant-module/shift-logs?${qs.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const resetForNew = () => {
+    setSavedId(null);
+    setIsFinalized(0);
+    setShiftCode("DAY");
+    setPlantStartTime(""); setPlantStopTime("");
+    setWeather(""); setAmbientTemp("");
+    setOperatorName(""); setSupervisorName(""); setRemarks("");
+    setBitumenTank1Temp(""); setBitumenTank2Temp("");
+    setBitumenTank1OpeningDip(""); setBitumenTank1ClosingDip("");
+    setBitumenTank2OpeningDip(""); setBitumenTank2ClosingDip("");
+    setLdoTank1OpeningMeter(""); setLdoTank1ClosingMeter("");
+    setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
+    setManpower([]); setIdleEvents([]);
+    setBitumenTank1StockApproxMt(""); setBitumenTank2StockApproxMt("");
+    setAutoFillT1Source(""); setAutoFillT2Source("");
+    autoFilledT1ValueRef.current = null;
+    autoFilledT2ValueRef.current = null;
+  };
+
+  const openEditForDate = (d: string, plant: string) => {
+    setDate(d);
+    setPlantName(plant || "Main Plant");
+    resetForNew();
+    setViewMode("edit");
+  };
+  const openNew = () => {
+    setDate(today);
+    setPlantName("Main Plant");
+    resetForNew();
+    setViewMode("edit");
+  };
+  const goBackToList = () => {
+    setViewMode("list");
+    queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+  };
 
   useEffect(() => {
     if (!existing) {
@@ -270,66 +324,44 @@ export default function PlantShiftLog() {
       }
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
       setSavedId(data.id);
-      setIsFinalized(data.isFinalized || 0);
+      setIsFinalized(1);
       toast({ title: "Shift log saved" });
+      // Auto-finalize so the operator doesn't need a second click — server no
+      // longer requires a PIN. Then return to the list view.
+      try {
+        await apiRequest("POST", `/api/plant-module/shift-logs/${data.id}/finalize`, { finalizedBy: "operator" });
+      } catch { /* save already succeeded */ }
+      goBackToList();
     },
     onError: (err: any) => {
-      if (err?.locked) {
-        setPinPurpose("edit-finalized");
-        setShowPinAuth(true);
-        toast({ title: "Finalized log — manager/admin PIN required to edit" });
-      } else {
-        toast({ title: "Save failed", description: err.message, variant: "destructive" });
-      }
+      toast({ title: "Save failed", description: err.message, variant: "destructive" });
     },
-  });
-
-  const finalizeMutation = useMutation({
-    mutationFn: async ({ pin, role }: { pin: string; role: string }) => {
-      if (!savedId) throw new Error("Save the log first");
-      const res = await apiRequest("POST", `/api/plant-module/shift-logs/${savedId}/finalize`, { pin, finalizedBy: role });
-      return res.json();
-    },
-    onSuccess: () => {
-      setIsFinalized(1);
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
-      toast({ title: "Shift log finalized for management review" });
-    },
-    onError: (err: any) => toast({ title: "Finalize failed", description: err.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (pin: string) => {
+    mutationFn: async () => {
       if (!savedId) throw new Error("Nothing to delete");
+      const pin = window.prompt("Enter admin PIN to delete this shift log");
+      if (!pin) throw new Error("Cancelled");
       const res = await apiRequest("DELETE", `/api/plant-module/shift-logs/${savedId}`, { pin });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
       toast({ title: "Shift log deleted" });
-      setLocation(appendOrigin("/plant/dashboard"));
+      goBackToList();
     },
-    onError: (err: any) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
+    onError: (err: any) => {
+      if (err?.message === "Cancelled") return;
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    },
   });
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (pinPurpose === "finalize") finalizeMutation.mutate({ pin, role });
-    else if (pinPurpose === "edit-finalized") saveMutation.mutate({ pin });
-    else if (pinPurpose === "delete") {
-      if (role !== "admin") {
-        toast({ title: "Admin PIN required", variant: "destructive" });
-        return;
-      }
-      deleteMutation.mutate(pin);
-    }
-  };
 
   // Auto-fill Tank-1 opening (latest meter reading before shift start) and Tank-2 opening (yesterday's closing) for new logs.
   // Re-run when plantStartTime becomes available so the cutoff is the actual shift start (not 00:00).
@@ -391,13 +423,112 @@ export default function PlantShiftLog() {
     return { t1, t2, total: (t1 || 0) + (t2 || 0) };
   }, [ldoTank1OpeningMeter, ldoTank1ClosingMeter, ldoTank2OpeningMeter, ldoTank2ClosingMeter]);
 
+  if (viewMode === "list") {
+    const sorted = (shiftLogs || []).slice().sort(
+      (a, b) => b.date.localeCompare(a.date) || (a.shiftCode || "").localeCompare(b.shiftCode || "")
+    );
+    const grouped: Record<string, PlantShiftLogRow[]> = {};
+    for (const r of sorted) (grouped[r.date] = grouped[r.date] || []).push(r);
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Link href={backLink}>
+              <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold">Plant Shift Logs</h1>
+              <p className="text-sm text-muted-foreground">Daily plant runs — pick a date to open or start a new shift log</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <Label className="text-xs whitespace-nowrap">From</Label>
+              <Input type="date" value={listDateFrom} onChange={e => setListDateFrom(e.target.value)} className="w-40" data-testid="input-list-from" />
+            </div>
+            <div className="flex items-center gap-1">
+              <Label className="text-xs whitespace-nowrap">To</Label>
+              <Input type="date" value={listDateTo} onChange={e => setListDateTo(e.target.value)} className="w-40" data-testid="input-list-to" />
+            </div>
+            <Link href="/plant/shift-log-manpower-review">
+              <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-manpower-review">
+                <Users className="w-4 h-4 mr-1" />Review UNKNOWN
+              </Button>
+            </Link>
+            <Button onClick={openNew} data-testid="button-new-shift-log"><Plus className="w-4 h-4 mr-1" />New Shift Log</Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Shift Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
+          <CardContent>
+            {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
+              !sorted.length ? <p className="text-sm text-muted-foreground">No shift logs in this date range.</p> :
+              <div className="space-y-4">
+                {Object.keys(grouped).map(d => (
+                  <div key={d}>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{d}</div>
+                    <div className="space-y-2">
+                      {grouped[d].map(r => {
+                        const ldo1 = (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null)
+                          ? Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter) : null;
+                        const ldo2 = (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null)
+                          ? Math.max(0, r.ldoTank2ClosingMeter - r.ldoTank2OpeningMeter) : null;
+                        const dur = (() => {
+                          if (!r.plantStartTime || !r.plantStopTime) return null;
+                          const [sh, sm] = r.plantStartTime.split(":").map(Number);
+                          const [eh, em] = r.plantStopTime.split(":").map(Number);
+                          let mins = (eh * 60 + em) - (sh * 60 + sm);
+                          if (mins < 0) mins += 24 * 60;
+                          return Math.round((mins / 60) * 100) / 100;
+                        })();
+                        const ldoLPerHr = (ldo1 != null && dur && dur > 0) ? (ldo1 / dur).toFixed(2) : null;
+                        return (
+                          <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover-elevate" data-testid={`row-shift-log-${r.id}`}>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline">{r.shiftCode}</Badge>
+                                <span className="font-medium">{r.plantStartTime || "—"} → {r.plantStopTime || "—"}</span>
+                                {dur != null && <span className="text-sm text-muted-foreground">({dur} h)</span>}
+                                <span className="text-xs text-muted-foreground">{r.plantName}</span>
+                                {r.isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : <Badge variant="secondary">Draft</Badge>}
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
+                                <span>Operator: {r.operatorName || "—"}</span>
+                                <span>LDO T1: {ldo1?.toFixed(1) ?? "—"} L{ldoLPerHr && <span className="ml-1">({ldoLPerHr} L/Hr)</span>}</span>
+                                <span>LDO T2: {ldo2?.toFixed(1) ?? "—"} L</span>
+                                <span>Weather: {r.weather || "—"}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Link href={appendOrigin(`/plant/daily-report/${r.date}`)}>
+                                <Button variant="ghost" size="sm" data-testid={`button-daily-report-${r.id}`}>
+                                  <FileText className="w-4 h-4 mr-1" />Report
+                                </Button>
+                              </Link>
+                              <Button variant="outline" size="sm" onClick={() => openEditForDate(r.date, r.plantName)} data-testid={`button-open-${r.id}`}>
+                                <FolderOpen className="w-4 h-4 mr-1" />Open
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            }
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link href={backLink}>
-            <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={goBackToList} data-testid="button-back-to-list"><ChevronLeft className="w-5 h-5" /></Button>
           <div>
             <h1 className="text-2xl font-bold">Plant Shift Log</h1>
             <p className="text-sm text-muted-foreground">Operator daily log – plant start/stop, idle events, manpower, fuel meters</p>
@@ -407,11 +538,6 @@ export default function PlantShiftLog() {
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
           <Link href={appendOrigin(`/plant/daily-report/${date}`)}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
-          </Link>
-          <Link href="/plant/shift-log-manpower-review">
-            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-manpower-review">
-              <Users className="w-4 h-4 mr-1" />Review UNKNOWN Workers
-            </Button>
           </Link>
         </div>
       </div>
@@ -657,31 +783,16 @@ export default function PlantShiftLog() {
 
       <div className="flex flex-wrap gap-2 justify-end">
         {savedId && (
-          <Button variant="outline" onClick={() => { setPinPurpose("delete"); setShowPinAuth(true); }} data-testid="button-delete">
+          <Button variant="outline" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} data-testid="button-delete">
             <Trash2 className="w-4 h-4 mr-1" />Delete
           </Button>
         )}
-        <Button onClick={() => {
-          if (isFinalized) { setPinPurpose("edit-finalized"); setShowPinAuth(true); }
-          else saveMutation.mutate(undefined);
-        }} disabled={saveMutation.isPending} data-testid="button-save">
+        <Button variant="ghost" onClick={goBackToList} data-testid="button-cancel">Cancel</Button>
+        <Button onClick={() => saveMutation.mutate(undefined)} disabled={saveMutation.isPending} data-testid="button-save">
           {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
-          {savedId ? "Update" : "Save Draft"}
+          Save & Close
         </Button>
-        {savedId && !isFinalized && (
-          <Button variant="default" onClick={() => { setPinPurpose("finalize"); setShowPinAuth(true); }} data-testid="button-finalize">
-            <Lock className="w-4 h-4 mr-1" />Finalize (PIN)
-          </Button>
-        )}
       </div>
-
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinPurpose === "delete" ? "admin" : "any"}
-          onSuccess={handlePinSuccess}
-          onClose={() => setShowPinAuth(false)}
-        />
-      )}
     </div>
   );
 }

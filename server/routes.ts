@@ -2365,14 +2365,8 @@ export async function registerRoutes(
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
       const parsed = upsertPlantShiftLogSchema.parse(req.body);
       const editedBy = parsed.editedBy || "operator";
-      // If a PIN is supplied (required when editing a finalized log), verify role
-      let authorizedRole: "admin" | "manager" | null = null;
-      const pin = (req.body && req.body.pin) || null;
-      if (pin) {
-        if (await storage.verifyPin("admin", pin)) authorizedRole = "admin";
-        else if (await storage.verifyPin("manager", pin)) authorizedRole = "manager";
-        else return res.status(403).json({ message: "Invalid PIN" });
-      }
+      // Operator save flow — no PIN gating; always treat as authorized so finalized logs can be re-edited freely.
+      const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
         sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
@@ -2388,14 +2382,9 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/shift-logs/:id/finalize", async (req, res) => {
     try {
-      const { pin } = req.body || {};
-      if (!pin) return res.status(403).json({ message: "Manager or admin PIN required" });
-      let role: "admin" | "manager" | null = null;
-      if (await storage.verifyPin("admin", pin)) role = "admin";
-      else if (await storage.verifyPin("manager", pin)) role = "manager";
-      if (!role) return res.status(403).json({ message: "Manager or admin PIN required" });
+      const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
       const id = parseInt(req.params.id);
-      const updated = await storage.finalizePlantShiftLog(id, role);
+      const updated = await storage.finalizePlantShiftLog(id, finalizedBy);
       if (!updated) return res.status(404).json({ message: "Shift log not found" });
       res.json(updated);
     } catch (err: any) {
@@ -3024,13 +3013,8 @@ export async function registerRoutes(
         return res.status(400).json({ code: "ID_NOT_ALLOWED_ON_POST", message: "POST creates new sessions; use PUT /:id to update" });
       }
       const editedBy = parsed.editedBy || "operator";
-      let authorizedRole: "admin" | "manager" | null = null;
-      const pin = req.body?.pin;
-      if (pin) {
-        if (await storage.verifyPin("admin", pin)) authorizedRole = "admin";
-        else if (await storage.verifyPin("manager", pin)) authorizedRole = "manager";
-        else return res.status(403).json({ message: "Invalid PIN" });
-      }
+      // Operator-driven save flow — no PIN gating; finalized rows can be re-edited freely.
+      const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertBitumenHeatingSession(parsed, editedBy, authorizedRole);
         res.status(201).json(saved);
@@ -3053,13 +3037,8 @@ export async function registerRoutes(
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
       const editedBy = parsed.editedBy || "operator";
-      let authorizedRole: "admin" | "manager" | null = null;
-      const pin = req.body?.pin;
-      if (pin) {
-        if (await storage.verifyPin("admin", pin)) authorizedRole = "admin";
-        else if (await storage.verifyPin("manager", pin)) authorizedRole = "manager";
-        else return res.status(403).json({ message: "Invalid PIN" });
-      }
+      // Operator-driven save flow — no PIN gating; finalized rows can be re-edited freely.
+      const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertBitumenHeatingSession(
           { ...parsed, id: parseInt(req.params.id) },
@@ -3083,13 +3062,8 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/heating-sessions/:id/finalize", async (req, res) => {
     try {
-      const pin = req.body?.pin;
-      if (!pin) return res.status(403).json({ message: "Manager or admin PIN required" });
-      let role: "admin" | "manager" | null = null;
-      if (await storage.verifyPin("admin", pin)) role = "admin";
-      else if (await storage.verifyPin("manager", pin)) role = "manager";
-      if (!role) return res.status(403).json({ message: "Manager or admin PIN required" });
-      const updated = await storage.finalizeBitumenHeatingSession(parseInt(req.params.id), role);
+      const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
+      const updated = await storage.finalizeBitumenHeatingSession(parseInt(req.params.id), finalizedBy);
       if (!updated) return res.status(404).json({ message: "Heating session not found" });
       res.json(updated);
     } catch (err: any) {
