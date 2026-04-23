@@ -8266,11 +8266,24 @@ export class DatabaseStorage implements IStorage {
 
     if (!candidates.length) return null;
 
-    // Prefer the latest same-day candidate over any older-day candidate.
-    const sameDay = candidates.filter(c => c.date === cutoffDate);
-    const pool = sameDay.length ? sameDay : candidates;
-    pool.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
-    const top = pool[0];
+    // Strict precedence (Tank-1 carry-forward spec):
+    //   1. Same-day prior heating-session closing (most recent)
+    //   2. Same-day shift-log Tank-1 opening (most recent <= cutoff)
+    //   3. Same-day shift-log Tank-1 closing (most recent <= cutoff)
+    //   4. Older-day closings (most recent)
+    // Within each tier, latest sortKey wins.
+    const tierOf = (c: { source: string; date: string }): number => {
+      if (c.date === cutoffDate && c.source.startsWith("Heating Session")) return 1;
+      if (c.date === cutoffDate && c.source.includes("(opening)")) return 2;
+      if (c.date === cutoffDate) return 3;
+      return 4;
+    };
+    candidates.sort((a, b) => {
+      const ta = tierOf(a), tb = tierOf(b);
+      if (ta !== tb) return ta - tb;
+      return b.sortKey.localeCompare(a.sortKey);
+    });
+    const top = candidates[0];
     return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
   }
 
