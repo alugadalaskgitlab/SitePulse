@@ -1217,7 +1217,7 @@ export default function PlantEquipmentUsage() {
                           </div>
                         </div>
                       </div>
-                      {dieselBalanceInTank !== "" && (() => {
+                      {dieselBalanceInTank !== "" && openingDiesel !== "" && (() => {
                         const opening = parseFloat(openingDiesel || "0");
                         const issued = parseFloat(dieselIssued || "0");
                         const balance = parseFloat(dieselBalanceInTank || "0");
