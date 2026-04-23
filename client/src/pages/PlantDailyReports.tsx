@@ -90,6 +90,7 @@ type IndexRow = {
   totalProductionMt: number;
   sessionsCount: number;
   shiftLogFinalized: boolean;
+  breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
 };
 
 export default function PlantDailyReports() {
@@ -415,6 +416,7 @@ export default function PlantDailyReports() {
                   <TableHead>Sections With Data</TableHead>
                   <TableHead className="text-right">Loads</TableHead>
                   <TableHead className="text-right">MT</TableHead>
+                  <TableHead>Party / Mix Breakdown</TableHead>
                   <TableHead className="text-right">Sessions</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -446,6 +448,21 @@ export default function PlantDailyReports() {
                       </TableCell>
                       <TableCell className="text-right">{r.totalLoads || "—"}</TableCell>
                       <TableCell className="text-right">{r.totalProductionMt ? r.totalProductionMt.toFixed(2) : "—"}</TableCell>
+                      <TableCell className="max-w-md">
+                        {r.breakdown && r.breakdown.length > 0 ? (
+                          <ul className="space-y-0.5 text-xs" data-testid={`breakdown-${rowKey}`}>
+                            {r.breakdown.map((b, i) => (
+                              <li key={`${b.partyName}-${b.mixType}-${i}`} className="leading-snug" data-testid={`breakdown-item-${rowKey}-${i}`}>
+                                <span className="font-medium">{b.partyName}</span>
+                                <span className="text-muted-foreground">: {b.loads} load{b.loads === 1 ? "" : "s"} / {b.mt.toFixed(2)} MT</span>
+                                <span className="text-muted-foreground"> ({b.mixType})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">{r.sessionsCount || "—"}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">

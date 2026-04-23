@@ -519,6 +519,7 @@ export interface IStorage {
     totalProductionMt: number;
     sessionsCount: number;
     shiftLogFinalized: boolean;
+    breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
   }>>;
 
   // Bitumen Heating Sessions
@@ -8142,6 +8143,7 @@ export class DatabaseStorage implements IStorage {
     hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
     totalLoads: number; totalProductionMt: number; sessionsCount: number;
     shiftLogFinalized: boolean;
+    breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
   }>> {
     const from = filters?.from;
     const to = filters?.to;
@@ -8192,6 +8194,7 @@ export class DatabaseStorage implements IStorage {
       hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
       totalLoads: number; totalProductionMt: number; sessionsCount: number;
       shiftLogFinalized: boolean;
+      breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
     };
     const map = new Map<string, Row>();
     const get = (date: string, plantName: string): Row => {
@@ -8204,6 +8207,7 @@ export class DatabaseStorage implements IStorage {
           hasBitumenDips: false, hasLdoMeter: false, hasHeatingSessions: false,
           totalLoads: 0, totalProductionMt: 0, sessionsCount: 0,
           shiftLogFinalized: false,
+          breakdown: [],
         };
         map.set(key, r);
       }
@@ -8228,6 +8232,51 @@ export class DatabaseStorage implements IStorage {
       row.hasDispatches = true;
       row.totalLoads = Number(r.loads) || 0;
       row.totalProductionMt = Number(r.mt) || 0;
+    }
+
+    // Per (date, plant) breakdown by party + mix type, respecting active filters.
+    const breakdownRows = await db.select({
+      date: truckDispatches.date,
+      plantName: truckDispatches.plantName,
+      partyId: truckDispatches.partyId,
+      mixTemplateId: truckDispatches.mixTemplateId,
+      loads: sql<number>`COUNT(*)::int`,
+      mt: sql<number>`COALESCE(SUM(${truckDispatches.loadWeight}),0)::float`,
+    }).from(truckDispatches)
+      .where(and(
+        dateRange(truckDispatches.date),
+        plantEq(truckDispatches.plantName),
+        partyIds.length ? inArray(truckDispatches.partyId, partyIds) : undefined,
+        matchingMixIds ? inArray(truckDispatches.mixTemplateId, matchingMixIds) : undefined,
+      ))
+      .groupBy(
+        truckDispatches.date,
+        truckDispatches.plantName,
+        truckDispatches.partyId,
+        truckDispatches.mixTemplateId,
+      );
+    if (breakdownRows.length > 0) {
+      const allParties = await db.select({ id: parties.id, name: parties.name }).from(parties);
+      const partyName = new Map(allParties.map((p) => [p.id, p.name]));
+      const allTemplates = await db.select({ id: mixTemplates.id, mixType: mixTemplates.mixType }).from(mixTemplates);
+      const tplMix = new Map(allTemplates.map((t) => [t.id, t.mixType]));
+      for (const r of breakdownRows) {
+        const row = get(r.date, r.plantName);
+        row.breakdown.push({
+          partyName: partyName.get(r.partyId) || `Party #${r.partyId}`,
+          mixType: tplMix.get(r.mixTemplateId) || "—",
+          loads: Number(r.loads) || 0,
+          mt: Number(r.mt) || 0,
+        });
+      }
+      // Stable sort: largest MT first, ties by party name then mix type.
+      for (const row of map.values()) {
+        row.breakdown.sort((a, b) =>
+          (b.mt - a.mt)
+          || a.partyName.localeCompare(b.partyName)
+          || a.mixType.localeCompare(b.mixType)
+        );
+      }
     }
 
     const eqRows = await db.select({
