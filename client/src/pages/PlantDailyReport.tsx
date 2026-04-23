@@ -311,7 +311,7 @@ export default function PlantDailyReport() {
             </CardContent>
           </Card>
 
-          {data.boilerHeating && data.boilerHeating.sessionCount > 0 && (
+          {data.boilerHeating && (
             <Card>
               <CardHeader>
                 <CardTitle>
