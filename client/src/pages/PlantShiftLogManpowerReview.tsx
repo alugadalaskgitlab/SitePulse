@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X, Undo2, History } from "lucide-react";
+import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X, Undo2, History, Download } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
@@ -555,7 +555,7 @@ export default function PlantShiftLogManpowerReview() {
   const [mergeTarget, setMergeTarget] = useState<string>("");
   const [merging, setMerging] = useState(false);
 
-  type DismissedPair = { id: number; nameA: string; nameB: string; dismissedBy: string; dismissedAt: string };
+  type DismissedPair = { id: number; nameA: string; nameB: string; dismissedBy: string; dismissedAt: string; plantName: string };
   const [dismissedPairs, setDismissedPairs] = useState<DismissedPair[] | null>(null);
   const [learnedAliases, setLearnedAliases] = useState<LearnedAliases | null>(null);
   const [customAliases, setCustomAliases] = useState<CustomAlias[] | null>(null);
@@ -1173,6 +1173,59 @@ export default function PlantShiftLogManpowerReview() {
     [selectedDismissedIds],
   );
 
+  // Export the currently filtered dismissed-pairs list to a CSV that opens
+  // cleanly in Excel / Google Sheets. Columns mirror the on-screen list:
+  // name A, name B, dismissed by, dismissed at (ISO), plant. Honors the
+  // active plant scope and all panel filters because the source list
+  // (`filteredDismissedPairs`) already does.
+  const downloadDismissedPairsCsv = () => {
+    const rowsToExport = filteredDismissedPairs;
+    if (rowsToExport.length === 0) {
+      toast({ title: "Nothing to export", description: "No dismissed pairs match the current filters.", variant: "destructive" });
+      return;
+    }
+    const escape = (v: string | number) => {
+      let s = String(v ?? "");
+      // Defuse spreadsheet formula-injection: a cell that starts with =, +,
+      // -, @, tab or CR is interpreted as a formula by Excel/Sheets. Prefix
+      // with a single quote so it shows as plain text.
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const plantLabel = (name: string) =>
+      name === ALL_PLANTS_SENTINEL ? "All plants" : name;
+    const header = ["Name A", "Name B", "Dismissed by", "Dismissed at", "Plant"];
+    const lines = [header.join(",")];
+    for (const p of rowsToExport) {
+      lines.push([
+        escape(p.nameA),
+        escape(p.nameB),
+        escape(p.dismissedBy),
+        escape(new Date(p.dismissedAt).toISOString()),
+        escape(plantLabel(p.plantName || dismissalsScopeKey)),
+      ].join(","));
+    }
+    // BOM so Excel detects UTF-8 for non-ASCII names.
+    const csv = "\uFEFF" + lines.join("\r\n") + "\r\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const today = new Date().toISOString().slice(0, 10);
+    const scopeSlug = (dismissalsScopeKey === ALL_PLANTS_SENTINEL ? "all-plants" : dismissalsScopeKey)
+      .replace(/[^A-Za-z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      || "plant";
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dismissed-name-pairs_${scopeSlug}_${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({
+      title: `Exported ${rowsToExport.length} dismissed pair${rowsToExport.length === 1 ? "" : "s"}`,
+    });
+  };
+
   const totals = useMemo(() => {
     if (!rows) return { workers: 0, items: 0 };
     return { workers: rows.length, items: rows.reduce((a, r) => a + r.count, 0) };
@@ -1680,6 +1733,18 @@ export default function PlantShiftLogManpowerReview() {
                         </Button>
                       )}
                       <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px]"
+                          disabled={filteredDismissedPairs.length === 0}
+                          onClick={downloadDismissedPairsCsv}
+                          data-testid="button-dismissed-download-csv"
+                          title="Download the currently filtered dismissed-pairs list as a CSV (opens in Excel / Google Sheets)"
+                        >
+                          <Download className="w-3.5 h-3.5 mr-1" />
+                          Download CSV
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
