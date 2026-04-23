@@ -8107,13 +8107,24 @@ export class DatabaseStorage implements IStorage {
       payload.ldoTank1Consumed = Math.max(0, payload.ldoTank1ClosingMeter - payload.ldoTank1OpeningMeter);
     }
     if (payload.dgMode === "inline") {
-      const dgHours = this._computeDurationHours(payload.dgStartTime, payload.dgEndTime);
-      if (dgHours != null) payload.dgHoursRun = dgHours;
-      const op = payload.dgOpeningDiesel ?? null;
-      const cl = payload.dgClosingDiesel ?? null;
-      const iss = payload.dgIssuedDiesel ?? 0;
-      if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
-    } else if (payload.dgMode === "link" && payload.generatorLogId == null) {
+      // Auto-coerce inline → none when the operator left every DG field blank
+      // (default form state). Prevents persisting empty placeholder generator
+      // log rows when no DG actually ran during the heating session.
+      const hasAnyDgInput = payload.dgStartTime || payload.dgEndTime
+        || payload.dgOpeningDiesel != null || payload.dgClosingDiesel != null
+        || payload.dgIssuedDiesel != null || payload.dgGeneratorName;
+      if (!hasAnyDgInput) {
+        payload.dgMode = "none";
+      } else {
+        const dgHours = this._computeDurationHours(payload.dgStartTime, payload.dgEndTime);
+        if (dgHours != null) payload.dgHoursRun = dgHours;
+        const op = payload.dgOpeningDiesel ?? null;
+        const cl = payload.dgClosingDiesel ?? null;
+        const iss = payload.dgIssuedDiesel ?? 0;
+        if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
+      }
+    }
+    if (payload.dgMode === "link" && payload.generatorLogId == null) {
       const err: any = new Error("dgMode='link' requires selecting an existing Generator Log");
       err.code = "GEN_LOG_REQUIRED";
       throw err;
