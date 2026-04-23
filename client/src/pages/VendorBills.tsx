@@ -1085,6 +1085,21 @@ export default function VendorBills() {
 
   const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
 
+  const labourSplit = useMemo(() => {
+    let site = 0, plant = 0, other = 0;
+    for (const bill of filteredBills) {
+      for (const item of (bill.items || []) as any[]) {
+        if ((item.category || "other") !== "labour") continue;
+        const amt = item.amount || 0;
+        const src = getLabourSource(item);
+        if (src === "site") site += amt;
+        else if (src === "plant") plant += amt;
+        else other += amt;
+      }
+    }
+    return { site, plant, other, total: site + plant + other };
+  }, [filteredBills]);
+
   const escHtml = (str: string) => {
     const div = document.createElement("div");
     div.textContent = str;
@@ -2670,6 +2685,30 @@ export default function VendorBills() {
               </p>
             </div>
           </div>
+          {labourSplit.site > 0 && labourSplit.plant > 0 && (
+            <div className="mt-2 pt-2 border-t flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs" data-testid="labour-split-summary">
+              <span className="uppercase text-muted-foreground tracking-wider text-[10px]">
+                Labour Split &middot; Total <span className="font-semibold text-foreground" data-testid="text-labour-split-total">₹{formatCurrency(labourSplit.total)}</span>
+              </span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span data-testid="text-labour-split-site">
+                  <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1 align-middle"></span>
+                  DPR Site: <span className="font-semibold">₹{formatCurrency(labourSplit.site)}</span>
+                  <span className="text-muted-foreground"> ({labourSplit.total > 0 ? Math.round((labourSplit.site / labourSplit.total) * 100) : 0}%)</span>
+                </span>
+                <span data-testid="text-labour-split-plant">
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 align-middle"></span>
+                  Plant Shift: <span className="font-semibold">₹{formatCurrency(labourSplit.plant)}</span>
+                  <span className="text-muted-foreground"> ({labourSplit.total > 0 ? Math.round((labourSplit.plant / labourSplit.total) * 100) : 0}%)</span>
+                </span>
+                {labourSplit.other > 0 && (
+                  <span data-testid="text-labour-split-other" className="text-muted-foreground">
+                    Other: <span className="font-semibold">₹{formatCurrency(labourSplit.other)}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
