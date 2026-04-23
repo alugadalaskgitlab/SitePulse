@@ -893,7 +893,7 @@ export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSche
   id: z.number().optional(),
   pin: z.string().optional(),
   editedBy: z.string().optional(),
-  sessionType: z.enum(["NIGHT_PREHEAT", "DAY_HEATING", "AD_HOC"]),
+  sessionType: z.enum(HEATING_SESSION_TYPES),
   dgMode: z.enum(["none", "inline", "link"]),
 });
 export type UpsertBitumenHeatingSessionInput = z.infer<typeof upsertBitumenHeatingSessionSchema>;
