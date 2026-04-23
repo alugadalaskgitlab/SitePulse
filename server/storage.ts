@@ -8216,10 +8216,29 @@ export class DatabaseStorage implements IStorage {
             .returning();
           saved = u;
         }
+      } else if (saved.dgMode === "link") {
+        // Switching from inline → link can target the very row this session
+        // previously created (generatorLogId === inline row id). In that case
+        // we MUST NOT delete it; instead release it from this session by
+        // clearing sourceHeatingSessionId so it becomes a standalone log.
+        // Any other inline row tagged for this session is a true orphan and
+        // is removed.
+        if (saved.generatorLogId != null) {
+          await tx.update(generatorLogs)
+            .set({ sourceHeatingSessionId: null })
+            .where(and(
+              eq(generatorLogs.sourceHeatingSessionId, saved.id),
+              eq(generatorLogs.id, saved.generatorLogId),
+            ));
+        }
+        await tx.delete(generatorLogs).where(and(
+          eq(generatorLogs.sourceHeatingSessionId, saved.id),
+          ...(saved.generatorLogId != null ? [ne(generatorLogs.id, saved.generatorLogId)] : []),
+        ));
       } else {
-        // Remove any inline DG row that previously existed for this session
+        // dgMode === "none": no link, drop any inline DG row for this session
         await tx.delete(generatorLogs).where(eq(generatorLogs.sourceHeatingSessionId, saved.id));
-        if (saved.dgMode !== "link" && saved.generatorLogId != null) {
+        if (saved.generatorLogId != null) {
           const [u] = await tx.update(bitumenHeatingSessions)
             .set({ generatorLogId: null })
             .where(eq(bitumenHeatingSessions.id, saved.id))
