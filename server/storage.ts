@@ -8364,7 +8364,13 @@ export class DatabaseStorage implements IStorage {
     const shift = headerRow ? await this.getPlantShiftLog(headerRow.id) : undefined;
 
     const dispatches = await db.select().from(truckDispatches).where(and(eq(truckDispatches.date, date), eq(truckDispatches.plantName, plantName)));
-    const equipment = await db.select().from(equipmentUsage).where(and(eq(equipmentUsage.date, date), eq(equipmentUsage.plantName, plantName)));
+    // Plant-only equipment: exclude site-DPR rows (dprId set) so JCBs/tippers
+    // logged against a site DPR don't bleed into the plant's daily report.
+    const equipment = await db.select().from(equipmentUsage).where(and(
+      eq(equipmentUsage.date, date),
+      eq(equipmentUsage.plantName, plantName),
+      isNull(equipmentUsage.dprId),
+    ));
     // Plant-scoped fuel datasets: prefer linkage via the selected shift log
     // (sourceShiftLogId set by idempotent write-through). Falls back to
     // (date, plantName) for ldoDipReadings which doesn't carry a shift link.
@@ -8471,18 +8477,29 @@ export class DatabaseStorage implements IStorage {
       totalIdleMinutes += mins;
     }
 
-    // Equipment usage with derived diesel efficiency (DG fuel)
+    // Equipment usage with derived diesel efficiency (DG fuel).
+    // When closingDiesel is null but the operator recorded a closing-tank dip
+    // (dieselBalanceInTank), use the dip as the closing-tank value so DG days
+    // with a dip-but-no-issue still show consumed and L/hr.
     const equipmentSummary = equipment.map(e => {
       const opening = e.openingDiesel ?? null;
-      const closing = e.closingDiesel ?? null;
+      // Operator-recorded closing dip is the source of truth for actual
+      // consumption — `closingDiesel` is computed from the norm at write time
+      // (opening + issued − expected), so it must NOT win over a real dip.
+      const closing = e.dieselBalanceInTank ?? e.closingDiesel ?? null;
       const issued = e.dieselIssued ?? 0;
       const hours = e.hoursOrKmRun ?? null;
+      const expected = e.expectedDiesel ?? null;
       let consumed: number | null = null;
       let lPerHr: number | null = null;
       if (opening != null && closing != null) {
         consumed = Math.max(0, opening + issued - closing);
         if (hours && hours > 0) lPerHr = Math.round((consumed / hours) * 100) / 100;
       }
+      const variance = (consumed != null && expected != null) ? Math.round((consumed - expected) * 100) / 100 : null;
+      const variancePct = (variance != null && expected != null && expected > 0)
+        ? Math.round((variance / expected) * 1000) / 10
+        : null;
       return {
         id: e.id,
         equipmentId: e.equipmentId,
@@ -8490,6 +8507,10 @@ export class DatabaseStorage implements IStorage {
         opening, closing, issued,
         consumed,
         lPerHr,
+        expected,
+        variance,
+        variancePct,
+        balanceConfirmed: e.dieselBalanceConfirmed === true,
         operator: e.operator,
         remarks: e.remarks,
       };
@@ -8567,7 +8588,9 @@ export class DatabaseStorage implements IStorage {
       if (!eqp) continue;
       const open = e.openingDiesel ?? null;
       const iss = e.dieselIssued ?? 0;
-      const close = e.closingDiesel ?? null;
+      // Operator dip beats the norm-derived `closingDiesel` (which is computed
+      // at write time from expected consumption) so DG actuals reflect reality.
+      const close = e.dieselBalanceInTank ?? e.closingDiesel ?? null;
       const hrs = e.hoursOrKmRun ?? 0;
       const cons = (open != null && close != null) ? Math.max(0, open + iss - close) : 0;
       const cur = dgUsageByName.get(eqp.name) || { consumed: 0, hours: 0, opening: null, issued: 0, closing: null };

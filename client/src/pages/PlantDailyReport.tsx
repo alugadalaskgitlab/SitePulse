@@ -43,6 +43,10 @@ type DailyPlantSummary = {
     issued: number;
     consumed: number | null;
     lPerHr: number | null;
+    expected: number | null;
+    variance: number | null;
+    variancePct: number | null;
+    balanceConfirmed: boolean;
     operator: string | null;
     remarks: string | null;
   }>;
@@ -383,22 +387,38 @@ export default function PlantDailyReport() {
                       <TableHead className="text-right">Close</TableHead>
                       <TableHead className="text-right">Diesel Issued L</TableHead>
                       <TableHead className="text-right">Consumed L</TableHead>
+                      <TableHead className="text-right">Expected L</TableHead>
+                      <TableHead className="text-right">vs Norm</TableHead>
                       <TableHead className="text-right">L/hr</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.equipment.map((e, i) => (
-                      <TableRow key={i} data-testid={`row-equipment-${i}`}>
-                        <TableCell>{e.equipmentName || `#${e.equipmentId}`}</TableCell>
-                        <TableCell>{e.operator || "—"}</TableCell>
-                        <TableCell className="text-right">{fmt(e.hours)}</TableCell>
-                        <TableCell className="text-right">{fmt(e.opening)}</TableCell>
-                        <TableCell className="text-right">{fmt(e.closing)}</TableCell>
-                        <TableCell className="text-right">{fmt(e.issued)}</TableCell>
-                        <TableCell className="text-right">{fmt(e.consumed)}</TableCell>
-                        <TableCell className="text-right">{fmt(e.lPerHr)}</TableCell>
-                      </TableRow>
-                    ))}
+                    {data.equipment.map((e, i) => {
+                      const absPct = e.variancePct != null ? Math.abs(e.variancePct) : null;
+                      const varColour =
+                        absPct == null ? "" :
+                        absPct > 25 ? "text-red-700 dark:text-red-400 font-semibold" :
+                        absPct > 10 ? "text-amber-700 dark:text-amber-400 font-semibold" :
+                        "text-green-700 dark:text-green-400";
+                      return (
+                        <TableRow key={i} data-testid={`row-equipment-${i}`}>
+                          <TableCell>{e.equipmentName || `#${e.equipmentId}`}</TableCell>
+                          <TableCell>{e.operator || "—"}</TableCell>
+                          <TableCell className="text-right">{fmt(e.hours)}</TableCell>
+                          <TableCell className="text-right">{fmt(e.opening)}</TableCell>
+                          <TableCell className="text-right">{fmt(e.closing)}</TableCell>
+                          <TableCell className="text-right">{fmt(e.issued)}</TableCell>
+                          <TableCell className="text-right">{fmt(e.consumed)}</TableCell>
+                          <TableCell className="text-right">{fmt(e.expected)}</TableCell>
+                          <TableCell className={`text-right ${varColour}`} data-testid={`text-variance-${i}`}>
+                            {e.variancePct != null
+                              ? `${e.variancePct >= 0 ? "+" : ""}${e.variancePct.toFixed(1)}%`
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">{fmt(e.lPerHr)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

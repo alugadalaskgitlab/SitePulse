@@ -1191,7 +1191,7 @@ export default function PlantEquipmentUsage() {
                     </div>
                   )}
 
-                  {parseFloat(dieselIssued || "0") > 0 && (
+                  {(dieselIncluded ? "contractor" : dieselSource) !== "contractor" && (
                     <div className="border rounded-md p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -1201,7 +1201,7 @@ export default function PlantEquipmentUsage() {
                             step="0.1"
                             value={dieselBalanceInTank}
                             onChange={(e) => setDieselBalanceInTank(e.target.value)}
-                            placeholder="Remaining diesel"
+                            placeholder="Closing dip (L) — enter even if no diesel issued"
                             data-testid="input-diesel-balance"
                           />
                         </div>
@@ -1217,11 +1217,39 @@ export default function PlantEquipmentUsage() {
                           </div>
                         </div>
                       </div>
-                      {dieselBalanceInTank && parseFloat(dieselIssued || "0") > 0 && (
-                        <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm">
-                          <p>Net Diesel Consumed: <strong>{(parseFloat(dieselIssued || "0") - parseFloat(dieselBalanceInTank || "0")).toFixed(3)} L</strong></p>
-                        </div>
-                      )}
+                      {dieselBalanceInTank !== "" && (() => {
+                        const opening = parseFloat(openingDiesel || "0");
+                        const issued = parseFloat(dieselIssued || "0");
+                        const balance = parseFloat(dieselBalanceInTank || "0");
+                        const consumed = opening + issued - balance;
+                        const variance = consumed - expectedDiesel;
+                        const variancePct = expectedDiesel > 0 ? (variance / expectedDiesel) * 100 : 0;
+                        const absPct = Math.abs(variancePct);
+                        const colourClass =
+                          expectedDiesel > 0
+                            ? absPct > 25
+                              ? "text-red-700 dark:text-red-400 font-semibold"
+                              : absPct > 10
+                                ? "text-amber-700 dark:text-amber-400 font-semibold"
+                                : "text-green-700 dark:text-green-400 font-semibold"
+                            : "";
+                        return (
+                          <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm space-y-1" data-testid="panel-actual-vs-norm">
+                            <p>Net Diesel Consumed: <strong data-testid="text-net-consumed">{consumed.toFixed(3)} L</strong></p>
+                            {expectedDiesel > 0 && (
+                              <>
+                                <p>Expected (norm): <strong data-testid="text-expected-norm">{expectedDiesel.toFixed(3)} L</strong></p>
+                                <p>
+                                  Variance vs norm:{" "}
+                                  <span className={colourClass} data-testid="text-variance">
+                                    {variance >= 0 ? "+" : ""}{variance.toFixed(3)} L ({variance >= 0 ? "+" : ""}{variancePct.toFixed(1)}%)
+                                  </span>
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </>
