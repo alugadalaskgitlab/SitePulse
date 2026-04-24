@@ -673,6 +673,17 @@ export type HeatingTrendsRow = {
   hotOilEndMaxC: number | null;
   hotOilEndSampleCount: number;
   hotOilEndBelowThreshold: boolean;
+  // Hot-oil supply vs return temperatures (Task #236). Daily averages of
+  // the supply (heater outlet) and return (heater inlet) readings, plus
+  // the per-session delta (supply − return) averaged across the day.
+  // A shrinking delta over time is a leading indicator of heat-exchanger
+  // fouling; days whose average delta drops below thresholds.hotOilDeltaMinC
+  // are flagged on the trends chart and table.
+  hotOilSupplyAvgC: number | null;
+  hotOilReturnAvgC: number | null;
+  hotOilDeltaAvgC: number | null;
+  hotOilDeltaSampleCount: number;
+  hotOilDeltaBelowThreshold: boolean;
   // Shift-meter Tank-1 reconciliation (Task #155). Computed from
   // plantShiftLogs.ldoTank1ClosingMeter − ldoTank1OpeningMeter for the same
   // date / plant. Lets the trend report surface days where heating-session
@@ -689,6 +700,7 @@ export type HeatingTrendsResult = {
   plantName: string;
   targetLPerMT: number;
   hotOilEndTempMinC: number;
+  hotOilDeltaMinC: number;
   mismatchThresholdL: number;
   rows: HeatingTrendsRow[];
   summary: {
@@ -704,6 +716,11 @@ export type HeatingTrendsResult = {
     hotOilEndMinC: number | null;
     hotOilEndMaxC: number | null;
     hotOilFlaggedDays: number;
+    hotOilSupplyAvgC: number | null;
+    hotOilReturnAvgC: number | null;
+    hotOilDeltaAvgC: number | null;
+    hotOilDeltaMinObservedC: number | null;
+    hotOilDeltaFlaggedDays: number;
     totalShiftMeterT1L: number;
     shiftMeterLPerMT: number | null;
     mismatchDays: number;

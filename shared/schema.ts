@@ -1505,6 +1505,13 @@ export const PLANT_ALERT_THRESHOLD_DEFAULTS = {
   hotOilEndTempMinC: 240,
   ldoLitersPerHourMax: 25,
   sessionsVsShiftMismatchL: 5,
+  // Hot-oil supply-minus-return delta floor (°C). On a healthy heat
+  // exchanger, hot oil drops by ~15-25°C as it gives up heat to the
+  // bitumen. As the exchanger fouls, less heat transfers and the return
+  // temperature creeps closer to the supply temperature, so the delta
+  // shrinks. Days where the daily average delta drops below this floor
+  // are flagged as suspected fouling on the Heating Trends report.
+  hotOilDeltaMinC: 15,
   // Persistent diesel over-consumer (PlantEquipmentUsage monthly rollup).
   // A machine is flagged when its month-to-date diesel variance is at or
   // above `monthlyOverConsumerVariancePct`, AND it has overshot the daily
@@ -1518,6 +1525,7 @@ export const plantAlertThresholdsSchema = z.object({
   hotOilEndTempMinC: z.number().nonnegative(),
   ldoLitersPerHourMax: z.number().positive(),
   sessionsVsShiftMismatchL: z.number().positive(),
+  hotOilDeltaMinC: z.number().nonnegative().default(15),
   monthlyOverConsumerVariancePct: z.number().positive().max(500).default(15),
   monthlyOverConsumerMinDays: z.number().int().positive().max(31).default(2),
 });
