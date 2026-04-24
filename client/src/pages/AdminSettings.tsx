@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { PinAuth } from "@/components/PinAuth";
-import type { Site, Party } from "@shared/schema";
+import { EQUIPMENT_TYPES, type Site, type Party } from "@shared/schema";
 
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -37,6 +37,9 @@ export default function AdminSettings() {
   // Variance highlight threshold state
   const [varianceThresholdInput, setVarianceThresholdInput] = useState("");
   const [varianceThresholdDirty, setVarianceThresholdDirty] = useState(false);
+  // Per-equipment-type overrides. Empty string means "no override" (use global).
+  const [varianceOverridesInput, setVarianceOverridesInput] = useState<Record<string, string>>({});
+  const [varianceOverridesDirty, setVarianceOverridesDirty] = useState(false);
 
   const changeAdminPinMutation = useMutation({
     mutationFn: async (data: { currentPin: string; newPin: string }) => {
@@ -92,7 +95,7 @@ export default function AdminSettings() {
   });
 
   // Variance highlight threshold queries/mutations
-  const { data: varianceThresholdData, isLoading: varianceThresholdLoading } = useQuery<{ thresholdPct: number }>({
+  const { data: varianceThresholdData, isLoading: varianceThresholdLoading } = useQuery<{ thresholdPct: number; overrides: Record<string, number> }>({
     queryKey: ["/api/plant-module/variance-highlight-threshold"],
     enabled: authenticated,
   });
@@ -103,11 +106,22 @@ export default function AdminSettings() {
     }
   }, [varianceThresholdData, varianceThresholdDirty]);
 
+  useEffect(() => {
+    if (!varianceOverridesDirty && varianceThresholdData?.overrides) {
+      const next: Record<string, string> = {};
+      EQUIPMENT_TYPES.forEach((type) => {
+        const v = varianceThresholdData.overrides?.[type];
+        next[type] = typeof v === "number" ? String(v) : "";
+      });
+      setVarianceOverridesInput(next);
+    }
+  }, [varianceThresholdData, varianceOverridesDirty]);
+
   const updateVarianceThresholdMutation = useMutation({
-    mutationFn: async (thresholdPct: number) => {
+    mutationFn: async (payload: { thresholdPct?: number; overrides?: Record<string, number> }) => {
       const response = await apiRequest("PUT", "/api/plant-module/variance-highlight-threshold", {
         pin: authenticatedPin,
-        thresholdPct,
+        ...payload,
       });
       if (!response.ok) {
         const error = await response.json();
@@ -115,9 +129,10 @@ export default function AdminSettings() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/variance-highlight-threshold"] });
-      setVarianceThresholdDirty(false);
+      if (variables.thresholdPct !== undefined) setVarianceThresholdDirty(false);
+      if (variables.overrides !== undefined) setVarianceOverridesDirty(false);
       toast({ title: "Threshold Updated", description: "Variance highlight threshold has been saved." });
     },
     onError: (error: any) => {
@@ -435,16 +450,45 @@ export default function AdminSettings() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const num = Number(varianceThresholdInput);
-              if (!Number.isFinite(num) || num < 0 || num > 100) {
-                toast({
-                  title: "Invalid Threshold",
-                  description: "Enter a number between 0 and 100.",
-                  variant: "destructive",
-                });
-                return;
+              const payload: { thresholdPct?: number; overrides?: Record<string, number> } = {};
+              if (varianceThresholdDirty) {
+                const num = Number(varianceThresholdInput);
+                if (!Number.isFinite(num) || num < 0 || num > 100) {
+                  toast({
+                    title: "Invalid Threshold",
+                    description: "Enter a number between 0 and 100.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                payload.thresholdPct = num;
               }
-              updateVarianceThresholdMutation.mutate(num);
+              if (varianceOverridesDirty) {
+                const overrides: Record<string, number> = {};
+                for (const type of EQUIPMENT_TYPES) {
+                  const raw = (varianceOverridesInput[type] ?? "").trim();
+                  if (raw === "") continue;
+                  const num = Number(raw);
+                  if (!Number.isFinite(num) || num < 0 || num > 100) {
+                    toast({
+                      title: "Invalid Override",
+                      description: `${type} override must be a number between 0 and 100.`,
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  overrides[type] = num;
+                }
+                payload.overrides = overrides;
+              }
+              if (payload.thresholdPct === undefined && payload.overrides === undefined) {
+                // Nothing changed; still accept as a no-op save by sending the current global.
+                const num = Number(varianceThresholdInput);
+                if (Number.isFinite(num) && num >= 0 && num <= 100) {
+                  payload.thresholdPct = num;
+                }
+              }
+              updateVarianceThresholdMutation.mutate(payload);
             }}
             className="space-y-4"
           >
@@ -472,6 +516,39 @@ export default function AdminSettings() {
               <p className="text-xs text-muted-foreground">
                 Default is 15%. Lower values flag more rows; higher values flag fewer.
               </p>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t">
+              <Label className="text-sm">Per-Equipment-Type Overrides (optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Leave blank to use the global threshold above. Different machines tolerate very different variance bands (e.g. DGs run hotter than JCBs).
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+                {EQUIPMENT_TYPES.map((type) => (
+                  <div key={type} className="space-y-1">
+                    <Label htmlFor={`variance-override-${type}`} className="text-xs font-normal text-muted-foreground">{type}</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        id={`variance-override-${type}`}
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.1"
+                        value={varianceOverridesInput[type] ?? ""}
+                        onChange={(e) => {
+                          setVarianceOverridesInput((prev) => ({ ...prev, [type]: e.target.value }));
+                          setVarianceOverridesDirty(true);
+                        }}
+                        placeholder="—"
+                        className="w-full"
+                        disabled={varianceThresholdLoading}
+                        data-testid={`input-variance-override-${type}`}
+                      />
+                      <span className="text-xs text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <Button

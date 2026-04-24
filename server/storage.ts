@@ -62,6 +62,7 @@ import {
   plantAlertThresholdsSchema,
   type PlantAlertThresholds,
   VARIANCE_HIGHLIGHT_THRESHOLD_KEY,
+  VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY,
   VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT,
 } from "@shared/schema";
 import { sendPushToAll, sendPushToAudience } from "./push";
@@ -648,6 +649,8 @@ export interface IStorage {
   setPlantAlertThresholds(thresholds: PlantAlertThresholds): Promise<PlantAlertThresholds>;
   getVarianceHighlightThresholdPct(): Promise<number>;
   setVarianceHighlightThresholdPct(thresholdPct: number): Promise<number>;
+  getVarianceHighlightThresholdOverrides(): Promise<Record<string, number>>;
+  setVarianceHighlightThresholdOverrides(overrides: Record<string, number>): Promise<Record<string, number>>;
 }
 
 export type HeatingTrendsBucket = {
@@ -9724,6 +9727,43 @@ export class DatabaseStorage implements IStorage {
     }
     await this.setSetting(VARIANCE_HIGHLIGHT_THRESHOLD_KEY, String(thresholdPct));
     return thresholdPct;
+  }
+
+  async getVarianceHighlightThresholdOverrides(): Promise<Record<string, number>> {
+    const raw = await this.getSetting(VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY);
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        const num = Number(v);
+        if (typeof k === "string" && k.trim() && Number.isFinite(num) && num >= 0 && num <= 100) {
+          out[k] = num;
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  async setVarianceHighlightThresholdOverrides(overrides: Record<string, number>): Promise<Record<string, number>> {
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+      throw new Error("Overrides must be an object map of equipment-type to percent");
+    }
+    const cleaned: Record<string, number> = {};
+    for (const [k, v] of Object.entries(overrides)) {
+      const key = String(k || "").trim();
+      const num = Number(v);
+      if (!key) continue;
+      if (!Number.isFinite(num) || num < 0 || num > 100) {
+        throw new Error(`Override for "${key}" must be a number between 0 and 100`);
+      }
+      cleaned[key] = num;
+    }
+    await this.setSetting(VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY, JSON.stringify(cleaned));
+    return cleaned;
   }
 
   // Post-save hook: check thresholds against the just-saved heating session

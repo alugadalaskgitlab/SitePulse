@@ -8,7 +8,7 @@ import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, EQUIPMENT_TYPES } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
@@ -673,8 +673,11 @@ export async function registerRoutes(
   // GET is open (read-only), PUT requires admin PIN.
   app.get("/api/plant-module/variance-highlight-threshold", async (_req, res) => {
     try {
-      const thresholdPct = await storage.getVarianceHighlightThresholdPct();
-      res.json({ thresholdPct });
+      const [thresholdPct, overrides] = await Promise.all([
+        storage.getVarianceHighlightThresholdPct(),
+        storage.getVarianceHighlightThresholdOverrides(),
+      ]);
+      res.json({ thresholdPct, overrides });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Failed to fetch variance threshold" });
     }
@@ -682,17 +685,43 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/variance-highlight-threshold", async (req, res) => {
     try {
-      const { pin, thresholdPct } = req.body || {};
+      const { pin, thresholdPct, overrides } = req.body || {};
       if (!pin) return res.status(403).json({ message: "Admin PIN required" });
       if (!(await storage.verifyPin("admin", pin))) {
         return res.status(403).json({ message: "Invalid admin PIN" });
       }
-      const num = Number(thresholdPct);
-      if (!Number.isFinite(num) || num < 0 || num > 100) {
-        return res.status(400).json({ message: "Threshold must be a number between 0 and 100", field: "thresholdPct" });
+      let savedThreshold: number | undefined;
+      if (thresholdPct !== undefined) {
+        const num = Number(thresholdPct);
+        if (!Number.isFinite(num) || num < 0 || num > 100) {
+          return res.status(400).json({ message: "Threshold must be a number between 0 and 100", field: "thresholdPct" });
+        }
+        savedThreshold = await storage.setVarianceHighlightThresholdPct(num);
       }
-      const saved = await storage.setVarianceHighlightThresholdPct(num);
-      res.json({ thresholdPct: saved });
+      let savedOverrides: Record<string, number> | undefined;
+      if (overrides !== undefined) {
+        if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+          return res.status(400).json({ message: "Overrides must be an object", field: "overrides" });
+        }
+        const normalised: Record<string, number> = {};
+        const allowedTypes = new Set<string>(EQUIPMENT_TYPES);
+        for (const [k, v] of Object.entries(overrides as Record<string, unknown>)) {
+          const key = String(k || "").trim();
+          if (!key) continue;
+          if (!allowedTypes.has(key)) {
+            return res.status(400).json({ message: `Unknown equipment type "${key}"`, field: "overrides" });
+          }
+          const num = Number(v);
+          if (!Number.isFinite(num) || num < 0 || num > 100) {
+            return res.status(400).json({ message: `Override for "${key}" must be between 0 and 100`, field: "overrides" });
+          }
+          normalised[key] = num;
+        }
+        savedOverrides = await storage.setVarianceHighlightThresholdOverrides(normalised);
+      }
+      const finalThreshold = savedThreshold ?? await storage.getVarianceHighlightThresholdPct();
+      const finalOverrides = savedOverrides ?? await storage.getVarianceHighlightThresholdOverrides();
+      res.json({ thresholdPct: finalThreshold, overrides: finalOverrides });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Failed to update variance threshold" });
     }

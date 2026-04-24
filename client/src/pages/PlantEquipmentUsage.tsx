@@ -549,7 +549,7 @@ export default function PlantEquipmentUsage() {
 
   const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
-  const { data: varianceThresholdData } = useQuery<{ thresholdPct: number }>({
+  const { data: varianceThresholdData } = useQuery<{ thresholdPct: number; overrides: Record<string, number> }>({
     queryKey: ["/api/plant-module/variance-highlight-threshold"],
   });
   // Persistent over-consumer criteria (% and min days) live in the same
@@ -565,6 +565,15 @@ export default function PlantEquipmentUsage() {
     ?? VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
   const MONTHLY_MIN_DAYS = plantAlertThresholds?.monthlyOverConsumerMinDays
     ?? PLANT_ALERT_THRESHOLD_DEFAULTS.monthlyOverConsumerMinDays;
+  // Per-equipment-type overrides: when an equipment's type has an admin-set
+  // override, that value wins over the global threshold above. Anything
+  // without an override falls back to the global value as before.
+  const varianceTypeOverrides = varianceThresholdData?.overrides || {};
+  const thresholdForType = (equipmentType: string | null | undefined): number => {
+    const key = (equipmentType || "").trim();
+    const ov = key ? varianceTypeOverrides[key] : undefined;
+    return typeof ov === "number" && Number.isFinite(ov) ? ov : MONTHLY_VARIANCE_THRESHOLD_PCT;
+  };
 
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
@@ -587,6 +596,7 @@ export default function PlantEquipmentUsage() {
       days: number;
       overshootDays: number;
       variancePct: number | null;
+      thresholdPct: number;
     }>;
     type Row = {
       equipmentId: number;
@@ -597,6 +607,7 @@ export default function PlantEquipmentUsage() {
       expected: number;
       dayKeys: Set<string>;
       overshootDayKeys: Set<string>;
+      thresholdPct: number;
     };
     const map = new Map<number, Row>();
     filteredUsage.forEach((entry) => {
@@ -630,6 +641,7 @@ export default function PlantEquipmentUsage() {
           expected: 0,
           dayKeys: new Set<string>(),
           overshootDayKeys: new Set<string>(),
+          thresholdPct: thresholdForType(equip.equipmentType),
         };
         map.set(key, row);
       }
@@ -637,7 +649,7 @@ export default function PlantEquipmentUsage() {
       row.actual += consumed;
       row.expected += expected;
       row.dayKeys.add(entry.date);
-      if (expected > 0 && ((consumed - expected) / expected) * 100 >= MONTHLY_VARIANCE_THRESHOLD_PCT) {
+      if (expected > 0 && ((consumed - expected) / expected) * 100 >= row.thresholdPct) {
         row.overshootDayKeys.add(entry.date);
       }
     });
@@ -651,16 +663,17 @@ export default function PlantEquipmentUsage() {
       days: r.dayKeys.size,
       overshootDays: r.overshootDayKeys.size,
       variancePct: r.expected > 0 ? ((r.actual - r.expected) / r.expected) * 100 : null,
+      thresholdPct: r.thresholdPct,
     })).sort((a, b) => {
       const av = a.variancePct ?? -Infinity;
       const bv = b.variancePct ?? -Infinity;
       return bv - av;
     });
-  }, [filteredUsage, equipment, effectiveRollupMonth, MONTHLY_VARIANCE_THRESHOLD_PCT]);
+  }, [filteredUsage, equipment, effectiveRollupMonth, MONTHLY_VARIANCE_THRESHOLD_PCT, varianceTypeOverrides]);
 
-  const isPersistentOffender = (r: { variancePct: number | null; overshootDays: number }) =>
+  const isPersistentOffender = (r: { variancePct: number | null; overshootDays: number; thresholdPct: number }) =>
     r.variancePct != null
-    && r.variancePct >= MONTHLY_VARIANCE_THRESHOLD_PCT
+    && r.variancePct >= r.thresholdPct
     && r.overshootDays >= MONTHLY_MIN_DAYS;
 
   const monthlyOffenderCount = monthlyRollup.filter(isPersistentOffender).length;
@@ -1721,7 +1734,7 @@ export default function PlantEquipmentUsage() {
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              Highlights machines averaging ≥{MONTHLY_VARIANCE_THRESHOLD_PCT}% over norm across {MONTHLY_MIN_DAYS}+ days. Honours the date and equipment filters above.
+              Highlights machines averaging ≥{MONTHLY_VARIANCE_THRESHOLD_PCT}% over norm (or each type's own override, when set) across {MONTHLY_MIN_DAYS}+ days. Honours the date and equipment filters above.
             </p>
           </div>
           {isLoading ? (
@@ -1753,16 +1766,17 @@ export default function PlantEquipmentUsage() {
                       const variance = row.actual - row.expected;
                       const isPersistent = isPersistentOffender(row);
                       const isOver = (row.variancePct ?? 0) > 0;
+                      const rowThreshold = row.thresholdPct;
                       const rowCls = isPersistent
                         ? "bg-red-50 dark:bg-red-900/20"
-                        : (row.variancePct != null && Math.abs(row.variancePct) >= MONTHLY_VARIANCE_THRESHOLD_PCT
+                        : (row.variancePct != null && Math.abs(row.variancePct) >= rowThreshold
                             ? (isOver ? "bg-amber-50 dark:bg-amber-900/20" : "")
                             : "");
                       const pctCls = row.variancePct == null
                         ? "text-muted-foreground"
                         : isPersistent
                           ? "text-red-700 dark:text-red-300 font-semibold"
-                          : Math.abs(row.variancePct) >= MONTHLY_VARIANCE_THRESHOLD_PCT
+                          : Math.abs(row.variancePct) >= rowThreshold
                             ? (isOver ? "text-amber-700 dark:text-amber-300 font-semibold" : "text-amber-700 dark:text-amber-300")
                             : "text-green-700 dark:text-green-400";
                       return (
@@ -1844,9 +1858,8 @@ export default function PlantEquipmentUsage() {
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {
                 const dayUsage = groupedUsage[dateKey];
-                const VARIANCE_THRESHOLD_PCT = MONTHLY_VARIANCE_THRESHOLD_PCT;
                 const varianceRows = (() => {
-                  const map = new Map<number, { name: string; meterUnit: string; runtime: number; actual: number; expected: number }>();
+                  const map = new Map<number, { name: string; meterUnit: string; runtime: number; actual: number; expected: number; thresholdPct: number }>();
                   dayUsage.forEach((entry) => {
                     if (entry.dieselIncluded === true) return;
                     if (isPartialEntry(entry)) return;
@@ -1879,6 +1892,7 @@ export default function PlantEquipmentUsage() {
                         runtime,
                         actual: consumed,
                         expected,
+                        thresholdPct: thresholdForType(equip.equipmentType),
                       });
                     }
                   });
@@ -2108,7 +2122,7 @@ export default function PlantEquipmentUsage() {
                               {varianceRows.map((row, idx) => {
                                 const variance = row.actual - row.expected;
                                 const variancePct = row.expected > 0 ? (variance / row.expected) * 100 : null;
-                                const isOutlier = variancePct != null && Math.abs(variancePct) >= VARIANCE_THRESHOLD_PCT;
+                                const isOutlier = variancePct != null && Math.abs(variancePct) >= row.thresholdPct;
                                 const isOver = variance > 0;
                                 const highlightCls = isOutlier
                                   ? (isOver ? "bg-red-50 dark:bg-red-900/20" : "bg-amber-50 dark:bg-amber-900/20")

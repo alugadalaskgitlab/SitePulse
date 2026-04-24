@@ -1474,10 +1474,16 @@ export type PlantAlertThresholds = z.infer<typeof plantAlertThresholdsSchema>;
 // a row. Persisted as a plain numeric percent under app_settings key
 // `variance_highlight_threshold_pct`. Admin-tunable from Admin Settings.
 export const VARIANCE_HIGHLIGHT_THRESHOLD_KEY = "variance_highlight_threshold_pct";
+// Per-equipment-type overrides live in a sibling app_settings key as a JSON
+// map of `{ [equipmentType]: pct }`. When a row's equipment type has an
+// override, that value wins over the global threshold above. Equipment
+// without an override falls back to the global value as before.
+export const VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY = "variance_highlight_threshold_overrides";
 
 export const VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT = 15;
 
 export const varianceHighlightThresholdSchema = z.object({
   thresholdPct: z.number().min(0).max(100),
+  overrides: z.record(z.string(), z.number().min(0).max(100)).default({}),
 });
 export type VarianceHighlightThreshold = z.infer<typeof varianceHighlightThresholdSchema>;
