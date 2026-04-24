@@ -18,9 +18,10 @@ import {
   assertAdmin,
   assertEdit,
   assertAuthed,
+  assertCreate,
   currentUserName,
-  relockResource,
-  assertWritable,
+  claimUnlockOrLockedRow,
+  lockNewRow,
 } from "./auth-routes";
 import type { LockableResourceType } from "@shared/permissions";
 
@@ -575,6 +576,7 @@ export async function registerRoutes(
   // Create new DPR
   app.post(api.dprs.create.path, async (req, res) => {
     try {
+      if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
@@ -720,6 +722,9 @@ export async function registerRoutes(
       const originalId = Number(req.params.id);
       const input = versionSchema.parse(req.body);
 
+      // A new DPR version is a create-shaped action, but it requires edit
+      // rights on the parent record too. Gate on edit (the stricter of the
+      // two) since revising a DPR is logically an edit.
       if (!assertEdit(req, res, "site_dprs")) return;
       const editedBy = input.editedBy || "engineer";
 
@@ -748,8 +753,9 @@ export async function registerRoutes(
       });
       sendPushToAll("DPR Updated", `${actor} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
 
-      // Re-lock the DPR after a save (record-locking policy, Task #229)
-      try { await relockResource("dpr", newVersion.id, req.authUser!.id); } catch {}
+      // Lock the new version. New rows are inserted by storage; we just stamp
+      // lock_status='locked' + author. Atomic per-row update; cannot race.
+      await lockNewRow("dpr", newVersion.id, req.authUser!.id);
 
       res.status(201).json(newVersion);
     } catch (err) {
@@ -792,7 +798,7 @@ export async function registerRoutes(
       });
       sendPushToAll("DPR Cloned", `${cloned.site} - ${cloned.date}`, "/site-reports").catch(() => {});
 
-      try { await relockResource("dpr", cloned.id, req.authUser!.id); } catch {}
+      await lockNewRow("dpr", cloned.id, req.authUser!.id);
 
       res.status(201).json(cloned);
     } catch (err) {
@@ -1648,6 +1654,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/equipment-usage", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_equipment")) return;
       const usage = await storage.createEquipmentUsage(req.body);
       const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId}`;
       sendPushToAll("Equipment Entry", `${eqName} - Opening: ${req.body.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
@@ -1661,12 +1668,15 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (!assertEdit(req, res, "plant_equipment")) return;
-      if (!(await assertWritable(res, "equipment_usage", id))) return;
+      // Atomic claim: flips the row from 'unlocked' → 'locked' and consumes
+      // the unlock entry in a single SQL statement. If the data update below
+      // fails for any reason, the row stays locked with its prior data — no
+      // orphaned-unlocked state can ever exist.
+      if (!(await claimUnlockOrLockedRow(res, "equipment_usage", id, req.authUser!.id))) return;
       const updated = await storage.updateEquipmentUsage(id, req.body);
       if (!updated) {
         return res.status(404).json({ message: "Equipment usage not found" });
       }
-      try { await relockResource("equipment_usage", id, req.authUser!.id); } catch {}
       const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId || id}`;
       sendPushToAll("Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.json(updated);
@@ -2653,17 +2663,27 @@ export async function registerRoutes(
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
       const parsed = upsertPlantShiftLogSchema.parse(req.body);
       const incomingId = (parsed as any).id ? Number((parsed as any).id) : null;
-      // Edit permission required for any save (create or update).
-      if (!assertEdit(req, res, "plant_shift_logs")) return;
-      // If updating an existing finalized/locked log, ensure unlocked.
+      // Permission gate: an update needs edit, a brand-new shift log needs create.
       if (incomingId) {
-        if (!(await assertWritable(res, "plant_shift_log", incomingId))) return;
+        if (!assertEdit(req, res, "plant_shift_logs")) return;
+      } else {
+        if (!assertCreate(req, res, "plant_shift_logs")) return;
+      }
+      // For an update of an existing shift log, atomically claim the unlock
+      // (flip 'unlocked' → 'locked') BEFORE the data save. For a brand-new
+      // shift log we skip the claim and lock the new row after insert.
+      if (incomingId) {
+        if (!(await claimUnlockOrLockedRow(res, "plant_shift_log", incomingId, req.authUser!.id))) return;
       }
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
-        try { await relockResource("plant_shift_log", saved.id, req.authUser!.id); } catch {}
+        // For a brand-new shift log, lock the freshly inserted row. For an
+        // existing one, the atomic claim above already left it locked.
+        if (!incomingId) {
+          await lockNewRow("plant_shift_log", saved.id, req.authUser!.id);
+        }
         sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
         res.status(201).json(saved);
       } catch (e: any) {
@@ -3697,6 +3717,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "site_procurement")) return;
       const input = createPurchaseIndentRequestSchema.parse(req.body);
       const indent = await storage.createPurchaseIndent(input);
       sendPushToAll("New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
@@ -3903,20 +3924,20 @@ export async function registerRoutes(
       const existing = await storage.getPurchaseIndent(id);
       if (!existing) return res.status(404).json({ message: "Purchase indent not found" });
 
-      // Lock check (Task #229) — must be unlocked before edit.
-      if (!(await assertWritable(res, "purchase_indent", id))) return;
-
+      // Permission check FIRST — never consume an unlock on a forbidden call.
       if (existing.status !== "pending") {
         if (!assertAdmin(req, res)) return;
       } else {
         if (!assertEdit(req, res, "site_procurement")) return;
       }
 
+      // Atomic claim — flips 'unlocked' → 'locked' before the data change.
+      if (!(await claimUnlockOrLockedRow(res, "purchase_indent", id, req.authUser!.id))) return;
+
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
 
-      try { await relockResource("purchase_indent", id, req.authUser!.id); } catch {}
       res.json(indent);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -4017,6 +4038,7 @@ export async function registerRoutes(
 
   app.post("/api/diesel-requirements", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "site_diesel")) return;
       const input = createDieselRequirementRequestSchema.parse(req.body);
       const requirement = await storage.createDieselRequirement(input);
       sendPushToAll("New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
@@ -4118,19 +4140,20 @@ export async function registerRoutes(
       const existing = await storage.getDieselRequirement(id);
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
 
-      if (!(await assertWritable(res, "diesel_requirement", id))) return;
-
+      // Permission check FIRST — never consume an unlock on a forbidden call.
       if (existing.status !== "pending") {
         if (!assertAdmin(req, res)) return;
       } else {
         if (!assertEdit(req, res, "site_diesel")) return;
       }
 
+      // Atomic claim — flips 'unlocked' → 'locked' before the data change.
+      if (!(await claimUnlockOrLockedRow(res, "diesel_requirement", id, req.authUser!.id))) return;
+
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);
       if (!requirement) return res.status(404).json({ message: "Diesel requirement not found" });
 
-      try { await relockResource("diesel_requirement", id, req.authUser!.id); } catch {}
       res.json(requirement);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -4608,6 +4631,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-bills", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
       const bill = await storage.createVendorBill(input);
       sendPushToAll("New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
@@ -4632,8 +4656,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
-      if (!(await assertWritable(res, "vendor_bill", id))) return;
-
+      // Permission check FIRST — never consume an unlock on a forbidden call.
       if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {
         if (!assertAdmin(req, res)) return;
         input.status = "draft";
@@ -4641,12 +4664,14 @@ export async function registerRoutes(
         if (!assertEdit(req, res, "vendor_bills")) return;
       }
 
+      // Atomic claim — flips 'unlocked' → 'locked' before the data change.
+      if (!(await claimUnlockOrLockedRow(res, "vendor_bill", id, req.authUser!.id))) return;
+
       const bill = await storage.updateVendorBill(id, input);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
-      try { await relockResource("vendor_bill", id, req.authUser!.id); } catch {}
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {

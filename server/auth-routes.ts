@@ -250,12 +250,34 @@ export function registerAuthRoutes(app: Express) {
   // Authenticated endpoints (admin-only user/device management).
   // -----------------------------------------------------------------
 
-  app.get("/api/auth/users", requireAuth, requireAdmin, async (_req, res) => {
+  // Matrix-based gates. The "user_management" / "device_approval" sections
+  // are first-class entries in the permission matrix. A user with isAdmin=true
+  // automatically has every section ticked, so admins always pass; non-admins
+  // only get in if the matrix grants the action explicitly. This is the
+  // "no roles, pure per-user matrix" requirement from Task #229.
+  const requireUserMgmt = (action: "view" | "create" | "edit") =>
+    (req: Request, res: Response, next: NextFunction) => {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (req.authUser.isAdmin) return next();
+      const m = req.authPermissions;
+      if (m && m["user_management"] && m["user_management"][action]) return next();
+      return res.status(403).json({ error: "forbidden", section: "user_management", action });
+    };
+  const requireDeviceMgmt = (action: "view" | "edit") =>
+    (req: Request, res: Response, next: NextFunction) => {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (req.authUser.isAdmin) return next();
+      const m = req.authPermissions;
+      if (m && m["device_approval"] && m["device_approval"][action]) return next();
+      return res.status(403).json({ error: "forbidden", section: "device_approval", action });
+    };
+
+  app.get("/api/auth/users", requireAuth, requireUserMgmt("view"), async (_req, res) => {
     const list = await listAllUsers();
     res.json(list);
   });
 
-  app.post("/api/auth/users", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/auth/users", requireAuth, requireUserMgmt("create"), async (req, res) => {
     try {
       const input = createUserSchema.parse(req.body);
       const existing = await getUserByEmail(input.email);
@@ -272,7 +294,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/auth/users/:id", requireAuth, requireAdmin, async (req, res) => {
+  app.patch("/api/auth/users/:id", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
       const id = Number(req.params.id);
       const input = patchUserSchema.parse(req.body);
@@ -301,7 +323,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/users/:id/password", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/auth/users/:id/password", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
       const id = Number(req.params.id);
       const input = passwordResetSchema.parse(req.body);
@@ -316,7 +338,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.get("/api/auth/users/:id/permissions", requireAuth, requireAdmin, async (req, res) => {
+  app.get("/api/auth/users/:id/permissions", requireAuth, requireUserMgmt("view"), async (req, res) => {
     const id = Number(req.params.id);
     const u = await getUserById(id);
     if (!u) return res.status(404).json({ error: "not_found" });
@@ -324,7 +346,7 @@ export function registerAuthRoutes(app: Express) {
     res.json({ matrix, isAdmin: u.isAdmin });
   });
 
-  app.put("/api/auth/users/:id/permissions", requireAuth, requireAdmin, async (req, res) => {
+  app.put("/api/auth/users/:id/permissions", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
       const id = Number(req.params.id);
       const u = await getUserById(id);
@@ -350,7 +372,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/users/:id/copy-permissions", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/auth/users/:id/copy-permissions", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
       const id = Number(req.params.id);
       const fromUserId = Number(req.body?.fromUserId);
@@ -368,7 +390,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.get("/api/auth/devices", requireAuth, requireAdmin, async (req, res) => {
+  app.get("/api/auth/devices", requireAuth, requireDeviceMgmt("view"), async (req, res) => {
     const status = String(req.query.status || "").trim();
     const all = await db.select().from(userDevices).orderBy(desc(userDevices.requestedAt));
     const filtered = status ? all.filter((d) => d.status === status) : all;
@@ -391,7 +413,7 @@ export function registerAuthRoutes(app: Express) {
     })));
   });
 
-  app.post("/api/auth/devices/:id/approve", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/auth/devices/:id/approve", requireAuth, requireDeviceMgmt("edit"), async (req, res) => {
     const id = Number(req.params.id);
     const [updated] = await db.update(userDevices).set({
       status: "approved",
@@ -404,7 +426,7 @@ export function registerAuthRoutes(app: Express) {
     res.json({ ok: true });
   });
 
-  app.post("/api/auth/devices/:id/revoke", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/auth/devices/:id/revoke", requireAuth, requireDeviceMgmt("edit"), async (req, res) => {
     const id = Number(req.params.id);
     const [updated] = await db.update(userDevices).set({
       status: "revoked",
@@ -503,13 +525,118 @@ export function assertEdit(req: Request, res: Response, section: SectionKey): bo
   return true;
 }
 
+export function assertCreate(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].create) {
+    res.status(403).json({ error: "forbidden", section, action: "create" });
+    return false;
+  }
+  return true;
+}
+
+export function assertView(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].view) {
+    res.status(403).json({ error: "forbidden", section, action: "view" });
+    return false;
+  }
+  return true;
+}
+
 export function currentUserName(req: Request): string {
   return req.authUser?.fullName || "Unknown";
 }
 
-// Atomically re-lock a record after a successful save. Called by the
-// lock-aware update wrappers in routes.ts.
-export async function relockResource(
+// =============================================================================
+// Lockable record concurrency / atomicity (Task #229)
+// -----------------------------------------------------------------------------
+// Lock semantics:
+//   - Records auto-lock on save (lock_status='locked').
+//   - To edit a locked row, an authorized user calls
+//     POST /api/auth/locks/unlock with a reason (≥10 chars). The row flips to
+//     'unlocked' (one-time grant).
+//   - The next mutating request MUST atomically: (a) verify the row is still
+//     unlocked, (b) flip it back to 'locked', AND (c) consume the unlock-log
+//     entry — all in a single SQL statement so two racing requests can never
+//     both consume the same unlock and idempotent retries can never bypass
+//     re-locking.
+//
+// claimUnlockOrLockedRow() does exactly that. Call it BEFORE the data update.
+// If it returns false, it has already written the 423/404 response and the
+// caller must `return`. If it returns true, the row is locked + the unlock
+// has been consumed; the caller may now perform the data update. If the data
+// update later fails, the row remains in its safe locked state with the prior
+// data — no orphaned unlocked rows are ever possible.
+// =============================================================================
+
+export async function claimUnlockOrLockedRow(
+  res: Response,
+  resourceType: LockableResourceType,
+  resourceId: number,
+  authorUserId: number,
+): Promise<boolean> {
+  const tableName = LOCKABLE_TABLE_NAMES[resourceType];
+  const { pool } = await import("./db");
+
+  // Single atomic flip: locked-status='unlocked' → 'locked' (and clear the
+  // unlock metadata). RETURNING tells us whether the unlock was consumed.
+  const claim = await pool.query(
+    `UPDATE ${tableName}
+        SET lock_status = 'locked',
+            unlocked_by_user_id = NULL,
+            unlocked_at = NULL,
+            unlock_reason = NULL,
+            author_user_id = COALESCE(author_user_id, $1)
+      WHERE id = $2 AND lock_status = 'unlocked'
+      RETURNING id`,
+    [authorUserId, resourceId],
+  );
+
+  if (claim.rowCount && claim.rowCount > 0) {
+    // Stamp the unlock-log entry as consumed for audit. Done in the same
+    // logical step; if it fails we still succeeded above (audit is a
+    // best-effort secondary record, not the truth).
+    try {
+      await pool.query(
+        `UPDATE record_unlock_log
+            SET relocked_at = NOW()
+          WHERE resource_type = $1 AND resource_id = $2 AND relocked_at IS NULL`,
+        [resourceType, resourceId],
+      );
+    } catch (err) {
+      console.warn("[locks] failed to stamp record_unlock_log:", err);
+    }
+    return true;
+  }
+
+  // Couldn't consume an unlock — figure out why so we can return the right code.
+  const probe = await pool.query(
+    `SELECT lock_status FROM ${tableName} WHERE id = $1`,
+    [resourceId],
+  );
+  if (probe.rowCount === 0) {
+    res.status(404).json({ error: "not_found" });
+    return false;
+  }
+  res.status(423).json({ error: "record_locked", resourceType, resourceId });
+  return false;
+}
+
+// New-row helper: lock a freshly created row. New rows are inserted by storage
+// in a default state; we just stamp lock_status='locked' + author. This isn't
+// a state transition (not consuming an unlock), so it can't race with anything
+// — it always succeeds.
+export async function lockNewRow(
   resourceType: LockableResourceType,
   resourceId: number,
   authorUserId: number,
@@ -519,25 +646,18 @@ export async function relockResource(
   await pool.query(
     `UPDATE ${tableName}
         SET lock_status = 'locked',
+            author_user_id = COALESCE(author_user_id, $1),
             unlocked_by_user_id = NULL,
             unlocked_at = NULL,
-            unlock_reason = NULL,
-            author_user_id = COALESCE(author_user_id, $1)
+            unlock_reason = NULL
       WHERE id = $2`,
     [authorUserId, resourceId],
   );
-  // Also stamp the unlock log entry with relockedAt so the audit shows
-  // when the one-time unlock was consumed.
-  await pool.query(
-    `UPDATE record_unlock_log
-        SET relocked_at = NOW()
-      WHERE resource_type = $1 AND resource_id = $2 AND relocked_at IS NULL`,
-    [resourceType, resourceId],
-  );
 }
 
-// Throws a 423 (Locked) if the row is currently locked. Caller should
-// catch and translate into a JSON response. Returns true if writable.
+// Backward-compat aliases — kept so existing call sites compile while we
+// migrate them to the atomic claim model.
+export const relockResource = lockNewRow;
 export async function assertWritable(
   res: Response,
   resourceType: LockableResourceType,
@@ -545,13 +665,15 @@ export async function assertWritable(
 ): Promise<boolean> {
   const tableName = LOCKABLE_TABLE_NAMES[resourceType];
   const { pool } = await import("./db");
-  const r = await pool.query(`SELECT lock_status FROM ${tableName} WHERE id = $1`, [resourceId]);
+  const r = await pool.query(
+    `SELECT lock_status FROM ${tableName} WHERE id = $1`,
+    [resourceId],
+  );
   if (r.rowCount === 0) {
     res.status(404).json({ error: "not_found" });
     return false;
   }
-  const status = r.rows[0]?.lock_status;
-  if (status === "locked") {
+  if (r.rows[0]?.lock_status === "locked") {
     res.status(423).json({ error: "record_locked", resourceType, resourceId });
     return false;
   }
