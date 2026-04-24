@@ -27,12 +27,12 @@ const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter
 
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
+  const { appendOrigin, getPlantBackLink } = useOrigin();
   const searchString = useSearch();
   const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
   const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
   const isAdmin = pageRole === "admin";
-  const backLink = appendOrigin(`/plant/dashboard?tab=stock${pageRole ? `&role=${pageRole}` : ""}`);
+  const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<LdoFlowReading | null>(null);

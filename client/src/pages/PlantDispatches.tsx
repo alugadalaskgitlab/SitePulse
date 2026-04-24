@@ -27,8 +27,8 @@ import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterT
 
 export default function PlantDispatches() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const { getPlantBackLink } = useOrigin();
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);

@@ -24,8 +24,8 @@ import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialIssues() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const { getPlantBackLink } = useOrigin();
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIssue, setEditingIssue] = useState<MaterialIssue | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);

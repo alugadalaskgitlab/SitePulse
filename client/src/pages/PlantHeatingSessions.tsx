@@ -70,13 +70,9 @@ function durationHrs(start: string, end: string): number | null {
 
 export default function PlantHeatingSessions() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
+  const { appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
-  const _sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const _backTab = _sp.get("tab") || "operations";
-  const _backRole = _sp.get("role");
-  const _dashBase = appendOrigin("/plant/dashboard");
-  const backLink = `${_dashBase}${_dashBase.includes("?") ? "&" : "?"}tab=${_backTab}${_backRole ? `&role=${_backRole}` : ""}`;
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultFrom = format(subDays(new Date(), 30), "yyyy-MM-dd");
@@ -435,7 +431,7 @@ export default function PlantHeatingSessions() {
             <Label className="text-xs whitespace-nowrap">To</Label>
             <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
           </div>
-          <Link href={appendOrigin("/plant/heating-trends")}>
+          <Link href={appendPlantContext("/plant/heating-trends", { defaultTab: "operations" })}>
             <Button variant="outline" data-testid="button-view-trends">View Trends</Button>
           </Link>
           <Button onClick={openNew} data-testid="button-new-session"><Plus className="w-4 h-4 mr-1" />New Session</Button>

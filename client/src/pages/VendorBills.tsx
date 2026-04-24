@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -224,12 +224,8 @@ function getBillTypeLabel(type: string) {
 
 export default function VendorBills() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
-  const searchString = useSearch();
-  const urlParams = new URLSearchParams(searchString || window.location.search);
-  const urlTab = urlParams.get("tab");
-  const urlRole = urlParams.get("role");
-  const backLink = appendOrigin(`/plant/dashboard${urlTab ? `?tab=${urlTab}${urlRole ? `&role=${urlRole}` : ""}` : ""}`);
+  const { getPlantBackLink } = useOrigin();
+  const backLink = getPlantBackLink({ defaultTab: "stock" });
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);

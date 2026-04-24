@@ -94,7 +94,7 @@ type IndexRow = {
 };
 
 export default function PlantDailyReports() {
-  const { appendOrigin } = useOrigin();
+  const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultFrom = format(subDays(new Date(), 90), "yyyy-MM-dd");
@@ -356,8 +356,7 @@ export default function PlantDailyReports() {
     }
   };
 
-  const dashSep = appendOrigin("/plant/dashboard").includes("?") ? "&" : "?";
-  const backHref = `${appendOrigin("/plant/dashboard")}${dashSep}tab=stock`;
+  const backHref = getPlantBackLink({ defaultTab: "reports" });
 
   return (
     <div className="space-y-6">
@@ -560,7 +559,7 @@ export default function PlantDailyReports() {
               <TableBody>
                 {monthRows.map((r) => {
                   const rowKey = `${r.date}-${r.plantName}`;
-                  const openHref = appendOrigin(`/plant/daily-report/${r.date}?plant=${encodeURIComponent(r.plantName)}&tab=stock`);
+                  const openHref = appendPlantContext(`/plant/daily-report/${r.date}?plant=${encodeURIComponent(r.plantName)}`, { defaultTab: "reports" });
                   const pdfHref = `/api/plant-module/daily-reports/${r.date}/pdf?plant=${encodeURIComponent(r.plantName)}`;
                   return (
                     <TableRow key={rowKey} data-testid={`row-report-${rowKey}`}>

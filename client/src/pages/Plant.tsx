@@ -193,10 +193,11 @@ export default function Plant() {
 }
 
 function OperationsTab() {
-  const { appendOrigin } = useOrigin();
+  const { appendPlantContext } = useOrigin();
+  const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Link href={appendOrigin("/plant/material-receipts")}>
+      <Link href={opLink("/plant/material-receipts")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -211,7 +212,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/material-issues")}>
+      <Link href={opLink("/plant/material-issues")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
@@ -226,7 +227,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/material-returns")}>
+      <Link href={opLink("/plant/material-returns")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -241,7 +242,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/dispatches")}>
+      <Link href={opLink("/plant/dispatches")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -256,7 +257,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/equipment-usage")}>
+      <Link href={opLink("/plant/equipment-usage")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
@@ -271,7 +272,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/purchase-indents")}>
+      <Link href={opLink("/plant/purchase-indents")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
@@ -286,7 +287,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
+      <Link href={opLink(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
         <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800" data-testid="tile-today-shift-log">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -301,7 +302,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin(`/plant/heating-sessions/${new Date().toISOString().slice(0, 10)}`)}>
+      <Link href={opLink(`/plant/heating-sessions/${new Date().toISOString().slice(0, 10)}`)}>
         <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-sessions">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
@@ -316,7 +317,7 @@ function OperationsTab() {
         </Card>
       </Link>
 
-      <Link href={appendOrigin("/plant/diesel-requirements")}>
+      <Link href={opLink("/plant/diesel-requirements")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">

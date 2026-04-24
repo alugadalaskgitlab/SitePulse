@@ -31,12 +31,12 @@ import {
 
 export default function PlantBitumenStock() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
+  const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const searchString = useSearch();
   const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
   const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
   const isAdmin = pageRole === "admin";
-  const backLink = appendOrigin(`/plant/dashboard?tab=stock${pageRole ? `&role=${pageRole}` : ""}`);
+  const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<BitumenDipReading | null>(null);

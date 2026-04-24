@@ -20,8 +20,8 @@ export default function PlantDetails() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { access, canEdit, canDelete } = useAccess();
-  const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const { appendOrigin, getPlantBackLink } = useOrigin();
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
   
   const [showPinModal, setShowPinModal] = useState(false);
   const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");

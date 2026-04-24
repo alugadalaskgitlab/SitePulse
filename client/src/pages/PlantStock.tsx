@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, X } from "lucide-react";
 import { format, subDays } from "date-fns";
@@ -30,11 +30,9 @@ type StockBalanceAsOf = {
 
 export default function PlantStock() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
+  const { getPlantBackLink } = useOrigin();
   const queryClient = useQueryClient();
-  const searchString = useSearch();
-  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
-  const backLink = appendOrigin(`/plant/dashboard?tab=stock${urlRole ? `&role=${urlRole}` : ""}`);
+  const backLink = getPlantBackLink({ defaultTab: "stock" });
   // Filter state — persisted across visits in localStorage so the page
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.

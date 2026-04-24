@@ -80,13 +80,9 @@ type DailyPlantSummary = {
 };
 
 export default function PlantDailyReport() {
-  const { appendOrigin } = useOrigin();
+  const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const [, params] = useRoute("/plant/daily-report/:date");
-  const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const backTab = sp.get("tab") || "operations";
-  const backRole = sp.get("role");
-  const dashSep = appendOrigin("/plant/dashboard").includes("?") ? "&" : "?";
-  const backHref = `${appendOrigin("/plant/dashboard")}${dashSep}tab=${backTab}${backRole ? `&role=${backRole}` : ""}`;
+  const backHref = getPlantBackLink({ defaultTab: "reports" });
   const [date, setDate] = useState(params?.date || format(new Date(), "yyyy-MM-dd"));
   const [plantName, setPlantName] = useState("Main Plant");
   const [showAllDispatches, setShowAllDispatches] = useState(false);
@@ -129,10 +125,10 @@ export default function PlantDailyReport() {
           <select value={plantName} onChange={e => setPlantName(e.target.value)} className="border rounded px-2 py-1 text-sm" data-testid="select-plant">
             {(plantsList && plantsList.length ? plantsList : ["Main Plant"]).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <Link href={`${appendOrigin(`/plant/shift-log/${date}`)}${appendOrigin(`/plant/shift-log/${date}`).includes("?") ? "&" : "?"}tab=${backTab}${backRole ? `&role=${backRole}` : ""}`}>
+          <Link href={appendPlantContext(`/plant/shift-log/${date}`, { defaultTab: "reports" })}>
             <Button variant="outline" size="sm" data-testid="button-edit-shift-log"><Edit className="w-4 h-4 mr-1" />Shift Log</Button>
           </Link>
-          <Link href={appendOrigin("/plant/daily-reports")}>
+          <Link href={appendPlantContext("/plant/daily-reports", { defaultTab: "reports" })}>
             <Button variant="outline" size="sm" data-testid="button-browse-all-dates"><History className="w-4 h-4 mr-1" />Browse all dates</Button>
           </Link>
           <a href={`/api/plant-module/daily-reports/${date}/pdf?plant=${encodeURIComponent(plantName)}`} target="_blank" rel="noreferrer">

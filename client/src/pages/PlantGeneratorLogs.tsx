@@ -20,8 +20,8 @@ import type { GeneratorLog } from "@shared/schema";
 
 export default function PlantGeneratorLogs() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const { getPlantBackLink } = useOrigin();
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   
   // PIN auth state for per-action authentication

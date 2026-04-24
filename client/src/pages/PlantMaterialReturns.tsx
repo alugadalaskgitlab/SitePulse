@@ -21,8 +21,8 @@ import type { Party, PlantMaterial, MaterialIssue, MaterialReturn } from "@share
 
 export default function PlantMaterialReturns() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/plant/dashboard");
+  const { getPlantBackLink } = useOrigin();
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReturn, setEditingReturn] = useState<MaterialReturn | null>(null);

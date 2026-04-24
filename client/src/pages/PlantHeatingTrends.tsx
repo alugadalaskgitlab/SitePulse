@@ -49,7 +49,7 @@ function fmt(n: number | null | undefined, digits = 2) {
 }
 
 export default function PlantHeatingTrends() {
-  const { appendOrigin } = useOrigin();
+  const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultFrom = format(subDays(new Date(), 29), "yyyy-MM-dd");
   const [dateFrom, setDateFrom] = useState(defaultFrom);
@@ -94,7 +94,7 @@ export default function PlantHeatingTrends() {
   };
 
   const target = data?.targetLPerMT ?? 1.5;
-  const backLink = appendOrigin("/plant/dashboard");
+  const backLink = getPlantBackLink({ defaultTab: "reports" });
 
   return (
     <div className="space-y-6">
@@ -237,7 +237,7 @@ export default function PlantHeatingTrends() {
                             : <Badge variant={overTarget ? "destructive" : "secondary"}>{fmt(r.total.lPerMT, 3)}</Badge>}
                         </td>
                         <td className="py-2 pr-3 text-right">
-                          <Link href={appendOrigin(`/plant/heating-sessions/${r.date}`)}>
+                          <Link href={appendPlantContext(`/plant/heating-sessions/${r.date}`, { defaultTab: "reports" })}>
                             <Button variant="ghost" size="sm" data-testid={`link-day-${r.date}`}>
                               <ArrowRight className="w-4 h-4" />
                             </Button>

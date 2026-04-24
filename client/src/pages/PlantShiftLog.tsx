@@ -28,7 +28,7 @@ type IdleRow = { startTime: string; endTime?: string | null; reason: string; rem
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
+  const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
   const [, setLocation] = useLocation();
   const today = format(new Date(), "yyyy-MM-dd");
@@ -38,11 +38,7 @@ export default function PlantShiftLog() {
   const [viewMode, setViewMode] = useState<"list" | "edit">(params?.date ? "edit" : "list");
   const [listDateFrom, setListDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [listDateTo, setListDateTo] = useState(today);
-  const _sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const _backTab = _sp.get("tab") || "operations";
-  const _backRole = _sp.get("role");
-  const _dashBase = appendOrigin("/plant/dashboard");
-  const backLink = `${_dashBase}${_dashBase.includes("?") ? "&" : "?"}tab=${_backTab}${_backRole ? `&role=${_backRole}` : ""}`;
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const [date, setDate] = useState(dateParam);
   const [shiftCode, setShiftCode] = useState("DAY");
@@ -566,7 +562,7 @@ export default function PlantShiftLog() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Link href={appendOrigin(`/plant/daily-report/${r.date}`)}>
+                              <Link href={appendPlantContext(`/plant/daily-report/${r.date}`, { defaultTab: "operations" })}>
                                 <Button variant="ghost" size="sm" data-testid={`button-daily-report-${r.id}`}>
                                   <FileText className="w-4 h-4 mr-1" />Report
                                 </Button>
@@ -601,7 +597,7 @@ export default function PlantShiftLog() {
         </div>
         <div className="flex items-center gap-2">
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
-          <Link href={appendOrigin(`/plant/daily-report/${date}`)}>
+          <Link href={appendPlantContext(`/plant/daily-report/${date}`, { defaultTab: "operations" })}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
           </Link>
         </div>
@@ -703,7 +699,7 @@ export default function PlantShiftLog() {
                 {(heatingSessionsForDate || []).length}
               </Badge>
             </CardTitle>
-            <Link href={appendOrigin(`/plant/heating-sessions/${date}`)}>
+            <Link href={appendPlantContext(`/plant/heating-sessions/${date}`, { defaultTab: "operations" })}>
               <Button size="sm" variant="outline" data-testid="button-open-heating-sessions">
                 <Plus className="w-4 h-4 mr-1" />Add / Edit Sessions
               </Button>
