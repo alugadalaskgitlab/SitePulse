@@ -10307,14 +10307,14 @@ export class DatabaseStorage implements IStorage {
         arr.push(s.hotOilTempEnd);
         hotOilByDate.set(s.date, arr);
       }
-      const supply = (s as any).hotOilSupplyTemp;
-      const ret = (s as any).hotOilReturnTemp;
-      if (supply != null && !isNaN(supply as number)) {
+      const supply = s.hotOilSupplyTemp;
+      const ret = s.hotOilReturnTemp;
+      if (supply != null && !isNaN(supply)) {
         const arr = hotOilSupplyByDate.get(s.date) || [];
         arr.push(supply);
         hotOilSupplyByDate.set(s.date, arr);
       }
-      if (ret != null && !isNaN(ret as number)) {
+      if (ret != null && !isNaN(ret)) {
         const arr = hotOilReturnByDate.get(s.date) || [];
         arr.push(ret);
         hotOilReturnByDate.set(s.date, arr);
@@ -10324,11 +10324,11 @@ export class DatabaseStorage implements IStorage {
       // another (which would produce a misleading delta if one of the two
       // sensors was missing for part of the day).
       if (
-        supply != null && !isNaN(supply as number) &&
-        ret != null && !isNaN(ret as number)
+        supply != null && !isNaN(supply) &&
+        ret != null && !isNaN(ret)
       ) {
         const arr = hotOilDeltaByDate.get(s.date) || [];
-        arr.push((supply as number) - (ret as number));
+        arr.push(supply - ret);
         hotOilDeltaByDate.set(s.date, arr);
       }
     }
