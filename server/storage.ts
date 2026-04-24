@@ -10223,6 +10223,7 @@ export class DatabaseStorage implements IStorage {
     ));
     const thresholds = await this.getPlantAlertThresholds();
     const hotOilEndTempMinC = thresholds.hotOilEndTempMinC;
+    const hotOilDeltaMinC = thresholds.hotOilDeltaMinC;
     const mismatchThresholdL = thresholds.sessionsVsShiftMismatchL;
 
     // Aggregate shift-meter Tank-1 L per day (closing − opening). When more
@@ -10273,6 +10274,11 @@ export class DatabaseStorage implements IStorage {
         hotOilEndMaxC: null,
         hotOilEndSampleCount: 0,
         hotOilEndBelowThreshold: false,
+        hotOilSupplyAvgC: null,
+        hotOilReturnAvgC: null,
+        hotOilDeltaAvgC: null,
+        hotOilDeltaSampleCount: 0,
+        hotOilDeltaBelowThreshold: false,
         shiftMeterT1L: null,
         shiftMeterLPerMT: null,
         mismatchL: null,
@@ -10281,6 +10287,9 @@ export class DatabaseStorage implements IStorage {
     }
 
     const hotOilByDate = new Map<string, number[]>();
+    const hotOilSupplyByDate = new Map<string, number[]>();
+    const hotOilReturnByDate = new Map<string, number[]>();
+    const hotOilDeltaByDate = new Map<string, number[]>();
     for (const s of sessions) {
       const row = rowMap.get(s.date);
       if (!row) continue;
@@ -10298,6 +10307,30 @@ export class DatabaseStorage implements IStorage {
         arr.push(s.hotOilTempEnd);
         hotOilByDate.set(s.date, arr);
       }
+      const supply = (s as any).hotOilSupplyTemp;
+      const ret = (s as any).hotOilReturnTemp;
+      if (supply != null && !isNaN(supply as number)) {
+        const arr = hotOilSupplyByDate.get(s.date) || [];
+        arr.push(supply);
+        hotOilSupplyByDate.set(s.date, arr);
+      }
+      if (ret != null && !isNaN(ret as number)) {
+        const arr = hotOilReturnByDate.get(s.date) || [];
+        arr.push(ret);
+        hotOilReturnByDate.set(s.date, arr);
+      }
+      // Per-session delta only when both readings exist on the same session,
+      // so we never average a supply from one session against a return from
+      // another (which would produce a misleading delta if one of the two
+      // sensors was missing for part of the day).
+      if (
+        supply != null && !isNaN(supply as number) &&
+        ret != null && !isNaN(ret as number)
+      ) {
+        const arr = hotOilDeltaByDate.get(s.date) || [];
+        arr.push((supply as number) - (ret as number));
+        hotOilDeltaByDate.set(s.date, arr);
+      }
     }
     for (const [dt, samples] of hotOilByDate.entries()) {
       const row = rowMap.get(dt);
@@ -10309,6 +10342,22 @@ export class DatabaseStorage implements IStorage {
       row.hotOilEndMaxC = round(Math.max(...samples), 1);
       row.hotOilEndSampleCount = samples.length;
       row.hotOilEndBelowThreshold = avg < hotOilEndTempMinC;
+    }
+    const avgOf = (samples: number[]): number | null => {
+      if (samples.length === 0) return null;
+      return samples.reduce((a, b) => a + b, 0) / samples.length;
+    };
+    for (const [dt, row] of rowMap.entries()) {
+      const supplyAvg = avgOf(hotOilSupplyByDate.get(dt) || []);
+      const returnAvg = avgOf(hotOilReturnByDate.get(dt) || []);
+      const deltaSamples = hotOilDeltaByDate.get(dt) || [];
+      const deltaAvg = avgOf(deltaSamples);
+      row.hotOilSupplyAvgC = supplyAvg == null ? null : round(supplyAvg, 1);
+      row.hotOilReturnAvgC = returnAvg == null ? null : round(returnAvg, 1);
+      row.hotOilDeltaAvgC = deltaAvg == null ? null : round(deltaAvg, 1);
+      row.hotOilDeltaSampleCount = deltaSamples.length;
+      row.hotOilDeltaBelowThreshold =
+        deltaAvg != null && deltaAvg < hotOilDeltaMinC;
     }
 
     const finalize = (b: HeatingTrendsBucket, mt: number) => {
@@ -10325,6 +10374,13 @@ export class DatabaseStorage implements IStorage {
     let hotOilOverallMin: number | null = null;
     let hotOilOverallMax: number | null = null;
     let hotOilFlaggedDays = 0;
+    // Hot-oil supply / return / delta period summaries. Each is weighted by
+    // the per-day sample count so days with more sessions contribute more.
+    let hotOilSupplySum = 0, hotOilSupplyCount = 0;
+    let hotOilReturnSum = 0, hotOilReturnCount = 0;
+    let hotOilDeltaSum = 0, hotOilDeltaCount = 0;
+    let hotOilDeltaOverallMin: number | null = null;
+    let hotOilDeltaFlaggedDays = 0;
     let sumShiftMeter = 0, daysWithShiftMeter = 0, mismatchDays = 0;
     for (const r of rows) {
       finalize(r.night, r.productionMT);
@@ -10366,6 +10422,25 @@ export class DatabaseStorage implements IStorage {
         }
       }
       if (r.hotOilEndBelowThreshold) hotOilFlaggedDays += 1;
+
+      const supplySamples = (hotOilSupplyByDate.get(r.date) || []).length;
+      if (r.hotOilSupplyAvgC != null && supplySamples > 0) {
+        hotOilSupplySum += r.hotOilSupplyAvgC * supplySamples;
+        hotOilSupplyCount += supplySamples;
+      }
+      const returnSamples = (hotOilReturnByDate.get(r.date) || []).length;
+      if (r.hotOilReturnAvgC != null && returnSamples > 0) {
+        hotOilReturnSum += r.hotOilReturnAvgC * returnSamples;
+        hotOilReturnCount += returnSamples;
+      }
+      if (r.hotOilDeltaAvgC != null && r.hotOilDeltaSampleCount > 0) {
+        hotOilDeltaSum += r.hotOilDeltaAvgC * r.hotOilDeltaSampleCount;
+        hotOilDeltaCount += r.hotOilDeltaSampleCount;
+        hotOilDeltaOverallMin = hotOilDeltaOverallMin == null
+          ? r.hotOilDeltaAvgC
+          : Math.min(hotOilDeltaOverallMin, r.hotOilDeltaAvgC);
+      }
+      if (r.hotOilDeltaBelowThreshold) hotOilDeltaFlaggedDays += 1;
     }
 
     return {
@@ -10374,6 +10449,7 @@ export class DatabaseStorage implements IStorage {
       plantName,
       targetLPerMT: TARGET_L_PER_MT,
       hotOilEndTempMinC,
+      hotOilDeltaMinC,
       mismatchThresholdL,
       rows,
       summary: {
@@ -10389,6 +10465,11 @@ export class DatabaseStorage implements IStorage {
         hotOilEndMinC: hotOilOverallMin,
         hotOilEndMaxC: hotOilOverallMax,
         hotOilFlaggedDays,
+        hotOilSupplyAvgC: hotOilSupplyCount > 0 ? round(hotOilSupplySum / hotOilSupplyCount, 1) : null,
+        hotOilReturnAvgC: hotOilReturnCount > 0 ? round(hotOilReturnSum / hotOilReturnCount, 1) : null,
+        hotOilDeltaAvgC: hotOilDeltaCount > 0 ? round(hotOilDeltaSum / hotOilDeltaCount, 1) : null,
+        hotOilDeltaMinObservedC: hotOilDeltaOverallMin == null ? null : round(hotOilDeltaOverallMin, 1),
+        hotOilDeltaFlaggedDays,
         totalShiftMeterT1L: round(sumShiftMeter, 2),
         shiftMeterLPerMT: sumMT > 0 && sumShiftMeter > 0
           ? round(sumShiftMeter / sumMT, 3) : null,

@@ -3703,6 +3703,12 @@ export async function registerRoutes(
         "Hot-oil Samples": r.hotOilEndSampleCount,
         "Hot-oil Below Threshold": r.hotOilEndBelowThreshold ? "YES" : "",
         "Hot-oil Threshold (°C)": trends.hotOilEndTempMinC,
+        "Hot-oil Supply Avg (°C)": r.hotOilSupplyAvgC ?? "",
+        "Hot-oil Return Avg (°C)": r.hotOilReturnAvgC ?? "",
+        "Hot-oil Δ Avg (°C)": r.hotOilDeltaAvgC ?? "",
+        "Hot-oil Δ Samples": r.hotOilDeltaSampleCount,
+        "Hot-oil Δ Below Floor": r.hotOilDeltaBelowThreshold ? "YES" : "",
+        "Hot-oil Δ Floor (°C)": trends.hotOilDeltaMinC,
       }));
       const summary = [{
         "Date Range": `${trends.dateFrom} to ${trends.dateTo}`,
@@ -3725,6 +3731,12 @@ export async function registerRoutes(
         "Hot-oil End Max (°C)": trends.summary.hotOilEndMaxC ?? "",
         "Hot-oil Threshold (°C)": trends.hotOilEndTempMinC,
         "Hot-oil Flagged Days": trends.summary.hotOilFlaggedDays,
+        "Hot-oil Supply Avg (°C)": trends.summary.hotOilSupplyAvgC ?? "",
+        "Hot-oil Return Avg (°C)": trends.summary.hotOilReturnAvgC ?? "",
+        "Hot-oil Δ Avg (°C)": trends.summary.hotOilDeltaAvgC ?? "",
+        "Hot-oil Δ Min Day Avg (°C)": trends.summary.hotOilDeltaMinObservedC ?? "",
+        "Hot-oil Δ Floor (°C)": trends.hotOilDeltaMinC,
+        "Hot-oil Δ Flagged Days": trends.summary.hotOilDeltaFlaggedDays,
       }];
       const wb = xlsx.utils.book_new();
       xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(summary), "Summary");

@@ -30,6 +30,11 @@ type Row = {
   hotOilEndMaxC: number | null;
   hotOilEndSampleCount: number;
   hotOilEndBelowThreshold: boolean;
+  hotOilSupplyAvgC: number | null;
+  hotOilReturnAvgC: number | null;
+  hotOilDeltaAvgC: number | null;
+  hotOilDeltaSampleCount: number;
+  hotOilDeltaBelowThreshold: boolean;
   shiftMeterT1L: number | null;
   shiftMeterLPerMT: number | null;
   mismatchL: number | null;
@@ -41,6 +46,7 @@ type TrendsResponse = {
   plantName: string;
   targetLPerMT: number;
   hotOilEndTempMinC: number;
+  hotOilDeltaMinC: number;
   mismatchThresholdL: number;
   rows: Row[];
   summary: {
@@ -56,6 +62,11 @@ type TrendsResponse = {
     hotOilEndMinC: number | null;
     hotOilEndMaxC: number | null;
     hotOilFlaggedDays: number;
+    hotOilSupplyAvgC: number | null;
+    hotOilReturnAvgC: number | null;
+    hotOilDeltaAvgC: number | null;
+    hotOilDeltaMinObservedC: number | null;
+    hotOilDeltaFlaggedDays: number;
     totalShiftMeterT1L: number;
     shiftMeterLPerMT: number | null;
     mismatchDays: number;
@@ -103,6 +114,9 @@ export default function PlantHeatingTrends() {
       hotOilEndAvgC: r.hotOilEndAvgC,
       hotOilEndMinC: r.hotOilEndMinC,
       hotOilEndMaxC: r.hotOilEndMaxC,
+      hotOilSupplyAvgC: r.hotOilSupplyAvgC,
+      hotOilReturnAvgC: r.hotOilReturnAvgC,
+      hotOilDeltaAvgC: r.hotOilDeltaAvgC,
     }));
   }, [data]);
 
@@ -120,6 +134,7 @@ export default function PlantHeatingTrends() {
 
   const target = data?.targetLPerMT ?? 1.5;
   const hotOilThreshold = data?.hotOilEndTempMinC ?? 240;
+  const hotOilDeltaFloor = data?.hotOilDeltaMinC ?? 15;
   const mismatchThreshold = data?.mismatchThresholdL ?? 5;
   const backLink = getPlantBackLink({ defaultTab: "reports" });
 
@@ -301,6 +316,76 @@ export default function PlantHeatingTrends() {
               </div>
               <p className="text-xs text-muted-foreground mt-2">
                 Days where the daily average hot-oil end temperature drops below {hotOilThreshold}°C are flagged in the table below. Adjust the floor in Admin → Plant Alert Thresholds.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Thermometer className="w-5 h-5 text-rose-600" />
+                Hot-oil Supply vs Return (Δ)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm mb-3">
+                <div data-testid="kpi-hotoil-supply">
+                  <div className="text-xs text-muted-foreground">Supply Avg</div>
+                  <div className="text-lg font-semibold">
+                    {fmt(data.summary.hotOilSupplyAvgC, 1)}{data.summary.hotOilSupplyAvgC != null && " °C"}
+                  </div>
+                </div>
+                <div data-testid="kpi-hotoil-return">
+                  <div className="text-xs text-muted-foreground">Return Avg</div>
+                  <div className="text-lg font-semibold">
+                    {fmt(data.summary.hotOilReturnAvgC, 1)}{data.summary.hotOilReturnAvgC != null && " °C"}
+                  </div>
+                </div>
+                <div data-testid="kpi-hotoil-delta">
+                  <div className="text-xs text-muted-foreground">Δ Avg (Supply − Return)</div>
+                  <div
+                    className={`text-lg font-semibold ${
+                      data.summary.hotOilDeltaAvgC != null && data.summary.hotOilDeltaAvgC < hotOilDeltaFloor
+                        ? "text-red-600"
+                        : ""
+                    }`}
+                  >
+                    {fmt(data.summary.hotOilDeltaAvgC, 1)}{data.summary.hotOilDeltaAvgC != null && " °C"}
+                  </div>
+                  <div className="text-xs text-muted-foreground" data-testid="kpi-hotoil-delta-flagged">
+                    {data.summary.hotOilDeltaFlaggedDays > 0
+                      ? <span className="text-red-600 font-medium">{data.summary.hotOilDeltaFlaggedDays} day{data.summary.hotOilDeltaFlaggedDays === 1 ? "" : "s"} &lt; {hotOilDeltaFloor}°C floor</span>
+                      : <span>Lowest day avg: {fmt(data.summary.hotOilDeltaMinObservedC, 1)} °C</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="w-full h-64" data-testid="chart-hotoil-delta">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartRows} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis yAxisId="temp" stroke="hsl(var(--muted-foreground))" fontSize={11} domain={["auto", "auto"]} />
+                    <YAxis yAxisId="delta" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={11} domain={[0, "auto"]} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 6 }}
+                      formatter={(value: any) => value == null ? "—" : `${Number(value).toFixed(1)} °C`}
+                    />
+                    <Legend />
+                    <ReferenceLine
+                      yAxisId="delta"
+                      y={hotOilDeltaFloor}
+                      stroke="#dc2626"
+                      strokeDasharray="4 4"
+                      label={{ value: `Δ floor ${hotOilDeltaFloor}°C`, fill: "#dc2626", fontSize: 11 }}
+                    />
+                    <Line yAxisId="temp" type="monotone" dataKey="hotOilSupplyAvgC" name="Supply" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                    <Line yAxisId="temp" type="monotone" dataKey="hotOilReturnAvgC" name="Return" stroke="#0891b2" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                    <Line yAxisId="delta" type="monotone" dataKey="hotOilDeltaAvgC" name="Δ (Supply − Return)" stroke="#9333ea" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Δ is the daily average of supply minus return temperature on each heating session. A shrinking Δ over time is an early sign of heat-exchanger fouling. Days whose average Δ drops below {hotOilDeltaFloor}°C are flagged. Adjust the floor in Admin → Plant Alert Thresholds.
               </p>
             </CardContent>
           </Card>

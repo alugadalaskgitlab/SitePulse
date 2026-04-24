@@ -54,6 +54,7 @@ export default function AdminSettings() {
   const [hotOilEndTempInput, setHotOilEndTempInput] = useState("");
   const [ldoLitersPerHourInput, setLdoLitersPerHourInput] = useState("");
   const [sessionsVsShiftInput, setSessionsVsShiftInput] = useState("");
+  const [hotOilDeltaMinInput, setHotOilDeltaMinInput] = useState("");
   const [alertThresholdsDirty, setAlertThresholdsDirty] = useState(false);
 
   const changeAdminPinMutation = useMutation({
@@ -166,6 +167,12 @@ export default function AdminSettings() {
       setHotOilEndTempInput(String(alertThresholdsData.hotOilEndTempMinC));
       setLdoLitersPerHourInput(String(alertThresholdsData.ldoLitersPerHourMax));
       setSessionsVsShiftInput(String(alertThresholdsData.sessionsVsShiftMismatchL));
+      setHotOilDeltaMinInput(
+        String(
+          alertThresholdsData.hotOilDeltaMinC
+          ?? PLANT_ALERT_THRESHOLD_DEFAULTS.hotOilDeltaMinC,
+        ),
+      );
     }
   }, [alertThresholdsData, alertThresholdsDirty]);
 
@@ -678,10 +685,21 @@ export default function AdminSettings() {
                 return;
               }
 
+              const deltaMin = Number(hotOilDeltaMinInput);
+              if (!Number.isFinite(deltaMin) || deltaMin < 0) {
+                toast({
+                  title: "Invalid Δ Floor",
+                  description: "Enter a non-negative number (°C).",
+                  variant: "destructive",
+                });
+                return;
+              }
+
               updateAlertThresholdsMutation.mutate({
                 hotOilEndTempMinC: hotOil,
                 ldoLitersPerHourMax: ldoLph,
                 sessionsVsShiftMismatchL: mismatch,
+                hotOilDeltaMinC: deltaMin,
                 // Preserve the persistent over-consumer fields (also stored in
                 // this same JSON blob) so saving boiler limits doesn't reset
                 // them. Fall back to defaults if the GET hasn't loaded yet.
@@ -770,6 +788,31 @@ export default function AdminSettings() {
               </p>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="hotOilDeltaMinC">Hot-oil Supply − Return Δ Floor</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="hotOilDeltaMinC"
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={hotOilDeltaMinInput}
+                  onChange={(e) => {
+                    setHotOilDeltaMinInput(e.target.value);
+                    setAlertThresholdsDirty(true);
+                  }}
+                  placeholder={String(PLANT_ALERT_THRESHOLD_DEFAULTS.hotOilDeltaMinC)}
+                  className="w-32"
+                  disabled={alertThresholdsLoading}
+                  data-testid="input-hot-oil-delta-min"
+                />
+                <span className="text-sm text-muted-foreground">°C</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Flag days on the Heating Trends chart when the daily average supply minus return temperature drops below this floor — a shrinking Δ is an early sign of heat-exchanger fouling. Default {PLANT_ALERT_THRESHOLD_DEFAULTS.hotOilDeltaMinC}°C.
+              </p>
+            </div>
+
             <Button
               type="submit"
               disabled={
@@ -779,6 +822,7 @@ export default function AdminSettings() {
                 || !hotOilEndTempInput
                 || !ldoLitersPerHourInput
                 || !sessionsVsShiftInput
+                || !hotOilDeltaMinInput
               }
               className="w-full gap-2"
               data-testid="button-save-alert-thresholds"
