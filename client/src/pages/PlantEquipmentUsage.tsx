@@ -663,8 +663,34 @@ export default function PlantEquipmentUsage() {
       ? equipment?.find(e => e.id === parseInt(filterEquipmentId))?.name?.replace(/\s+/g, '') || ""
       : "";
     const filters = equipFilter ? `_${equipFilter}` : "";
-    return `SiteLog_Plant_EquipmentUsage_${fromDate}_to_${toDate}${filters}_${timestamp}.${extension}`;
+    const monthLabel = effectiveRollupMonth
+      ? `_Rollup_${format(new Date(`${effectiveRollupMonth}-01T00:00:00`), "MMMyyyy")}`
+      : "";
+    return `SiteLog_Plant_EquipmentUsage_${fromDate}_to_${toDate}${filters}${monthLabel}_${timestamp}.${extension}`;
   };
+
+  const getMonthlyRollupExportData = () => {
+    return monthlyRollup.map(row => {
+      const variance = row.actual - row.expected;
+      const persistent = isPersistentOffender(row);
+      return {
+        Equipment: row.name,
+        Days: row.days,
+        "Total Run": `${row.runtime.toFixed(2)} ${row.meterUnit}`,
+        "Total Actual L": Number(row.actual.toFixed(2)),
+        "Total Norm L": Number(row.expected.toFixed(2)),
+        "Variance L": Number(variance.toFixed(2)),
+        "Avg ±%": row.variancePct == null ? "—" : `${row.variancePct > 0 ? "+" : ""}${row.variancePct.toFixed(1)}%`,
+        "Overshoot Days": `${row.overshootDays} / ${row.days}`,
+        "Persistent Over-Consumer": persistent ? "YES" : "",
+        _persistent: persistent,
+      };
+    });
+  };
+
+  const monthlyRollupTitle = effectiveRollupMonth
+    ? `Monthly Variance by Machine — ${format(new Date(`${effectiveRollupMonth}-01T00:00:00`), "MMMM yyyy")}`
+    : "Monthly Variance by Machine";
 
   // Universal download function that works on all devices including iPad
   const triggerDownload = (blob: Blob, filename: string) => {
@@ -725,6 +751,17 @@ export default function PlantEquipmentUsage() {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Equipment Usage");
+
+      const rollupData = getMonthlyRollupExportData();
+      if (rollupData.length > 0) {
+        const sheetRows = rollupData.map(({ _persistent, ...row }) => row);
+        const wsRoll = XLSX.utils.json_to_sheet(sheetRows);
+        wsRoll["!cols"] = [
+          { wch: 30 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+          { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 24 },
+        ];
+        XLSX.utils.book_append_sheet(wb, wsRoll, "Monthly Variance");
+      }
       
       const filename = buildFilename("xlsx");
       
@@ -796,6 +833,47 @@ export default function PlantEquipmentUsage() {
         headStyles: { fillColor: [41, 128, 185] },
         margin: { left: 10, right: 10 },
       });
+
+      const rollupData = getMonthlyRollupExportData();
+      if (rollupData.length > 0) {
+        const lastY = (doc as any).lastAutoTable?.finalY ?? 40;
+        let cursorY = lastY + 10;
+        if (cursorY > 250) {
+          doc.addPage();
+          cursorY = 15;
+        }
+        doc.setFontSize(13);
+        doc.text(monthlyRollupTitle, 14, cursorY);
+        cursorY += 4;
+        autoTable(doc, {
+          startY: cursorY + 2,
+          head: [["Equipment", "Days", "Total Run", "Total Actual L", "Total Norm L", "Variance L", "Avg ±%", "Overshoot Days", "Persistent"]],
+          body: rollupData.map(r => [
+            r.Equipment,
+            r.Days,
+            r["Total Run"],
+            r["Total Actual L"],
+            r["Total Norm L"],
+            r["Variance L"],
+            r["Avg ±%"],
+            r["Overshoot Days"],
+            r["Persistent Over-Consumer"] || "",
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [192, 57, 43] },
+          margin: { left: 10, right: 10 },
+          didParseCell: (data) => {
+            if (data.section === "body") {
+              const row = rollupData[data.row.index];
+              if (row?._persistent) {
+                data.cell.styles.fillColor = [253, 226, 226];
+                data.cell.styles.textColor = [120, 30, 30];
+                data.cell.styles.fontStyle = "bold";
+              }
+            }
+          },
+        });
+      }
       
       const filename = buildFilename("pdf");
       
@@ -898,6 +976,43 @@ export default function PlantEquipmentUsage() {
               `}).join('')}
             </tbody>
           </table>
+          ${(() => {
+            const rollupData = getMonthlyRollupExportData();
+            if (rollupData.length === 0) return '';
+            return `
+              <h2 style="margin-top:20px; font-size:14px; color:#333;">${monthlyRollupTitle}</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Equipment</th>
+                    <th>Days</th>
+                    <th>Total Run</th>
+                    <th>Total Actual L</th>
+                    <th>Total Norm L</th>
+                    <th>Variance L</th>
+                    <th>Avg ±%</th>
+                    <th>Overshoot Days</th>
+                    <th>Persistent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rollupData.map(r => `
+                    <tr style="${r._persistent ? 'background-color:#fde2e2; color:#7a1f1f; font-weight:bold;' : ''}">
+                      <td>${r.Equipment}</td>
+                      <td>${r.Days}</td>
+                      <td>${r["Total Run"]}</td>
+                      <td>${r["Total Actual L"]}</td>
+                      <td>${r["Total Norm L"]}</td>
+                      <td>${r["Variance L"]}</td>
+                      <td>${r["Avg ±%"]}</td>
+                      <td>${r["Overshoot Days"]}</td>
+                      <td>${r["Persistent Over-Consumer"] || ''}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `;
+          })()}
         <script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
         </body>
       </html>
