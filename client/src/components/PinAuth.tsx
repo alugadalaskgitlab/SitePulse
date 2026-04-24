@@ -9,8 +9,20 @@
 // already authenticated and has any edit-capable role. If the user lacks
 // access we render nothing and call onClose so the calling code falls through
 // to its read-only branch.
+//
+// IMPORTANT — callers that store the `pin` argument in string state MUST gate
+// on `pin !== null` (not `!pin`) because this shim passes AUTH_SENTINEL
+// ("__auth__") rather than a real PIN. Using `!pin` would treat a non-null
+// sentinel as falsy only if it were an empty string; AUTH_SENTINEL is non-empty
+// so naive `!pin` checks work, but `pin === null` checks are the recommended
+// pattern for new code.
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
+
+// Non-empty sentinel emitted by the shim in place of a real 4-digit PIN.
+// Using a non-empty string means even naive `if (!pin)` guards will pass,
+// while keeping `null` as the canonical "not yet authenticated" value.
+export const AUTH_SENTINEL = "__auth__";
 
 interface PinAuthProps {
   targetRole?: "manager" | "admin" | "any";
@@ -37,12 +49,12 @@ export function PinAuth({ targetRole = "any", onSuccess, onClose }: PinAuthProps
       Object.values(permissions).some((p) => p.edit || p.create);
 
     if (targetRole === "admin") {
-      if (isAdmin) onSuccess("admin", "");
+      if (isAdmin) onSuccess("admin", AUTH_SENTINEL);
       else onClose();
       return;
     }
     // "manager" or "any" — allow if the user has any edit/create permission.
-    if (anyEdit) onSuccess(isAdmin ? "admin" : "manager", "");
+    if (anyEdit) onSuccess(isAdmin ? "admin" : "manager", AUTH_SENTINEL);
     else onClose();
   }, [user, permissions, targetRole, onSuccess, onClose]);
 

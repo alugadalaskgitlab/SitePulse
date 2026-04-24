@@ -61,8 +61,8 @@ export default function PlantStockReassign() {
   const [showExecutePin, setShowExecutePin] = useState(false);
   const [actor, setActor] = useState<string>("");
 
-  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: !!adminPin });
-  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: !!adminPin });
+  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: adminPin !== null });
+  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: adminPin !== null });
 
   const fromPartyName = useMemo(
     () => parties?.find(p => String(p.id) === fromPartyId)?.name || "",
@@ -89,7 +89,7 @@ export default function PlantStockReassign() {
     );
   }, [preview]);
 
-  const canSearch = !!adminPin && materialId && fromPartyId;
+  const canSearch = adminPin !== null && materialId && fromPartyId;
   const canExecute = canSearch && toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0 && actor.trim().length >= 2;
 
   const buildBody = () => ({
@@ -158,7 +158,7 @@ export default function PlantStockReassign() {
   };
 
   // Page-level admin PIN gate — required before any data is fetched.
-  if (!adminPin) {
+  if (adminPin === null) {
     return (
       <PinAuth
         targetRole="admin"
