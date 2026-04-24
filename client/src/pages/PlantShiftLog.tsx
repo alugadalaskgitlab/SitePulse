@@ -254,7 +254,7 @@ export default function PlantShiftLog() {
     const legacyHasT1Reading =
       existing.ldoTank1OpeningMeter != null || existing.ldoTank1ClosingMeter != null;
     setBoilerRunsDuringProduction(
-      !!(existing as any).boilerRunsDuringProduction || legacyHasT1Reading,
+      !!existing.boilerRunsDuringProduction || legacyHasT1Reading,
     );
     // Loading a saved record — clear any auto-fill hint state from prior new-log session.
     setAutoFillT1Source("");
@@ -484,8 +484,13 @@ export default function PlantShiftLog() {
         .catch(() => {});
     }
     return () => { cancelled = true; };
+    // Task #254 — include `boilerRunsDuringProduction` so flipping the toggle
+    // ON after the heating-session query has already resolved still triggers
+    // the auto-fill of the Boiler Meter Opening from the prior session's
+    // closing. Without this dep the effect only ran on initial mount / data
+    // load and the operator would have to re-edit something to prefill.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existing, date, plantName, plantStartTime, heatingSessionsForDate]);
+  }, [existing, date, plantName, plantStartTime, heatingSessionsForDate, boilerRunsDuringProduction]);
 
   // Derived
   const ldoTotal = useMemo(() => {

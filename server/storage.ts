@@ -10314,7 +10314,7 @@ export class DatabaseStorage implements IStorage {
     // operator toggled "Boiler runs during production" on). This is added on
     // top of the session-rolled LDO. Both inputs must be present and closing
     // must be > opening for a valid delta; otherwise we contribute zero.
-    const boilerRunsDuringProduction = !!(shift && (shift as any).boilerRunsDuringProduction);
+    const boilerRunsDuringProduction = !!shift?.boilerRunsDuringProduction;
     const op = shift?.ldoTank1OpeningMeter ?? null;
     const cl = shift?.ldoTank1ClosingMeter ?? null;
     const boilerDuringProductionL = (boilerRunsDuringProduction && op != null && cl != null && cl > op)
