@@ -809,6 +809,21 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
                 </CardContent>
               </Card>
             </Link>
+
+            <Link href={appendRoleAndTab("/plant/ldo-backfill")}>
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="card-ldo-backfill">
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Gauge className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">LDO Meter Backfill</h3>
+                    <p className="text-sm text-muted-foreground">Enter historical Tank-1 / Tank-2 opening &amp; closing meters for past dates</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </>
       )}

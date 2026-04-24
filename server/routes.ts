@@ -2557,6 +2557,109 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // LDO FLOW METER BACKFILL (admin-only)
+  // Lets an admin enter historical Tank-1/Tank-2 opening + closing meters
+  // for past dates so Daily Plant Reports can compute LDO L/MT, stocks and
+  // reconciliation off real numbers. Idempotent: re-saving the same date/
+  // tank replaces the prior backfill row, never the shift-log/heating row.
+  // ============================================
+
+  // PIN-gated (verifyPin("admin", pin)) on top of session admin assertion.
+  // PIN may arrive in body (POST), query string, or X-Admin-Pin header (GET).
+  const ldoBackfillExtractPin = (req: any): string => {
+    const headerPin = req.headers?.["x-admin-pin"];
+    return String(
+      (req.body && req.body.pin) ?? req.query?.pin ?? (Array.isArray(headerPin) ? headerPin[0] : headerPin) ?? ""
+    );
+  };
+  const ldoBackfillVerifyPin = async (req: any, res: any): Promise<boolean> => {
+    const pin = ldoBackfillExtractPin(req);
+    if (!pin) {
+      res.status(401).json({ message: "Admin PIN required" });
+      return false;
+    }
+    const ok = await storage.verifyPin("admin", pin);
+    if (!ok) {
+      res.status(401).json({ message: "Invalid admin PIN" });
+      return false;
+    }
+    return true;
+  };
+
+  const ldoBackfillGetSchema = z.object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from must be YYYY-MM-DD"),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "to must be YYYY-MM-DD"),
+    plant: z.string().trim().min(1).optional(),
+  });
+
+  // Rows may have both opening and closing as null — that's a valid "clear
+  // any existing backfill cells for this (date, plant, tank)" instruction
+  // (the storage layer will delete and not re-insert).
+  const ldoBackfillRowSchema = z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+    plant: z.string().trim().min(1),
+    tank: z.union([z.literal(1), z.literal(2)]),
+    opening: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
+    closing: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
+    remarks: z.union([z.string(), z.null()]).optional().transform(v => (v && v.trim()) ? v.trim() : null),
+  });
+
+  const ldoBackfillPostSchema = z.object({
+    pin: z.string().min(1),
+    plant: z.string().trim().min(1),
+    rows: z.array(ldoBackfillRowSchema).min(1),
+  });
+
+  app.get("/api/plant-module/ldo-backfill", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      if (!(await ldoBackfillVerifyPin(req, res))) return;
+      const parsed = ldoBackfillGetSchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues.map(i => i.message).join("; ") });
+      }
+      const { from, to, plant } = parsed.data;
+      const rows = await storage.getLdoFlowReadingsForBackfill({ dateFrom: from, dateTo: to, plant });
+      res.json(rows);
+    } catch (err) {
+      console.error("Failed to load LDO backfill data", err);
+      res.status(500).json({ message: "Failed to load LDO backfill data" });
+    }
+  });
+
+  app.post("/api/plant-module/ldo-backfill", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      if (!(await ldoBackfillVerifyPin(req, res))) return;
+      const actor = currentUserName(req);
+      const parsed = ldoBackfillPostSchema.safeParse(req.body);
+      if (!parsed.success) {
+        console.warn(
+          `[LdoBackfill] actor="${actor.trim()}" rejected reason="invalid payload" ` +
+          `issues="${parsed.error.issues.map(i => `${i.path.join(".")}:${i.message}`).join("|")}"`
+        );
+        return res.status(400).json({ message: parsed.error.issues.map(i => i.message).join("; ") });
+      }
+      // Normalize: force per-row plant to the request-level plant so saves
+      // are scoped consistently (UI sends a single plant per save anyway).
+      const rows = parsed.data.rows.map(r => ({ ...r, plant: parsed.data.plant }));
+      const result = await storage.upsertLdoFlowReadingsBackfill(rows, actor);
+      const dates = rows.map(r => r.date).sort();
+      const range = dates.length ? `${dates[0]}..${dates[dates.length - 1]}` : "n/a";
+      console.info(
+        `[LdoBackfill] actor="${actor.trim()}" role=admin plant="${parsed.data.plant}" ` +
+        `at=${new Date().toISOString()} range=${range} requested=${rows.length} ` +
+        `inserted=${result.inserted} deleted=${result.deleted} skipped=${result.skipped} ` +
+        `conflicts=${result.conflicts.length}`
+      );
+      res.json({ message: "LDO backfill saved", actor, plant: parsed.data.plant, ...result });
+    } catch (err: any) {
+      console.error("Failed to save LDO backfill", err);
+      res.status(500).json({ message: err?.message || "Failed to save LDO backfill" });
+    }
+  });
+
+  // ============================================
   // LDO DIP READINGS
   // ============================================
 

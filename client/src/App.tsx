@@ -33,6 +33,7 @@ import PlantAuditReport from "@/pages/PlantAuditReport";
 import PlantDieselProcurementReport from "@/pages/PlantDieselProcurementReport";
 import PlantBitumenStock from "@/pages/PlantBitumenStock";
 import PlantLdoFlowMeter from "@/pages/PlantLdoFlowMeter";
+import PlantLdoBackfill from "@/pages/PlantLdoBackfill";
 import PlantStockReassign from "@/pages/PlantStockReassign";
 import PlantShiftLogManpowerReview from "@/pages/PlantShiftLogManpowerReview";
 import PlantShiftLog from "@/pages/PlantShiftLog";
@@ -140,6 +141,7 @@ function AuthedShell() {
             <Route path="/plant/diesel-procurement" component={PlantDieselProcurementReport} />
             <Route path="/plant/bitumen-stock" component={PlantBitumenStock} />
             <Route path="/plant/ldo-flow-meter" component={PlantLdoFlowMeter} />
+            <Route path="/plant/ldo-backfill" component={PlantLdoBackfill} />
             <Route path="/plant/stock-reassign" component={PlantStockReassign} />
             <Route path="/plant/shift-log-manpower-review" component={PlantShiftLogManpowerReview} />
             <Route path="/plant/shift-log" component={PlantShiftLog} />

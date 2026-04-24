@@ -5246,6 +5246,125 @@ export class DatabaseStorage implements IStorage {
     return !!deleted;
   }
 
+  // --- LDO Flow-Meter Backfill (admin-only historical entry) -----------------
+  // Backfill provenance is encoded in the `notes` column with the marker
+  //   "[BACKFILL plant=<plant> by <actor>] <remarks?>"
+  // because the table has no dedicated `source` or `plant_name` column (the
+  // latter is owned by a separate task). Idempotency is per
+  // (date, plant, tank, opening|closing): on re-save the storage method
+  // deletes existing backfill rows for that key (matched by the plant marker
+  // in `notes`) and re-inserts. Rows owned by a shift log, heating session,
+  // or non-backfill manual entry are NEVER overwritten — they are returned
+  // as conflicts.
+
+  // Plant marker stored uppercase to match createLdoFlowReading's notes upper-casing.
+  private ldoBackfillPlantMarker(plant: string): string {
+    return `PLANT=${(plant || "Main Plant").toUpperCase()}`;
+  }
+
+  private isLdoBackfillRow(notes: string | null | undefined): boolean {
+    return !!notes && notes.toUpperCase().startsWith("[BACKFILL");
+  }
+
+  private isLdoBackfillRowForPlant(notes: string | null | undefined, plant: string): boolean {
+    if (!this.isLdoBackfillRow(notes)) return false;
+    const upper = (notes || "").toUpperCase();
+    const marker = this.ldoBackfillPlantMarker(plant);
+    if (upper.includes(marker)) return true;
+    // Backwards-compat: backfill rows written before plant marker existed
+    // are treated as belonging to "Main Plant".
+    if ((plant || "Main Plant").toUpperCase() === "MAIN PLANT" && !upper.includes("PLANT=")) return true;
+    return false;
+  }
+
+  async getLdoFlowReadingsForBackfill(filters: { dateFrom: string; dateTo: string; plant?: string }): Promise<LdoFlowReading[]> {
+    const rows = await db.select().from(ldoFlowReadings)
+      .where(and(
+        gte(ldoFlowReadings.date, filters.dateFrom),
+        lte(ldoFlowReadings.date, filters.dateTo),
+      ))
+      .orderBy(asc(ldoFlowReadings.date), asc(ldoFlowReadings.tankNumber), asc(ldoFlowReadings.readingType), asc(ldoFlowReadings.time));
+
+    if (!filters.plant) return rows;
+    // Keep all non-backfill rows (shift-log / heating / manual) regardless of
+    // plant since the table can't disambiguate them; filter backfill rows by
+    // the plant marker so the UI only edits this plant's backfill cells.
+    return rows.filter(r => !this.isLdoBackfillRow(r.notes) || this.isLdoBackfillRowForPlant(r.notes, filters.plant!));
+  }
+
+  async upsertLdoFlowReadingsBackfill(
+    rows: Array<{ date: string; plant: string; tank: number; opening: number | null; closing: number | null; remarks: string | null }>,
+    actor: string,
+  ): Promise<{ inserted: number; deleted: number; skipped: number; conflicts: Array<{ date: string; plant: string; tank: number; reason: string }> }> {
+    let inserted = 0, deleted = 0, skipped = 0;
+    const conflicts: Array<{ date: string; plant: string; tank: number; reason: string }> = [];
+
+    await db.transaction(async (tx) => {
+      for (const row of rows) {
+        const tank = row.tank;
+        const plant = row.plant || "Main Plant";
+        const plantMarker = this.ldoBackfillPlantMarker(plant);
+
+        if (row.opening != null && row.closing != null && row.closing < row.opening) {
+          conflicts.push({ date: row.date, plant, tank, reason: "closing meter < opening meter" });
+          skipped++;
+          continue;
+        }
+
+        const existing = await tx.select().from(ldoFlowReadings)
+          .where(and(eq(ldoFlowReadings.date, row.date), eq(ldoFlowReadings.tankNumber, tank)));
+
+        for (const rt of ["opening", "closing"] as const) {
+          const value = rt === "opening" ? row.opening : row.closing;
+          const sameType = existing.filter(e => e.readingType === rt);
+          const protectedRow = sameType.find(e =>
+            e.sourceShiftLogId != null
+            || e.sourceHeatingSessionId != null
+            || !this.isLdoBackfillRow(e.notes)
+          );
+
+          if (protectedRow) {
+            if (value != null && value !== protectedRow.meterReading) {
+              const owner = protectedRow.sourceShiftLogId != null
+                ? "shift-log"
+                : protectedRow.sourceHeatingSessionId != null
+                  ? "heating-session"
+                  : "manual";
+              conflicts.push({ date: row.date, plant, tank, reason: `${rt} blocked by ${owner} reading` });
+              skipped++;
+            }
+            continue;
+          }
+
+          // Only delete backfill rows belonging to THIS plant — backfill rows
+          // for a different plant on the same (date, tank) are preserved.
+          const toDelete = sameType.filter(e => this.isLdoBackfillRowForPlant(e.notes, plant));
+          for (const b of toDelete) {
+            await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.id, b.id));
+            deleted++;
+          }
+
+          if (value != null) {
+            const time = rt === "opening" ? "06:00" : "18:00";
+            const noteBits = [`[BACKFILL ${plantMarker} BY ${(actor || "admin").toUpperCase()}]`];
+            if (row.remarks) noteBits.push(row.remarks);
+            await tx.insert(ldoFlowReadings).values({
+              date: row.date,
+              time,
+              tankNumber: tank,
+              meterReading: value,
+              readingType: rt,
+              notes: noteBits.join(" ").toUpperCase(),
+            } satisfies InsertLdoFlowReading);
+            inserted++;
+          }
+        }
+      }
+    });
+
+    return { inserted, deleted, skipped, conflicts };
+  }
+
   // ============================================
   // LDO DIP READINGS
   // ============================================
