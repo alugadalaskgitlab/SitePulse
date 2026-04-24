@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest } from "@/lib/queryClient";
@@ -43,6 +44,8 @@ import {
   KeyRound,
   Plus,
   Copy,
+  Pencil,
+  ArrowLeft,
 } from "lucide-react";
 
 type SafeUser = {
@@ -66,6 +69,7 @@ export default function UserManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [permsUserId, setPermsUserId] = useState<number | null>(null);
   const [pwUserId, setPwUserId] = useState<number | null>(null);
+  const [editUserId, setEditUserId] = useState<number | null>(null);
 
   // Matrix-based gates. Admin users implicitly have every permission.
   const userMgmt = permissions["user_management"];
@@ -83,6 +87,14 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6" data-testid="page-user-management">
+      <Link href="/">
+        <a
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          data-testid="link-back-home"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to Home
+        </a>
+      </Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -131,6 +143,7 @@ export default function UserManagement() {
                       key={u.id}
                       user={u}
                       canEdit={canEdit}
+                      onEdit={() => setEditUserId(u.id)}
                       onPerms={() => setPermsUserId(u.id)}
                       onResetPw={() => setPwUserId(u.id)}
                     />
@@ -162,6 +175,13 @@ export default function UserManagement() {
           onClose={() => setPwUserId(null)}
         />
       )}
+      {editUserId !== null && (
+        <EditUserDialog
+          userId={editUserId}
+          users={usersQ.data ?? []}
+          onClose={() => setEditUserId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -169,11 +189,13 @@ export default function UserManagement() {
 function UserRow({
   user,
   canEdit,
+  onEdit,
   onPerms,
   onResetPw,
 }: {
   user: SafeUser;
   canEdit: boolean;
+  onEdit: () => void;
   onPerms: () => void;
   onResetPw: () => void;
 }) {
@@ -239,7 +261,16 @@ function UserRow({
         />
       </td>
       <td className="py-2 pr-4">
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onEdit}
+            disabled={!canEdit}
+            data-testid={`button-edit-${user.id}`}
+          >
+            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -359,6 +390,159 @@ function CreateUserDialog({
           >
             {create.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditUserDialog({
+  userId,
+  users,
+  onClose,
+}: {
+  userId: number;
+  users: SafeUser[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { user: currentUser, refresh } = useAuth();
+  const target = users.find((u) => u.id === userId);
+
+  const [fullName, setFullName] = useState(target?.fullName ?? "");
+  const [email, setEmail] = useState(target?.email ?? "");
+  const [isAdmin, setIsAdmin] = useState(target?.isAdmin ?? false);
+  const [canUnlock, setCanUnlock] = useState(target?.canUnlockRecords ?? false);
+  const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
+
+  // Build a partial patch with only changed fields so the server
+  // doesn't accidentally clobber unrelated values, and so the
+  // last-admin guard only fires when the operator actually toggled
+  // admin/active.
+  function buildPatch(): Partial<SafeUser> {
+    if (!target) return {};
+    const patch: Partial<SafeUser> = {};
+    const trimmedName = fullName.trim();
+    const trimmedEmail = email.trim();
+    if (trimmedName && trimmedName !== target.fullName) patch.fullName = trimmedName;
+    if (trimmedEmail && trimmedEmail.toLowerCase() !== target.email.toLowerCase()) {
+      patch.email = trimmedEmail;
+    }
+    if (isAdmin !== target.isAdmin) patch.isAdmin = isAdmin;
+    if (canUnlock !== target.canUnlockRecords) patch.canUnlockRecords = canUnlock;
+    if (policy !== target.sessionPolicy) patch.sessionPolicy = policy;
+    return patch;
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const patch = buildPatch();
+      const r = await apiRequest("PATCH", `/api/auth/users/${userId}`, patch);
+      return r.json();
+    },
+    onSuccess: async () => {
+      toast({ title: "User updated" });
+      qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
+      // If the operator just edited their own row (e.g. switched the
+      // admin's email from a personal address to an official one),
+      // refresh the auth context so the header / Home greeting reflects
+      // the new value.
+      if (currentUser?.id === userId) {
+        await refresh();
+      }
+      onClose();
+    },
+    onError: (e: Error | { message?: string }) => {
+      const raw = e?.message || "";
+      // Friendly text for the two server-side guards.
+      let description = raw;
+      if (/email_exists/i.test(raw)) description = "That email is already used by another user.";
+      else if (/cannot_demote_last_admin/i.test(raw)) {
+        description = "There must always be at least one active admin. Promote another user to admin first.";
+      }
+      toast({ title: "Save failed", description, variant: "destructive" });
+    },
+  });
+
+  if (!target) {
+    return null;
+  }
+
+  const dirty = Object.keys(buildPatch()).length > 0;
+  const emailValid = /.+@.+\..+/.test(email.trim());
+
+  return (
+    <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit user — {target.fullName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Full name</Label>
+            <Input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              data-testid="input-edit-fullname"
+            />
+          </div>
+          <div>
+            <Label>Email</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              data-testid="input-edit-email"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Used to sign in. Changing this for the bootstrap admin is the
+              recommended way to switch from a personal email to an official one.
+            </p>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="edit-isAdmin">Admin</Label>
+            <Switch
+              id="edit-isAdmin"
+              checked={isAdmin}
+              onCheckedChange={setIsAdmin}
+              data-testid="switch-edit-admin"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="edit-canUnlock">Can unlock locked records</Label>
+            <Switch
+              id="edit-canUnlock"
+              checked={canUnlock}
+              onCheckedChange={setCanUnlock}
+              data-testid="switch-edit-unlock"
+            />
+          </div>
+          <div>
+            <Label>Session policy</Label>
+            <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
+              <SelectTrigger data-testid="select-edit-policy">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
+                <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-edit-cancel">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={!dirty || !fullName.trim() || !emailValid || save.isPending}
+            data-testid="button-edit-save"
+          >
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Save changes
           </Button>
         </DialogFooter>
       </DialogContent>
