@@ -150,12 +150,20 @@ export function registerAuthRoutes(app: Express) {
           ? deviceLookup.device
           : null;
 
-      // Bootstrap admin (or first ever user) auto-approves their first device.
-      // Admins beyond the first DO NOT auto-approve — they still need an
-      // already-approved device.
-      const [otherApproved] = await db.select({ id: userDevices.id }).from(userDevices)
-        .where(and(eq(userDevices.userId, user.id), eq(userDevices.status, "approved"))).limit(1);
-      const autoApprove = !otherApproved && user.isAdmin;
+      // Auto-approve is reserved for the genuine bootstrap recovery path:
+      // ONLY when (a) the user signing in matches BOOTSTRAP_ADMIN_EMAIL,
+      // AND (b) there is not a single approved device anywhere in the
+      // system yet. Any other admin must wait for an existing admin to
+      // approve their device. This closes the prior security hole where
+      // every admin could self-approve their first device.
+      const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || "").trim().toLowerCase();
+      const isBootstrapUser = !!bootstrapEmail && user.email.toLowerCase() === bootstrapEmail;
+      let autoApprove = false;
+      if (isBootstrapUser && user.isAdmin) {
+        const [anyApproved] = await db.select({ id: userDevices.id }).from(userDevices)
+          .where(eq(userDevices.status, "approved")).limit(1);
+        autoApprove = !anyApproved;
+      }
 
       const ua = String(req.headers["user-agent"] || "");
       const ip = getClientIp(req);
@@ -201,7 +209,11 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.get("/api/auth/me", async (req, res) => {
+  // Session info — both /api/auth/me and the spec-named /api/auth/session
+  // resolve to the same handler so older callers and the documented
+  // contract both work. Returns 401 with a reason string if the session
+  // is invalid; the client uses that reason to drive the idle/revoked UX.
+  const sessionHandler = async (req: import("express").Request, res: import("express").Response) => {
     try {
       const sess = await lookupSessionFromCookie(req.headers.cookie);
       if (sess.kind !== "ok") {
@@ -219,10 +231,12 @@ export function registerAuthRoutes(app: Express) {
         permissions: matrix,
       });
     } catch (err) {
-      console.error("[/api/auth/me]", err);
+      console.error("[/api/auth/session]", err);
       res.status(500).json({ error: "server_error" });
     }
-  });
+  };
+  app.get("/api/auth/me", sessionHandler);
+  app.get("/api/auth/session", sessionHandler);
 
   app.post("/api/auth/logout", async (req, res) => {
     try {

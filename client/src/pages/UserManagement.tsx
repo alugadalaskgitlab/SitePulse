@@ -57,7 +57,7 @@ type SafeUser = {
 };
 
 export default function UserManagement() {
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -67,10 +67,16 @@ export default function UserManagement() {
   const [permsUserId, setPermsUserId] = useState<number | null>(null);
   const [pwUserId, setPwUserId] = useState<number | null>(null);
 
-  if (!user?.isAdmin) {
+  // Matrix-based gates. Admin users implicitly have every permission.
+  const userMgmt = permissions["user_management"];
+  const canView = !!user?.isAdmin || !!userMgmt?.view;
+  const canCreate = !!user?.isAdmin || !!userMgmt?.create;
+  const canEdit = !!user?.isAdmin || !!userMgmt?.edit;
+
+  if (!canView) {
     return (
-      <div className="text-center py-20 text-sm text-muted-foreground">
-        Admin access required.
+      <div className="text-center py-20 text-sm text-muted-foreground" data-testid="text-no-permission">
+        You do not have permission to view user management.
       </div>
     );
   }
@@ -87,7 +93,11 @@ export default function UserManagement() {
             can change accounts; users cannot reset their own passwords.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} data-testid="button-create-user">
+        <Button
+          onClick={() => setCreateOpen(true)}
+          disabled={!canCreate}
+          data-testid="button-create-user"
+        >
           <Plus className="h-4 w-4 mr-2" /> New User
         </Button>
       </div>
@@ -120,6 +130,7 @@ export default function UserManagement() {
                     <UserRow
                       key={u.id}
                       user={u}
+                      canEdit={canEdit}
                       onPerms={() => setPermsUserId(u.id)}
                       onResetPw={() => setPwUserId(u.id)}
                     />
@@ -157,10 +168,12 @@ export default function UserManagement() {
 
 function UserRow({
   user,
+  canEdit,
   onPerms,
   onResetPw,
 }: {
   user: SafeUser;
+  canEdit: boolean;
   onPerms: () => void;
   onResetPw: () => void;
 }) {
@@ -175,7 +188,7 @@ function UserRow({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
     },
-    onError: (e: any) => {
+    onError: (e: Error | { message?: string }) => {
       toast({
         title: "Couldn't update user",
         description: e?.message || "",
@@ -212,6 +225,7 @@ function UserRow({
       <td className="py-2 pr-4">
         <Switch
           checked={user.isActive}
+          disabled={!canEdit}
           onCheckedChange={(v) => patch.mutate({ isActive: v })}
           data-testid={`switch-active-${user.id}`}
         />
@@ -219,6 +233,7 @@ function UserRow({
       <td className="py-2 pr-4">
         <Switch
           checked={user.canUnlockRecords}
+          disabled={!canEdit}
           onCheckedChange={(v) => patch.mutate({ canUnlockRecords: v })}
           data-testid={`switch-unlock-${user.id}`}
         />
@@ -229,7 +244,7 @@ function UserRow({
             size="sm"
             variant="outline"
             onClick={onPerms}
-            disabled={user.isAdmin}
+            disabled={user.isAdmin || !canEdit}
             data-testid={`button-perms-${user.id}`}
           >
             <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Permissions
@@ -238,6 +253,7 @@ function UserRow({
             size="sm"
             variant="outline"
             onClick={onResetPw}
+            disabled={!canEdit}
             data-testid={`button-pw-${user.id}`}
           >
             <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset PW
@@ -281,7 +297,7 @@ function CreateUserDialog({
       qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
       onClose();
     },
-    onError: (e: any) => {
+    onError: (e: Error | { message?: string }) => {
       toast({
         title: "Couldn't create user",
         description: e?.message || "",
@@ -386,7 +402,7 @@ function PermissionsDialog({
       qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "permissions"] });
       onClose();
     },
-    onError: (e: any) => {
+    onError: (e: Error | { message?: string }) => {
       toast({
         title: "Save failed",
         description: e?.message || "",
@@ -404,12 +420,12 @@ function PermissionsDialog({
       );
       return r.json();
     },
-    onSuccess: (j: any) => {
+    onSuccess: (j: { matrix: PermissionMatrix }) => {
       if (j?.matrix) setMatrix(j.matrix);
       toast({ title: "Copied permissions" });
       qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "permissions"] });
     },
-    onError: (e: any) => {
+    onError: (e: Error | { message?: string }) => {
       toast({ title: "Copy failed", description: e?.message || "", variant: "destructive" });
     },
   });
@@ -549,7 +565,7 @@ function PasswordResetDialog({
       toast({ title: "Password reset" });
       onClose();
     },
-    onError: (e: any) => {
+    onError: (e: Error | { message?: string }) => {
       toast({
         title: "Reset failed",
         description: e?.message || "",

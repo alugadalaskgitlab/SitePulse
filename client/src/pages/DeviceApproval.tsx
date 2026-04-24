@@ -25,18 +25,15 @@ type DeviceRow = {
 };
 
 export default function DeviceApproval() {
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"pending" | "approved" | "revoked">("pending");
 
-  if (!user?.isAdmin) {
-    return (
-      <div className="text-center py-20 text-sm text-muted-foreground">
-        Admin access required.
-      </div>
-    );
-  }
+  // Matrix-based gates (admin gets every permission implicitly).
+  const devMgmt = permissions["device_approval"];
+  const canView = !!user?.isAdmin || !!devMgmt?.view;
+  const canEdit = !!user?.isAdmin || !!devMgmt?.edit;
 
   const devicesQ = useQuery<DeviceRow[]>({
     queryKey: ["/api/auth/devices", tab],
@@ -57,7 +54,7 @@ export default function DeviceApproval() {
       toast({ title: "Device approved" });
       qc.invalidateQueries({ queryKey: ["/api/auth/devices"] });
     },
-    onError: (e: any) =>
+    onError: (e: Error | { message?: string }) =>
       toast({ title: "Approve failed", description: e?.message || "", variant: "destructive" }),
   });
 
@@ -70,11 +67,21 @@ export default function DeviceApproval() {
       toast({ title: "Device revoked" });
       qc.invalidateQueries({ queryKey: ["/api/auth/devices"] });
     },
-    onError: (e: any) =>
+    onError: (e: Error | { message?: string }) =>
       toast({ title: "Revoke failed", description: e?.message || "", variant: "destructive" }),
   });
 
   const rows = devicesQ.data ?? [];
+
+  // Gate AFTER hooks to obey the rules of hooks. Renders an empty page
+  // for users without device_approval.view; admins always pass.
+  if (!canView) {
+    return (
+      <div className="text-center py-20 text-sm text-muted-foreground" data-testid="text-no-permission">
+        You do not have permission to manage device approvals.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" data-testid="page-device-approval">
@@ -88,7 +95,7 @@ export default function DeviceApproval() {
         </p>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "pending" | "approved" | "revoked")}>
         <TabsList>
           <TabsTrigger value="pending" data-testid="tab-pending">Pending</TabsTrigger>
           <TabsTrigger value="approved" data-testid="tab-approved">Approved</TabsTrigger>
@@ -147,7 +154,7 @@ export default function DeviceApproval() {
                               <Button
                                 size="sm"
                                 onClick={() => approve.mutate(d.id)}
-                                disabled={approve.isPending}
+                                disabled={!canEdit || approve.isPending}
                                 data-testid={`button-approve-${d.id}`}
                               >
                                 <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Approve
@@ -158,7 +165,7 @@ export default function DeviceApproval() {
                                 size="sm"
                                 variant="destructive"
                                 onClick={() => revoke.mutate(d.id)}
-                                disabled={revoke.isPending}
+                                disabled={!canEdit || revoke.isPending}
                                 data-testid={`button-revoke-${d.id}`}
                               >
                                 <ShieldX className="h-3.5 w-3.5 mr-1" /> Revoke

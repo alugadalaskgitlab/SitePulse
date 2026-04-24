@@ -96,8 +96,9 @@ export default function Login() {
           ? "This account has been disabled. Contact an administrator."
           : j?.error || "Login failed. Try again.";
       setResult({ status: "error", message: msg });
-    } catch (e: any) {
-      setResult({ status: "error", message: e?.message || "Network error" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Network error";
+      setResult({ status: "error", message: msg });
     } finally {
       setBusy(false);
     }
