@@ -601,12 +601,12 @@ export default function PlantShiftLogManpowerReview() {
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
-    enabled: !!adminPin,
+    enabled: adminPin !== null,
   });
 
   const { data: plantNames } = useQuery<string[]>({
     queryKey: ["/api/plant-module/shift-logs/plants"],
-    enabled: !!adminPin,
+    enabled: adminPin !== null,
   });
 
   type RecentMerge = {
@@ -643,7 +643,7 @@ export default function PlantShiftLogManpowerReview() {
   const [undoingId, setUndoingId] = useState<number | null>(null);
 
   const fetchRecentMerges = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     setLoadingRecent(true);
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/recent-merges", {
@@ -687,7 +687,7 @@ export default function PlantShiftLogManpowerReview() {
   }, [recentMerges, recentDupActivity]);
 
   const fetchLearnedAliases = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/learned-aliases", {
         method: "POST",
@@ -704,7 +704,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchCustomAliases = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/custom-aliases", {
         method: "POST",
@@ -721,7 +721,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitNewAlias = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -760,7 +760,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const deleteCustomAlias = async (id: number) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -785,7 +785,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const suppressLearnedFullPair = async (a: string, b: string) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -819,7 +819,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const suppressLearnedTokenPair = async (a: string, b: string) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -851,7 +851,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchDismissedPairs = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/dismissed-pairs", {
         method: "POST",
@@ -868,7 +868,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   useEffect(() => {
-    if (adminPin) {
+    if (adminPin !== null) {
       fetchRecentMerges();
       fetchLearnedAliases();
       fetchCustomAliases();
@@ -880,7 +880,7 @@ export default function PlantShiftLogManpowerReview() {
   // Also wipe any in-flight bulk-restore selection so a stale checkbox state
   // from the previous plant can't leak into the new scope.
   useEffect(() => {
-    if (adminPin) {
+    if (adminPin !== null) {
       fetchDismissedPairs();
     }
     setSelectedDismissedIds({});
@@ -888,7 +888,7 @@ export default function PlantShiftLogManpowerReview() {
   }, [adminPin, dismissalsScopeKey]);
 
   const undoMerge = async (m: RecentMerge) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -926,7 +926,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchRows = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     setLoading(true);
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/review-list", {
@@ -970,7 +970,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitOne = async (row: ReviewRow) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     const e = edits[row.name];
     if (!e?.contractor || !e?.category || !e?.gender) {
       toast({ title: "Fill contractor, category and gender", variant: "destructive" });
@@ -1012,7 +1012,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitMerge = async () => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     const fromNames = Object.keys(selected).filter(n => selected[n]);
     if (fromNames.length < 2) {
       toast({ title: "Pick at least two name groups to merge", variant: "destructive" });
@@ -1117,7 +1117,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const dismissCluster = async (c: Cluster) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1170,7 +1170,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const bulkRestoreDismissed = async (opts: { ids?: number[]; olderThanDays?: number; description: string }) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1212,7 +1212,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const restoreDismissedPair = async (p: DismissedPair) => {
-    if (!adminPin) return;
+    if (adminPin === null) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
