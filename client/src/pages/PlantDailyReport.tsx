@@ -68,6 +68,17 @@ type DailyPlantSummary = {
     dgDieselL: number;
     shiftLogT1L: number | null;
     mismatchL: number | null;
+    sessionsLdoT1LToday: number | null;
+    ledgerSessionsT1L: number | null;
+    ledgerShiftT1L: number | null;
+    reconciliation: {
+      thresholdL: number;
+      sessionsVsShiftL: number | null;
+      sessionsVsLedgerL: number | null;
+      shiftVsLedgerL: number | null;
+      anyMismatch: boolean;
+      mismatches: Array<{ kind: "sessions_vs_shift" | "sessions_vs_ledger" | "shift_vs_ledger"; deltaL: number }>;
+    };
     primarySource: "sessions" | "shift_meter";
     attributionFromDate: string | null;
     attributionToDate: string;
@@ -342,8 +353,10 @@ export default function PlantDailyReport() {
               <CardHeader>
                 <CardTitle>
                   Boiler / Heating Sessions ({data.boilerHeating.sessionCount})
-                  {data.boilerHeating.mismatchL != null && Math.abs(data.boilerHeating.mismatchL) > 5 && (
-                    <Badge variant="destructive" className="ml-2">⚠ Mismatch {data.boilerHeating.mismatchL > 0 ? "+" : ""}{data.boilerHeating.mismatchL}L vs shift meter</Badge>
+                  {data.boilerHeating.reconciliation.anyMismatch && (
+                    <Badge variant="destructive" className="ml-2" data-testid="badge-boiler-meter-mismatch">
+                      ⚠ Boiler Meter mismatch ({data.boilerHeating.reconciliation.mismatches.length})
+                    </Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -356,6 +369,40 @@ export default function PlantDailyReport() {
                     : <>Sessions attributed: on or before <span className="font-medium">{data.boilerHeating.attributionToDate}</span> (no prior production day on record for this plant).</>
                   }
                 </p>
+                {/* Task #219 — Three-way Boiler Meter reconciliation panel.
+                    Surfaces every disagreement (sessions vs shift, sessions vs
+                    ledger, shift vs ledger) beyond the 5L tolerance so the
+                    operator knows which source needs correction. */}
+                {data.boilerHeating.reconciliation.anyMismatch && (
+                  <div
+                    className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs space-y-1"
+                    data-testid="panel-boiler-meter-reconciliation"
+                  >
+                    <div className="font-semibold text-destructive">
+                      Boiler Meter (Tank-1) sources disagree by more than {data.boilerHeating.reconciliation.thresholdL}L
+                    </div>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {data.boilerHeating.reconciliation.mismatches.map(m => {
+                        const sign = m.deltaL > 0 ? "+" : "";
+                        const sessTodayL = data.boilerHeating!.sessionsLdoT1LToday;
+                        const label =
+                          m.kind === "sessions_vs_shift"
+                            ? `Heating sessions (${fmt(sessTodayL, 1)}L) vs shift log meter (${fmt(data.boilerHeating!.shiftLogT1L, 1)}L)`
+                            : m.kind === "sessions_vs_ledger"
+                            ? `Heating sessions (${fmt(sessTodayL, 1)}L) vs LDO Flow ledger session rows (${fmt(data.boilerHeating!.ledgerSessionsT1L, 1)}L)`
+                            : `Shift log meter (${fmt(data.boilerHeating!.shiftLogT1L, 1)}L) vs LDO Flow ledger shift rows (${fmt(data.boilerHeating!.ledgerShiftT1L, 1)}L)`;
+                        return (
+                          <li key={m.kind} data-testid={`text-mismatch-${m.kind}`}>
+                            {label} — Δ {sign}{m.deltaL}L
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div className="text-muted-foreground pt-1">
+                      Re-save the affected shift log or heating session to re-sync the LDO Flow Meter ledger.
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-sm">
                   <KV label="Total Heating Hrs" value={fmt(data.boilerHeating.totalHours, 2)} />
                   <KV label="Sessions LDO L" value={fmt(data.boilerHeating.sessionsLdoT1L, 1)} />

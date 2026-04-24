@@ -3535,6 +3535,27 @@ export async function registerRoutes(
     }
   });
 
+  // Task #219 — Per-(date, plant) Boiler Meter reconciliation across heating
+  // sessions, the shift log meter and the LDO Flow Meter ledger. The heating
+  // sessions list calls this for the visible date range so it can flag days
+  // where the three sources have drifted beyond the 5L tolerance. Declared
+  // BEFORE the `/heating-sessions/:id` route so Express does not try to
+  // parse "reconciliation" as an :id.
+  app.get("/api/plant-module/heating-sessions/reconciliation", async (req, res) => {
+    try {
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      if (!dateFrom || !dateTo) {
+        return res.status(400).json({ message: "dateFrom and dateTo are required" });
+      }
+      const plantName = (req.query.plant as string | undefined) || undefined;
+      const rows = await storage.getBoilerMeterReconciliation({ dateFrom, dateTo, plantName });
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch reconciliation" });
+    }
+  });
+
   app.get("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
       const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));

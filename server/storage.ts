@@ -635,6 +635,22 @@ export interface IStorage {
   finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined>;
   deletePlantShiftLog(id: number): Promise<boolean>;
   getDailyPlantSummary(date: string, plantName?: string): Promise<unknown>;
+  // Task #219 — Per-(date, plant) Boiler Meter reconciliation across heating
+  // sessions, shift log meter and LDO flow ledger. Used by the heating
+  // sessions list to surface days where the three sources have drifted.
+  getBoilerMeterReconciliation(filters: {
+    dateFrom: string;
+    dateTo: string;
+    plantName?: string;
+  }): Promise<Array<{
+    date: string;
+    plantName: string;
+    sessionsLdoT1L: number | null;
+    shiftLogT1L: number | null;
+    ledgerSessionsT1L: number | null;
+    ledgerShiftT1L: number | null;
+    reconciliation: BoilerMeterReconciliationDetail;
+  }>>;
   getDailyPlantReportIndex(filters?: { from?: string; to?: string; plant?: string; parties?: number[]; mixTypes?: string[] }): Promise<Array<{
     date: string;
     plantName: string;
@@ -659,6 +675,84 @@ export interface IStorage {
   deleteBitumenHeatingSession(id: number): Promise<boolean>;
   getHeatingTrends(filters: { dateFrom: string; dateTo: string; plantName?: string }): Promise<HeatingTrendsResult>;
   getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName?: string): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null>;
+}
+
+// Task #219 — Detail returned by the per-(date, plant) Boiler Meter
+// reconciliation. Diffs are computed in litres; null when one of the two
+// sources for that pair is missing. `anyMismatch` is true when at least one
+// available diff exceeds `thresholdL` (the same 5 L tolerance used by the
+// existing heating-trends mismatch flag).
+export type BoilerMeterReconciliationDetail = {
+  thresholdL: number;
+  sessionsVsShiftL: number | null;
+  sessionsVsLedgerL: number | null;
+  shiftVsLedgerL: number | null;
+  anyMismatch: boolean;
+  mismatches: Array<{ kind: "sessions_vs_shift" | "sessions_vs_ledger" | "shift_vs_ledger"; deltaL: number }>;
+};
+
+// Helper — sum (closing − opening) per source-tagged group within a set of
+// LDO Flow Meter rows. Rows without an opening or closing partner contribute
+// nothing. Returns null when no source-tagged rows exist for the chosen kind.
+export function computeLdoLedgerConsumedL(
+  rows: Array<Pick<LdoFlowReading, "tankNumber" | "readingType" | "meterReading" | "sourceShiftLogId" | "sourceHeatingSessionId">>,
+  kind: "session" | "shift",
+): number | null {
+  const groups = new Map<number, { opening: number | null; closing: number | null }>();
+  for (const r of rows) {
+    if (r.tankNumber !== 1) continue;
+    const key = kind === "session" ? r.sourceHeatingSessionId : r.sourceShiftLogId;
+    if (key == null) continue;
+    const cur = groups.get(key) || { opening: null, closing: null };
+    if (r.readingType === "opening") cur.opening = r.meterReading;
+    else if (r.readingType === "closing") cur.closing = r.meterReading;
+    groups.set(key, cur);
+  }
+  if (groups.size === 0) return null;
+  let total = 0;
+  let any = false;
+  for (const g of groups.values()) {
+    if (g.opening != null && g.closing != null) {
+      total += Math.max(0, g.closing - g.opening);
+      any = true;
+    }
+  }
+  return any ? Math.round(total * 10) / 10 : null;
+}
+
+export function buildBoilerMeterReconciliation(input: {
+  sessionsLdoT1L: number | null;
+  shiftLogT1L: number | null;
+  ledgerSessionsT1L: number | null;
+  ledgerShiftT1L: number | null;
+  thresholdL?: number;
+}): BoilerMeterReconciliationDetail {
+  const thresholdL = input.thresholdL ?? 5;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const sessionsVsShiftL = (input.sessionsLdoT1L != null && input.shiftLogT1L != null)
+    ? round1(input.sessionsLdoT1L - input.shiftLogT1L) : null;
+  const sessionsVsLedgerL = (input.sessionsLdoT1L != null && input.ledgerSessionsT1L != null)
+    ? round1(input.sessionsLdoT1L - input.ledgerSessionsT1L) : null;
+  const shiftVsLedgerL = (input.shiftLogT1L != null && input.ledgerShiftT1L != null)
+    ? round1(input.shiftLogT1L - input.ledgerShiftT1L) : null;
+  const mismatches: BoilerMeterReconciliationDetail["mismatches"] = [];
+  if (sessionsVsShiftL != null && Math.abs(sessionsVsShiftL) > thresholdL) {
+    mismatches.push({ kind: "sessions_vs_shift", deltaL: sessionsVsShiftL });
+  }
+  if (sessionsVsLedgerL != null && Math.abs(sessionsVsLedgerL) > thresholdL) {
+    mismatches.push({ kind: "sessions_vs_ledger", deltaL: sessionsVsLedgerL });
+  }
+  if (shiftVsLedgerL != null && Math.abs(shiftVsLedgerL) > thresholdL) {
+    mismatches.push({ kind: "shift_vs_ledger", deltaL: shiftVsLedgerL });
+  }
+  return {
+    thresholdL,
+    sessionsVsShiftL,
+    sessionsVsLedgerL,
+    shiftVsLedgerL,
+    anyMismatch: mismatches.length > 0,
+    mismatches,
+  };
 }
 
 export type HeatingTrendsBucket = {
@@ -9551,7 +9645,7 @@ export class DatabaseStorage implements IStorage {
     });
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
 
-    const boilerHeating = await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1);
+    const boilerHeating = await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1, ldoFlows);
 
     // Primary-source rule: when heating sessions exist for the day, sessions
     // are the source of truth for Tank-1 LDO. The shift-log Tank-1 value is
@@ -10370,6 +10464,7 @@ export class DatabaseStorage implements IStorage {
     shift: PlantShiftLogWithDetails | undefined,
     totalProductionMT: number,
     ldoConsumedT1Shift: number | null,
+    ldoFlows?: LdoFlowReading[],
   ) {
     // Task #254 — Attribute sessions to the production day. On a production
     // day (totalProductionMT > 0) we roll up every session since the prior
@@ -10411,6 +10506,22 @@ export class DatabaseStorage implements IStorage {
       ? Math.round((todaySessionsLdoT1L - ldoConsumedT1Shift) * 10) / 10
       : null;
 
+    // Task #219 — three-way Boiler Meter reconciliation. In addition to the
+    // legacy "sessions vs shift" check we also verify that the LDO Flow Meter
+    // ledger (rows tagged sourceHeatingSessionId / sourceShiftLogId) still
+    // agrees with both upstream sources. A mismatch here means the operator
+    // edited the shift log or added a session after the ledger was synced
+    // (or vice versa).
+    const flowsForRecon = (ldoFlows ?? []).filter(r => r.tankNumber === 1);
+    const ledgerSessionsT1L = computeLdoLedgerConsumedL(flowsForRecon, "session");
+    const ledgerShiftT1L = computeLdoLedgerConsumedL(flowsForRecon, "shift");
+    const reconciliation = buildBoilerMeterReconciliation({
+      sessionsLdoT1L: sessionCount > 0 ? Math.round(todaySessionsLdoT1L * 10) / 10 : null,
+      shiftLogT1L: ldoConsumedT1Shift,
+      ledgerSessionsT1L,
+      ledgerShiftT1L,
+    });
+
     if (sessionCount === 0 && boilerDuringProductionL === 0) {
       return {
         sessionCount: 0,
@@ -10424,6 +10535,10 @@ export class DatabaseStorage implements IStorage {
         dgDieselL: 0,
         shiftLogT1L: ldoConsumedT1Shift,
         mismatchL: null,
+        sessionsLdoT1LToday: null,
+        ledgerSessionsT1L,
+        ledgerShiftT1L,
+        reconciliation,
         primarySource: "shift_meter" as const,
         attributionFromDate: lastProductionDate,
         attributionToDate: date,
@@ -10450,6 +10565,10 @@ export class DatabaseStorage implements IStorage {
       dgDieselL: Math.round(dgDieselL * 10) / 10,
       shiftLogT1L: ldoConsumedT1Shift,
       mismatchL,
+      sessionsLdoT1LToday: sessionCount > 0 ? Math.round(todaySessionsLdoT1L * 10) / 10 : null,
+      ledgerSessionsT1L,
+      ledgerShiftT1L,
+      reconciliation,
       primarySource: sessionCount > 0 ? ("sessions" as const) : ("shift_meter" as const),
       attributionFromDate: lastProductionDate,
       attributionToDate: date,
@@ -10466,6 +10585,118 @@ export class DatabaseStorage implements IStorage {
         isFinalized: s.isFinalized,
       })),
     };
+  }
+
+  // Task #219 — Per-(date, plant) Boiler Meter reconciliation across the
+  // three sources operators can edit independently:
+  //   • heating sessions  (bitumen_heating_sessions.ldoTank1Consumed)
+  //   • shift log meter   (plant_shift_logs.ldoTank1{Opening,Closing}Meter)
+  //   • LDO flow ledger   (ldo_flow_readings tagged with the originating row)
+  // Returns one row per (date, plantName) for any day where at least one
+  // source has Tank-1 data, so the heating-sessions list and other UIs can
+  // surface a warning when sources diverge beyond the inline 5L threshold.
+  async getBoilerMeterReconciliation(filters: {
+    dateFrom: string;
+    dateTo: string;
+    plantName?: string;
+  }): Promise<Array<{
+    date: string;
+    plantName: string;
+    sessionsLdoT1L: number | null;
+    shiftLogT1L: number | null;
+    ledgerSessionsT1L: number | null;
+    ledgerShiftT1L: number | null;
+    reconciliation: BoilerMeterReconciliationDetail;
+  }>> {
+    const conds: any[] = [
+      gte(bitumenHeatingSessions.date, filters.dateFrom),
+      lte(bitumenHeatingSessions.date, filters.dateTo),
+    ];
+    if (filters.plantName) conds.push(eq(bitumenHeatingSessions.plantName, filters.plantName));
+    const sessionRows = await db.select().from(bitumenHeatingSessions).where(and(...conds));
+
+    const shiftConds: any[] = [
+      gte(plantShiftLogs.date, filters.dateFrom),
+      lte(plantShiftLogs.date, filters.dateTo),
+    ];
+    if (filters.plantName) shiftConds.push(eq(plantShiftLogs.plantName, filters.plantName));
+    const shiftRows = await db.select().from(plantShiftLogs).where(and(...shiftConds));
+
+    const flowConds: any[] = [
+      gte(ldoFlowReadings.date, filters.dateFrom),
+      lte(ldoFlowReadings.date, filters.dateTo),
+      eq(ldoFlowReadings.tankNumber, 1),
+    ];
+    if (filters.plantName) flowConds.push(eq(ldoFlowReadings.plantName, filters.plantName));
+    const flowRows = await db.select().from(ldoFlowReadings).where(and(...flowConds));
+
+    type Bucket = {
+      sessionsL: number;
+      sessionsCount: number;
+      shiftL: number | null;
+      flows: LdoFlowReading[];
+    };
+    const buckets = new Map<string, Bucket>();
+    const keyOf = (date: string, plant: string) => `${date}||${plant}`;
+    const ensure = (date: string, plant: string): Bucket => {
+      const k = keyOf(date, plant);
+      let b = buckets.get(k);
+      if (!b) {
+        b = { sessionsL: 0, sessionsCount: 0, shiftL: null, flows: [] };
+        buckets.set(k, b);
+      }
+      return b;
+    };
+    for (const s of sessionRows) {
+      const b = ensure(s.date, s.plantName);
+      if (s.ldoTank1Consumed != null) b.sessionsL += s.ldoTank1Consumed;
+      b.sessionsCount += 1;
+    }
+    for (const sh of shiftRows) {
+      const b = ensure(sh.date, sh.plantName);
+      if (sh.ldoTank1OpeningMeter != null && sh.ldoTank1ClosingMeter != null) {
+        const consumed = Math.max(0, sh.ldoTank1ClosingMeter - sh.ldoTank1OpeningMeter);
+        b.shiftL = (b.shiftL ?? 0) + consumed;
+      }
+    }
+    for (const f of flowRows) {
+      const b = ensure(f.date, f.plantName);
+      b.flows.push(f);
+    }
+
+    const out: Array<{
+      date: string;
+      plantName: string;
+      sessionsLdoT1L: number | null;
+      shiftLogT1L: number | null;
+      ledgerSessionsT1L: number | null;
+      ledgerShiftT1L: number | null;
+      reconciliation: BoilerMeterReconciliationDetail;
+    }> = [];
+    for (const [k, b] of buckets.entries()) {
+      const [date, plant] = k.split("||");
+      const sessionsLdoT1L = b.sessionsCount > 0 ? Math.round(b.sessionsL * 10) / 10 : null;
+      const shiftLogT1L = b.shiftL == null ? null : Math.round(b.shiftL * 10) / 10;
+      const ledgerSessionsT1L = computeLdoLedgerConsumedL(b.flows, "session");
+      const ledgerShiftT1L = computeLdoLedgerConsumedL(b.flows, "shift");
+      const reconciliation = buildBoilerMeterReconciliation({
+        sessionsLdoT1L,
+        shiftLogT1L,
+        ledgerSessionsT1L,
+        ledgerShiftT1L,
+      });
+      out.push({
+        date,
+        plantName: plant,
+        sessionsLdoT1L,
+        shiftLogT1L,
+        ledgerSessionsT1L,
+        ledgerShiftT1L,
+        reconciliation,
+      });
+    }
+    out.sort((a, b) => b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName));
+    return out;
   }
 }
 

@@ -98,6 +98,49 @@ export default function PlantHeatingSessions() {
     },
   });
 
+  // Task #219 — Per-(date, plant) Boiler Meter reconciliation across heating
+  // sessions, the shift log meter and the LDO Flow Meter ledger. We surface a
+  // warning beside each affected day so operators know which day / plant
+  // needs correction before the divergence ages into trend reports.
+  type BoilerMeterReconRow = {
+    date: string;
+    plantName: string;
+    sessionsLdoT1L: number | null;
+    shiftLogT1L: number | null;
+    ledgerSessionsT1L: number | null;
+    ledgerShiftT1L: number | null;
+    reconciliation: {
+      thresholdL: number;
+      sessionsVsShiftL: number | null;
+      sessionsVsLedgerL: number | null;
+      shiftVsLedgerL: number | null;
+      anyMismatch: boolean;
+      mismatches: Array<{ kind: "sessions_vs_shift" | "sessions_vs_ledger" | "shift_vs_ledger"; deltaL: number }>;
+    };
+  };
+  const { data: reconciliationRows } = useQuery<BoilerMeterReconRow[]>({
+    queryKey: ["/api/plant-module/heating-sessions/reconciliation", filterDateFrom, filterDateTo],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      qs.set("dateFrom", filterDateFrom);
+      qs.set("dateTo", filterDateTo);
+      const res = await fetch(`/api/plant-module/heating-sessions/reconciliation?${qs.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    enabled: !!filterDateFrom && !!filterDateTo,
+  });
+  const reconByDate = useMemo(() => {
+    const map = new Map<string, BoilerMeterReconRow[]>();
+    for (const r of reconciliationRows || []) {
+      if (!r.reconciliation.anyMismatch) continue;
+      const arr = map.get(r.date) || [];
+      arr.push(r);
+      map.set(r.date, arr);
+    }
+    return map;
+  }, [reconciliationRows]);
+
   // Generator master entries (id + name) — sourced from Equipment Master so the
   // names line up with Equipment Usage / reports.
   const { data: generatorMasters } = useQuery<{ id: number | null; name: string }[]>({
@@ -477,12 +520,117 @@ export default function PlantHeatingSessions() {
       <Card>
         <CardHeader><CardTitle>Sessions {filterDateFrom} → {filterDateTo}</CardTitle></CardHeader>
         <CardContent>
+          {(() => {
+            const groupedDateSet = new Set(groupedDates);
+            const reconOnlyDates = Array.from(reconByDate.keys())
+              .filter(d => !groupedDateSet.has(d))
+              .sort()
+              .reverse();
+            return reconOnlyDates.length > 0 ? (
+              <div className="mb-4 space-y-3" data-testid="section-recon-only-dates">
+                {reconOnlyDates.map(date => (
+                  <div key={`recon-only-${date}`}>
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{date}</div>
+                      <span className="text-[10px] text-muted-foreground">(no sessions logged)</span>
+                      {(reconByDate.get(date) || []).map(rec => (
+                        <Badge
+                          key={rec.plantName}
+                          variant="destructive"
+                          className="text-[10px]"
+                          data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                        >
+                          ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length})
+                        </Badge>
+                      ))}
+                    </div>
+                    {(reconByDate.get(date) || []).map(rec => (
+                      <div
+                        key={`detail-${date}-${rec.plantName}`}
+                        className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5 mb-2"
+                        data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                      >
+                        <div className="font-semibold text-destructive">
+                          {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                        </div>
+                        <ul className="list-disc list-inside">
+                          {rec.reconciliation.mismatches.map(m => {
+                            const sign = m.deltaL > 0 ? "+" : "";
+                            const fmt = (n: number | null) => n == null ? "—" : n.toFixed(1);
+                            const label =
+                              m.kind === "sessions_vs_shift"
+                                ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs shift log meter (${fmt(rec.shiftLogT1L)}L)`
+                                : m.kind === "sessions_vs_ledger"
+                                ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs LDO Flow ledger session rows (${fmt(rec.ledgerSessionsT1L)}L)`
+                                : `Shift log meter (${fmt(rec.shiftLogT1L)}L) vs LDO Flow ledger shift rows (${fmt(rec.ledgerShiftT1L)}L)`;
+                            return (
+                              <li key={m.kind} data-testid={`text-recon-mismatch-${date}-${m.kind}`}>
+                                {label} — Δ {sign}{m.deltaL}L
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null;
+          })()}
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
             !sessions?.length ? <p className="text-sm text-muted-foreground">No heating sessions in this date range.</p> :
             <div className="space-y-4">
               {groupedDates.map(date => (
                 <div key={date}>
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{date}</div>
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{date}</div>
+                    {(reconByDate.get(date) || []).map(rec => (
+                      <Badge
+                        key={rec.plantName}
+                        variant="destructive"
+                        className="text-[10px]"
+                        data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                        title={rec.reconciliation.mismatches.map(m => {
+                          const sign = m.deltaL > 0 ? "+" : "";
+                          const which =
+                            m.kind === "sessions_vs_shift" ? "sessions vs shift meter"
+                            : m.kind === "sessions_vs_ledger" ? "sessions vs LDO ledger"
+                            : "shift meter vs LDO ledger";
+                          return `${which}: Δ ${sign}${m.deltaL}L`;
+                        }).join(" • ")}
+                      >
+                        ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length})
+                      </Badge>
+                    ))}
+                  </div>
+                  {(reconByDate.get(date) || []).map(rec => (
+                    <div
+                      key={`detail-${rec.plantName}`}
+                      className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5 mb-2"
+                      data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                    >
+                      <div className="font-semibold text-destructive">
+                        {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                      </div>
+                      <ul className="list-disc list-inside">
+                        {rec.reconciliation.mismatches.map(m => {
+                          const sign = m.deltaL > 0 ? "+" : "";
+                          const fmt = (n: number | null) => n == null ? "—" : n.toFixed(1);
+                          const label =
+                            m.kind === "sessions_vs_shift"
+                              ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs shift log meter (${fmt(rec.shiftLogT1L)}L)`
+                              : m.kind === "sessions_vs_ledger"
+                              ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs LDO Flow ledger session rows (${fmt(rec.ledgerSessionsT1L)}L)`
+                              : `Shift log meter (${fmt(rec.shiftLogT1L)}L) vs LDO Flow ledger shift rows (${fmt(rec.ledgerShiftT1L)}L)`;
+                          return (
+                            <li key={m.kind} data-testid={`text-recon-mismatch-${date}-${m.kind}`}>
+                              {label} — Δ {sign}{m.deltaL}L
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
                   <div className="space-y-2">
                     {grouped[date].map(s => {
                       const sessLdoLPerHr = (s.ldoTank1Consumed != null && s.durationHours && s.durationHours > 0)
