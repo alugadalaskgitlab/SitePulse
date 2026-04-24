@@ -667,12 +667,18 @@ export type HeatingTrendsRow = {
   night: HeatingTrendsBucket;
   day: HeatingTrendsBucket;
   total: HeatingTrendsBucket;
+  hotOilEndAvgC: number | null;
+  hotOilEndMinC: number | null;
+  hotOilEndMaxC: number | null;
+  hotOilEndSampleCount: number;
+  hotOilEndBelowThreshold: boolean;
 };
 export type HeatingTrendsResult = {
   dateFrom: string;
   dateTo: string;
   plantName: string;
   targetLPerMT: number;
+  hotOilEndTempMinC: number;
   rows: HeatingTrendsRow[];
   summary: {
     days: number;
@@ -683,6 +689,10 @@ export type HeatingTrendsResult = {
     totalProductionMT: number;
     lPerHour: number | null;
     lPerMT: number | null;
+    hotOilEndAvgC: number | null;
+    hotOilEndMinC: number | null;
+    hotOilEndMaxC: number | null;
+    hotOilFlaggedDays: number;
   };
 };
 
@@ -9963,6 +9973,8 @@ export class DatabaseStorage implements IStorage {
       lte(truckDispatches.date, dateTo),
       eq(truckDispatches.plantName, plantName),
     ));
+    const thresholds = await this.getPlantAlertThresholds();
+    const hotOilEndTempMinC = thresholds.hotOilEndTempMinC;
 
     const productionByDate = new Map<string, number>();
     for (const d of dispatches) {
@@ -9993,9 +10005,15 @@ export class DatabaseStorage implements IStorage {
         night: emptyBucket(),
         day: emptyBucket(),
         total: emptyBucket(),
+        hotOilEndAvgC: null,
+        hotOilEndMinC: null,
+        hotOilEndMaxC: null,
+        hotOilEndSampleCount: 0,
+        hotOilEndBelowThreshold: false,
       });
     }
 
+    const hotOilByDate = new Map<string, number[]>();
     for (const s of sessions) {
       const row = rowMap.get(s.date);
       if (!row) continue;
@@ -10008,6 +10026,22 @@ export class DatabaseStorage implements IStorage {
       row.total.hours += s.durationHours || 0;
       row.total.ldoT1L += s.ldoTank1Consumed || 0;
       row.total.dgDieselL += s.dgDieselConsumed || 0;
+      if (s.hotOilTempEnd != null && !isNaN(s.hotOilTempEnd as number)) {
+        const arr = hotOilByDate.get(s.date) || [];
+        arr.push(s.hotOilTempEnd);
+        hotOilByDate.set(s.date, arr);
+      }
+    }
+    for (const [dt, samples] of hotOilByDate.entries()) {
+      const row = rowMap.get(dt);
+      if (!row || samples.length === 0) continue;
+      const sum = samples.reduce((a: number, b: number) => a + b, 0);
+      const avg = sum / samples.length;
+      row.hotOilEndAvgC = round(avg, 1);
+      row.hotOilEndMinC = round(Math.min(...samples), 1);
+      row.hotOilEndMaxC = round(Math.max(...samples), 1);
+      row.hotOilEndSampleCount = samples.length;
+      row.hotOilEndBelowThreshold = avg < hotOilEndTempMinC;
     }
 
     const finalize = (b: HeatingTrendsBucket, mt: number) => {
@@ -10020,6 +10054,10 @@ export class DatabaseStorage implements IStorage {
 
     const rows = Array.from(rowMap.values()).sort((a, b) => a.date.localeCompare(b.date));
     let sumHours = 0, sumLdo = 0, sumDg = 0, sumMT = 0, sumSessions = 0;
+    let hotOilSampleSum = 0, hotOilSampleCount = 0;
+    let hotOilOverallMin: number | null = null;
+    let hotOilOverallMax: number | null = null;
+    let hotOilFlaggedDays = 0;
     for (const r of rows) {
       finalize(r.night, r.productionMT);
       finalize(r.day, r.productionMT);
@@ -10029,6 +10067,17 @@ export class DatabaseStorage implements IStorage {
       sumDg += r.total.dgDieselL;
       sumMT += r.productionMT;
       sumSessions += r.total.count;
+      if (r.hotOilEndSampleCount > 0 && r.hotOilEndAvgC != null) {
+        hotOilSampleSum += r.hotOilEndAvgC * r.hotOilEndSampleCount;
+        hotOilSampleCount += r.hotOilEndSampleCount;
+        if (r.hotOilEndMinC != null) {
+          hotOilOverallMin = hotOilOverallMin == null ? r.hotOilEndMinC : Math.min(hotOilOverallMin, r.hotOilEndMinC);
+        }
+        if (r.hotOilEndMaxC != null) {
+          hotOilOverallMax = hotOilOverallMax == null ? r.hotOilEndMaxC : Math.max(hotOilOverallMax, r.hotOilEndMaxC);
+        }
+      }
+      if (r.hotOilEndBelowThreshold) hotOilFlaggedDays += 1;
     }
 
     return {
@@ -10036,6 +10085,7 @@ export class DatabaseStorage implements IStorage {
       dateTo,
       plantName,
       targetLPerMT: TARGET_L_PER_MT,
+      hotOilEndTempMinC,
       rows,
       summary: {
         days: rows.length,
@@ -10046,6 +10096,10 @@ export class DatabaseStorage implements IStorage {
         totalProductionMT: round(sumMT, 3),
         lPerHour: sumHours > 0 ? round(sumLdo / sumHours, 2) : null,
         lPerMT: sumMT > 0 && sumLdo > 0 ? round(sumLdo / sumMT, 3) : null,
+        hotOilEndAvgC: hotOilSampleCount > 0 ? round(hotOilSampleSum / hotOilSampleCount, 1) : null,
+        hotOilEndMinC: hotOilOverallMin,
+        hotOilEndMaxC: hotOilOverallMax,
+        hotOilFlaggedDays,
       },
     };
   }

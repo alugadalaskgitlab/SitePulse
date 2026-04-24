@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Download, Flame, Loader2, ArrowRight } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Download, Flame, Loader2, ArrowRight, Thermometer } from "lucide-react";
 import { format, subDays } from "date-fns";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -24,12 +24,18 @@ type Row = {
   night: Bucket;
   day: Bucket;
   total: Bucket;
+  hotOilEndAvgC: number | null;
+  hotOilEndMinC: number | null;
+  hotOilEndMaxC: number | null;
+  hotOilEndSampleCount: number;
+  hotOilEndBelowThreshold: boolean;
 };
 type TrendsResponse = {
   dateFrom: string;
   dateTo: string;
   plantName: string;
   targetLPerMT: number;
+  hotOilEndTempMinC: number;
   rows: Row[];
   summary: {
     days: number;
@@ -40,6 +46,10 @@ type TrendsResponse = {
     totalProductionMT: number;
     lPerHour: number | null;
     lPerMT: number | null;
+    hotOilEndAvgC: number | null;
+    hotOilEndMinC: number | null;
+    hotOilEndMaxC: number | null;
+    hotOilFlaggedDays: number;
   };
 };
 
@@ -78,6 +88,9 @@ export default function PlantHeatingTrends() {
       nightLPerMT: r.night.lPerMT,
       dayLPerMT: r.day.lPerMT,
       productionMT: r.productionMT,
+      hotOilEndAvgC: r.hotOilEndAvgC,
+      hotOilEndMinC: r.hotOilEndMinC,
+      hotOilEndMaxC: r.hotOilEndMaxC,
     }));
   }, [data]);
 
@@ -94,6 +107,7 @@ export default function PlantHeatingTrends() {
   };
 
   const target = data?.targetLPerMT ?? 1.5;
+  const hotOilThreshold = data?.hotOilEndTempMinC ?? 240;
   const backLink = getPlantBackLink({ defaultTab: "reports" });
 
   return (
@@ -146,7 +160,7 @@ export default function PlantHeatingTrends() {
         <p className="text-sm text-muted-foreground">No data.</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <Card><CardContent className="p-4">
               <div className="text-xs text-muted-foreground">Sessions</div>
               <div className="text-2xl font-bold" data-testid="kpi-sessions">{data.summary.sessionCount}</div>
@@ -168,6 +182,22 @@ export default function PlantHeatingTrends() {
                 {fmt(data.summary.lPerMT, 3)}
               </div>
               <div className="text-xs text-muted-foreground">Production: {fmt(data.summary.totalProductionMT, 1)} MT</div>
+            </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <Thermometer className="w-3 h-3" />Hot-oil End (avg)
+              </div>
+              <div
+                className={`text-2xl font-bold ${data.summary.hotOilEndAvgC != null && data.summary.hotOilEndAvgC < hotOilThreshold ? "text-red-600" : ""}`}
+                data-testid="kpi-hotoil-avg"
+              >
+                {fmt(data.summary.hotOilEndAvgC, 1)} {data.summary.hotOilEndAvgC != null && "°C"}
+              </div>
+              <div className="text-xs text-muted-foreground" data-testid="kpi-hotoil-flagged">
+                {data.summary.hotOilFlaggedDays > 0
+                  ? <span className="text-red-600 font-medium">{data.summary.hotOilFlaggedDays} day{data.summary.hotOilFlaggedDays === 1 ? "" : "s"} &lt; {hotOilThreshold}°C</span>
+                  : <span>Min/Max: {fmt(data.summary.hotOilEndMinC, 0)} / {fmt(data.summary.hotOilEndMaxC, 0)}°C</span>}
+              </div>
             </CardContent></Card>
           </div>
 
@@ -196,6 +226,38 @@ export default function PlantHeatingTrends() {
           </Card>
 
           <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Thermometer className="w-5 h-5 text-amber-600" />
+                Hot-oil End Temperature (°C)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="w-full h-64" data-testid="chart-hotoil">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartRows} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} domain={["auto", "auto"]} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 6 }}
+                      formatter={(value: any) => value == null ? "—" : `${Number(value).toFixed(1)} °C`}
+                    />
+                    <Legend />
+                    <ReferenceLine y={hotOilThreshold} stroke="#dc2626" strokeDasharray="4 4" label={{ value: `Floor ${hotOilThreshold}°C`, fill: "#dc2626", fontSize: 11 }} />
+                    <Line type="monotone" dataKey="hotOilEndAvgC" name="Avg End Temp" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    <Line type="monotone" dataKey="hotOilEndMinC" name="Min" stroke="#ef4444" strokeWidth={1} strokeDasharray="3 3" dot={false} connectNulls />
+                    <Line type="monotone" dataKey="hotOilEndMaxC" name="Max" stroke="#10b981" strokeWidth={1} strokeDasharray="3 3" dot={false} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Days where the daily average hot-oil end temperature drops below {hotOilThreshold}°C are flagged in the table below. Adjust the floor in Admin → Plant Alert Thresholds.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader><CardTitle>Daily Breakdown</CardTitle></CardHeader>
             <CardContent className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -211,17 +273,24 @@ export default function PlantHeatingTrends() {
                     <th className="py-2 pr-3 text-right">Total LDO L</th>
                     <th className="py-2 pr-3 text-right">L/Hour</th>
                     <th className="py-2 pr-3 text-right">L/MT</th>
+                    <th className="py-2 pr-3 text-right">Hot-oil End °C (avg)</th>
+                    <th className="py-2 pr-3 text-right">Min / Max</th>
                     <th className="py-2 pr-3" />
                   </tr>
                 </thead>
                 <tbody>
                   {data.rows.length === 0 && (
-                    <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">No data in range.</td></tr>
+                    <tr><td colSpan={13} className="py-4 text-center text-muted-foreground">No data in range.</td></tr>
                   )}
                   {data.rows.map(r => {
                     const overTarget = r.total.lPerMT != null && r.total.lPerMT > target;
+                    const hotOilFlagged = r.hotOilEndBelowThreshold;
                     return (
-                      <tr key={r.date} className="border-b hover:bg-muted/30" data-testid={`row-trend-${r.date}`}>
+                      <tr
+                        key={r.date}
+                        className={`border-b hover:bg-muted/30 ${hotOilFlagged ? "bg-red-50 dark:bg-red-950/30" : ""}`}
+                        data-testid={`row-trend-${r.date}`}
+                      >
                         <td className="py-2 pr-3 font-medium">{r.date}</td>
                         <td className="py-2 pr-3 text-right">{fmt(r.productionMT, 2)}</td>
                         <td className="py-2 pr-3 text-right">{fmt(r.night.hours, 2)}</td>
@@ -235,6 +304,28 @@ export default function PlantHeatingTrends() {
                           {r.total.lPerMT == null
                             ? <span className="text-muted-foreground">—</span>
                             : <Badge variant={overTarget ? "destructive" : "secondary"}>{fmt(r.total.lPerMT, 3)}</Badge>}
+                        </td>
+                        <td className="py-2 pr-3 text-right" data-testid={`cell-hotoil-avg-${r.date}`}>
+                          {r.hotOilEndAvgC == null ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : hotOilFlagged ? (
+                            <Badge
+                              variant="destructive"
+                              className="gap-1"
+                              title={`Avg ${r.hotOilEndAvgC.toFixed(1)}°C is below the ${hotOilThreshold}°C floor`}
+                              data-testid={`badge-hotoil-flag-${r.date}`}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              {fmt(r.hotOilEndAvgC, 1)}
+                            </Badge>
+                          ) : (
+                            <span>{fmt(r.hotOilEndAvgC, 1)}</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right text-xs text-muted-foreground" data-testid={`cell-hotoil-range-${r.date}`}>
+                          {r.hotOilEndMinC == null
+                            ? "—"
+                            : `${fmt(r.hotOilEndMinC, 0)} / ${fmt(r.hotOilEndMaxC, 0)}`}
                         </td>
                         <td className="py-2 pr-3 text-right">
                           <Link href={appendPlantContext(`/plant/heating-sessions/${r.date}`, { defaultTab: "reports" })}>

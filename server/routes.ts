@@ -3606,6 +3606,12 @@ export async function registerRoutes(
         "L/Hour (boiler)": r.total.lPerHour ?? "",
         "L/MT (boiler)": r.total.lPerMT ?? "",
         "Target L/MT": trends.targetLPerMT,
+        "Hot-oil End Avg (°C)": r.hotOilEndAvgC ?? "",
+        "Hot-oil End Min (°C)": r.hotOilEndMinC ?? "",
+        "Hot-oil End Max (°C)": r.hotOilEndMaxC ?? "",
+        "Hot-oil Samples": r.hotOilEndSampleCount,
+        "Hot-oil Below Threshold": r.hotOilEndBelowThreshold ? "YES" : "",
+        "Hot-oil Threshold (°C)": trends.hotOilEndTempMinC,
       }));
       const summary = [{
         "Date Range": `${trends.dateFrom} to ${trends.dateTo}`,
@@ -3619,6 +3625,11 @@ export async function registerRoutes(
         "L/Hour": trends.summary.lPerHour ?? "",
         "L/MT": trends.summary.lPerMT ?? "",
         "Target L/MT": trends.targetLPerMT,
+        "Hot-oil End Avg (°C)": trends.summary.hotOilEndAvgC ?? "",
+        "Hot-oil End Min (°C)": trends.summary.hotOilEndMinC ?? "",
+        "Hot-oil End Max (°C)": trends.summary.hotOilEndMaxC ?? "",
+        "Hot-oil Threshold (°C)": trends.hotOilEndTempMinC,
+        "Hot-oil Flagged Days": trends.summary.hotOilFlaggedDays,
       }];
       const wb = xlsx.utils.book_new();
       xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(summary), "Summary");

@@ -1484,7 +1484,7 @@ export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
 export const PLANT_ALERT_THRESHOLDS_KEY = "plant_alert_thresholds";
 
 export const PLANT_ALERT_THRESHOLD_DEFAULTS = {
-  hotOilEndTempMinC: 200,
+  hotOilEndTempMinC: 240,
   ldoLitersPerHourMax: 25,
   sessionsVsShiftMismatchL: 5,
   // Persistent diesel over-consumer (PlantEquipmentUsage monthly rollup).
