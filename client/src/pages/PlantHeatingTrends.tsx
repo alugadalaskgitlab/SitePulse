@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ChevronLeft, Download, Flame, Loader2, ArrowRight, Thermometer } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { AlertTriangle, ChevronLeft, Download, Flame, Loader2, ArrowRight, Thermometer, GitCompare } from "lucide-react";
 import { format, subDays } from "date-fns";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -29,6 +30,10 @@ type Row = {
   hotOilEndMaxC: number | null;
   hotOilEndSampleCount: number;
   hotOilEndBelowThreshold: boolean;
+  shiftMeterT1L: number | null;
+  shiftMeterLPerMT: number | null;
+  mismatchL: number | null;
+  mismatchFlag: boolean;
 };
 type TrendsResponse = {
   dateFrom: string;
@@ -36,6 +41,7 @@ type TrendsResponse = {
   plantName: string;
   targetLPerMT: number;
   hotOilEndTempMinC: number;
+  mismatchThresholdL: number;
   rows: Row[];
   summary: {
     days: number;
@@ -50,6 +56,10 @@ type TrendsResponse = {
     hotOilEndMinC: number | null;
     hotOilEndMaxC: number | null;
     hotOilFlaggedDays: number;
+    totalShiftMeterT1L: number;
+    shiftMeterLPerMT: number | null;
+    mismatchDays: number;
+    daysWithShiftMeter: number;
   };
 };
 
@@ -65,6 +75,7 @@ export default function PlantHeatingTrends() {
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(today);
   const [plant] = useState("Main Plant");
+  const [useShiftMeter, setUseShiftMeter] = useState(false);
 
   const queryKey = ["/api/plant-module/heating-trends", dateFrom, dateTo, plant] as const;
   const { data, isLoading } = useQuery<TrendsResponse>({
@@ -85,6 +96,7 @@ export default function PlantHeatingTrends() {
       date: r.date.slice(5),
       fullDate: r.date,
       lPerMT: r.total.lPerMT,
+      shiftLPerMT: r.shiftMeterLPerMT,
       nightLPerMT: r.night.lPerMT,
       dayLPerMT: r.day.lPerMT,
       productionMT: r.productionMT,
@@ -108,6 +120,7 @@ export default function PlantHeatingTrends() {
 
   const target = data?.targetLPerMT ?? 1.5;
   const hotOilThreshold = data?.hotOilEndTempMinC ?? 240;
+  const mismatchThreshold = data?.mismatchThresholdL ?? 5;
   const backLink = getPlantBackLink({ defaultTab: "reports" });
 
   return (
@@ -160,7 +173,7 @@ export default function PlantHeatingTrends() {
         <p className="text-sm text-muted-foreground">No data.</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <Card><CardContent className="p-4">
               <div className="text-xs text-muted-foreground">Sessions</div>
               <div className="text-2xl font-bold" data-testid="kpi-sessions">{data.summary.sessionCount}</div>
@@ -199,10 +212,38 @@ export default function PlantHeatingTrends() {
                   : <span>Min/Max: {fmt(data.summary.hotOilEndMinC, 0)} / {fmt(data.summary.hotOilEndMaxC, 0)}°C</span>}
               </div>
             </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <GitCompare className="w-3 h-3" />Shift-meter L
+              </div>
+              <div className="text-2xl font-bold" data-testid="kpi-shift-meter">
+                {fmt(data.summary.totalShiftMeterT1L, 1)} L
+              </div>
+              <div className="text-xs text-muted-foreground" data-testid="kpi-mismatch-days">
+                {data.summary.mismatchDays > 0
+                  ? <span className="text-red-600 font-medium">{data.summary.mismatchDays} mismatch day{data.summary.mismatchDays === 1 ? "" : "s"} (&gt;±{mismatchThreshold} L)</span>
+                  : <span>{data.summary.daysWithShiftMeter} day{data.summary.daysWithShiftMeter === 1 ? "" : "s"} logged</span>}
+              </div>
+            </CardContent></Card>
           </div>
 
           <Card>
-            <CardHeader><CardTitle>L/MT Trend</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <CardTitle>L/MT Trend</CardTitle>
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch
+                    id="toggle-shift-meter"
+                    checked={useShiftMeter}
+                    onCheckedChange={setUseShiftMeter}
+                    data-testid="toggle-shift-meter"
+                  />
+                  <Label htmlFor="toggle-shift-meter" className="cursor-pointer">
+                    Use shift-meter L
+                  </Label>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent>
               <div className="w-full h-80" data-testid="chart-lpermt">
                 <ResponsiveContainer width="100%" height="100%">
@@ -216,12 +257,19 @@ export default function PlantHeatingTrends() {
                     />
                     <Legend />
                     <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="4 4" label={{ value: `Target ${target}`, fill: "#dc2626", fontSize: 11 }} />
-                    <Line type="monotone" dataKey="lPerMT" name="Total L/MT" stroke="#ea580c" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    {useShiftMeter ? (
+                      <Line type="monotone" dataKey="shiftLPerMT" name="Shift-meter L/MT" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    ) : (
+                      <Line type="monotone" dataKey="lPerMT" name="Sessions L/MT" stroke="#ea580c" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    )}
                     <Line type="monotone" dataKey="nightLPerMT" name="Night Pre-heat" stroke="#6366f1" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
                     <Line type="monotone" dataKey="dayLPerMT" name="Day Maintenance" stroke="#0891b2" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Sessions L/MT comes from heating-session LDO Tank-1 totals. Shift-meter L/MT uses the daily shift-log Tank-1 closing − opening reading. Days with a mismatch &gt; ±{mismatchThreshold} L are flagged in the table below.
+              </p>
             </CardContent>
           </Card>
 
@@ -270,7 +318,9 @@ export default function PlantHeatingTrends() {
                     <th className="py-2 pr-3 text-right">Day Hrs</th>
                     <th className="py-2 pr-3 text-right">Day LDO L</th>
                     <th className="py-2 pr-3 text-right">Total Hrs</th>
-                    <th className="py-2 pr-3 text-right">Total LDO L</th>
+                    <th className="py-2 pr-3 text-right">Sessions L</th>
+                    <th className="py-2 pr-3 text-right">Shift-meter L</th>
+                    <th className="py-2 pr-3 text-right">Δ (L)</th>
                     <th className="py-2 pr-3 text-right">L/Hour</th>
                     <th className="py-2 pr-3 text-right">L/MT</th>
                     <th className="py-2 pr-3 text-right">Hot-oil End °C (avg)</th>
@@ -280,10 +330,11 @@ export default function PlantHeatingTrends() {
                 </thead>
                 <tbody>
                   {data.rows.length === 0 && (
-                    <tr><td colSpan={13} className="py-4 text-center text-muted-foreground">No data in range.</td></tr>
+                    <tr><td colSpan={15} className="py-4 text-center text-muted-foreground">No data in range.</td></tr>
                   )}
                   {data.rows.map(r => {
-                    const overTarget = r.total.lPerMT != null && r.total.lPerMT > target;
+                    const activeLPerMT = useShiftMeter ? r.shiftMeterLPerMT : r.total.lPerMT;
+                    const overTarget = activeLPerMT != null && activeLPerMT > target;
                     const hotOilFlagged = r.hotOilEndBelowThreshold;
                     return (
                       <tr
@@ -298,12 +349,36 @@ export default function PlantHeatingTrends() {
                         <td className="py-2 pr-3 text-right">{fmt(r.day.hours, 2)}</td>
                         <td className="py-2 pr-3 text-right">{fmt(r.day.ldoT1L, 1)}</td>
                         <td className="py-2 pr-3 text-right">{fmt(r.total.hours, 2)}</td>
-                        <td className="py-2 pr-3 text-right">{fmt(r.total.ldoT1L, 1)}</td>
+                        <td className="py-2 pr-3 text-right" data-testid={`cell-sessions-l-${r.date}`}>{fmt(r.total.ldoT1L, 1)}</td>
+                        <td className="py-2 pr-3 text-right" data-testid={`cell-shift-meter-l-${r.date}`}>
+                          {r.shiftMeterT1L == null
+                            ? <span className="text-muted-foreground">—</span>
+                            : fmt(r.shiftMeterT1L, 1)}
+                        </td>
+                        <td className="py-2 pr-3 text-right" data-testid={`cell-mismatch-${r.date}`}>
+                          {r.mismatchL == null ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : r.mismatchFlag ? (
+                            <Badge
+                              variant="destructive"
+                              className="gap-1"
+                              title={r.total.count === 0
+                                ? `No heating sessions logged but shift-meter shows ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — check if sessions were missed`
+                                : `Sessions ${r.total.ldoT1L.toFixed(1)} L vs shift-meter ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL > 0 ? "+" : ""}${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L)`}
+                              data-testid={`badge-mismatch-${r.date}`}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              {r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">{r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}</span>
+                          )}
+                        </td>
                         <td className="py-2 pr-3 text-right">{fmt(r.total.lPerHour, 2)}</td>
                         <td className="py-2 pr-3 text-right">
-                          {r.total.lPerMT == null
+                          {activeLPerMT == null
                             ? <span className="text-muted-foreground">—</span>
-                            : <Badge variant={overTarget ? "destructive" : "secondary"}>{fmt(r.total.lPerMT, 3)}</Badge>}
+                            : <Badge variant={overTarget ? "destructive" : "secondary"}>{fmt(activeLPerMT, 3)}</Badge>}
                         </td>
                         <td className="py-2 pr-3 text-right" data-testid={`cell-hotoil-avg-${r.date}`}>
                           {r.hotOilEndAvgC == null ? (

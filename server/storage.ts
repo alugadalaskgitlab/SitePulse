@@ -672,6 +672,15 @@ export type HeatingTrendsRow = {
   hotOilEndMaxC: number | null;
   hotOilEndSampleCount: number;
   hotOilEndBelowThreshold: boolean;
+  // Shift-meter Tank-1 reconciliation (Task #155). Computed from
+  // plantShiftLogs.ldoTank1ClosingMeter − ldoTank1OpeningMeter for the same
+  // date / plant. Lets the trend report surface days where heating-session
+  // logs disagree with the shift meter (operators forgetting to log sessions
+  // or mis-reading the meter).
+  shiftMeterT1L: number | null;
+  shiftMeterLPerMT: number | null;
+  mismatchL: number | null;
+  mismatchFlag: boolean;
 };
 export type HeatingTrendsResult = {
   dateFrom: string;
@@ -679,6 +688,7 @@ export type HeatingTrendsResult = {
   plantName: string;
   targetLPerMT: number;
   hotOilEndTempMinC: number;
+  mismatchThresholdL: number;
   rows: HeatingTrendsRow[];
   summary: {
     days: number;
@@ -693,6 +703,10 @@ export type HeatingTrendsResult = {
     hotOilEndMinC: number | null;
     hotOilEndMaxC: number | null;
     hotOilFlaggedDays: number;
+    totalShiftMeterT1L: number;
+    shiftMeterLPerMT: number | null;
+    mismatchDays: number;
+    daysWithShiftMeter: number;
   };
 };
 
@@ -9973,8 +9987,28 @@ export class DatabaseStorage implements IStorage {
       lte(truckDispatches.date, dateTo),
       eq(truckDispatches.plantName, plantName),
     ));
+    const shiftLogs = await db.select().from(plantShiftLogs).where(and(
+      gte(plantShiftLogs.date, dateFrom),
+      lte(plantShiftLogs.date, dateTo),
+      eq(plantShiftLogs.plantName, plantName),
+    ));
     const thresholds = await this.getPlantAlertThresholds();
     const hotOilEndTempMinC = thresholds.hotOilEndTempMinC;
+    const mismatchThresholdL = thresholds.sessionsVsShiftMismatchL;
+
+    // Aggregate shift-meter Tank-1 L per day (closing − opening). When more
+    // than one shift log exists for a date (multi-shift days), sum them so
+    // the per-day total still represents the meter delta for the calendar
+    // day. Days without an opening + closing reading stay null.
+    const shiftMeterByDate = new Map<string, number | null>();
+    for (const sh of shiftLogs) {
+      const open = sh.ldoTank1OpeningMeter;
+      const close = sh.ldoTank1ClosingMeter;
+      if (open == null || close == null) continue;
+      const consumed = Math.max(0, close - open);
+      const prev = shiftMeterByDate.get(sh.date);
+      shiftMeterByDate.set(sh.date, (prev ?? 0) + consumed);
+    }
 
     const productionByDate = new Map<string, number>();
     for (const d of dispatches) {
@@ -10010,6 +10044,10 @@ export class DatabaseStorage implements IStorage {
         hotOilEndMaxC: null,
         hotOilEndSampleCount: 0,
         hotOilEndBelowThreshold: false,
+        shiftMeterT1L: null,
+        shiftMeterLPerMT: null,
+        mismatchL: null,
+        mismatchFlag: false,
       });
     }
 
@@ -10058,10 +10096,31 @@ export class DatabaseStorage implements IStorage {
     let hotOilOverallMin: number | null = null;
     let hotOilOverallMax: number | null = null;
     let hotOilFlaggedDays = 0;
+    let sumShiftMeter = 0, daysWithShiftMeter = 0, mismatchDays = 0;
     for (const r of rows) {
       finalize(r.night, r.productionMT);
       finalize(r.day, r.productionMT);
       finalize(r.total, r.productionMT);
+
+      // Attach shift-meter Tank-1 reconciliation per Task #155.
+      const shiftL = shiftMeterByDate.has(r.date) ? shiftMeterByDate.get(r.date)! : null;
+      if (shiftL != null) {
+        r.shiftMeterT1L = round(shiftL, 2);
+        r.shiftMeterLPerMT = r.productionMT > 0 && shiftL > 0
+          ? round(shiftL / r.productionMT, 3) : null;
+        sumShiftMeter += shiftL;
+        daysWithShiftMeter += 1;
+        // Compute the delta whenever shift-meter exists, even when the day has
+        // zero sessions — those are precisely the "operator forgot to log
+        // sessions" days the trend report is meant to surface (Task #155).
+        const diff = r.total.ldoT1L - shiftL;
+        r.mismatchL = round(diff, 1);
+        if (Math.abs(diff) > mismatchThresholdL) {
+          r.mismatchFlag = true;
+          mismatchDays += 1;
+        }
+      }
+
       sumHours += r.total.hours;
       sumLdo += r.total.ldoT1L;
       sumDg += r.total.dgDieselL;
@@ -10086,6 +10145,7 @@ export class DatabaseStorage implements IStorage {
       plantName,
       targetLPerMT: TARGET_L_PER_MT,
       hotOilEndTempMinC,
+      mismatchThresholdL,
       rows,
       summary: {
         days: rows.length,
@@ -10100,6 +10160,11 @@ export class DatabaseStorage implements IStorage {
         hotOilEndMinC: hotOilOverallMin,
         hotOilEndMaxC: hotOilOverallMax,
         hotOilFlaggedDays,
+        totalShiftMeterT1L: round(sumShiftMeter, 2),
+        shiftMeterLPerMT: sumMT > 0 && sumShiftMeter > 0
+          ? round(sumShiftMeter / sumMT, 3) : null,
+        mismatchDays,
+        daysWithShiftMeter,
       },
     };
   }
