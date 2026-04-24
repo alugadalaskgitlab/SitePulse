@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X, Undo2, History, Download } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useOrigin } from "@/hooks/use-origin";
 import { PinAuth } from "@/components/PinAuth";
 import { LABOUR_CATEGORIES, LABOUR_GENDERS, ALL_PLANTS_SENTINEL } from "@shared/schema";
 
@@ -554,6 +555,11 @@ function buildClusters(
 
 export default function PlantShiftLogManpowerReview() {
   const { toast } = useToast();
+  const { getPlantBackLink } = useOrigin();
+  // Manpower Review is launched from the Plant Shift Log (which lives on the
+  // "operations" tab), so back navigation lands on /plant/dashboard?tab=operations.
+  // getPlantBackLink also forwards `role` from the current URL when present.
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [adminPin, setAdminPin] = useState<string | null>(null);
 
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -1341,7 +1347,7 @@ export default function PlantShiftLogManpowerReview() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 flex-wrap">
-        <Link href="/plant">
+        <Link href={backLink}>
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>

@@ -30,7 +30,7 @@ type StockBalanceAsOf = {
 
 export default function PlantStock() {
   const { toast } = useToast();
-  const { getPlantBackLink } = useOrigin();
+  const { getPlantBackLink, appendPlantContext } = useOrigin();
   const queryClient = useQueryClient();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
   // Filter state — persisted across visits in localStorage so the page
@@ -970,7 +970,7 @@ export default function PlantStock() {
           <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
             <Printer className="w-4 h-4" /> Print
           </Button>
-          <Link href="/plant/stock-reassign">
+          <Link href={appendPlantContext("/plant/stock-reassign", { defaultTab: "stock" })}>
             <Button size="sm" variant="outline" className="gap-1 border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-stock-reassign">
               <ArrowRightLeft className="w-4 h-4" /> Reassign Ledger
             </Button>

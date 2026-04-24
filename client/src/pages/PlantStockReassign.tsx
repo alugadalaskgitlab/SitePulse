@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import { ChevronLeft, ArrowRightLeft, Loader2, ShieldAlert, Search } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useOrigin } from "@/hooks/use-origin";
 import { PinAuth } from "@/components/PinAuth";
 import type { Party, PlantMaterial as Material } from "@shared/schema";
 
@@ -43,6 +44,12 @@ function getErrorMessage(err: unknown): string {
 
 export default function PlantStockReassign() {
   const { toast } = useToast();
+  const { getPlantBackLink } = useOrigin();
+  // Stock Reassign is launched from the Plant Stock card (which lives on the
+  // "stock" tab), so back navigation lands on /plant/dashboard?tab=stock.
+  // getPlantBackLink also forwards `role` from the current URL when present,
+  // so a user who came in with an unlocked stock tab returns there unlocked.
+  const backLink = getPlantBackLink({ defaultTab: "stock" });
 
   // Page-level admin gate: the PIN entered here is held in memory and reused
   // for both preview (read-only ledger slice) and execute calls.
@@ -171,7 +178,7 @@ export default function PlantStockReassign() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 flex-wrap">
-        <Link href="/plant">
+        <Link href={backLink}>
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>

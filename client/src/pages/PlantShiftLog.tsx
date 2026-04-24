@@ -511,7 +511,7 @@ export default function PlantShiftLog() {
               <Label className="text-xs whitespace-nowrap">To</Label>
               <Input type="date" value={listDateTo} onChange={e => setListDateTo(e.target.value)} className="w-40" data-testid="input-list-to" />
             </div>
-            <Link href="/plant/shift-log-manpower-review">
+            <Link href={appendPlantContext("/plant/shift-log-manpower-review", { defaultTab: "operations" })}>
               <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-manpower-review">
                 <Users className="w-4 h-4 mr-1" />Review UNKNOWN
               </Button>
