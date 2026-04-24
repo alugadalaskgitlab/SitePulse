@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ChevronLeft, Download, Edit, Loader2, History } from "lucide-react";
 import { format } from "date-fns";
+import { heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLogWithDetails } from "@shared/schema";
 
 type DailyPlantSummary = {
@@ -59,14 +60,20 @@ type DailyPlantSummary = {
     sessionCount: number;
     totalHours: number;
     sessionsLdoT1L: number;
+    boilerDuringProductionL: number;
+    totalBoilerLdoL: number;
+    boilerRunsDuringProduction: boolean;
     lPerHour: number | null;
     lPerMT: number | null;
     dgDieselL: number;
     shiftLogT1L: number | null;
     mismatchL: number | null;
     primarySource: "sessions" | "shift_meter";
+    attributionFromDate: string | null;
+    attributionToDate: string;
     sessions?: Array<{
       id: number;
+      date: string;
       sessionType: string;
       startTime: string | null;
       endTime: string | null;
@@ -341,10 +348,22 @@ export default function PlantDailyReport() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                {/* Task #254 — surface attribution range so the user can see
+                    why pre-heating from earlier dates is rolled into today. */}
+                <p className="text-xs text-muted-foreground" data-testid="text-heating-attribution-range">
+                  {data.boilerHeating.attributionFromDate
+                    ? <>Sessions attributed: <span className="font-medium">after {data.boilerHeating.attributionFromDate}</span> through <span className="font-medium">{data.boilerHeating.attributionToDate}</span> (rolls overnight pre-heating into this production day).</>
+                    : <>Sessions attributed: on or before <span className="font-medium">{data.boilerHeating.attributionToDate}</span> (no prior production day on record for this plant).</>
+                  }
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                   <KV label="Total Heating Hrs" value={fmt(data.boilerHeating.totalHours, 2)} />
-                  <KV label="Boiler Meter (Sessions) L" value={fmt(data.boilerHeating.sessionsLdoT1L, 1)} />
-                  <KV label="L / Hour" value={fmt(data.boilerHeating.lPerHour, 2)} />
+                  <KV label="Sessions LDO L" value={fmt(data.boilerHeating.sessionsLdoT1L, 1)} />
+                  <KV
+                    label={data.boilerHeating.boilerRunsDuringProduction ? "Boiler-during-production L" : "Boiler-during-production L (off)"}
+                    value={data.boilerHeating.boilerRunsDuringProduction ? fmt(data.boilerHeating.boilerDuringProductionL, 1) : "—"}
+                  />
+                  <KV label="Total Boiler LDO L" value={fmt(data.boilerHeating.totalBoilerLdoL, 1)} />
                   <KV label="L / MT (Boiler)" value={fmt(data.boilerHeating.lPerMT, 3)} />
                   <KV label="DG Diesel L" value={fmt(data.boilerHeating.dgDieselL, 1)} />
                 </div>
@@ -352,6 +371,7 @@ export default function PlantDailyReport() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Date</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Time</TableHead>
                         <TableHead className="text-right">Hours</TableHead>
@@ -364,7 +384,13 @@ export default function PlantDailyReport() {
                     <TableBody>
                       {data.boilerHeating.sessions.map(s => (
                         <TableRow key={s.id} data-testid={`row-heating-session-${s.id}`}>
-                          <TableCell>{s.sessionType === "NIGHT_PREHEAT" ? "Night Pre-heat" : "Day Maint."}</TableCell>
+                          <TableCell>
+                            {s.date}
+                            {s.date !== data.boilerHeating!.attributionToDate && (
+                              <Badge variant="outline" className="ml-1 text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">prior</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{heatingSessionTypeLabel(s.sessionType)}</TableCell>
                           <TableCell>{s.startTime || "—"} → {s.endTime || "—"}</TableCell>
                           <TableCell className="text-right">{fmt(s.durationHours, 2)}</TableCell>
                           <TableCell>{s.staffName || "—"}</TableCell>

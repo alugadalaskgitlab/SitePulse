@@ -2985,8 +2985,19 @@ export async function registerRoutes(
       if (summary.boilerHeating) {
         const bh = summary.boilerHeating;
         section(`Boiler / Heating Sessions (${bh.sessionCount})`);
+        // Task #254 — surface the attribution range so the PDF documents
+        // why pre-heating from earlier dates rolls into this production day.
+        const attrLabel = bh.attributionFromDate
+          ? `after ${bh.attributionFromDate} through ${bh.attributionToDate || date}`
+          : `on or before ${bh.attributionToDate || date}`;
+        line("Sessions Attributed", attrLabel);
         line("Total Heating Hours", bh.totalHours);
-        line("Boiler Meter LDO from Sessions (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
+        line("Sessions LDO (L)", bh.sessionsLdoT1L?.toFixed(1) ?? "—");
+        line(
+          "Boiler-during-production LDO (L)",
+          bh.boilerRunsDuringProduction ? (bh.boilerDuringProductionL?.toFixed(1) ?? "0.0") : "off",
+        );
+        line("Total Boiler LDO (L)", bh.totalBoilerLdoL?.toFixed(1) ?? "—");
         line("Boiler L / Hour", bh.lPerHour ?? "—");
         line("Boiler L / MT Production", bh.lPerMT ?? "—");
         line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
@@ -2996,9 +3007,14 @@ export async function registerRoutes(
           line("⚠ Reconciliation mismatch (L)", `${bh.mismatchL > 0 ? "+" : ""}${bh.mismatchL}`);
         }
         if (bh.sessions?.length) {
+          // Task #254 — pretty session-type labels in the PDF as well.
+          const labelOf = (t: string) =>
+            t === "NIGHT_PREHEAT" ? "Pre-heating" :
+            t === "DAY_MAINTENANCE" ? "Production heating" : t;
           for (const s of bh.sessions) {
+            const priorTag = s.date && bh.attributionToDate && s.date !== bh.attributionToDate ? "  [prior]" : "";
             doc.fontSize(9).font("Helvetica").text(
-              `• ${s.sessionType}  ${s.startTime || "—"}→${s.endTime || "—"}  ${s.durationHours ?? 0}h  LDO ${s.ldoTank1Consumed?.toFixed(1) ?? 0}L  DG ${s.dgDieselConsumed?.toFixed(1) ?? 0}L  ${s.staffName || ""}${s.isFinalized ? "  [Finalized]" : ""}`
+              `• ${s.date || "—"}  ${labelOf(s.sessionType)}  ${s.startTime || "—"}→${s.endTime || "—"}  ${s.durationHours ?? 0}h  LDO ${s.ldoTank1Consumed?.toFixed(1) ?? 0}L  DG ${s.dgDieselConsumed?.toFixed(1) ?? 0}L  ${s.staffName || ""}${s.isFinalized ? "  [Finalized]" : ""}${priorTag}`
             );
           }
         }
@@ -3495,6 +3511,18 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/heating-sessions", async (req, res) => {
     try {
+      // Task #254 — when `servedByProductionDate=YYYY-MM-DD` is supplied we
+      // return all heating sessions attributed to that production day (i.e.
+      // every session run since the prior production day, overnight pre-heat
+      // included). The Plant Shift Log "Heating Sessions for this Production"
+      // card uses this so its L/MT matches the Daily Plant Report. Other
+      // callers (Heating Sessions list, Trends) keep using strict-by-date.
+      const servedByProd = req.query.servedByProductionDate as string | undefined;
+      if (servedByProd) {
+        const plantName = (req.query.plant as string | undefined) || "Main Plant";
+        const rows = await storage.getHeatingSessionsForProductionDay(plantName, servedByProd);
+        return res.json(rows);
+      }
       const rows = await storage.getBitumenHeatingSessions({
         date: req.query.date as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,

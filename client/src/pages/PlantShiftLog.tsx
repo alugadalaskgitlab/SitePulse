@@ -14,7 +14,8 @@ import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
 
 type ManpowerRow = {
@@ -61,6 +62,11 @@ export default function PlantShiftLog() {
   const [ldoTank1ClosingMeter, setLdoTank1ClosingMeter] = useState("");
   const [ldoTank2OpeningMeter, setLdoTank2OpeningMeter] = useState("");
   const [ldoTank2ClosingMeter, setLdoTank2ClosingMeter] = useState("");
+  // Task #254 — operator toggle: when on, the boiler runs during production
+  // and the Boiler Meter opening/closing inputs are shown (auto-fill from the
+  // most recent heating session's closing meter). When off, those inputs are
+  // hidden and contribute zero to the boiler-LDO total in the daily report.
+  const [boilerRunsDuringProduction, setBoilerRunsDuringProduction] = useState(false);
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
@@ -190,6 +196,7 @@ export default function PlantShiftLog() {
     setBitumenTank2OpeningDip(""); setBitumenTank2ClosingDip("");
     setLdoTank1OpeningMeter(""); setLdoTank1ClosingMeter("");
     setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
+    setBoilerRunsDuringProduction(false);
     setManpower([]); setIdleEvents([]);
     setBitumenTank1StockApproxMt(""); setBitumenTank2StockApproxMt("");
     setAutoFillT1Source(""); setAutoFillT1ClosingSource(""); setAutoFillT2Source("");
@@ -240,6 +247,15 @@ export default function PlantShiftLog() {
     setLdoTank1ClosingMeter(existing.ldoTank1ClosingMeter?.toString() || "");
     setLdoTank2OpeningMeter(existing.ldoTank2OpeningMeter?.toString() || "");
     setLdoTank2ClosingMeter(existing.ldoTank2ClosingMeter?.toString() || "");
+    // Task #254 — back-compat: rows saved before the toggle existed default
+    // boilerRunsDuringProduction to 0. If they have any T1 reading recorded,
+    // treat the toggle as ON so editing+saving doesn't silently null those
+    // legacy values (the save payload nulls T1 when the toggle is OFF).
+    const legacyHasT1Reading =
+      existing.ldoTank1OpeningMeter != null || existing.ldoTank1ClosingMeter != null;
+    setBoilerRunsDuringProduction(
+      !!(existing as any).boilerRunsDuringProduction || legacyHasT1Reading,
+    );
     // Loading a saved record — clear any auto-fill hint state from prior new-log session.
     setAutoFillT1Source("");
     setAutoFillT1ClosingSource("");
@@ -296,10 +312,15 @@ export default function PlantShiftLog() {
         bitumenTank1ClosingDip: numOrNull(bitumenTank1ClosingDip),
         bitumenTank2OpeningDip: numOrNull(bitumenTank2OpeningDip),
         bitumenTank2ClosingDip: numOrNull(bitumenTank2ClosingDip),
-        ldoTank1OpeningMeter: numOrNull(ldoTank1OpeningMeter),
-        ldoTank1ClosingMeter: numOrNull(ldoTank1ClosingMeter),
+        // Task #254 — when the boiler-runs-during-production toggle is OFF
+        // we explicitly null the Boiler Meter (Tank-1) inputs so they don't
+        // contribute phantom litres to the daily report. Dryer Meter (Tank-2)
+        // is independent of the toggle.
+        ldoTank1OpeningMeter: boilerRunsDuringProduction ? numOrNull(ldoTank1OpeningMeter) : null,
+        ldoTank1ClosingMeter: boilerRunsDuringProduction ? numOrNull(ldoTank1ClosingMeter) : null,
         ldoTank2OpeningMeter: numOrNull(ldoTank2OpeningMeter),
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
+        boilerRunsDuringProduction: boilerRunsDuringProduction ? 1 : 0,
         manpower: manpower
           .filter(m => m.name?.trim())
           .map(m => ({
@@ -364,15 +385,18 @@ export default function PlantShiftLog() {
     },
   });
 
-  // Reactive query: heating sessions for the current date/plant drive the
-  // Boiler Meter auto-prefill. Using useQuery ensures the shift log picks up
-  // new/edited sessions via cache invalidation (e.g. after saving a session).
+  // Task #254 — Reactive query: roll up every heating session attributed to
+  // this production day (i.e. all sessions since the prior production day,
+  // overnight pre-heat included). Drives both the Boiler Meter auto-prefill
+  // and the "Heating Sessions for this Production" card. Using useQuery
+  // ensures the shift log picks up new/edited sessions via cache
+  // invalidation (e.g. after saving a session).
   const { data: heatingSessionsForDate } = useQuery<BitumenHeatingSession[]>({
-    queryKey: ["/api/plant-module/heating-sessions", { date, plant: plantName }],
+    queryKey: ["/api/plant-module/heating-sessions", { servedByProductionDate: date, plant: plantName }],
     enabled: viewMode === "edit" && !!date,
     queryFn: async () => {
       const res = await fetch(
-        `/api/plant-module/heating-sessions?date=${date}&plant=${encodeURIComponent(plantName)}`,
+        `/api/plant-module/heating-sessions?servedByProductionDate=${date}&plant=${encodeURIComponent(plantName)}`,
         { credentials: "include" },
       );
       if (!res.ok) return [];
@@ -380,77 +404,65 @@ export default function PlantShiftLog() {
     },
   });
 
-  // Auto-fill Boiler Meter opening/closing from heating sessions for the date
-  // (first opening / last closing). Falls back to /ldo-meter/last for opening
-  // only when no heating sessions exist yet. Dryer Meter opening uses
-  // yesterday's closing as before. Manually-typed values are never
-  // overwritten. Re-runs when plantStartTime or the sessions query data
-  // changes so the cutoff matches the actual shift start and any newly
-  // created session immediately populates the shift log.
+  // Task #254 — Auto-fill Boiler Meter opening (only when the operator has
+  // toggled "Boiler runs during production" on) from the most recent prior
+  // session's closing meter. Falls back to /ldo-meter/last when no session
+  // closing is available. Closing is never auto-filled — the operator enters
+  // it at end-of-shift. Dryer Meter opening uses yesterday's closing as
+  // before (independent of the toggle). Manually-typed values are never
+  // overwritten.
   useEffect(() => {
     if (existing) return; // never overwrite when loaded from DB
     if (!date) return;
     let cancelled = false;
 
-    // Boiler Meter (Tank-1) opening + closing: prefer heating sessions for the
-    // date; fall back to /ldo-meter/last for the opening only when none.
-    const t1OpenIsEmpty = !ldoTank1OpeningMeter;
-    const t1OpenIsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
-    const t1CloseIsEmpty = !ldoTank1ClosingMeter;
-    const t1CloseIsAutoFilled = ldoTank1ClosingMeter && ldoTank1ClosingMeter === autoFilledT1ClosingValueRef.current;
-    const wantT1Open = t1OpenIsEmpty || t1OpenIsAutoFilled;
-    const wantT1Close = t1CloseIsEmpty || t1CloseIsAutoFilled;
+    // Boiler Meter (Tank-1) opening: only auto-fill when the toggle is on.
+    if (boilerRunsDuringProduction) {
+      const t1OpenIsEmpty = !ldoTank1OpeningMeter;
+      const t1OpenIsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
+      const wantT1Open = t1OpenIsEmpty || t1OpenIsAutoFilled;
 
-    const safe: BitumenHeatingSession[] = Array.isArray(heatingSessionsForDate) ? heatingSessionsForDate : [];
-    // First opening of the day (earliest startTime) with a meter value.
-    const openCandidates = safe
-      .filter(s => s && s.ldoTank1OpeningMeter != null)
-      .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
-    const closeCandidates = safe
-      .filter(s => s && s.ldoTank1ClosingMeter != null)
-      .sort((a, b) => String(b.endTime || b.startTime || "").localeCompare(String(a.endTime || a.startTime || "")));
-    const sessOpen = openCandidates[0]?.ldoTank1OpeningMeter;
-    const sessClose = closeCandidates[0]?.ldoTank1ClosingMeter;
+      const safe: BitumenHeatingSession[] = Array.isArray(heatingSessionsForDate) ? heatingSessionsForDate : [];
+      // Most recent session closing across the production-day attribution
+      // window: sort by date desc, then endTime (or startTime) desc.
+      const closeCandidates = safe
+        .filter(s => s && s.ldoTank1ClosingMeter != null)
+        .sort((a, b) => {
+          const dCmp = String(b.date || "").localeCompare(String(a.date || ""));
+          if (dCmp !== 0) return dCmp;
+          return String(b.endTime || b.startTime || "").localeCompare(String(a.endTime || a.startTime || ""));
+        });
+      const sessClose = closeCandidates[0]?.ldoTank1ClosingMeter;
 
-    if (wantT1Open && typeof sessOpen === "number") {
-      const next = String(sessOpen);
-      setLdoTank1OpeningMeter(prev => {
-        if (prev && prev !== autoFilledT1ValueRef.current) return prev;
-        autoFilledT1ValueRef.current = next;
-        setAutoFillT1Source("Heating Sessions");
-        return next;
-      });
-    } else if (wantT1Open && safe.length === 0 && heatingSessionsForDate !== undefined) {
-      // Fallback only once the sessions query has resolved and the day has
-      // zero heating sessions: use the most recent meter reading before
-      // shift start.
-      const before = `${date}T${plantStartTime || "23:59"}`;
-      type LdoLast = { value: number; source: string };
-      fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
-        .then(r => r.ok ? (r.json() as Promise<LdoLast | null>) : null)
-        .then((data) => {
-          if (cancelled) return;
-          if (data && typeof data.value === "number") {
-            const next = String(data.value);
-            setLdoTank1OpeningMeter(prev => {
-              if (prev && prev !== autoFilledT1ValueRef.current) return prev;
-              autoFilledT1ValueRef.current = next;
-              setAutoFillT1Source(data.source);
-              return next;
-            });
-          }
-        })
-        .catch(() => {});
-    }
-
-    if (wantT1Close && typeof sessClose === "number") {
-      const next = String(sessClose);
-      setLdoTank1ClosingMeter(prev => {
-        if (prev && prev !== autoFilledT1ClosingValueRef.current) return prev;
-        autoFilledT1ClosingValueRef.current = next;
-        setAutoFillT1ClosingSource("Heating Sessions");
-        return next;
-      });
+      if (wantT1Open && typeof sessClose === "number") {
+        const next = String(sessClose);
+        setLdoTank1OpeningMeter(prev => {
+          if (prev && prev !== autoFilledT1ValueRef.current) return prev;
+          autoFilledT1ValueRef.current = next;
+          setAutoFillT1Source("Last Heating Session Closing");
+          return next;
+        });
+      } else if (wantT1Open && heatingSessionsForDate !== undefined && (!safe.length || closeCandidates.length === 0)) {
+        // Fallback: use the most recent meter reading before shift start
+        // (yesterday's closing, etc.) once the sessions query has resolved.
+        const before = `${date}T${plantStartTime || "23:59"}`;
+        type LdoLast = { value: number; source: string };
+        fetch(`/api/plant-module/ldo-meter/last?tank=1&before=${encodeURIComponent(before)}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+          .then(r => r.ok ? (r.json() as Promise<LdoLast | null>) : null)
+          .then((data) => {
+            if (cancelled) return;
+            if (data && typeof data.value === "number") {
+              const next = String(data.value);
+              setLdoTank1OpeningMeter(prev => {
+                if (prev && prev !== autoFilledT1ValueRef.current) return prev;
+                autoFilledT1ValueRef.current = next;
+                setAutoFillT1Source(data.source);
+                return next;
+              });
+            }
+          })
+          .catch(() => {});
+      }
     }
     if (!ldoTank2OpeningMeter) {
       const before = `${date}T00:00`;
@@ -657,26 +669,65 @@ export default function PlantShiftLog() {
 
       <Card>
         <CardHeader>
-          <CardTitle>LDO Flow Meters</CardTitle>
-          <p className="text-xs text-muted-foreground">Both meters draw from the main LDO tank.</p>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle>LDO Flow Meters</CardTitle>
+              <p className="text-xs text-muted-foreground">Both meters draw from the main LDO tank.</p>
+            </div>
+            {/* Task #254 — Boiler-runs-during-production toggle. When off,
+                the Boiler Meter inputs below are hidden and contribute 0 to
+                the daily report's boiler-LDO total (sessions still count). */}
+            <div className="flex items-center gap-2 rounded border border-dashed border-amber-300 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2">
+              <Switch
+                id="boiler-runs-during-production"
+                checked={boilerRunsDuringProduction}
+                onCheckedChange={(v) => {
+                  setBoilerRunsDuringProduction(!!v);
+                  if (!v) {
+                    // Clearing the inputs avoids stale numbers if the operator
+                    // toggles off after typing — keeps the daily-report total
+                    // honest and matches the "contribute zero" rule.
+                    setLdoTank1OpeningMeter("");
+                    setLdoTank1ClosingMeter("");
+                    setAutoFillT1Source("");
+                    setAutoFillT1ClosingSource("");
+                    autoFilledT1ValueRef.current = null;
+                    autoFilledT1ClosingValueRef.current = null;
+                  }
+                }}
+                data-testid="switch-boiler-runs-during-production"
+              />
+              <Label htmlFor="boiler-runs-during-production" className="text-xs cursor-pointer">
+                Boiler runs during production
+              </Label>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <Label>Boiler Meter Opening</Label>
-            <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
-              onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
-              data-testid="input-ldo-t1-open" />
-            {autoFillT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
-          </div>
-          <div>
-            <Label>Boiler Meter Closing</Label>
-            <Input type="number" step="0.01" value={ldoTank1ClosingMeter}
-              onChange={e => { setLdoTank1ClosingMeter(e.target.value); setAutoFillT1ClosingSource(""); }}
-              data-testid="input-ldo-t1-close" />
-            {autoFillT1ClosingSource && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
-          </div>
-          <div><Label>Boiler Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
-          <div />
+          {boilerRunsDuringProduction ? (
+            <>
+              <div>
+                <Label>Boiler Meter Opening</Label>
+                <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
+                  onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
+                  data-testid="input-ldo-t1-open" />
+                {autoFillT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
+              </div>
+              <div>
+                <Label>Boiler Meter Closing</Label>
+                <Input type="number" step="0.01" value={ldoTank1ClosingMeter}
+                  onChange={e => { setLdoTank1ClosingMeter(e.target.value); setAutoFillT1ClosingSource(""); }}
+                  data-testid="input-ldo-t1-close" />
+                {autoFillT1ClosingSource && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
+              </div>
+              <div><Label>Boiler Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
+              <div />
+            </>
+          ) : (
+            <div className="md:col-span-4 text-xs text-muted-foreground italic" data-testid="text-boiler-meter-hidden">
+              Boiler Meter inputs are hidden — turn on "Boiler runs during production" to record the meter opening/closing for this shift. Heating session LDO is still counted in the Daily Plant Report.
+            </div>
+          )}
           <div>
             <Label>Dryer Meter Opening</Label>
             <Input type="number" step="0.01" value={ldoTank2OpeningMeter}
@@ -694,7 +745,7 @@ export default function PlantShiftLog() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              Heating Sessions for this date
+              Heating Sessions for this Production
               <Badge variant="secondary" data-testid="badge-heating-session-count">
                 {(heatingSessionsForDate || []).length}
               </Badge>
@@ -705,11 +756,15 @@ export default function PlantShiftLog() {
               </Button>
             </Link>
           </div>
+          {/* Task #254 — make the attribution rule visible to operators. */}
+          <p className="text-xs text-muted-foreground">
+            Includes every heating session run since the previous production day — overnight pre-heating is rolled into this day's totals.
+          </p>
         </CardHeader>
         <CardContent className="space-y-2">
           {!(heatingSessionsForDate || []).length && (
             <p className="text-sm text-muted-foreground">
-              No heating sessions recorded for {date}. Use "Add / Edit Sessions" to log boiler runs — session values (bitumen temps, hot-oil, DG) feed the Plant Daily Report automatically.
+              No heating sessions attributed to {date}. Use "Add / Edit Sessions" to log boiler runs — session values (bitumen temps, hot-oil, DG) feed the Plant Daily Report automatically.
             </p>
           )}
           {(heatingSessionsForDate || []).length > 0 && (
@@ -717,6 +772,7 @@ export default function PlantShiftLog() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-2 pr-2">Date</th>
                     <th className="py-2 pr-2">Type</th>
                     <th className="py-2 pr-2">Time</th>
                     <th className="py-2 pr-2">Staff</th>
@@ -728,12 +784,21 @@ export default function PlantShiftLog() {
                 <tbody>
                   {(heatingSessionsForDate || [])
                     .slice()
-                    .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""))
+                    .sort((a, b) =>
+                      String(a.date || "").localeCompare(String(b.date || ""))
+                      || (a.startTime || "").localeCompare(b.startTime || "")
+                    )
                     .map(s => (
                       <tr key={s.id} className="border-b last:border-b-0" data-testid={`row-shift-heating-${s.id}`}>
+                        <td className="py-2 pr-2 whitespace-nowrap text-xs text-muted-foreground" data-testid={`text-shift-heating-date-${s.id}`}>
+                          {s.date}
+                          {s.date !== date && (
+                            <Badge variant="outline" className="ml-1 text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">prior</Badge>
+                          )}
+                        </td>
                         <td className="py-2 pr-2">
                           <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"} className="text-xs">
-                            {s.sessionType === "NIGHT_PREHEAT" ? "Night" : "Day"}
+                            {heatingSessionTypeLabel(s.sessionType)}
                           </Badge>
                         </td>
                         <td className="py-2 pr-2 whitespace-nowrap">{s.startTime || "—"} → {s.endTime || "—"}</td>
@@ -754,7 +819,7 @@ export default function PlantShiftLog() {
                 </tbody>
               </table>
               <p className="text-xs text-muted-foreground mt-2">
-                Boiler Meter opening/closing above is auto-filled from these sessions. Bitumen tank temperatures and DG runs recorded inside a session are the source of truth for the Daily Plant Report.
+                Bitumen tank temperatures and DG runs recorded inside a session are the source of truth for the Daily Plant Report. When the "Boiler runs during production" toggle above is on, the shift's Boiler Meter delta is added on top of these session totals.
               </p>
             </div>
           )}

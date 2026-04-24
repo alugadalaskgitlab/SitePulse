@@ -10256,6 +10256,40 @@ export class DatabaseStorage implements IStorage {
     return { value: top.value, date: top.date, time: top.time, source: top.source, sourceId: top.sourceId };
   }
 
+  // Task #254 — find the most recent date strictly before `beforeDate` on
+  // which this plant produced anything (sum of dispatched MT > 0). Used to
+  // attribute pre-heat / overnight heating sessions to the next production
+  // day. Returns null if there's no prior production for this plant.
+  async getLastProductionDateBefore(plantName: string, beforeDate: string): Promise<string | null> {
+    const rows = await db
+      .select({ date: truckDispatches.date, mt: sql<number>`COALESCE(SUM(${truckDispatches.loadWeight}), 0)` })
+      .from(truckDispatches)
+      .where(and(eq(truckDispatches.plantName, plantName), lt(truckDispatches.date, beforeDate)))
+      .groupBy(truckDispatches.date)
+      .orderBy(desc(truckDispatches.date));
+    for (const r of rows) {
+      if ((r.mt || 0) > 0) return r.date as unknown as string;
+    }
+    return null;
+  }
+
+  // Task #254 — return the heating sessions whose run-date is attributed to
+  // the production day `productionDate` for `plantName`. Attribution window is
+  // (lastProductionDateBefore(productionDate), productionDate]. When there is
+  // no prior production day for this plant, all sessions on or before
+  // productionDate are returned (first-ever production).
+  async getHeatingSessionsForProductionDay(plantName: string, productionDate: string) {
+    const lastProd = await this.getLastProductionDateBefore(plantName, productionDate);
+    const conditions = [
+      eq(bitumenHeatingSessions.plantName, plantName),
+      lte(bitumenHeatingSessions.date, productionDate),
+    ];
+    if (lastProd) conditions.push(gt(bitumenHeatingSessions.date, lastProd));
+    return db.select().from(bitumenHeatingSessions)
+      .where(and(...conditions))
+      .orderBy(bitumenHeatingSessions.date, bitumenHeatingSessions.startTime);
+  }
+
   private async _getBoilerHeatingSummary(
     date: string,
     plantName: string,
@@ -10263,39 +10297,91 @@ export class DatabaseStorage implements IStorage {
     totalProductionMT: number,
     ldoConsumedT1Shift: number | null,
   ) {
-    const sessions = await this.getBitumenHeatingSessions({ date, plantName });
+    // Task #254 — Attribute sessions to the production day. On a production
+    // day (totalProductionMT > 0) we roll up every session since the prior
+    // production day so overnight / pre-heat LDO is counted in that day's
+    // L/MT. On a no-production day we keep the legacy strict-by-date view so
+    // the shift log still shows just that day's sessions.
+    const isProductionDay = totalProductionMT > 0;
+    const sessions = isProductionDay
+      ? await this.getHeatingSessionsForProductionDay(plantName, date)
+      : await this.getBitumenHeatingSessions({ date, plantName });
+    const lastProductionDate = isProductionDay
+      ? await this.getLastProductionDateBefore(plantName, date)
+      : null;
+
+    // Task #254 — boiler-during-production delta from the shift log (only when
+    // operator toggled "Boiler runs during production" on). This is added on
+    // top of the session-rolled LDO. Both inputs must be present and closing
+    // must be > opening for a valid delta; otherwise we contribute zero.
+    const boilerRunsDuringProduction = !!(shift && (shift as any).boilerRunsDuringProduction);
+    const op = shift?.ldoTank1OpeningMeter ?? null;
+    const cl = shift?.ldoTank1ClosingMeter ?? null;
+    const boilerDuringProductionL = (boilerRunsDuringProduction && op != null && cl != null && cl > op)
+      ? Math.round((cl - op) * 10) / 10
+      : 0;
+
     const sessionCount = sessions.length;
-    if (sessionCount === 0) {
+    const totalHours = sessions.reduce((s, x) => s + (x.durationHours || 0), 0);
+    const sessionsLdoT1L = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
+    const dgDieselL = sessions.reduce((s, x) => s + (x.dgDieselConsumed || 0), 0);
+    const totalBoilerLdoL = sessionsLdoT1L + boilerDuringProductionL;
+
+    // Reconciliation mismatch compares the shift-log Tank-1 reading against
+    // the LDO that's attributed to *this date's sessions only* (legacy
+    // semantics) so the existing alert keeps the same meaning.
+    const todaySessionsLdoT1L = sessions
+      .filter(s => s.date === date)
+      .reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
+    const mismatchL = (sessionCount > 0 && ldoConsumedT1Shift != null)
+      ? Math.round((todaySessionsLdoT1L - ldoConsumedT1Shift) * 10) / 10
+      : null;
+
+    if (sessionCount === 0 && boilerDuringProductionL === 0) {
       return {
         sessionCount: 0,
         totalHours: 0,
         sessionsLdoT1L: 0,
+        boilerDuringProductionL: 0,
+        totalBoilerLdoL: 0,
+        boilerRunsDuringProduction,
         lPerHour: null,
         lPerMT: null,
         dgDieselL: 0,
         shiftLogT1L: ldoConsumedT1Shift,
         mismatchL: null,
         primarySource: "shift_meter" as const,
+        attributionFromDate: lastProductionDate,
+        attributionToDate: date,
+        sessions: [],
       };
     }
-    const totalHours = sessions.reduce((s, x) => s + (x.durationHours || 0), 0);
-    const sessionsLdoT1L = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
-    const dgDieselL = sessions.reduce((s, x) => s + (x.dgDieselConsumed || 0), 0);
-    const lPerHour = totalHours > 0 ? Math.round((sessionsLdoT1L / totalHours) * 100) / 100 : null;
-    const lPerMT = totalProductionMT > 0 ? Math.round((sessionsLdoT1L / totalProductionMT) * 1000) / 1000 : null;
-    const mismatchL = (ldoConsumedT1Shift != null) ? Math.round((sessionsLdoT1L - ldoConsumedT1Shift) * 10) / 10 : null;
+
+    // L/Hour uses session hours only (the shift-log boiler delta has no
+    // dedicated hours input). L/MT divides the combined boiler litres by
+    // production MT and is null on a no-production day.
+    const lPerHour = totalHours > 0 ? Math.round((totalBoilerLdoL / totalHours) * 100) / 100 : null;
+    const lPerMT = totalProductionMT > 0 && totalBoilerLdoL > 0
+      ? Math.round((totalBoilerLdoL / totalProductionMT) * 1000) / 1000
+      : null;
     return {
       sessionCount,
       totalHours: Math.round(totalHours * 100) / 100,
       sessionsLdoT1L: Math.round(sessionsLdoT1L * 10) / 10,
+      boilerDuringProductionL,
+      totalBoilerLdoL: Math.round(totalBoilerLdoL * 10) / 10,
+      boilerRunsDuringProduction,
       lPerHour,
       lPerMT,
       dgDieselL: Math.round(dgDieselL * 10) / 10,
       shiftLogT1L: ldoConsumedT1Shift,
       mismatchL,
-      primarySource: "sessions" as const,
+      primarySource: sessionCount > 0 ? ("sessions" as const) : ("shift_meter" as const),
+      attributionFromDate: lastProductionDate,
+      attributionToDate: date,
       sessions: sessions.map(s => ({
         id: s.id,
+        date: s.date,
         sessionType: s.sessionType,
         startTime: s.startTime,
         endTime: s.endTime,

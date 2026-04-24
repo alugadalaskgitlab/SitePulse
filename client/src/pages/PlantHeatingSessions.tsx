@@ -14,6 +14,7 @@ import { ChevronLeft, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "luc
 import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HEATING_SESSION_TYPE_LABELS, heatingSessionTypeLabel } from "@shared/schema";
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
 
 type DgMode = "none" | "inline" | "link";
@@ -496,7 +497,7 @@ export default function PlantHeatingSessions() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"}>
-                                {s.sessionType === "NIGHT_PREHEAT" ? "Night Pre-heat" : "Day Maintenance"}
+                                {heatingSessionTypeLabel(s.sessionType)}
                               </Badge>
                               <span className="font-medium">{s.startTime || "—"} → {s.endTime || "—"}</span>
                               <span className="text-sm text-muted-foreground">({s.durationHours ?? 0} h)</span>
@@ -553,8 +554,8 @@ export default function PlantHeatingSessions() {
                 <Select value={form.sessionType} onValueChange={v => setField("sessionType", v)}>
                   <SelectTrigger data-testid="select-session-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NIGHT_PREHEAT">Night Pre-heating</SelectItem>
-                    <SelectItem value="DAY_MAINTENANCE">Daytime Maintenance</SelectItem>
+                    <SelectItem value="NIGHT_PREHEAT">{HEATING_SESSION_TYPE_LABELS.NIGHT_PREHEAT}</SelectItem>
+                    <SelectItem value="DAY_MAINTENANCE">{HEATING_SESSION_TYPE_LABELS.DAY_MAINTENANCE}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

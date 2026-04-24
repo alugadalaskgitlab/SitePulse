@@ -798,6 +798,12 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
   ldoTank2OpeningMeter: real("ldo_tank2_opening_meter"),
   ldoTank2ClosingMeter: real("ldo_tank2_closing_meter"),
+  // Task #254 — operator toggle indicating the boiler runs during production
+  // on this shift. When 1, the Boiler Meter opening/closing inputs are shown
+  // and (closing − opening) is added to the production day's boiler-LDO total
+  // (on top of the LDO rolled up from heating sessions attributed to this
+  // production day). When 0, those inputs are hidden and contribute zero.
+  boilerRunsDuringProduction: integer("boiler_runs_during_production").notNull().default(0),
   operatorName: text("operator_name"),
   supervisorName: text("supervisor_name"),
   remarks: text("remarks"),
@@ -990,6 +996,18 @@ export type PlantShiftLogManpowerRelabelSnapshot = typeof plantShiftLogManpowerR
 // ============================================
 
 export const HEATING_SESSION_TYPES = ["NIGHT_PREHEAT", "DAY_MAINTENANCE"] as const;
+
+// Task #254 — Display labels for heating session types. Enum values stay
+// NIGHT_PREHEAT / DAY_MAINTENANCE (DB + API contract), but everywhere a label
+// is shown to the user it must come from this map.
+export const HEATING_SESSION_TYPE_LABELS: Record<typeof HEATING_SESSION_TYPES[number], string> = {
+  NIGHT_PREHEAT: "Pre-heating",
+  DAY_MAINTENANCE: "Production heating",
+};
+export function heatingSessionTypeLabel(t: string | null | undefined): string {
+  if (!t) return "—";
+  return (HEATING_SESSION_TYPE_LABELS as Record<string, string>)[t] ?? t;
+}
 export const HEATING_DG_MODES = ["none", "inline", "link"] as const;
 
 export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {

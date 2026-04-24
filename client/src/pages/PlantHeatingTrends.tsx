@@ -277,8 +277,8 @@ export default function PlantHeatingTrends() {
                     ) : (
                       <Line type="monotone" dataKey="lPerMT" name="Sessions L/MT" stroke="#ea580c" strokeWidth={2} dot={{ r: 3 }} connectNulls />
                     )}
-                    <Line type="monotone" dataKey="nightLPerMT" name="Night Pre-heat" stroke="#6366f1" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
-                    <Line type="monotone" dataKey="dayLPerMT" name="Day Maintenance" stroke="#0891b2" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
+                    <Line type="monotone" dataKey="nightLPerMT" name="Pre-heating" stroke="#6366f1" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
+                    <Line type="monotone" dataKey="dayLPerMT" name="Production heating" stroke="#0891b2" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

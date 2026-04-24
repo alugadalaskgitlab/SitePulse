@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Save, Loader2, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HEATING_SESSION_TYPE_LABELS } from "@shared/schema";
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
 
 type DgMode = "none" | "inline" | "link";
@@ -384,8 +385,8 @@ export function HeatingSessionDialog({
               <Select value={form.sessionType} onValueChange={v => setField("sessionType", v)}>
                 <SelectTrigger data-testid="select-session-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NIGHT_PREHEAT">Night Pre-heating</SelectItem>
-                  <SelectItem value="DAY_MAINTENANCE">Daytime Maintenance</SelectItem>
+                  <SelectItem value="NIGHT_PREHEAT">{HEATING_SESSION_TYPE_LABELS.NIGHT_PREHEAT}</SelectItem>
+                  <SelectItem value="DAY_MAINTENANCE">{HEATING_SESSION_TYPE_LABELS.DAY_MAINTENANCE}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
