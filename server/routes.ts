@@ -12,7 +12,7 @@ import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, EQUIPMENT_TYPES } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
-import { aggregateGstBreakdown, aggregateGstSplit, computeBillCgstSgstIgst, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
+import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath } from "./auth";
 import {
   registerAuthRoutes,
@@ -4314,7 +4314,6 @@ export async function registerRoutes(
       const bills = await storage.getVendorBills(filters);
 
       const { total: totalGst, ...gstByCategory } = aggregateGstBreakdown(bills);
-      const gstSplit = aggregateGstSplit(bills);
 
       const summary = {
         total: bills.length,
@@ -4329,8 +4328,6 @@ export async function registerRoutes(
         paidAmount: bills.filter(b => b.status === "paid").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
         gstByCategory,
         totalGst,
-        gstSplit: { cgst: gstSplit.cgst, sgst: gstSplit.sgst, igst: gstSplit.igst },
-        interStateBills: bills.filter(b => b.isInterState).length,
       };
       res.json(summary);
     } catch (err) {
@@ -4384,20 +4381,16 @@ export async function registerRoutes(
       const filenameScope = isLedger ? `vendor-ledger-${vendorScope}` : "gst-register";
       const safeFilename = `${filenameScope}-${filenameRange}`.replace(/[^A-Za-z0-9._-]+/g, "_");
 
-      // Per-bill numbers. The vendor_bills.isInterState flag (per bill) drives
-      // the CGST/SGST/IGST split: inter-state bills route their entire GST to
-      // IGST; intra-state bills split it as CGST = SGST = GST/2. This matches
-      // computeBillCgstSgstIgst in shared/vendor-bill-gst.ts and the on-screen
-      // GST register cards.
+      // Per-bill numbers. Bills are internal-only records, so a single GST
+      // total is shown — no CGST/SGST/IGST split.
       type BillRow = {
         billNo: string; date: string; vendor: string; category: string;
-        taxable: number; gst: number; cgst: number; sgst: number; igst: number; total: number;
+        taxable: number; gst: number; total: number;
       };
       const detailRows: BillRow[] = bills.map(b => {
         const taxable = b.totalAmount || 0;
         const cat = computeBillGstByCategory(b);
         const gst = cat.equipment + cat.material + cat.transport + cat.labour + cat.other;
-        const split = computeBillCgstSgstIgst(b);
         return {
           billNo: b.billNo,
           date: b.billDate,
@@ -4405,23 +4398,13 @@ export async function registerRoutes(
           category: (b.billType || "other").toLowerCase(),
           taxable,
           gst,
-          cgst: split.cgst,
-          sgst: split.sgst,
-          igst: split.igst,
           total: taxable + gst,
         };
       });
 
       const totals = aggregateGstBreakdown(bills);
-      const splitTotals = aggregateGstSplit(bills);
       const totalTaxable = bills.reduce((s, b) => s + (b.totalAmount || 0), 0);
       const grandTotal = totalTaxable + totals.total;
-      const interStateBillCount = bills.filter(b => b.isInterState).length;
-      const splitNote = interStateBillCount === 0
-        ? `GST split: intra-state (CGST = SGST = GST/2, IGST = 0). No inter-state bills in range.`
-        : interStateBillCount === bills.length
-        ? `GST split: inter-state (entire GST routed to IGST). All ${bills.length} bills marked inter-state.`
-        : `GST split: per-bill — ${interStateBillCount} of ${bills.length} bill${bills.length === 1 ? "" : "s"} marked inter-state (IGST); the rest split as CGST = SGST = GST/2.`;
 
       // Category summary — always show the 4 main categories so empty buckets
       // appear as "—" rows instead of being silently dropped. "Other" is only
@@ -4503,7 +4486,6 @@ export async function registerRoutes(
         lines.push(toLine([`Category filter: ${categoryFilter !== "all" ? categoryFilter : "all"}`]));
         lines.push(toLine([`Bills in range: ${bills.length}`]));
         lines.push(toLine([`Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`]));
-        lines.push(toLine([splitNote]));
         lines.push(toLine([`Generated: ${generatedAt}`]));
         lines.push("");
         lines.push(toLine(["== SUMMARY — GST BY CATEGORY =="]));
@@ -4523,14 +4505,14 @@ export async function registerRoutes(
         }
         lines.push("");
         lines.push(toLine(["== DETAIL (every bill in range) =="]));
-        lines.push(toLine(["Bill No", "Date", "Vendor", "Category", "Taxable", "CGST", "SGST", "IGST", "Total"]));
+        lines.push(toLine(["Bill No", "Date", "Vendor", "Category", "Taxable", "GST", "Total"]));
         if (detailRows.length === 0) {
-          lines.push(toLine(["—", "—", "—", "—", "—", "—", "—", "—", "—"]));
+          lines.push(toLine(["—", "—", "—", "—", "—", "—", "—"]));
         } else {
           for (const r of detailRows) {
-            lines.push(toLine([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.cgst), fmtNum(r.sgst), fmtNum(r.igst), fmtNum(r.total)]));
+            lines.push(toLine([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.gst), fmtNum(r.total)]));
           }
-          lines.push(toLine(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(splitTotals.cgst), fmtNum(splitTotals.sgst), fmtNum(splitTotals.igst), fmtNum(grandTotal)]));
+          lines.push(toLine(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total), fmtNum(grandTotal)]));
         }
         const body = "\uFEFF" + lines.join("\r\n") + "\r\n";
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -4550,7 +4532,6 @@ export async function registerRoutes(
         [`Category filter: ${categoryFilter !== "all" ? categoryFilter : "all"}`],
         [`Bills in range: ${bills.length}`],
         [`Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`],
-        [splitNote],
         [`Generated: ${generatedAt}`],
         [],
         ["GST by Category"],
@@ -4574,20 +4555,20 @@ export async function registerRoutes(
       xlsx.utils.book_append_sheet(wb, summarySheet, "Summary");
 
       const detailAoa: any[][] = [
-        ["Bill No", "Date", "Vendor", "Category", "Taxable", "CGST", "SGST", "IGST", "Total"],
+        ["Bill No", "Date", "Vendor", "Category", "Taxable", "GST", "Total"],
       ];
       if (detailRows.length === 0) {
-        detailAoa.push(["—", "—", "—", "—", "—", "—", "—", "—", "—"]);
+        detailAoa.push(["—", "—", "—", "—", "—", "—", "—"]);
       } else {
         for (const r of detailRows) {
-          detailAoa.push([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.cgst), fmtNum(r.sgst), fmtNum(r.igst), fmtNum(r.total)]);
+          detailAoa.push([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.gst), fmtNum(r.total)]);
         }
-        detailAoa.push(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(splitTotals.cgst), fmtNum(splitTotals.sgst), fmtNum(splitTotals.igst), fmtNum(grandTotal)]);
+        detailAoa.push(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total), fmtNum(grandTotal)]);
       }
       const detailSheet = xlsx.utils.aoa_to_sheet(detailAoa);
       (detailSheet as any)["!cols"] = [
         { wch: 18 }, { wch: 12 }, { wch: 28 }, { wch: 12 },
-        { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
+        { wch: 14 }, { wch: 14 }, { wch: 14 },
       ];
       xlsx.utils.book_append_sheet(wb, detailSheet, "Detail");
 

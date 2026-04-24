@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
-import { aggregateGstBreakdown, aggregateGstSplit } from "@shared/vendor-bill-gst";
+import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -254,7 +254,6 @@ export default function VendorBills() {
   const [gstRateTransport, setGstRateTransport] = useState<number>(0);
   const [gstRateLabour, setGstRateLabour] = useState<number>(0);
   const [tdsRate, setTdsRate] = useState<number>(0);
-  const [isInterState, setIsInterState] = useState<boolean>(false);
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
 
   useEffect(() => {
@@ -447,7 +446,6 @@ export default function VendorBills() {
     setGstRateTransport(0);
     setGstRateLabour(0);
     setTdsRate(0);
-    setIsInterState(false);
     setEditingBillId(null);
     setAdminPinForUpdate(null);
     setVendorSearch("");
@@ -504,7 +502,6 @@ export default function VendorBills() {
     setGstRateTransport((bill as any).gstRateTransport || 0);
     setGstRateLabour((bill as any).gstRateLabour || 0);
     setTdsRate((bill as any).tdsRate || 0);
-    setIsInterState(!!bill.isInterState);
     setEditingBillId(bill.id);
     setView("form");
   };
@@ -944,7 +941,6 @@ export default function VendorBills() {
       gstRateTransport: gstRateTransport || null,
       gstRateLabour: gstRateLabour || null,
       tdsRate: tdsRate || null,
-      isInterState: isInterState || false,
       items: lineItems.filter(i => i.description).map(item => ({
         date: item.date || null,
         category: item.category || null,
@@ -1084,8 +1080,6 @@ export default function VendorBills() {
   }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory]);
 
   const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
-  const gstSplit = useMemo(() => aggregateGstSplit(filteredBills), [filteredBills]);
-  const interStateBillCount = useMemo(() => filteredBills.filter(b => b.isInterState).length, [filteredBills]);
 
   const labourSplit = useMemo(() => {
     let site = 0, plant = 0, other = 0;
@@ -1483,22 +1477,6 @@ export default function VendorBills() {
                 <Label className="text-xs uppercase">Period To</Label>
                 <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} data-testid="input-period-to" />
               </div>
-            </div>
-            <div className="flex items-start gap-3 rounded-md border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2">
-              <input
-                type="checkbox"
-                id="vendor-bill-inter-state"
-                checked={isInterState}
-                onChange={e => setIsInterState(e.target.checked)}
-                className="mt-1 h-4 w-4 accent-amber-600"
-                data-testid="checkbox-inter-state"
-              />
-              <Label htmlFor="vendor-bill-inter-state" className="text-xs uppercase font-semibold cursor-pointer">
-                Inter-state bill (route GST to IGST)
-                <span className="block normal-case font-normal text-[11px] text-muted-foreground mt-0.5">
-                  Tick when the vendor's state of supply differs from the plant state. The GST register and exports will then book this bill's GST as IGST instead of CGST/SGST.
-                </span>
-              </Label>
             </div>
             {periodFrom && periodTo && billType !== "other" && !vendorName && (
               <div className="border-t pt-4">
@@ -2768,40 +2746,6 @@ export default function VendorBills() {
               <p className="text-base font-bold text-green-700 dark:text-green-400" data-testid="text-gst-total">
                 {formatCurrency(gstBreakdown.total)}
               </p>
-            </div>
-          </div>
-          <div className="mt-2 pt-2 border-t" data-testid="gst-split-section">
-            <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                CGST / SGST / IGST Split
-              </span>
-              <span className="text-[10px] text-muted-foreground" data-testid="text-inter-state-count">
-                {interStateBillCount === 0
-                  ? "All intra-state"
-                  : interStateBillCount === filteredBills.length
-                  ? `All ${filteredBills.length} bill${filteredBills.length === 1 ? "" : "s"} inter-state`
-                  : `${interStateBillCount} of ${filteredBills.length} inter-state`}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center" data-testid="gst-card-cgst">
-                <p className="text-[10px] text-muted-foreground uppercase">CGST</p>
-                <p className="text-sm font-semibold text-cyan-700 dark:text-cyan-400" data-testid="text-gst-cgst">
-                  {formatCurrency(gstSplit.cgst)}
-                </p>
-              </div>
-              <div className="text-center" data-testid="gst-card-sgst">
-                <p className="text-[10px] text-muted-foreground uppercase">SGST</p>
-                <p className="text-sm font-semibold text-cyan-700 dark:text-cyan-400" data-testid="text-gst-sgst">
-                  {formatCurrency(gstSplit.sgst)}
-                </p>
-              </div>
-              <div className="text-center" data-testid="gst-card-igst">
-                <p className="text-[10px] text-muted-foreground uppercase">IGST</p>
-                <p className="text-sm font-semibold text-rose-700 dark:text-rose-400" data-testid="text-gst-igst">
-                  {formatCurrency(gstSplit.igst)}
-                </p>
-              </div>
             </div>
           </div>
           {labourSplit.site > 0 && labourSplit.plant > 0 && (
