@@ -1328,7 +1328,7 @@ export default function PlantShiftLogManpowerReview() {
     return { workers: rows.length, items: rows.reduce((a, r) => a + r.count, 0) };
   }, [rows]);
 
-  if (!adminPin) {
+  if (adminPin === null) {
     return (
       <PinAuth
         targetRole="admin"
