@@ -412,12 +412,22 @@ export default function PlantShiftLog() {
   // before (independent of the toggle). Manually-typed values are never
   // overwritten.
   useEffect(() => {
-    if (existing) return; // never overwrite when loaded from DB
     if (!date) return;
     let cancelled = false;
 
+    // Task #254 — when editing an existing shift log we *normally* never
+    // overwrite saved values (`existing` short-circuits below). The one
+    // exception is the Boiler Meter Tank-1 opening: if the operator just
+    // turned the "Boiler runs during production" toggle ON and the opening
+    // field is still empty (e.g. the log was originally saved with the
+    // toggle OFF), we still want to auto-fill from the prior session
+    // closing. T2 / fallback paths keep the old "skip on edit" behaviour.
+    const editingExisting = !!existing;
+    const allowT1OpenAutoFillOnEdit =
+      editingExisting && boilerRunsDuringProduction && !ldoTank1OpeningMeter;
+
     // Boiler Meter (Tank-1) opening: only auto-fill when the toggle is on.
-    if (boilerRunsDuringProduction) {
+    if (boilerRunsDuringProduction && (!editingExisting || allowT1OpenAutoFillOnEdit)) {
       const t1OpenIsEmpty = !ldoTank1OpeningMeter;
       const t1OpenIsAutoFilled = ldoTank1OpeningMeter && ldoTank1OpeningMeter === autoFilledT1ValueRef.current;
       const wantT1Open = t1OpenIsEmpty || t1OpenIsAutoFilled;

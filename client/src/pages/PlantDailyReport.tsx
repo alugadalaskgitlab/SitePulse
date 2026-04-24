@@ -356,7 +356,7 @@ export default function PlantDailyReport() {
                     : <>Sessions attributed: on or before <span className="font-medium">{data.boilerHeating.attributionToDate}</span> (no prior production day on record for this plant).</>
                   }
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-sm">
                   <KV label="Total Heating Hrs" value={fmt(data.boilerHeating.totalHours, 2)} />
                   <KV label="Sessions LDO L" value={fmt(data.boilerHeating.sessionsLdoT1L, 1)} />
                   <KV
@@ -364,6 +364,7 @@ export default function PlantDailyReport() {
                     value={data.boilerHeating.boilerRunsDuringProduction ? fmt(data.boilerHeating.boilerDuringProductionL, 1) : "—"}
                   />
                   <KV label="Total Boiler LDO L" value={fmt(data.boilerHeating.totalBoilerLdoL, 1)} />
+                  <KV label="L / Hour" value={fmt(data.boilerHeating.lPerHour, 2)} />
                   <KV label="L / MT (Boiler)" value={fmt(data.boilerHeating.lPerMT, 3)} />
                   <KV label="DG Diesel L" value={fmt(data.boilerHeating.dgDieselL, 1)} />
                 </div>
