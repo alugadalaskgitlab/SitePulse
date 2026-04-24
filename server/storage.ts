@@ -5828,6 +5828,7 @@ export class DatabaseStorage implements IStorage {
         gstRateTransport: (data as any).gstRateTransport || null,
         gstRateLabour: (data as any).gstRateLabour || null,
         tdsRate: (data as any).tdsRate || null,
+        isInterState: !!data.isInterState,
         verifiedBy: data.verifiedBy?.toUpperCase() || data.verifiedBy,
         verifiedAt: data.verifiedAt,
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
@@ -5880,6 +5881,7 @@ export class DatabaseStorage implements IStorage {
           gstRateTransport: (data as any).gstRateTransport || null,
           gstRateLabour: (data as any).gstRateLabour || null,
           tdsRate: (data as any).tdsRate || null,
+          isInterState: !!data.isInterState,
           paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
         };
       if (data.status) {

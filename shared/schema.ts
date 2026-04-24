@@ -1302,6 +1302,7 @@ export const vendorBills = pgTable("vendor_bills", {
   gstRateTransport: real("gst_rate_transport"),
   gstRateLabour: real("gst_rate_labour"),
   tdsRate: real("tds_rate"),
+  isInterState: boolean("is_inter_state").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

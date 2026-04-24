@@ -11,7 +11,7 @@ import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, EQUIPMENT_TYPES } from "@shared/schema";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
-import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
+import { aggregateGstBreakdown, aggregateGstSplit, computeBillCgstSgstIgst, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -4348,6 +4348,7 @@ export async function registerRoutes(
       const bills = await storage.getVendorBills(filters);
 
       const { total: totalGst, ...gstByCategory } = aggregateGstBreakdown(bills);
+      const gstSplit = aggregateGstSplit(bills);
 
       const summary = {
         total: bills.length,
@@ -4362,6 +4363,8 @@ export async function registerRoutes(
         paidAmount: bills.filter(b => b.status === "paid").reduce((sum, b) => sum + (b.totalAmount || 0), 0),
         gstByCategory,
         totalGst,
+        gstSplit: { cgst: gstSplit.cgst, sgst: gstSplit.sgst, igst: gstSplit.igst },
+        interStateBills: bills.filter(b => b.isInterState).length,
       };
       res.json(summary);
     } catch (err) {
@@ -4415,9 +4418,11 @@ export async function registerRoutes(
       const filenameScope = isLedger ? `vendor-ledger-${vendorScope}` : "gst-register";
       const safeFilename = `${filenameScope}-${filenameRange}`.replace(/[^A-Za-z0-9._-]+/g, "_");
 
-      // Per-bill numbers. We don't track inter-state on the schema, so split GST
-      // assuming intra-state (CGST = SGST = GST/2, IGST = 0). This matches how
-      // the on-screen GST cards present the totals.
+      // Per-bill numbers. The vendor_bills.isInterState flag (per bill) drives
+      // the CGST/SGST/IGST split: inter-state bills route their entire GST to
+      // IGST; intra-state bills split it as CGST = SGST = GST/2. This matches
+      // computeBillCgstSgstIgst in shared/vendor-bill-gst.ts and the on-screen
+      // GST register cards.
       type BillRow = {
         billNo: string; date: string; vendor: string; category: string;
         taxable: number; gst: number; cgst: number; sgst: number; igst: number; total: number;
@@ -4426,6 +4431,7 @@ export async function registerRoutes(
         const taxable = b.totalAmount || 0;
         const cat = computeBillGstByCategory(b);
         const gst = cat.equipment + cat.material + cat.transport + cat.labour + cat.other;
+        const split = computeBillCgstSgstIgst(b);
         return {
           billNo: b.billNo,
           date: b.billDate,
@@ -4433,16 +4439,23 @@ export async function registerRoutes(
           category: (b.billType || "other").toLowerCase(),
           taxable,
           gst,
-          cgst: gst / 2,
-          sgst: gst / 2,
-          igst: 0,
+          cgst: split.cgst,
+          sgst: split.sgst,
+          igst: split.igst,
           total: taxable + gst,
         };
       });
 
       const totals = aggregateGstBreakdown(bills);
+      const splitTotals = aggregateGstSplit(bills);
       const totalTaxable = bills.reduce((s, b) => s + (b.totalAmount || 0), 0);
       const grandTotal = totalTaxable + totals.total;
+      const interStateBillCount = bills.filter(b => b.isInterState).length;
+      const splitNote = interStateBillCount === 0
+        ? `GST split: intra-state (CGST = SGST = GST/2, IGST = 0). No inter-state bills in range.`
+        : interStateBillCount === bills.length
+        ? `GST split: inter-state (entire GST routed to IGST). All ${bills.length} bills marked inter-state.`
+        : `GST split: per-bill — ${interStateBillCount} of ${bills.length} bill${bills.length === 1 ? "" : "s"} marked inter-state (IGST); the rest split as CGST = SGST = GST/2.`;
 
       // Category summary — always show the 4 main categories so empty buckets
       // appear as "—" rows instead of being silently dropped. "Other" is only
@@ -4524,7 +4537,7 @@ export async function registerRoutes(
         lines.push(toLine([`Category filter: ${categoryFilter !== "all" ? categoryFilter : "all"}`]));
         lines.push(toLine([`Bills in range: ${bills.length}`]));
         lines.push(toLine([`Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`]));
-        lines.push(toLine([`GST split assumes intra-state (CGST = SGST = GST/2, IGST = 0).`]));
+        lines.push(toLine([splitNote]));
         lines.push(toLine([`Generated: ${generatedAt}`]));
         lines.push("");
         lines.push(toLine(["== SUMMARY — GST BY CATEGORY =="]));
@@ -4551,7 +4564,7 @@ export async function registerRoutes(
           for (const r of detailRows) {
             lines.push(toLine([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.cgst), fmtNum(r.sgst), fmtNum(r.igst), fmtNum(r.total)]));
           }
-          lines.push(toLine(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total / 2), fmtNum(totals.total / 2), fmtNum(0), fmtNum(grandTotal)]));
+          lines.push(toLine(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(splitTotals.cgst), fmtNum(splitTotals.sgst), fmtNum(splitTotals.igst), fmtNum(grandTotal)]));
         }
         const body = "\uFEFF" + lines.join("\r\n") + "\r\n";
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -4571,7 +4584,7 @@ export async function registerRoutes(
         [`Category filter: ${categoryFilter !== "all" ? categoryFilter : "all"}`],
         [`Bills in range: ${bills.length}`],
         [`Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`],
-        [`GST split assumes intra-state (CGST = SGST = GST/2, IGST = 0).`],
+        [splitNote],
         [`Generated: ${generatedAt}`],
         [],
         ["GST by Category"],
@@ -4603,7 +4616,7 @@ export async function registerRoutes(
         for (const r of detailRows) {
           detailAoa.push([r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.cgst), fmtNum(r.sgst), fmtNum(r.igst), fmtNum(r.total)]);
         }
-        detailAoa.push(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total / 2), fmtNum(totals.total / 2), fmtNum(0), fmtNum(grandTotal)]);
+        detailAoa.push(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(splitTotals.cgst), fmtNum(splitTotals.sgst), fmtNum(splitTotals.igst), fmtNum(grandTotal)]);
       }
       const detailSheet = xlsx.utils.aoa_to_sheet(detailAoa);
       (detailSheet as any)["!cols"] = [
