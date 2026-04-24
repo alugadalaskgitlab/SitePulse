@@ -1,11 +1,15 @@
 import { Link } from "wouter";
-import { HardHat, Factory, BarChart3, Settings } from "lucide-react";
+import { HardHat, Factory, BarChart3, Settings, Users, ShieldCheck, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AdminNotifications } from "@/components/AdminNotifications";
+import { useAuth } from "@/lib/auth-context";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
 export default function Home() {
+  const { user, sectionVisible, logout } = useAuth();
+  const canManageUsers = sectionVisible("user_management");
+  const canApproveDevices = sectionVisible("device_approval");
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center mb-12">
@@ -50,7 +54,7 @@ export default function Home() {
         </Link>
       </div>
 
-      <div className="mt-8 flex items-center gap-4">
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Link href="/estimator-login">
           <Button variant="outline" className="gap-2" data-testid="button-estimate-manager">
             <BarChart3 className="w-4 h-4" />
@@ -69,8 +73,41 @@ export default function Home() {
             Settings
           </Button>
         </Link>
+        {canManageUsers && (
+          <Link href="/admin/users">
+            <Button variant="ghost" className="gap-2" data-testid="button-user-management">
+              <Users className="w-4 h-4" />
+              User Management
+            </Button>
+          </Link>
+        )}
+        {canApproveDevices && (
+          <Link href="/admin/devices">
+            <Button variant="ghost" className="gap-2" data-testid="button-device-approval">
+              <ShieldCheck className="w-4 h-4" />
+              Device Approval
+            </Button>
+          </Link>
+        )}
         <AdminNotifications />
       </div>
+      {user && (
+        <div className="mt-6 flex items-center gap-3 text-sm text-muted-foreground">
+          <span data-testid="text-current-user">
+            Signed in as <span className="font-medium text-foreground">{user.fullName || user.email}</span>
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => { void logout(); }}
+            data-testid="button-logout"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sign out
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
