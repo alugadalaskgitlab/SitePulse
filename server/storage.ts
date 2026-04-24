@@ -336,6 +336,10 @@ export interface IStorage {
   // Rewrite legacy short generator names (e.g. "600 KVA") to canonical Equipment Master names ("600 KVA GENERATOR")
   migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }>;
 
+  // Backfill LDO Flow Meter ledger rows (tagged sourceHeatingSessionId) from historical bitumen heating sessions.
+  // Idempotent: drops rows already tagged for each session, re-inserts opening/closing if values are present.
+  backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }>;
+
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
   listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
     name: string;
@@ -7154,6 +7158,76 @@ export class DatabaseStorage implements IStorage {
       }
     } catch (err) {
       console.error('migrateLegacyGeneratorNamesToCanonical: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
+  }
+
+  async backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }> {
+    const result = { sessionsScanned: 0, rowsInserted: 0, sessionsUpdated: 0, sessionsSkipped: 0, errors: 0 };
+    try {
+      const sessions = await db.select().from(bitumenHeatingSessions).orderBy(bitumenHeatingSessions.id);
+      result.sessionsScanned = sessions.length;
+
+      for (const session of sessions) {
+        try {
+          const hasOpening = session.ldoTank1OpeningMeter != null;
+          const hasClosing = session.ldoTank1ClosingMeter != null;
+
+          await db.transaction(async (tx) => {
+            // Always drop any rows previously tagged for this session — matches
+            // upsertBitumenHeatingSession semantics so stale rows on now all-null
+            // sessions get cleaned too.
+            await tx.delete(ldoFlowReadings)
+              .where(eq(ldoFlowReadings.sourceHeatingSessionId, session.id));
+
+            if (!hasOpening && !hasClosing) {
+              result.sessionsSkipped++;
+              return;
+            }
+
+            const ldoRows: InsertLdoFlowReading[] = [];
+            const startTimeStr = session.startTime || null;
+            const endTimeStr = session.endTime || null;
+            if (hasOpening) {
+              ldoRows.push({
+                date: session.date,
+                time: startTimeStr,
+                tankNumber: 1,
+                meterReading: session.ldoTank1OpeningMeter as number,
+                readingType: "opening",
+                notes: `Auto from heating session #${session.id}`,
+                plantName: session.plantName,
+                sourceHeatingSessionId: session.id,
+              });
+            }
+            if (hasClosing) {
+              ldoRows.push({
+                date: session.date,
+                time: endTimeStr,
+                tankNumber: 1,
+                meterReading: session.ldoTank1ClosingMeter as number,
+                readingType: "closing",
+                notes: `Auto from heating session #${session.id}`,
+                plantName: session.plantName,
+                sourceHeatingSessionId: session.id,
+              });
+            }
+            if (ldoRows.length > 0) {
+              await tx.insert(ldoFlowReadings).values(ldoRows);
+              result.rowsInserted += ldoRows.length;
+              result.sessionsUpdated++;
+            }
+          });
+        } catch (err) {
+          console.error(`backfillLdoFlowReadingsFromHeatingSessions: Error processing session ${session.id}:`, err);
+          result.errors++;
+        }
+      }
+
+      console.log(`backfillLdoFlowReadingsFromHeatingSessions: scanned ${result.sessionsScanned}, sessions updated ${result.sessionsUpdated}, rows inserted ${result.rowsInserted}, skipped ${result.sessionsSkipped}, errors ${result.errors}`);
+    } catch (err) {
+      console.error('backfillLdoFlowReadingsFromHeatingSessions: Fatal error:', err);
       result.errors++;
     }
     return result;

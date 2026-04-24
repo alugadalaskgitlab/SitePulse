@@ -82,6 +82,12 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.backfillLdoFlowReadingsFromHeatingSessions();
+  } catch (e) {
+    console.error("Startup: Failed to backfill LDO flow readings from heating sessions:", e);
+  }
+
+  try {
     await ensureBootstrapAdmin();
   } catch (e) {
     console.error("Startup: ensureBootstrapAdmin failed:", e);
