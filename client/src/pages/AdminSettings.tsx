@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X, Percent } from "lucide-react";
+import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X, Percent, Flame } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -11,7 +11,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { PinAuth } from "@/components/PinAuth";
-import { EQUIPMENT_TYPES, type Site, type Party } from "@shared/schema";
+import {
+  EQUIPMENT_TYPES,
+  PLANT_ALERT_THRESHOLD_DEFAULTS,
+  type PlantAlertThresholds,
+  type Site,
+  type Party,
+} from "@shared/schema";
 
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -40,6 +46,15 @@ export default function AdminSettings() {
   // Per-equipment-type overrides. Empty string means "no override" (use global).
   const [varianceOverridesInput, setVarianceOverridesInput] = useState<Record<string, string>>({});
   const [varianceOverridesDirty, setVarianceOverridesDirty] = useState(false);
+
+  // Plant alert thresholds (boiler / heating session post-save alerts).
+  // The full schema also stores `monthlyOverConsumerVariancePct` and
+  // `monthlyOverConsumerMinDays`; those are kept and re-sent unchanged so the
+  // PUT (which validates the whole object) doesn't reset them to defaults.
+  const [hotOilEndTempInput, setHotOilEndTempInput] = useState("");
+  const [ldoLitersPerHourInput, setLdoLitersPerHourInput] = useState("");
+  const [sessionsVsShiftInput, setSessionsVsShiftInput] = useState("");
+  const [alertThresholdsDirty, setAlertThresholdsDirty] = useState(false);
 
   const changeAdminPinMutation = useMutation({
     mutationFn: async (data: { currentPin: string; newPin: string }) => {
@@ -134,6 +149,42 @@ export default function AdminSettings() {
       if (variables.thresholdPct !== undefined) setVarianceThresholdDirty(false);
       if (variables.overrides !== undefined) setVarianceOverridesDirty(false);
       toast({ title: "Threshold Updated", description: "Variance highlight threshold has been saved." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Plant alert thresholds queries/mutations
+  const { data: alertThresholdsData, isLoading: alertThresholdsLoading } = useQuery<PlantAlertThresholds>({
+    queryKey: ["/api/plant-module/alert-thresholds"],
+    enabled: authenticated,
+  });
+
+  useEffect(() => {
+    if (!alertThresholdsDirty && alertThresholdsData) {
+      setHotOilEndTempInput(String(alertThresholdsData.hotOilEndTempMinC));
+      setLdoLitersPerHourInput(String(alertThresholdsData.ldoLitersPerHourMax));
+      setSessionsVsShiftInput(String(alertThresholdsData.sessionsVsShiftMismatchL));
+    }
+  }, [alertThresholdsData, alertThresholdsDirty]);
+
+  const updateAlertThresholdsMutation = useMutation({
+    mutationFn: async (payload: PlantAlertThresholds) => {
+      const response = await apiRequest("PUT", "/api/plant-module/alert-thresholds", {
+        pin: authenticatedPin,
+        ...payload,
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to update alert thresholds");
+      }
+      return response.json() as Promise<PlantAlertThresholds>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/alert-thresholds"] });
+      setAlertThresholdsDirty(false);
+      toast({ title: "Alert Thresholds Updated", description: "Boiler & hot-oil alert limits have been saved." });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -570,6 +621,177 @@ export default function AdminSettings() {
                 <>
                   <Save className="w-4 h-4" />
                   Save Threshold
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <Flame className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <CardTitle>Boiler & Hot-Oil Alert Limits</CardTitle>
+              <CardDescription>
+                Limits used by the heating-session post-save check that fires push and inbox alerts to managers.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!alertThresholdsData) return;
+
+              const hotOil = Number(hotOilEndTempInput);
+              if (!Number.isFinite(hotOil) || hotOil < 0) {
+                toast({
+                  title: "Invalid Hot-Oil End Temp",
+                  description: "Enter a non-negative number (°C).",
+                  variant: "destructive",
+                });
+                return;
+              }
+
+              const ldoLph = Number(ldoLitersPerHourInput);
+              if (!Number.isFinite(ldoLph) || ldoLph <= 0) {
+                toast({
+                  title: "Invalid LDO L/hour Limit",
+                  description: "Enter a positive number (L/hour).",
+                  variant: "destructive",
+                });
+                return;
+              }
+
+              const mismatch = Number(sessionsVsShiftInput);
+              if (!Number.isFinite(mismatch) || mismatch <= 0) {
+                toast({
+                  title: "Invalid Mismatch Limit",
+                  description: "Enter a positive number (L).",
+                  variant: "destructive",
+                });
+                return;
+              }
+
+              updateAlertThresholdsMutation.mutate({
+                hotOilEndTempMinC: hotOil,
+                ldoLitersPerHourMax: ldoLph,
+                sessionsVsShiftMismatchL: mismatch,
+                // Preserve the persistent over-consumer fields (also stored in
+                // this same JSON blob) so saving boiler limits doesn't reset
+                // them. Fall back to defaults if the GET hasn't loaded yet.
+                monthlyOverConsumerVariancePct:
+                  alertThresholdsData.monthlyOverConsumerVariancePct
+                  ?? PLANT_ALERT_THRESHOLD_DEFAULTS.monthlyOverConsumerVariancePct,
+                monthlyOverConsumerMinDays:
+                  alertThresholdsData.monthlyOverConsumerMinDays
+                  ?? PLANT_ALERT_THRESHOLD_DEFAULTS.monthlyOverConsumerMinDays,
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="hotOilEndTempMinC">Hot-Oil End Temperature Floor</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="hotOilEndTempMinC"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={hotOilEndTempInput}
+                  onChange={(e) => {
+                    setHotOilEndTempInput(e.target.value);
+                    setAlertThresholdsDirty(true);
+                  }}
+                  placeholder={String(PLANT_ALERT_THRESHOLD_DEFAULTS.hotOilEndTempMinC)}
+                  className="w-32"
+                  disabled={alertThresholdsLoading}
+                  data-testid="input-hot-oil-end-temp-min"
+                />
+                <span className="text-sm text-muted-foreground">°C</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Alert when a heating session ends below this temperature. Default {PLANT_ALERT_THRESHOLD_DEFAULTS.hotOilEndTempMinC}°C.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ldoLitersPerHourMax">LDO Burn Rate Ceiling</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="ldoLitersPerHourMax"
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={ldoLitersPerHourInput}
+                  onChange={(e) => {
+                    setLdoLitersPerHourInput(e.target.value);
+                    setAlertThresholdsDirty(true);
+                  }}
+                  placeholder={String(PLANT_ALERT_THRESHOLD_DEFAULTS.ldoLitersPerHourMax)}
+                  className="w-32"
+                  disabled={alertThresholdsLoading}
+                  data-testid="input-ldo-liters-per-hour-max"
+                />
+                <span className="text-sm text-muted-foreground">L/hour</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Alert when a session's LDO burn rate exceeds this. Default {PLANT_ALERT_THRESHOLD_DEFAULTS.ldoLitersPerHourMax} L/hour.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sessionsVsShiftMismatchL">Sessions vs Shift-Meter Mismatch</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="sessionsVsShiftMismatchL"
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={sessionsVsShiftInput}
+                  onChange={(e) => {
+                    setSessionsVsShiftInput(e.target.value);
+                    setAlertThresholdsDirty(true);
+                  }}
+                  placeholder={String(PLANT_ALERT_THRESHOLD_DEFAULTS.sessionsVsShiftMismatchL)}
+                  className="w-32"
+                  disabled={alertThresholdsLoading}
+                  data-testid="input-sessions-vs-shift-mismatch"
+                />
+                <span className="text-sm text-muted-foreground">L</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Alert when |sum of session LDO − shift-meter LDO| for a day exceeds this. Default {PLANT_ALERT_THRESHOLD_DEFAULTS.sessionsVsShiftMismatchL} L.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={
+                updateAlertThresholdsMutation.isPending
+                || alertThresholdsLoading
+                || !alertThresholdsData
+                || !hotOilEndTempInput
+                || !ldoLitersPerHourInput
+                || !sessionsVsShiftInput
+              }
+              className="w-full gap-2"
+              data-testid="button-save-alert-thresholds"
+            >
+              {updateAlertThresholdsMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Alert Limits
                 </>
               )}
             </Button>
