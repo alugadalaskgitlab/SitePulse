@@ -64,7 +64,7 @@ import {
   VARIANCE_HIGHLIGHT_THRESHOLD_KEY,
   VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT,
 } from "@shared/schema";
-import { sendPushToAll } from "./push";
+import { sendPushToAll, sendPushToAudience } from "./push";
 import {
   type CreateDprRequest,
   type Dpr,
@@ -2134,6 +2134,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
+    const result = await this._createEquipmentUsageTxn(usage);
+    this._emitPersistentOverConsumerAlert(result.equipmentId, result.date)
+      .catch((err: any) => console.error("[OverConsumerAlert] create hook failed:", err?.message || err));
+    return result;
+  }
+
+  private async _createEquipmentUsageTxn(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
     return db.transaction(async (tx) => {
       // Get equipment to calculate expected diesel
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
@@ -2307,6 +2314,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
+    const result = await this._updateEquipmentUsageTxn(id, usage);
+    if (result) {
+      this._emitPersistentOverConsumerAlert(result.equipmentId, result.date)
+        .catch((err: any) => console.error("[OverConsumerAlert] update hook failed:", err?.message || err));
+    }
+    return result;
+  }
+
+  private async _updateEquipmentUsageTxn(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
     return db.transaction(async (tx) => {
       const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
       if (!existing) return undefined;
@@ -4001,7 +4017,10 @@ export class DatabaseStorage implements IStorage {
       .values(data)
       .onConflictDoUpdate({
         target: pushSubscriptions.endpoint,
-        set: { p256dh: data.p256dh, auth: data.auth, label: data.label },
+        // Refresh `role` on every re-subscribe so existing rows get the
+        // server-assigned role (derived from PIN) and audience-targeted
+        // alerts can reach them.
+        set: { p256dh: data.p256dh, auth: data.auth, label: data.label, role: data.role },
       })
       .returning();
     return sub;
@@ -9774,6 +9793,100 @@ export class DatabaseStorage implements IStorage {
         console.error("[HeatingAlerts] createNotification failed:", err?.message || err);
       }
       sendPushToAll(a.title, a.message, url).catch(() => {});
+    }
+  }
+
+  // Post-save hook: when an equipment-usage entry is created or updated,
+  // re-evaluate that machine's month-to-date diesel consumption against the
+  // admin-tunable persistent over-consumer thresholds. If the machine has
+  // crossed the line for the first time this month, fire a single alert
+  // (push + admin inbox). De-duplication keys on the alert title which
+  // includes the machine + YYYY-MM, so subsequent saves in the same month
+  // are silent.
+  private async _emitPersistentOverConsumerAlert(
+    equipmentId: number,
+    dateStr: string | null | undefined,
+  ): Promise<void> {
+    try {
+      if (!equipmentId || !dateStr || !/^\d{4}-\d{2}/.test(dateStr)) return;
+      const month = dateStr.slice(0, 7);
+      const monthStart = `${month}-01`;
+      const [yr, mo] = month.split("-").map(Number);
+      const nextMonth = mo === 12
+        ? `${yr + 1}-01-01`
+        : `${yr}-${String(mo + 1).padStart(2, "0")}-01`;
+
+      const thresholds = await this.getPlantAlertThresholds();
+      const variancePct = thresholds.monthlyOverConsumerVariancePct;
+      const minDays = thresholds.monthlyOverConsumerMinDays;
+      if (!variancePct || variancePct <= 0) return;
+      if (!minDays || minDays <= 0) return;
+
+      const [equip] = await db.select().from(equipmentMaster)
+        .where(eq(equipmentMaster.id, equipmentId)).limit(1);
+      if (!equip) return;
+
+      const entries = await db.select().from(equipmentUsage).where(and(
+        eq(equipmentUsage.equipmentId, equipmentId),
+        gte(equipmentUsage.date, monthStart),
+        lt(equipmentUsage.date, nextMonth),
+      ));
+
+      let totalActual = 0;
+      let totalExpected = 0;
+      const overshootDays = new Set<string>();
+      for (const e of entries) {
+        const isPartial = e.openingReading != null
+          && e.closingReading == null
+          && e.tripBasedEntry !== true;
+        if (isPartial) continue;
+        if (e.dieselIncluded === true) continue;
+        if ((e.entryType || "").toLowerCase() === "shifting") continue;
+
+        const opening = e.openingDiesel ?? 0;
+        const issued = e.dieselIssued ?? 0;
+        const closing = e.dieselBalanceInTank ?? e.closingDiesel;
+        const expected = e.expectedDiesel ?? 0;
+        const consumed = closing != null
+          ? Math.max(0, opening + issued - closing)
+          : expected;
+        totalActual += consumed;
+        totalExpected += expected;
+        if (expected > 0 && ((consumed - expected) / expected) * 100 >= variancePct) {
+          overshootDays.add(e.date);
+        }
+      }
+
+      if (totalExpected <= 0) return;
+      const monthVariancePct = ((totalActual - totalExpected) / totalExpected) * 100;
+      if (monthVariancePct < variancePct) return;
+      if (overshootDays.size < minDays) return;
+
+      const equipName = equip.name + (equip.registrationNumber ? ` (${equip.registrationNumber})` : "");
+      // Stable dedup key, machine-id + month, embedded in the title so we
+      // can recognise prior alerts even if the equipment is later renamed
+      // or another machine happens to share the same display name.
+      const dedupKey = `[eq:${equipmentId}|${month}]`;
+      const title = `Persistent diesel over-consumer ${dedupKey} — ${equipName} — ${month}`;
+
+      // De-dup: one alert per (equipmentId, month). The key is a literal
+      // substring of every prior alert's title for this machine + month.
+      const existing = await db.select({ id: adminNotifications.id })
+        .from(adminNotifications)
+        .where(ilike(adminNotifications.title, `%${dedupKey}%`))
+        .limit(1);
+      if (existing.length > 0) return;
+
+      const dayWord = overshootDays.size === 1 ? "day" : "days";
+      const message = `${equipName} is averaging ${monthVariancePct.toFixed(1)}% over diesel norm for ${month} `
+        + `(${overshootDays.size} ${dayWord} ≥ ${variancePct}% over norm; min ${minDays}). `
+        + `Actual ${totalActual.toFixed(1)} L vs expected ${totalExpected.toFixed(1)} L.`;
+
+      await this.createNotification({ type: "warning", title, message });
+      sendPushToAudience(title, message, "/plant/equipment-usage", "managers")
+        .catch(() => {});
+    } catch (err: any) {
+      console.error("[OverConsumerAlert] check failed:", err?.message || err);
     }
   }
 

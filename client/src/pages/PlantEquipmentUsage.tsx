@@ -22,7 +22,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { EquipmentMasterType, EquipmentUsage, Site } from "@shared/schema";
-import { METER_TYPES, VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT } from "@shared/schema";
+import { METER_TYPES, VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT, PLANT_ALERT_THRESHOLD_DEFAULTS, type PlantAlertThresholds } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
@@ -552,8 +552,19 @@ export default function PlantEquipmentUsage() {
   const { data: varianceThresholdData } = useQuery<{ thresholdPct: number }>({
     queryKey: ["/api/plant-module/variance-highlight-threshold"],
   });
-  const MONTHLY_VARIANCE_THRESHOLD_PCT = varianceThresholdData?.thresholdPct ?? VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
-  const MONTHLY_MIN_DAYS = 2;
+  // Persistent over-consumer criteria (% and min days) live in the same
+  // admin-tunable config as the boiler/hot-oil alerts. Server-side alert
+  // dispatch reads from this exact source, so the UI badge and the alert
+  // can never diverge.
+  const { data: plantAlertThresholds } = useQuery<PlantAlertThresholds>({
+    queryKey: ["/api/plant-module/alert-thresholds"],
+  });
+  const MONTHLY_VARIANCE_THRESHOLD_PCT = plantAlertThresholds?.monthlyOverConsumerVariancePct
+    ?? varianceThresholdData?.thresholdPct
+    ?? PLANT_ALERT_THRESHOLD_DEFAULTS.monthlyOverConsumerVariancePct
+    ?? VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
+  const MONTHLY_MIN_DAYS = plantAlertThresholds?.monthlyOverConsumerMinDays
+    ?? PLANT_ALERT_THRESHOLD_DEFAULTS.monthlyOverConsumerMinDays;
 
   const availableMonths = useMemo(() => {
     const set = new Set<string>();

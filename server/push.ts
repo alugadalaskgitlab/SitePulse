@@ -41,11 +41,36 @@ export async function sendTestPush(endpoint: string, p256dh: string, auth: strin
 }
 
 export async function sendPushToAll(title: string, body: string, url?: string) {
+  return sendPushToAudience(title, body, url, "all");
+}
+
+// Targeted push. The `audience` filter relies on the server-assigned
+// `role` column on push_subscriptions (set from the PIN used at subscribe
+// time), so it cannot be spoofed by clients.
+//   audience='all'      -> every active subscription
+//   audience='managers' -> only subscriptions with role='manager' or 'admin'
+// If audience='managers' but no manager/admin device has subscribed, the
+// alert is dropped (and logged) rather than silently broadcast — the
+// admin-inbox notification remains the persistent record.
+export async function sendPushToAudience(
+  title: string,
+  body: string,
+  url?: string,
+  audience: "all" | "managers" = "all",
+) {
   if (!pushInitialized) return;
 
   try {
-    const subscriptions = await storage.getAllPushSubscriptions();
+    let subscriptions = await storage.getAllPushSubscriptions();
     if (subscriptions.length === 0) return;
+
+    if (audience === "managers") {
+      subscriptions = subscriptions.filter((s) => s.role === "manager" || s.role === "admin");
+      if (subscriptions.length === 0) {
+        console.log(`[Push] No manager/admin devices subscribed — dropping push for "${title}". Inbox notification still recorded.`);
+        return;
+      }
+    }
 
     const payload = JSON.stringify({
       title,

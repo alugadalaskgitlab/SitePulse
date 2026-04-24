@@ -489,15 +489,21 @@ export async function registerRoutes(
       if (!managerPin && !adminPin) {
         return res.status(500).json({ message: "No PINs configured in settings" });
       }
-      const pinValid = (managerPin && pin === managerPin) || (adminPin && pin === adminPin);
-      if (!pinValid) {
+      const isAdminPin = !!(adminPin && pin === adminPin);
+      const isManagerPin = !!(managerPin && pin === managerPin);
+      if (!isAdminPin && !isManagerPin) {
         return res.status(403).json({ message: "Invalid PIN" });
       }
+      // Role is derived server-side from the PIN that authenticated, not
+      // from anything the client can spoof. Used to route targeted alerts
+      // (e.g. persistent over-consumer) to the right audience.
+      const role = isAdminPin ? "admin" : "manager";
       const sub = await storage.createPushSubscription({
         endpoint: subscription.endpoint,
         p256dh: subscription.keys.p256dh,
         auth: subscription.keys.auth,
         label: req.body.label || null,
+        role,
       });
       sendTestPush(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth).catch(() => {});
       res.status(201).json(sub);

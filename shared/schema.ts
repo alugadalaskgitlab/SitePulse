@@ -1110,6 +1110,11 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
   label: text("label"),
+  // Deterministic role assigned at subscribe time based on which PIN
+  // the device used to enable notifications: "admin" | "manager".
+  // Used to route targeted alerts (e.g. persistent diesel over-consumer)
+  // to the right audience without trusting client-supplied labels.
+  role: text("role"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1443,12 +1448,21 @@ export const PLANT_ALERT_THRESHOLD_DEFAULTS = {
   hotOilEndTempMinC: 200,
   ldoLitersPerHourMax: 25,
   sessionsVsShiftMismatchL: 5,
+  // Persistent diesel over-consumer (PlantEquipmentUsage monthly rollup).
+  // A machine is flagged when its month-to-date diesel variance is at or
+  // above `monthlyOverConsumerVariancePct`, AND it has overshot the daily
+  // variance threshold on at least `monthlyOverConsumerMinDays` distinct
+  // days inside the same month.
+  monthlyOverConsumerVariancePct: 15,
+  monthlyOverConsumerMinDays: 2,
 } as const;
 
 export const plantAlertThresholdsSchema = z.object({
   hotOilEndTempMinC: z.number().nonnegative(),
   ldoLitersPerHourMax: z.number().positive(),
   sessionsVsShiftMismatchL: z.number().positive(),
+  monthlyOverConsumerVariancePct: z.number().positive().max(500).default(15),
+  monthlyOverConsumerMinDays: z.number().int().positive().max(31).default(2),
 });
 export type PlantAlertThresholds = z.infer<typeof plantAlertThresholdsSchema>;
 
