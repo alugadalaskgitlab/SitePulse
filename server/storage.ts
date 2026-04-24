@@ -34,6 +34,7 @@ import {
   plantShiftLogs,
   bitumenHeatingSessions,
   plantHeatingSessionVersions,
+  heatingAlertHistory,
   plantShiftLogManpower,
   plantShiftLogManpowerRelabelBatches,
   plantShiftLogManpowerRelabelSnapshots,
@@ -9915,37 +9916,74 @@ export class DatabaseStorage implements IStorage {
   // and any related shift-meter data, then push + write inbox entries for
   // each violated threshold. Each alert is independent so multiple may fire
   // for a single save.
+  //
+  // De-duplication: every alert has a stable `scopeKey` (per session+type, or
+  // per date+plant for the cross-shift mismatch). We persist the last-known
+  // state ("ok"/"bad") and message in `heating_alert_history`. An alert only
+  // re-fires when the state transitions ok→bad, or when it's still bad but
+  // the formatted message has materially changed (a different rounded value,
+  // different threshold, etc). This prevents notification fatigue from repeat
+  // saves of the same heating session.
   private async _emitHeatingSessionAlerts(saved: BitumenHeatingSession): Promise<void> {
     const thresholds = await this.getPlantAlertThresholds();
     const url = `/plant/heating-sessions/${saved.date}`;
     const plantTag = saved.plantName ? ` [${saved.plantName}]` : "";
     const dateTag = saved.date ? ` ${saved.date}` : "";
 
-    type Alert = { type: "warning" | "error"; title: string; message: string };
-    const alerts: Alert[] = [];
+    // Each candidate carries the current state for its scope. `state: "ok"`
+    // means the threshold is currently fine — we update history but don't
+    // fire. `state: "bad"` means the threshold is violated and we may fire
+    // depending on the prior history row.
+    type Candidate =
+      | { scopeKey: string; state: "ok" }
+      | { scopeKey: string; state: "bad"; type: "warning" | "error"; title: string; message: string };
+    const candidates: Candidate[] = [];
 
-    // 1. Hot-oil end temperature out of band (low end temp = boiler underperforming)
+    // 1. Hot-oil end temperature out of band (low end temp = boiler underperforming).
+    // Always emit an "ok" candidate when not violating — including when the
+    // input field is now null — so a prior "bad" history row gets cleared
+    // and a later genuine violation can re-fire as a fresh transition.
+    const hotOilKey = `session:${saved.id}:hotOilLow`;
     if (saved.hotOilTempEnd != null && saved.hotOilTempEnd < thresholds.hotOilEndTempMinC) {
-      alerts.push({
+      candidates.push({
+        scopeKey: hotOilKey,
+        state: "bad",
         type: "warning",
         title: "Hot-oil end temp below target",
         message: `Session #${saved.id}${plantTag}${dateTag}: end temp ${saved.hotOilTempEnd}°C < ${thresholds.hotOilEndTempMinC}°C target`,
       });
+    } else {
+      candidates.push({ scopeKey: hotOilKey, state: "ok" });
     }
 
-    // 2. LDO L/Hour above limit (boiler burning too much fuel)
+    // 2. LDO L/Hour above limit (boiler burning too much fuel). Same "always
+    // push ok" pattern — if the inputs are missing or the rate is fine, clear
+    // any stale "bad" history so a future violation re-fires properly.
+    const ldoKey = `session:${saved.id}:ldoHigh`;
     if (saved.ldoTank1Consumed != null && saved.durationHours != null && saved.durationHours > 0) {
       const lPerHour = saved.ldoTank1Consumed / saved.durationHours;
       if (lPerHour > thresholds.ldoLitersPerHourMax) {
-        alerts.push({
+        candidates.push({
+          scopeKey: ldoKey,
+          state: "bad",
           type: "warning",
           title: "Boiler LDO L/hour above limit",
           message: `Session #${saved.id}${plantTag}${dateTag}: ${lPerHour.toFixed(1)} L/hr > ${thresholds.ldoLitersPerHourMax} L/hr limit (${saved.ldoTank1Consumed.toFixed(1)} L over ${saved.durationHours.toFixed(2)} hr)`,
         });
+      } else {
+        candidates.push({ scopeKey: ldoKey, state: "ok" });
       }
+    } else {
+      candidates.push({ scopeKey: ldoKey, state: "ok" });
     }
 
-    // 3. Sessions vs shift-meter Tank-1 mismatch (totals across the day)
+    // 3. Sessions vs shift-meter Tank-1 mismatch (totals across the day).
+    // Scoped per (date, plant) so multiple sessions on the same day collapse
+    // to one alert, and only re-fire when the discrepancy meaningfully shifts.
+    // When the comparison can't be performed (no shift meter yet, or no
+    // sessions left after a delete) we still mark the scope "ok" to clear
+    // any stale "bad" state from a previous evaluation.
+    const mismatchKey = `mismatch:${saved.date}:${saved.plantName ?? ""}`;
     try {
       const sameDaySessions = await this.getBitumenHeatingSessions({
         date: saved.date,
@@ -9960,24 +9998,89 @@ export class DatabaseStorage implements IStorage {
       if (shiftLdoT1L != null && sessionsLdoT1L > 0) {
         const diff = sessionsLdoT1L - shiftLdoT1L;
         if (Math.abs(diff) > thresholds.sessionsVsShiftMismatchL) {
-          alerts.push({
+          candidates.push({
+            scopeKey: mismatchKey,
+            state: "bad",
             type: "error",
             title: "Boiler LDO mismatch vs shift meter",
             message: `${saved.date}${plantTag}: heating sessions ${sessionsLdoT1L.toFixed(1)} L vs shift Tank-1 ${shiftLdoT1L.toFixed(1)} L (Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(1)} L > ±${thresholds.sessionsVsShiftMismatchL} L)`,
           });
+        } else {
+          candidates.push({ scopeKey: mismatchKey, state: "ok" });
         }
+      } else {
+        candidates.push({ scopeKey: mismatchKey, state: "ok" });
       }
     } catch (err: any) {
       console.error("[HeatingAlerts] Mismatch check failed:", err?.message || err);
     }
 
-    for (const a of alerts) {
+    if (candidates.length === 0) return;
+
+    // Load prior history for all scope keys we touched, in one round-trip.
+    const scopeKeys = candidates.map(c => c.scopeKey);
+    const priorRows = await db.select().from(heatingAlertHistory)
+      .where(inArray(heatingAlertHistory.scopeKey, scopeKeys));
+    const priorByKey = new Map(priorRows.map(r => [r.scopeKey, r]));
+
+    const now = new Date();
+    for (const c of candidates) {
+      const prior = priorByKey.get(c.scopeKey);
+      if (c.state === "ok") {
+        // Threshold is fine now. Record/refresh state but never notify.
+        if (!prior) {
+          await db.insert(heatingAlertHistory).values({
+            scopeKey: c.scopeKey,
+            state: "ok",
+            lastMessage: null,
+            lastFiredAt: null,
+            updatedAt: now,
+          }).onConflictDoNothing();
+        } else if (prior.state !== "ok") {
+          await db.update(heatingAlertHistory)
+            .set({ state: "ok", updatedAt: now })
+            .where(eq(heatingAlertHistory.scopeKey, c.scopeKey));
+        }
+        continue;
+      }
+
+      // c.state === "bad": only fire on transition (no prior, or prior was
+      // "ok") or when the formatted message has changed (significant shift).
+      const isTransition = !prior || prior.state !== "bad";
+      const messageChanged = !!prior && prior.state === "bad" && prior.lastMessage !== c.message;
+      if (!isTransition && !messageChanged) {
+        // Identical repeat — skip notification, leave history as-is.
+        continue;
+      }
+
       try {
-        await this.createNotification({ type: a.type, title: a.title, message: a.message });
+        await this.createNotification({ type: c.type, title: c.title, message: c.message });
       } catch (err: any) {
         console.error("[HeatingAlerts] createNotification failed:", err?.message || err);
       }
-      sendPushToAll(a.title, a.message, url).catch(() => {});
+      sendPushToAll(c.title, c.message, url).catch(() => {});
+
+      const historyRow = {
+        scopeKey: c.scopeKey,
+        state: "bad" as const,
+        lastMessage: c.message,
+        lastFiredAt: now,
+        updatedAt: now,
+      };
+      try {
+        await db.insert(heatingAlertHistory).values(historyRow)
+          .onConflictDoUpdate({
+            target: heatingAlertHistory.scopeKey,
+            set: {
+              state: historyRow.state,
+              lastMessage: historyRow.lastMessage,
+              lastFiredAt: historyRow.lastFiredAt,
+              updatedAt: historyRow.updatedAt,
+            },
+          });
+      } catch (err: any) {
+        console.error("[HeatingAlerts] history upsert failed:", err?.message || err);
+      }
     }
   }
 

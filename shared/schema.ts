@@ -1023,6 +1023,23 @@ export type BitumenHeatingSession = typeof bitumenHeatingSessions.$inferSelect;
 export type InsertBitumenHeatingSession = z.infer<typeof insertBitumenHeatingSessionSchema>;
 export type PlantHeatingSessionVersion = typeof plantHeatingSessionVersions.$inferSelect;
 
+// Tracks the most recent fired/cleared state of each heating-session alert
+// so the post-save hook can dedupe and only re-fire on ok→bad transitions
+// (or significant value changes). One row per (scopeKey).
+//   scopeKey examples:
+//     "session:42:hotOilLow"
+//     "session:42:ldoHigh"
+//     "mismatch:2026-04-24:Main Plant"
+export const heatingAlertHistory = pgTable("heating_alert_history", {
+  id: serial("id").primaryKey(),
+  scopeKey: text("scope_key").notNull().unique(),
+  state: text("state").notNull(), // "ok" | "bad"
+  lastMessage: text("last_message"),
+  lastFiredAt: timestamp("last_fired_at"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type HeatingAlertHistory = typeof heatingAlertHistory.$inferSelect;
+
 export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSchema.extend({
   id: z.number().optional(),
   pin: z.string().optional(),
