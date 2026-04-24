@@ -169,9 +169,14 @@ export function registerAuthRoutes(app: Express) {
 
       const ua = String(req.headers["user-agent"] || "");
       const ip = getClientIp(req);
+      // Pass the raw cookie device (regardless of which user it belongs to).
+      // ensureDeviceForUser uses the presence of *any* cookie as proof that
+      // this is a previously-used browser, which is required to safely reuse
+      // an existing approved device by user-agent (see auth.ts step 2 for
+      // the security rationale).
       const { device, setNewCookie } = await ensureDeviceForUser({
         userId: user.id,
-        existingDevice: existingDevice && existingDevice.userId === user.id ? existingDevice : null,
+        existingDevice,
         deviceLabel: describeUserAgent(ua),
         userAgent: ua,
         ipAddress: ip,
@@ -180,13 +185,20 @@ export function registerAuthRoutes(app: Express) {
 
       // Cross-user safety: if the browser already had an APPROVED device
       // cookie for some OTHER user, do NOT rotate that cookie just because
-      // we minted a fresh pending device for the new login. Rotating in
-      // that case strands the original user (their cookie now points at
+      // we minted (or reused) a pending device for the new login. Rotating
+      // in that case strands the original user (their cookie now points at
       // a pending device they can't approve from a logged-out state).
-      // Instead, hand the new pending device's signed token back in the
-      // body. The client uses it to poll device-status and to claim the
-      // device once an admin approves it; only at that point does the
-      // cookie rotate.
+      // Instead, hand the pending device's signed token back in the body.
+      // The client uses it to poll device-status and to claim the device
+      // once an admin approves it; only at that point does the cookie
+      // rotate.
+      //
+      // ensureDeviceForUser already prefers an existing approved device for
+      // (userId, userAgent) on this browser, so the device returned here may
+      // be approved even though the cookie still points at a different user.
+      // In that case device.status === "approved", the condition below is
+      // false, the cookie rotates to the user's own approved device, and the
+      // user logs straight in — no pending screen, no approval loop.
       const preserveExistingCookie =
         setNewCookie &&
         device.status === "pending" &&

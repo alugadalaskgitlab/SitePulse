@@ -39,7 +39,7 @@ import {
   SESSION_COOKIE_NAME,
   DEVICE_COOKIE_NAME,
 } from "@shared/permissions";
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, gt, isNull, desc } from "drizzle-orm";
 import * as crypto from "crypto";
 import bcrypt from "bcryptjs";
 import type { Request, Response, NextFunction } from "express";
@@ -283,23 +283,109 @@ export async function lookupDeviceFromCookie(cookieHeader: string | undefined): 
   return { kind: "pending", device };
 }
 
+// How long a pending device row is considered "recent" enough to reuse
+// instead of inserting a fresh duplicate. Repeated login attempts within
+// this window for the same (userId, userAgent) keep landing on the same
+// pending row, so admins see one approval request rather than a pile.
+const PENDING_DEVICE_REUSE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export async function ensureDeviceForUser(input: {
   userId: number;
+  // The device the cookie currently points at, if any. Pass the RAW cookie
+  // device regardless of which user it belongs to — the function uses the
+  // presence of *any* cookie as proof this is a previously-used browser
+  // (required to safely reuse an existing approved device by user-agent).
   existingDevice: UserDevice | null;
   deviceLabel: string;
   userAgent?: string;
   ipAddress?: string;
   autoApprove?: boolean;
 }): Promise<{ device: UserDevice; setNewCookie: boolean }> {
-  // If we already have a device for THIS user, reuse it.
+  // 1. If the browser cookie already points at a device for THIS user,
+  // reuse it as-is and don't rotate the cookie.
+  // Exception: in bootstrap auto-approve mode (BOOTSTRAP_ADMIN_EMAIL with
+  // zero approved devices anywhere), a stale same-user PENDING or REVOKED
+  // cookie must NOT short-circuit recovery — fall through so we mint a
+  // fresh approved device row. Only an already-approved same-user cookie
+  // is honored under autoApprove.
   if (input.existingDevice && input.existingDevice.userId === input.userId) {
-    await db.update(userDevices)
-      .set({ lastSeenAt: new Date(), userAgent: input.userAgent, ipAddress: input.ipAddress })
-      .where(eq(userDevices.id, input.existingDevice.id));
-    const [refreshed] = await db.select().from(userDevices).where(eq(userDevices.id, input.existingDevice.id));
-    return { device: refreshed, setNewCookie: false };
+    const stuckUnderBootstrap =
+      !!input.autoApprove && input.existingDevice.status !== "approved";
+    if (!stuckUnderBootstrap) {
+      await db.update(userDevices)
+        .set({ lastSeenAt: new Date(), userAgent: input.userAgent, ipAddress: input.ipAddress })
+        .where(eq(userDevices.id, input.existingDevice.id));
+      const [refreshed] = await db.select().from(userDevices).where(eq(userDevices.id, input.existingDevice.id));
+      return { device: refreshed, setNewCookie: false };
+    }
   }
-  // Otherwise create a new device row + new cookie token.
+
+  // 2. Cross-user / shared-browser path. The only legitimate scenario this
+  // branch targets is: this physical browser was already trusted (an admin
+  // approved a device on it for some user A), and now user X — who also
+  // has an approved or recent-pending device on this browser — is logging
+  // in. We require the cookie to be APPROVED (and implicitly for a
+  // different user, since branch 1 caught the same-user case). A pending
+  // or revoked cookie is NOT browser proof — it just means someone tried
+  // to log in here once. Without this restriction, an attacker who
+  // possessed any cookie at all (including their own pending request)
+  // plus a victim's password + matching User-Agent could bypass device
+  // approval entirely. The bootstrap auto-approve path also skips this
+  // branch so recovery always mints a fresh approved row.
+  const browserAlreadyTrusted =
+    !!input.existingDevice && input.existingDevice.status === "approved";
+  const allowUaReuse = browserAlreadyTrusted && !input.autoApprove && !!input.userAgent;
+
+  if (allowUaReuse) {
+    // 2a. Approved device for this user on this browser → reuse and let
+    // the caller rotate the cookie to it. This is what unsticks users from
+    // the "Waiting for approval" loop after their device was approved.
+    const [approvedMatch] = await db
+      .select()
+      .from(userDevices)
+      .where(
+        and(
+          eq(userDevices.userId, input.userId),
+          eq(userDevices.userAgent, input.userAgent!),
+          eq(userDevices.status, "approved"),
+        ),
+      )
+      .orderBy(desc(userDevices.lastSeenAt), desc(userDevices.approvedAt))
+      .limit(1);
+    if (approvedMatch) {
+      await db.update(userDevices)
+        .set({ lastSeenAt: new Date(), ipAddress: input.ipAddress, userAgent: input.userAgent })
+        .where(eq(userDevices.id, approvedMatch.id));
+      const [refreshed] = await db.select().from(userDevices).where(eq(userDevices.id, approvedMatch.id));
+      return { device: refreshed, setNewCookie: true };
+    }
+
+    // 2b. Recently-requested pending device for this user on this browser
+    // → reuse it instead of inserting another duplicate pending row.
+    const recentCutoff = new Date(Date.now() - PENDING_DEVICE_REUSE_WINDOW_MS);
+    const [pendingMatch] = await db
+      .select()
+      .from(userDevices)
+      .where(
+        and(
+          eq(userDevices.userId, input.userId),
+          eq(userDevices.userAgent, input.userAgent!),
+          eq(userDevices.status, "pending"),
+          gt(userDevices.requestedAt, recentCutoff),
+        ),
+      )
+      .orderBy(desc(userDevices.requestedAt))
+      .limit(1);
+    if (pendingMatch) {
+      await db.update(userDevices)
+        .set({ lastSeenAt: new Date(), ipAddress: input.ipAddress })
+        .where(eq(userDevices.id, pendingMatch.id));
+      const [refreshed] = await db.select().from(userDevices).where(eq(userDevices.id, pendingMatch.id));
+      return { device: refreshed, setNewCookie: true };
+    }
+  }
+
+  // 3. No reusable device found. Create a fresh device row + new cookie token.
   const token = randomToken();
   const status = input.autoApprove ? "approved" : "pending";
   const [device] = await db.insert(userDevices).values({
