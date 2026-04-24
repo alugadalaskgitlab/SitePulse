@@ -2459,6 +2459,7 @@ export async function registerRoutes(
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         readingType: req.query.readingType as string | undefined,
+        plantName: req.query.plantName as string | undefined,
       };
       const readings = await storage.getBitumenDipReadings(filters);
       res.json(readings);
@@ -2513,6 +2514,7 @@ export async function registerRoutes(
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         readingType: req.query.readingType as string | undefined,
+        plantName: req.query.plantName as string | undefined,
       };
       const readings = await storage.getLdoFlowReadings(filters);
       res.json(readings);

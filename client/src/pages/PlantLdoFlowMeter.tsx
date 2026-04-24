@@ -29,9 +29,11 @@ export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
   const { appendOrigin, getPlantBackLink } = useOrigin();
   const searchString = useSearch();
-  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
+  const sp = new URLSearchParams(searchString || window.location.search);
+  const urlRole = sp.get("role");
   const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
   const isAdmin = pageRole === "admin";
+  const urlPlant = sp.get("plant") || "Main Plant";
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -103,7 +105,15 @@ export default function PlantLdoFlowMeter() {
   const [dipNotes, setDipNotes] = useState("");
 
   const { data: readings, isLoading } = useQuery<LdoFlowReading[]>({
-    queryKey: ["/api/plant-module/ldo-flow-readings"],
+    queryKey: ["/api/plant-module/ldo-flow-readings", { plantName: urlPlant }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/plant-module/ldo-flow-readings?plantName=${encodeURIComponent(urlPlant)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
   });
 
   const { data: dispatches } = useQuery<TruckDispatch[]>({
@@ -767,6 +777,7 @@ export default function PlantLdoFlowMeter() {
         readingType: "stock",
         quantityLiters: parseFloat(quantityLiters),
         notes: notes || null,
+        plantName: urlPlant,
       };
       if (editingReading) {
         updateMutation.mutate({ id: editingReading.id, data: payload });
@@ -798,6 +809,7 @@ export default function PlantLdoFlowMeter() {
       readingType,
       quantityLiters: readingType === "receipt" ? parseFloat(quantityLiters) : null,
       notes: notes || null,
+      plantName: urlPlant,
     };
 
     if (editingReading) {

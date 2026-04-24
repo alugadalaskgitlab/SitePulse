@@ -718,6 +718,7 @@ export const bitumenDipReadings = pgTable("bitumen_dip_readings", {
   weightKg: real("weight_kg").notNull(),
   readingType: text("reading_type").notNull(),
   notes: text("notes"),
+  plantName: text("plant_name").notNull().default("Main Plant"),
   sourceShiftLogId: integer("source_shift_log_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -731,6 +732,7 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   readingType: text("reading_type").notNull(),
   quantityLiters: real("quantity_liters"),
   notes: text("notes"),
+  plantName: text("plant_name").notNull().default("Main Plant"),
   sourceShiftLogId: integer("source_shift_log_id"),
   sourceHeatingSessionId: integer("source_heating_session_id"),
   createdAt: timestamp("created_at").defaultNow(),

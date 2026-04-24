@@ -5156,12 +5156,13 @@ export class DatabaseStorage implements IStorage {
   // BITUMEN DIP READINGS
   // ============================================
 
-  async getBitumenDipReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string }): Promise<BitumenDipReading[]> {
+  async getBitumenDipReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string; plantName?: string }): Promise<BitumenDipReading[]> {
     let conditions = [];
     if (filters?.tankNumber !== undefined) conditions.push(eq(bitumenDipReadings.tankNumber, filters.tankNumber));
     if (filters?.readingType) conditions.push(eq(bitumenDipReadings.readingType, filters.readingType));
     if (filters?.dateFrom) conditions.push(gte(bitumenDipReadings.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(bitumenDipReadings.date, filters.dateTo));
+    if (filters?.plantName) conditions.push(eq(bitumenDipReadings.plantName, filters.plantName));
 
     return db.select().from(bitumenDipReadings)
       .where(conditions.length ? and(...conditions) : undefined)
@@ -5187,6 +5188,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.weightKg !== undefined) cleanUpdates.weightKg = updates.weightKg;
     if (updates.readingType !== undefined) cleanUpdates.readingType = updates.readingType;
     if (updates.notes !== undefined) cleanUpdates.notes = updates.notes?.toUpperCase();
+    if (updates.plantName !== undefined) cleanUpdates.plantName = updates.plantName;
     
     const [result] = await db.update(bitumenDipReadings)
       .set(cleanUpdates)
@@ -5204,12 +5206,13 @@ export class DatabaseStorage implements IStorage {
   // LDO FLOW METER READINGS
   // ============================================
 
-  async getLdoFlowReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string }): Promise<LdoFlowReading[]> {
+  async getLdoFlowReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string; plantName?: string }): Promise<LdoFlowReading[]> {
     let conditions = [];
     if (filters?.tankNumber) conditions.push(eq(ldoFlowReadings.tankNumber, filters.tankNumber));
     if (filters?.readingType) conditions.push(eq(ldoFlowReadings.readingType, filters.readingType));
     if (filters?.dateFrom) conditions.push(gte(ldoFlowReadings.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(ldoFlowReadings.date, filters.dateTo));
+    if (filters?.plantName) conditions.push(eq(ldoFlowReadings.plantName, filters.plantName));
 
     return db.select().from(ldoFlowReadings)
       .where(conditions.length ? and(...conditions) : undefined)
@@ -5234,6 +5237,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.readingType !== undefined) cleanUpdates.readingType = updates.readingType;
     if (updates.quantityLiters !== undefined) cleanUpdates.quantityLiters = updates.quantityLiters;
     if (updates.notes !== undefined) cleanUpdates.notes = updates.notes?.toUpperCase();
+    if (updates.plantName !== undefined) cleanUpdates.plantName = updates.plantName;
     
     const [result] = await db.update(ldoFlowReadings)
       .set(cleanUpdates)
@@ -5248,49 +5252,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- LDO Flow-Meter Backfill (admin-only historical entry) -----------------
-  // Backfill provenance is encoded in the `notes` column with the marker
-  //   "[BACKFILL plant=<plant> by <actor>] <remarks?>"
-  // because the table has no dedicated `source` or `plant_name` column (the
-  // latter is owned by a separate task). Idempotency is per
-  // (date, plant, tank, opening|closing): on re-save the storage method
-  // deletes existing backfill rows for that key (matched by the plant marker
-  // in `notes`) and re-inserts. Rows owned by a shift log, heating session,
-  // or non-backfill manual entry are NEVER overwritten — they are returned
-  // as conflicts.
-
-  // Plant marker stored uppercase to match createLdoFlowReading's notes upper-casing.
-  private ldoBackfillPlantMarker(plant: string): string {
-    return `PLANT=${(plant || "Main Plant").toUpperCase()}`;
-  }
+  // Backfill rows live alongside shift-log / heating-session / manual rows in
+  // `ldo_flow_readings`. They are identified by a "[BACKFILL ...]" marker in
+  // `notes` and scoped to a plant via the dedicated `plant_name` column.
+  // Idempotency is per (date, plant, tank, opening|closing): on re-save the
+  // storage method deletes the existing backfill row for that key and
+  // re-inserts. Rows owned by a shift log, heating session, or non-backfill
+  // manual entry are NEVER overwritten — they are returned as conflicts.
 
   private isLdoBackfillRow(notes: string | null | undefined): boolean {
     return !!notes && notes.toUpperCase().startsWith("[BACKFILL");
   }
 
-  private isLdoBackfillRowForPlant(notes: string | null | undefined, plant: string): boolean {
-    if (!this.isLdoBackfillRow(notes)) return false;
-    const upper = (notes || "").toUpperCase();
-    const marker = this.ldoBackfillPlantMarker(plant);
-    if (upper.includes(marker)) return true;
-    // Backwards-compat: backfill rows written before plant marker existed
-    // are treated as belonging to "Main Plant".
-    if ((plant || "Main Plant").toUpperCase() === "MAIN PLANT" && !upper.includes("PLANT=")) return true;
-    return false;
-  }
-
   async getLdoFlowReadingsForBackfill(filters: { dateFrom: string; dateTo: string; plant?: string }): Promise<LdoFlowReading[]> {
-    const rows = await db.select().from(ldoFlowReadings)
-      .where(and(
-        gte(ldoFlowReadings.date, filters.dateFrom),
-        lte(ldoFlowReadings.date, filters.dateTo),
-      ))
-      .orderBy(asc(ldoFlowReadings.date), asc(ldoFlowReadings.tankNumber), asc(ldoFlowReadings.readingType), asc(ldoFlowReadings.time));
+    const conds = [
+      gte(ldoFlowReadings.date, filters.dateFrom),
+      lte(ldoFlowReadings.date, filters.dateTo),
+    ];
+    if (filters.plant) conds.push(eq(ldoFlowReadings.plantName, filters.plant));
 
-    if (!filters.plant) return rows;
-    // Keep all non-backfill rows (shift-log / heating / manual) regardless of
-    // plant since the table can't disambiguate them; filter backfill rows by
-    // the plant marker so the UI only edits this plant's backfill cells.
-    return rows.filter(r => !this.isLdoBackfillRow(r.notes) || this.isLdoBackfillRowForPlant(r.notes, filters.plant!));
+    return db.select().from(ldoFlowReadings)
+      .where(and(...conds))
+      .orderBy(asc(ldoFlowReadings.date), asc(ldoFlowReadings.tankNumber), asc(ldoFlowReadings.readingType), asc(ldoFlowReadings.time));
   }
 
   async upsertLdoFlowReadingsBackfill(
@@ -5304,7 +5287,6 @@ export class DatabaseStorage implements IStorage {
       for (const row of rows) {
         const tank = row.tank;
         const plant = row.plant || "Main Plant";
-        const plantMarker = this.ldoBackfillPlantMarker(plant);
 
         if (row.opening != null && row.closing != null && row.closing < row.opening) {
           conflicts.push({ date: row.date, plant, tank, reason: "closing meter < opening meter" });
@@ -5312,8 +5294,11 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
-        const existing = await tx.select().from(ldoFlowReadings)
-          .where(and(eq(ldoFlowReadings.date, row.date), eq(ldoFlowReadings.tankNumber, tank)));
+        const existing = await tx.select().from(ldoFlowReadings).where(and(
+          eq(ldoFlowReadings.date, row.date),
+          eq(ldoFlowReadings.tankNumber, tank),
+          eq(ldoFlowReadings.plantName, plant),
+        ));
 
         for (const rt of ["opening", "closing"] as const) {
           const value = rt === "opening" ? row.opening : row.closing;
@@ -5337,9 +5322,10 @@ export class DatabaseStorage implements IStorage {
             continue;
           }
 
-          // Only delete backfill rows belonging to THIS plant — backfill rows
-          // for a different plant on the same (date, tank) are preserved.
-          const toDelete = sameType.filter(e => this.isLdoBackfillRowForPlant(e.notes, plant));
+          // Delete the existing backfill row (if any) for this plant/date/tank/type
+          // before re-inserting. Other plants' backfill rows are isolated by
+          // plant_name and not touched by this query.
+          const toDelete = sameType.filter(e => this.isLdoBackfillRow(e.notes));
           for (const b of toDelete) {
             await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.id, b.id));
             deleted++;
@@ -5347,7 +5333,7 @@ export class DatabaseStorage implements IStorage {
 
           if (value != null) {
             const time = rt === "opening" ? "06:00" : "18:00";
-            const noteBits = [`[BACKFILL ${plantMarker} BY ${(actor || "admin").toUpperCase()}]`];
+            const noteBits = [`[BACKFILL BY ${(actor || "admin").toUpperCase()}]`];
             if (row.remarks) noteBits.push(row.remarks);
             await tx.insert(ldoFlowReadings).values({
               date: row.date,
@@ -5356,6 +5342,7 @@ export class DatabaseStorage implements IStorage {
               meterReading: value,
               readingType: rt,
               notes: noteBits.join(" ").toUpperCase(),
+              plantName: plant,
             } satisfies InsertLdoFlowReading);
             inserted++;
           }
@@ -8841,6 +8828,7 @@ export class DatabaseStorage implements IStorage {
         meterReading: value,
         readingType: type,
         notes: `AUTO from Plant Shift Log #${log.id}`,
+        plantName: log.plantName,
         sourceShiftLogId: log.id,
       });
     };
@@ -8864,6 +8852,7 @@ export class DatabaseStorage implements IStorage {
         weightKg: Math.round(wt),
         readingType: type,
         notes: `AUTO from Plant Shift Log #${log.id}`,
+        plantName: log.plantName,
         sourceShiftLogId: log.id,
       });
     };
@@ -9141,18 +9130,21 @@ export class DatabaseStorage implements IStorage {
       row.sessionsCount = Number(r.cnt) || 0;
     }
 
-    // Bitumen dip readings & LDO flow readings have no plant_name column.
-    // Attribute them to the requested plant filter, or "Main Plant" by default.
-    const defaultPlant = plant ?? "Main Plant";
-    const bdRows = await db.select({ date: bitumenDipReadings.date }).from(bitumenDipReadings)
-      .where(dateRange(bitumenDipReadings.date))
-      .groupBy(bitumenDipReadings.date);
-    for (const r of bdRows) get(r.date, defaultPlant).hasBitumenDips = true;
+    const bdRows = await db.select({
+      date: bitumenDipReadings.date,
+      plantName: bitumenDipReadings.plantName,
+    }).from(bitumenDipReadings)
+      .where(and(dateRange(bitumenDipReadings.date), plantEq(bitumenDipReadings.plantName)))
+      .groupBy(bitumenDipReadings.date, bitumenDipReadings.plantName);
+    for (const r of bdRows) get(r.date, r.plantName).hasBitumenDips = true;
 
-    const ldoRows = await db.select({ date: ldoFlowReadings.date }).from(ldoFlowReadings)
-      .where(dateRange(ldoFlowReadings.date))
-      .groupBy(ldoFlowReadings.date);
-    for (const r of ldoRows) get(r.date, defaultPlant).hasLdoMeter = true;
+    const ldoRows = await db.select({
+      date: ldoFlowReadings.date,
+      plantName: ldoFlowReadings.plantName,
+    }).from(ldoFlowReadings)
+      .where(and(dateRange(ldoFlowReadings.date), plantEq(ldoFlowReadings.plantName)))
+      .groupBy(ldoFlowReadings.date, ldoFlowReadings.plantName);
+    for (const r of ldoRows) get(r.date, r.plantName).hasLdoMeter = true;
 
     let result = Array.from(map.values());
     if (allowedKeys) {
@@ -9179,15 +9171,13 @@ export class DatabaseStorage implements IStorage {
       eq(equipmentUsage.plantName, plantName),
       isNull(equipmentUsage.dprId),
     ));
-    // Plant-scoped fuel datasets: prefer linkage via the selected shift log
-    // (sourceShiftLogId set by idempotent write-through). Falls back to
-    // (date, plantName) for ldoDipReadings which doesn't carry a shift link.
-    const ldoFlows = headerRow
-      ? await db.select().from(ldoFlowReadings).where(and(eq(ldoFlowReadings.date, date), eq(ldoFlowReadings.sourceShiftLogId, headerRow.id)))
-      : [];
-    const bitumenDips = headerRow
-      ? await db.select().from(bitumenDipReadings).where(and(eq(bitumenDipReadings.date, date), eq(bitumenDipReadings.sourceShiftLogId, headerRow.id)))
-      : [];
+    // Plant-scoped fuel datasets: filter by (date, plantName) so manually-entered
+    // and backfilled rows (which have no sourceShiftLogId) are included alongside
+    // shift-log/heating-session-sourced rows.
+    const ldoFlows = await db.select().from(ldoFlowReadings)
+      .where(and(eq(ldoFlowReadings.date, date), eq(ldoFlowReadings.plantName, plantName)));
+    const bitumenDips = await db.select().from(bitumenDipReadings)
+      .where(and(eq(bitumenDipReadings.date, date), eq(bitumenDipReadings.plantName, plantName)));
     const ldoDips = await db.select().from(ldoDipReadings)
       .where(and(eq(ldoDipReadings.date, date), eq(ldoDipReadings.plantName, plantName)));
     const receipts = await db.select().from(materialReceipts).where(and(eq(materialReceipts.date, date), eq(materialReceipts.plantName, plantName)));
@@ -9809,6 +9799,7 @@ export class DatabaseStorage implements IStorage {
           meterReading: saved.ldoTank1OpeningMeter,
           readingType: "opening",
           notes: `Auto from heating session #${saved.id}`,
+          plantName: saved.plantName,
           sourceHeatingSessionId: saved.id,
         });
       }
@@ -9820,6 +9811,7 @@ export class DatabaseStorage implements IStorage {
           meterReading: saved.ldoTank1ClosingMeter,
           readingType: "closing",
           notes: `Auto from heating session #${saved.id}`,
+          plantName: saved.plantName,
           sourceHeatingSessionId: saved.id,
         });
       }

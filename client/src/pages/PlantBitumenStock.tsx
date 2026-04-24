@@ -33,9 +33,11 @@ export default function PlantBitumenStock() {
   const { toast } = useToast();
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const searchString = useSearch();
-  const urlRole = new URLSearchParams(searchString || window.location.search).get("role");
+  const sp = new URLSearchParams(searchString || window.location.search);
+  const urlRole = sp.get("role");
   const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
   const isAdmin = pageRole === "admin";
+  const urlPlant = sp.get("plant") || "Main Plant";
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -70,7 +72,15 @@ export default function PlantBitumenStock() {
   const [notes, setNotes] = useState("");
 
   const { data: readings, isLoading } = useQuery<BitumenDipReading[]>({
-    queryKey: ["/api/plant-module/bitumen-dip-readings"],
+    queryKey: ["/api/plant-module/bitumen-dip-readings", { plantName: urlPlant }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/plant-module/bitumen-dip-readings?plantName=${encodeURIComponent(urlPlant)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
   });
 
   const { data: dispatches } = useQuery<TruckDispatch[]>({
@@ -501,6 +511,7 @@ export default function PlantBitumenStock() {
       weightKg: Math.round(wt),
       readingType,
       notes: notes || null,
+      plantName: urlPlant,
     };
 
     if (editingReading) {
