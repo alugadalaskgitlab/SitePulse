@@ -35,6 +35,11 @@ function emptyForm(date: string, plantName: string) {
     bitumenTank2TempEnd: "",
     ldoTank1OpeningMeter: "",
     ldoTank1ClosingMeter: "",
+    // Task #255 — Recorded for documentation/consistency. Heating sessions
+    // only meter Tank-1 (boiler), so this never re-routes session LDO,
+    // but keeping the value on the row gives operators one consistent
+    // place to record the dryer-source choice for the day.
+    dryerFedFrom: "TANK_2" as "TANK_1" | "TANK_2",
     dgMode: "inline" as DgMode,
     dgGeneratorName: "",
     dgStartTime: "",
@@ -85,6 +90,8 @@ function sessionToForm(s: BitumenHeatingSession): FormState {
     bitumenTank2TempEnd: s.bitumenTank2TempEnd?.toString() || "",
     ldoTank1OpeningMeter: s.ldoTank1OpeningMeter?.toString() || "",
     ldoTank1ClosingMeter: s.ldoTank1ClosingMeter?.toString() || "",
+    // Task #255 — see emptyForm comment.
+    dryerFedFrom: ((s as any).dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2") as "TANK_1" | "TANK_2",
     dgMode: (s.dgMode as DgMode) || "none",
     dgGeneratorName: s.dgGeneratorName || "",
     dgStartTime: s.dgStartTime || "",
@@ -273,6 +280,11 @@ export function HeatingSessionDialog({
       bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
       ldoTank1OpeningMeter: ldoOpen,
       ldoTank1ClosingMeter: ldoClose,
+      // Task #255 — Persist the dryer-source choice on the session row.
+      // Heating sessions only meter the boiler (Tank-1), so this value is
+      // informational here; the routing actually takes effect on the
+      // Plant Shift Log's dryer-meter readings.
+      dryerFedFrom: form.dryerFedFrom,
       dgMode: form.dgMode,
       dgGeneratorName: form.dgMode === "inline" ? form.dgGeneratorName : null,
       dgStartTime: form.dgMode === "inline" ? (form.dgStartTime || null) : null,
@@ -412,7 +424,28 @@ export function HeatingSessionDialog({
           </Card>
 
           <Card>
-            <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
+            <CardHeader className="py-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="text-base">LDO Boiler Meter</CardTitle>
+                {/* Task #255 — Dryer-source picker. Heating sessions only
+                    meter the boiler; this is recorded for the day's record
+                    and to keep operators in sync with the matching shift
+                    log. The actual stock re-routing happens on Plant Shift
+                    Log dryer-meter rows. */}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="hs-dryer-fed-from" className="text-xs">Dryer fed from</Label>
+                  <Select value={form.dryerFedFrom} onValueChange={(v) => setField("dryerFedFrom", v as "TANK_1" | "TANK_2")}>
+                    <SelectTrigger id="hs-dryer-fed-from" className="h-8 w-32" data-testid="select-hs-dryer-fed-from">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TANK_1">Tank 1</SelectItem>
+                      <SelectItem value="TANK_2">Tank 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <Label>Opening Meter</Label>

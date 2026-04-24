@@ -735,6 +735,14 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   plantName: text("plant_name").notNull().default("Main Plant"),
   sourceShiftLogId: integer("source_shift_log_id"),
   sourceHeatingSessionId: integer("source_heating_session_id"),
+  // Task #255 — Denormalised dryer-source tag copied from the originating
+  // shift log. Only set on tankNumber=2 (dryer-meter) rows. When present
+  // and equal to "TANK_1", the litres recorded by this row are debited from
+  // the Tank-1 stock balance instead of Tank-2 (dryer was fed from the boiler
+  // tank for that shift). NULL means "treat the row as belonging to its
+  // physical tankNumber" — used for manual entries and for boiler-meter
+  // (tank=1) rows which always debit Tank-1.
+  dryerFedFrom: text("dryer_fed_from"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -798,6 +806,12 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
   ldoTank2OpeningMeter: real("ldo_tank2_opening_meter"),
   ldoTank2ClosingMeter: real("ldo_tank2_closing_meter"),
+  // Task #255 — Which physical LDO storage tank fed the dryer on this
+  // shift. The dryer flow-meter records litres burned at the dryer, but the
+  // litres themselves are debited from whichever tank the supply line was
+  // routed to (TANK_1 or TANK_2). Default TANK_2 keeps prior behaviour for
+  // legacy rows where this column did not exist.
+  dryerFedFrom: text("dryer_fed_from").notNull().default("TANK_2"),
   // Task #254 — operator toggle indicating the boiler runs during production
   // on this shift. When 1, the Boiler Meter opening/closing inputs are shown
   // and (closing − opening) is added to the production day's boiler-LDO total
@@ -1031,6 +1045,12 @@ export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {
   ldoTank1OpeningMeter: real("ldo_tank1_opening_meter"),
   ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
   ldoTank1Consumed: real("ldo_tank1_consumed"),
+  // Task #255 — Which physical LDO storage tank fed the dryer at the time
+  // of this heating session. Heating sessions only record the Boiler meter
+  // (Tank-1 stock), so this field is documentation-only here, but kept on
+  // the row so downstream stock-balance code paths have a single, consistent
+  // source for the dryer-source choice. Defaults to TANK_2 for legacy rows.
+  dryerFedFrom: text("dryer_fed_from").notNull().default("TANK_2"),
   dgMode: text("dg_mode").notNull().default("none"),
   dgGeneratorName: text("dg_generator_name"),
   dgStartTime: text("dg_start_time"),
@@ -1069,12 +1089,21 @@ export type BitumenHeatingSession = typeof bitumenHeatingSessions.$inferSelect;
 export type InsertBitumenHeatingSession = z.infer<typeof insertBitumenHeatingSessionSchema>;
 export type PlantHeatingSessionVersion = typeof plantHeatingSessionVersions.$inferSelect;
 
+// Task #255 — allowed values for the "Dryer fed from" picker. Used to
+// constrain the column on both plant_shift_logs and bitumen_heating_sessions
+// at the API layer so unknown strings can't reach the stock-routing logic.
+export const DRYER_SOURCE_TANKS = ["TANK_1", "TANK_2"] as const;
+export type DryerSourceTank = typeof DRYER_SOURCE_TANKS[number];
+
 export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSchema.extend({
   id: z.number().optional(),
   pin: z.string().optional(),
   editedBy: z.string().optional(),
   sessionType: z.enum(HEATING_SESSION_TYPES),
   dgMode: z.enum(["none", "inline", "link"]),
+  // Task #255 — accept either of the two enum values, default to TANK_2
+  // for back-compat with sessions saved before this column existed.
+  dryerFedFrom: z.enum(DRYER_SOURCE_TANKS).optional().default("TANK_2"),
 });
 export type UpsertBitumenHeatingSessionInput = z.infer<typeof upsertBitumenHeatingSessionSchema>;
 
@@ -1100,6 +1129,10 @@ export const upsertPlantShiftLogSchema = insertPlantShiftLogSchema.extend({
   manpower: z.array(plantShiftLogManpowerInputSchema).optional().default([]),
   idleEvents: z.array(plantShiftLogIdleInputSchema).optional().default([]),
   editedBy: z.string().optional(),
+  // Task #255 — constrain dryer-source to the supported enum at the API
+  // layer so an unknown string never reaches the stock-routing logic in
+  // _syncShiftLogReadings / computeTankStock.
+  dryerFedFrom: z.enum(DRYER_SOURCE_TANKS).optional().default("TANK_2"),
 });
 
 export type UpsertPlantShiftLogInput = z.infer<typeof upsertPlantShiftLogSchema>;

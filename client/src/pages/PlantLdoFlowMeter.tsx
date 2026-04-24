@@ -22,6 +22,8 @@ import { format } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume } from "@shared/ldo-dip-chart";
+import { computeTankStock } from "@/lib/ldoStock";
+import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
 
@@ -271,6 +273,13 @@ export default function PlantLdoFlowMeter() {
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 15)
       .map(day => {
+        // Per-meter daily report: this section is intentionally still
+        // grouped by physical meter (tank 1 = boiler-meter, tank 2 =
+        // dryer-meter). The per-meter consumption numbers feed the
+        // boilerLPerMT / dryerLPerMT efficiency calculations and must
+        // stay tied to the meter that recorded them. The dryer-source
+        // re-routing is applied at the *stock balance* level only — see
+        // `tankStock` and `computeTankStock`.
         const t1Entries = day.entries.filter(e => e.tankNumber === 1);
         const t2Entries = day.entries.filter(e => e.tankNumber === 2);
 
@@ -310,53 +319,15 @@ export default function PlantLdoFlowMeter() {
 
   const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
 
+  // Task #255 — Per-tank stock balances. Routing through `computeTankStock`
+  // (shared/lib/ldoStock.ts) means dryer-meter rows tagged with
+  // `dryerFedFrom = "TANK_1"` debit Tank-1 stock instead of Tank-2,
+  // matching the actual physical flow.
   const tankStock = useMemo(() => {
-    if (!readings) return { tank1: null as { stockL: number; date: string; time?: string } | null, tank2: null as { stockL: number; date: string; time?: string } | null };
-
-    const computeStock = (tankNum: number) => {
-      const tankReadings = readings.filter(r => r.tankNumber === tankNum);
-      const stockEntries = tankReadings.filter(r => r.readingType === "stock").sort((a, b) => {
-        const dc = b.date.localeCompare(a.date);
-        return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
-      });
-      if (stockEntries.length === 0) return null;
-
-      const latestStock = stockEntries[0];
-      const stockL = latestStock.quantityLiters || 0;
-      const stockDateTime = `${latestStock.date}T${latestStock.time || "00:00"}`;
-
-      const receiptsSince = tankReadings
-        .filter(r => r.readingType === "receipt" && `${r.date}T${r.time || "00:00"}` > stockDateTime)
-        .reduce((s, r) => s + (r.quantityLiters || 0), 0);
-
-      const dateGroups: Record<string, { openings: typeof tankReadings; closings: typeof tankReadings }> = {};
-      for (const r of tankReadings) {
-        if (r.readingType !== "opening" && r.readingType !== "closing") continue;
-        if (r.date < latestStock.date) continue;
-        if (r.date === latestStock.date && `${r.date}T${r.time || "00:00"}` <= stockDateTime) continue;
-        if (!dateGroups[r.date]) dateGroups[r.date] = { openings: [], closings: [] };
-        if (r.readingType === "opening") dateGroups[r.date].openings.push(r);
-        else dateGroups[r.date].closings.push(r);
-      }
-
-      let consumptionSince = 0;
-      for (const [, group] of Object.entries(dateGroups)) {
-        if (group.openings.length > 0 && group.closings.length > 0) {
-          const openVal = group.openings.sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0].meterReading;
-          const closeVal = group.closings.sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0].meterReading;
-          const diff = closeVal - openVal;
-          if (diff > 0) consumptionSince += diff;
-        }
-      }
-
-      return {
-        stockL: stockL + receiptsSince - consumptionSince,
-        date: latestStock.date,
-        time: latestStock.time || undefined,
-      };
+    return {
+      tank1: computeTankStock(readings, 1),
+      tank2: computeTankStock(readings, 2),
     };
-
-    return { tank1: computeStock(1), tank2: computeStock(2) };
   }, [readings]);
 
   const varianceData = useMemo(() => {
@@ -992,6 +963,17 @@ export default function PlantLdoFlowMeter() {
       <div className="text-sm text-muted-foreground">
         Boiler Meter (heats bitumen) and Dryer Meter (heats aggregates) — both meters draw from the main LDO tank.
       </div>
+
+      {/* Task #255 — Header strip showing the live LDO usable-stock balance
+          per physical tank, plus the combined total. Numbers come from
+          `computeTankStock` so dryer-meter consumption tagged for Tank-1
+          rolls into the Tank-1 figure here. */}
+      <LdoUsableStockStrip
+        tank1L={tankStock.tank1?.stockL ?? null}
+        tank2L={tankStock.tank2?.stockL ?? null}
+        tank1AsOf={tankStock.tank1 ? { date: tankStock.tank1.date, time: tankStock.tank1.time } : undefined}
+        tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.date, time: tankStock.tank2.time } : undefined}
+      />
 
       <NegativeBalanceBanner
         balances={ldoPartyBalances}

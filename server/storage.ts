@@ -9057,6 +9057,10 @@ export class DatabaseStorage implements IStorage {
         notes: `AUTO from Plant Shift Log #${log.id}`,
         plantName: log.plantName,
         sourceShiftLogId: log.id,
+        // Task #255 — only the dryer-meter rows (tank=2) need the dryer-source
+        // tag; boiler-meter rows always debit Tank-1 stock so we leave
+        // dryerFedFrom NULL for them.
+        dryerFedFrom: tank === 2 ? (log.dryerFedFrom || "TANK_2") : null,
       });
     };
     pushLdo(1, "opening", log.ldoTank1OpeningMeter, log.plantStartTime);

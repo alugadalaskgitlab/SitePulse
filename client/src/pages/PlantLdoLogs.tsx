@@ -16,8 +16,10 @@ import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { LdoLog } from "@shared/schema";
+import type { LdoLog, LdoFlowReading } from "@shared/schema";
 import { DEFAULT_LDO_NORM } from "@shared/schema";
+import { computeTankStock } from "@/lib/ldoStock";
+import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
 export default function PlantLdoLogs() {
   const { toast } = useToast();
@@ -35,6 +37,17 @@ export default function PlantLdoLogs() {
   const [ldoConsumed, setLdoConsumed] = useState("");
   const [closingStock, setClosingStock] = useState("");
   const [tonsProduced, setTonsProduced] = useState("");
+
+  // Task #255 — Pull the LDO flow-meter ledger so the header strip can
+  // show the live per-tank usable balance via `computeTankStock`. Same
+  // queryKey as PlantLdoFlowMeter so React Query reuses the cache.
+  const { data: flowReadings } = useQuery<LdoFlowReading[]>({
+    queryKey: ["/api/plant-module/ldo-flow-readings"],
+  });
+  const tankStock = {
+    tank1: computeTankStock(flowReadings, 1),
+    tank2: computeTankStock(flowReadings, 2),
+  };
 
   const { data: logs, isLoading } = useQuery<LdoLog[]>({
     queryKey: ["/api/plant-module/ldo-logs"],
@@ -338,6 +351,17 @@ export default function PlantLdoLogs() {
             <h1 className="text-2xl font-bold">LDO Consumption Tracking</h1>
             <p className="text-muted-foreground">Track LDO usage vs production (L/ton)</p>
           </div>
+        </div>
+        {/* Task #255 — Header strip mirrors the LDO Flow Meter page so
+            operators see the same per-tank usable balance regardless of
+            which LDO screen they land on. */}
+        <div className="w-full sm:w-auto sm:min-w-[28rem] order-last sm:order-none">
+          <LdoUsableStockStrip
+            tank1L={tankStock.tank1?.stockL ?? null}
+            tank2L={tankStock.tank2?.stockL ?? null}
+            tank1AsOf={tankStock.tank1 ? { date: tankStock.tank1.date, time: tankStock.tank1.time } : undefined}
+            tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.date, time: tankStock.tank2.time } : undefined}
+          />
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
