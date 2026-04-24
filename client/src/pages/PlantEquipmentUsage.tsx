@@ -548,12 +548,6 @@ export default function PlantEquipmentUsage() {
 
   const sortedDates = Object.keys(groupedUsage).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
-  const availableMonths = useMemo(() => {
-    const set = new Set<string>();
-    filteredUsage.forEach(u => { if (u.date) set.add(u.date.slice(0, 7)); });
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [filteredUsage]);
-
   // Build filename with date range and filters
   const buildFilename = (extension: string) => {
     const timestamp = format(new Date(), "yyyyMMdd_HHmm");
