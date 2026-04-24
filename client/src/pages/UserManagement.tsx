@@ -59,6 +59,20 @@ type SafeUser = {
   createdAt?: string;
 };
 
+// Map server-side error codes to operator-friendly toast text. Accepts
+// both `email_in_use` (per the task spec) and `email_exists` (the code
+// the existing PATCH route actually emits) so this stays correct even
+// if the server message is renamed later.
+function friendlyUserError(raw: string): string {
+  if (/email_in_use|email_exists/i.test(raw)) {
+    return "That email is already used by another user.";
+  }
+  if (/cannot_demote_last_admin/i.test(raw)) {
+    return "There must always be at least one active admin. Promote another user to admin first.";
+  }
+  return raw;
+}
+
 export default function UserManagement() {
   const { user, permissions } = useAuth();
   const { toast } = useToast();
@@ -213,7 +227,7 @@ function UserRow({
     onError: (e: Error | { message?: string }) => {
       toast({
         title: "Couldn't update user",
-        description: e?.message || "",
+        description: friendlyUserError(e?.message || ""),
         variant: "destructive",
       });
     },
@@ -455,14 +469,7 @@ function EditUserDialog({
       onClose();
     },
     onError: (e: Error | { message?: string }) => {
-      const raw = e?.message || "";
-      // Friendly text for the two server-side guards.
-      let description = raw;
-      if (/email_exists/i.test(raw)) description = "That email is already used by another user.";
-      else if (/cannot_demote_last_admin/i.test(raw)) {
-        description = "There must always be at least one active admin. Promote another user to admin first.";
-      }
-      toast({ title: "Save failed", description, variant: "destructive" });
+      toast({ title: "Save failed", description: friendlyUserError(e?.message || ""), variant: "destructive" });
     },
   });
 
