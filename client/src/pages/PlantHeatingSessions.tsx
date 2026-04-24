@@ -53,6 +53,7 @@ function emptyForm(date: string) {
     isFinalized: 0,
     autoFilledOpening: false,
     autoFilledSource: "" as string,
+    autoFilledDgOpening: false,
   };
 }
 
@@ -164,6 +165,39 @@ export default function PlantHeatingSessions() {
       return res.json();
     },
   });
+
+  // Auto-fill DG "HSD Opening (L)" from the previous tank balance whenever the
+  // operator picks a generator on a NEW session and the field is still blank
+  // (or still holds an unedited auto-filled value). Editing an existing
+  // session never overwrites the saved opening.
+  const autoFilledDgOpeningRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dialogOpen || form.id) return;
+    if (form.dgMode !== "inline") return;
+    // If the operator switches to an unmapped generator (no equipment id) or
+    // away from inline mode, clear any stale auto-filled opening so the form
+    // doesn't carry a balance that belongs to a different DG. Manual edits
+    // are preserved.
+    if (selectedGeneratorEquipmentId == null) {
+      setForm(prev => {
+        if (!prev.autoFilledDgOpening) return prev;
+        autoFilledDgOpeningRef.current = null;
+        return { ...prev, dgOpeningDiesel: "", autoFilledDgOpening: false };
+      });
+      return;
+    }
+    if (!dgPrevBalance || typeof dgPrevBalance.previousBalance !== "number") return;
+    const next = dgPrevBalance.previousBalance.toFixed(2);
+    setForm(prev => {
+      if (prev.dgOpeningDiesel && prev.dgOpeningDiesel !== autoFilledDgOpeningRef.current) {
+        return prev;
+      }
+      if (prev.dgOpeningDiesel === next && prev.autoFilledDgOpening) return prev;
+      autoFilledDgOpeningRef.current = next;
+      return { ...prev, dgOpeningDiesel: next, autoFilledDgOpening: true };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, form.id, form.dgMode, selectedGeneratorEquipmentId, dgPrevBalance?.previousBalance]);
 
   const setField = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -395,6 +429,7 @@ export default function PlantHeatingSessions() {
       isFinalized: s.isFinalized,
       autoFilledOpening: false,
       autoFilledSource: "",
+      autoFilledDgOpening: false,
     });
     setDialogOpen(true);
   };
@@ -624,7 +659,21 @@ export default function PlantHeatingSessions() {
                       <div><Label>Hour-Meter Closing</Label><Input type="number" step="0.01" value={form.dgClosingHourMeter} onChange={e => setField("dgClosingHourMeter", e.target.value)} data-testid="input-dg-hm-close" /></div>
                       <div><Label>Hours from Meter</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-meter">{dgDurFromMeter ?? "—"}</div></div>
                       <div><Label>DG Hours Used</Label><div className="px-3 py-2 rounded bg-emerald-50 dark:bg-emerald-950/30 font-semibold text-sm" data-testid="text-dg-hrs-used">{dgHoursUsed != null ? dgHoursUsed.toFixed(2) : "—"}</div></div>
-                      <div><Label>HSD Opening (L)</Label><Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" /></div>
+                      <div>
+                        <Label>HSD Opening (L)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={form.dgOpeningDiesel}
+                          onChange={e => setForm(p => ({ ...p, dgOpeningDiesel: e.target.value, autoFilledDgOpening: false }))}
+                          data-testid="input-dg-open"
+                        />
+                        {form.autoFilledDgOpening && (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-dg-open-hint">
+                            Auto-filled from previous tank balance — edit to override
+                          </p>
+                        )}
+                      </div>
                       <div><Label>HSD Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
                       <div><Label>HSD Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
                       <div><Label>HSD Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
