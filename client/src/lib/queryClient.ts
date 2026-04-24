@@ -1,7 +1,32 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Routes that handle their own 401s — never auto-redirect from these.
+const AUTH_BYPASS_PATHS = [
+  "/login",
+  "/estimator-login",
+  "/estimator-hub",
+  "/concrete-calculator",
+];
+
+function shouldRedirectOn401(): boolean {
+  if (typeof window === "undefined") return false;
+  const p = window.location.pathname;
+  return !AUTH_BYPASS_PATHS.some((b) => p === b || p.startsWith(b + "/"));
+}
+
+function maybeRedirectToLogin() {
+  if (!shouldRedirectOn401()) return;
+  // Avoid redirect storm — only redirect if not already navigating.
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
+    if (res.status === 401) {
+      maybeRedirectToLogin();
+    }
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
@@ -33,8 +58,9 @@ export const getQueryFn: <T>(options: {
       credentials: "include",
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (res.status === 401) {
+      if (unauthorizedBehavior === "returnNull") return null;
+      maybeRedirectToLogin();
     }
 
     await throwIfResNotOk(res);

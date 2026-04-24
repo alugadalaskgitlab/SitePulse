@@ -15,6 +15,14 @@ export const dprs = pgTable("dprs", {
   submittedAt: text("submitted_at"), // Timestamp when report was submitted (local time format)
   createdAt: timestamp("created_at").defaultNow(),
   isSuperseded: boolean("is_superseded").default(false),
+  // Per-user record locking (Task #229). Newly saved DPRs auto-lock; users
+  // with site_dprs.edit + can_unlock_records can unlock with reason. Next
+  // save atomically re-locks the record.
+  authorUserId: integer("author_user_id"),
+  lockStatus: text("lock_status").notNull().default("locked"), // "locked" | "unlocked"
+  unlockedByUserId: integer("unlocked_by_user_id"),
+  unlockedAt: timestamp("unlocked_at"),
+  unlockReason: text("unlock_reason"),
 }, (table) => ({
   dateIdx: index("dprs_date_idx").on(table.date),
 }));
@@ -353,6 +361,12 @@ export const equipmentUsage = pgTable("equipment_usage", {
   // so it can be updated/deleted in lockstep without duplicating data.
   sourceHeatingSessionId: integer("source_heating_session_id"),
   createdAt: timestamp("created_at").defaultNow(),
+  // Per-user record locking (Task #229).
+  authorUserId: integer("author_user_id"),
+  lockStatus: text("lock_status").notNull().default("locked"),
+  unlockedByUserId: integer("unlocked_by_user_id"),
+  unlockedAt: timestamp("unlocked_at"),
+  unlockReason: text("unlock_reason"),
 }, (table) => ({
   dateIdx: index("equipment_usage_date_idx").on(table.date),
   sourceHeatingSessionIdx: index("equipment_usage_source_heating_session_idx").on(table.sourceHeatingSessionId),
@@ -790,6 +804,12 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   finalizedAt: timestamp("finalized_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // Per-user record locking (Task #229).
+  authorUserId: integer("author_user_id"),
+  lockStatus: text("lock_status").notNull().default("locked"),
+  unlockedByUserId: integer("unlocked_by_user_id"),
+  unlockedAt: timestamp("unlocked_at"),
+  unlockReason: text("unlock_reason"),
 }, (table) => ({
   dateIdx: index("plant_shift_logs_date_idx").on(table.date),
   uniqDatePlant: uniqueIndex("plant_shift_logs_date_plant_uq").on(table.date, table.plantName),
@@ -1140,6 +1160,12 @@ export const purchaseIndents = pgTable("purchase_indents", {
   rejectionReason: text("rejection_reason"),
   notifyMessage: text("notify_message"),
   createdAt: timestamp("created_at").defaultNow(),
+  // Per-user record locking (Task #229).
+  authorUserId: integer("author_user_id"),
+  lockStatus: text("lock_status").notNull().default("locked"),
+  unlockedByUserId: integer("unlocked_by_user_id"),
+  unlockedAt: timestamp("unlocked_at"),
+  unlockReason: text("unlock_reason"),
 });
 
 export const purchaseIndentItems = pgTable("purchase_indent_items", {
@@ -1235,6 +1261,12 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   purchasedAt: text("purchased_at"),
   purchaseRemarks: text("purchase_remarks"),
   createdAt: timestamp("created_at").defaultNow(),
+  // Per-user record locking (Task #229).
+  authorUserId: integer("author_user_id"),
+  lockStatus: text("lock_status").notNull().default("locked"),
+  unlockedByUserId: integer("unlocked_by_user_id"),
+  unlockedAt: timestamp("unlocked_at"),
+  unlockReason: text("unlock_reason"),
 });
 
 export const dieselRequirementItems = pgTable("diesel_requirement_items", {
@@ -1304,6 +1336,12 @@ export const vendorBills = pgTable("vendor_bills", {
   tdsRate: real("tds_rate"),
   isInterState: boolean("is_inter_state").default(false),
   createdAt: timestamp("created_at").defaultNow(),
+  // Per-user record locking (Task #229).
+  authorUserId: integer("author_user_id"),
+  lockStatus: text("lock_status").notNull().default("locked"),
+  unlockedByUserId: integer("unlocked_by_user_id"),
+  unlockedAt: timestamp("unlocked_at"),
+  unlockReason: text("unlock_reason"),
 });
 
 export const vendorBillItems = pgTable("vendor_bill_items", {
@@ -1488,3 +1526,105 @@ export const varianceHighlightThresholdSchema = z.object({
   overrides: z.record(z.string(), z.number().min(0).max(100)).default({}),
 });
 export type VarianceHighlightThreshold = z.infer<typeof varianceHighlightThresholdSchema>;
+
+// ============================================
+// USERS & PERMISSIONS (Task #229)
+// ============================================
+// Replaces the old localStorage AccessContext + hardcoded ADMIN_PIN with real
+// per-user accounts. Estimator-portal PIN-based auth (app_settings rows
+// admin_pin / manager_pin + hlc_est_role cookie) is intentionally untouched.
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  fullName: text("full_name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  // Admins bypass per-section permission checks (still go through device
+  // approval). The bootstrap admin starts with isAdmin=true.
+  isAdmin: boolean("is_admin").notNull().default(false),
+  // Allows unlocking previously-saved records on sections where the user
+  // also has edit permission. Audited via record_unlock_log.
+  canUnlockRecords: boolean("can_unlock_records").notNull().default(false),
+  // "strict" = 5min idle + tab-close logout. "sticky" = no idle, tab-close
+  // logout, 30-day max session age.
+  sessionPolicy: text("session_policy").notNull().default("strict"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastLoginAt: timestamp("last_login_at"),
+});
+
+export const userPermissions = pgTable("user_permissions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sectionKey: text("section_key").notNull(),
+  canView: boolean("can_view").notNull().default(false),
+  canCreate: boolean("can_create").notNull().default(false),
+  canEdit: boolean("can_edit").notNull().default(false),
+  canViewReports: boolean("can_view_reports").notNull().default(false),
+}, (t) => ({
+  userSectionUq: uniqueIndex("user_permissions_user_section_uq").on(t.userId, t.sectionKey),
+}));
+
+export const userDevices = pgTable("user_devices", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Random opaque token (64 hex). Hashed with SESSION_SECRET in the cookie.
+  deviceToken: text("device_token").notNull().unique(),
+  deviceLabel: text("device_label").notNull(),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
+  // "pending" | "approved" | "revoked"
+  status: text("status").notNull().default("pending"),
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  approvedAt: timestamp("approved_at"),
+  approvedByUserId: integer("approved_by_user_id"),
+  revokedAt: timestamp("revoked_at"),
+  revokedByUserId: integer("revoked_by_user_id"),
+  lastSeenAt: timestamp("last_seen_at"),
+}, (t) => ({
+  userIdx: index("user_devices_user_idx").on(t.userId),
+  statusIdx: index("user_devices_status_idx").on(t.status),
+}));
+
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  deviceId: integer("device_id").notNull().references(() => userDevices.id, { onDelete: "cascade" }),
+  sessionToken: text("session_token").notNull().unique(),
+  loginAt: timestamp("login_at").defaultNow().notNull(),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+  loggedOutAt: timestamp("logged_out_at"),
+}, (t) => ({
+  userIdx: index("user_sessions_user_idx").on(t.userId),
+  activityIdx: index("user_sessions_activity_idx").on(t.lastActivityAt),
+}));
+
+export const recordUnlockLog = pgTable("record_unlock_log", {
+  id: serial("id").primaryKey(),
+  resourceType: text("resource_type").notNull(), // dpr | plant_shift_log | equipment_usage | purchase_indent | diesel_requirement | vendor_bill
+  resourceId: integer("resource_id").notNull(),
+  unlockedByUserId: integer("unlocked_by_user_id").notNull().references(() => users.id),
+  unlockReason: text("unlock_reason").notNull(),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+  relockedAt: timestamp("relocked_at"),
+}, (t) => ({
+  resourceIdx: index("record_unlock_log_resource_idx").on(t.resourceType, t.resourceId),
+  unlockedAtIdx: index("record_unlock_log_unlocked_at_idx").on(t.unlockedAt),
+}));
+
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  lastLoginAt: true,
+  passwordHash: true,
+});
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export type UserPermission = typeof userPermissions.$inferSelect;
+export type UserDevice = typeof userDevices.$inferSelect;
+export type UserSession = typeof userSessions.$inferSelect;
+export type RecordUnlockLog = typeof recordUnlockLog.$inferSelect;
+
+// Public user shape (no password hash) returned to the client.
+export type SafeUser = Omit<User, "passwordHash">;

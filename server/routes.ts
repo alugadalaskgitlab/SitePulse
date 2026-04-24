@@ -12,6 +12,17 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, aggregateGstSplit, computeBillCgstSgstIgst, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
+import { requireAuth, isPublicApiPath } from "./auth";
+import {
+  registerAuthRoutes,
+  assertAdmin,
+  assertEdit,
+  assertAuthed,
+  currentUserName,
+  relockResource,
+  assertWritable,
+} from "./auth-routes";
+import type { LockableResourceType } from "@shared/permissions";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -53,6 +64,25 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ============================================
+  // AUTH ROUTES (Task #229) — registered first so they're not gated by
+  // the requireAuth middleware below. Estimator portal also uses its own
+  // cookie and is bypassed in isPublicApiPath().
+  // ============================================
+  registerAuthRoutes(app);
+
+  // Global API auth middleware. Applies to every /api/* request except the
+  // public auth + estimator endpoints. Populates req.authUser, req.authPermissions.
+  // NOTE: req.path is mount-relative (e.g. "/auth/login") because we mount at
+  // "/api". Use req.originalUrl (sans query) so isPublicApiPath sees the full
+  // "/api/..." path it's defined against. Otherwise estimator + login routes
+  // would be force-blocked by requireAuth.
+  app.use("/api", (req, res, next) => {
+    const fullPath = (req.originalUrl || req.url).split("?")[0];
+    if (isPublicApiPath(fullPath)) return next();
+    return requireAuth(req, res, next);
+  });
 
   // ============================================
   // ESTIMATOR PORTAL SESSION AUTH
@@ -363,17 +393,9 @@ export async function registerRoutes(
 
   app.put("/api/site-purchases/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
-      const { pin, data } = req.body;
-      
-      if (!pin || typeof pin !== "string" || pin.length < 4) {
-        return res.status(400).json({ message: "Valid admin PIN is required" });
-      }
-      
-      const isAdmin = await storage.verifyPin("admin", pin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid admin PIN" });
-      }
+      const { data } = req.body;
 
       const updateSchema = z.object({
         itemDescription: z.string().optional(),
@@ -590,50 +612,10 @@ export async function registerRoutes(
     }
   });
 
-  // PIN verification route
-  const pinVerifySchema = z.object({
-    pin: z.string().length(4),
-  });
-
-  app.post("/api/auth/verify-pin", async (req, res) => {
-    try {
-      const input = pinVerifySchema.parse(req.body);
-      const isManager = await storage.verifyPin("manager", input.pin);
-      const isAdmin = await storage.verifyPin("admin", input.pin);
-      
-      if (isAdmin) {
-        return res.json({ role: "admin", valid: true });
-      } else if (isManager) {
-        return res.json({ role: "manager", valid: true });
-      } else {
-        return res.json({ role: null, valid: false });
-      }
-    } catch (err) {
-      res.status(400).json({ message: "Invalid request" });
-    }
-  });
-
-  // Change Admin PIN (admin only)
-  const changePinSchema = z.object({
-    currentPin: z.string().length(4),
-    newPin: z.string().length(4),
-  });
-
-  app.post("/api/admin/change-pin", async (req, res) => {
-    try {
-      const input = changePinSchema.parse(req.body);
-      
-      const isAdmin = await storage.verifyPin("admin", input.currentPin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid current admin PIN" });
-      }
-      
-      await storage.setSetting("admin_pin", input.newPin);
-      res.json({ message: "Admin PIN updated successfully" });
-    } catch (err) {
-      res.status(500).json({ message: "Failed to update PIN" });
-    }
-  });
+  // NOTE: Legacy PIN endpoints (/api/auth/verify-pin, /api/admin/change-pin,
+  // /api/admin/change-manager-pin) were removed in Task #229 in favour of
+  // real email/password login + per-user permissions. The estimator portal
+  // (/api/estimator/*) keeps its own PIN-based auth and is unaffected.
 
   // ============================================
   // PLANT ALERT THRESHOLDS (boiler / heating session post-save alerts)
@@ -650,12 +632,9 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/alert-thresholds", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const { plantAlertThresholdsSchema } = await import("@shared/schema");
-      const { pin, ...rest } = req.body || {};
-      if (!pin) return res.status(403).json({ message: "Admin PIN required" });
-      if (!(await storage.verifyPin("admin", pin))) {
-        return res.status(403).json({ message: "Invalid admin PIN" });
-      }
+      const { pin: _pin, ...rest } = req.body || {};
       const parsed = plantAlertThresholdsSchema.parse(rest);
       const saved = await storage.setPlantAlertThresholds(parsed);
       res.json(saved);
@@ -685,11 +664,8 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/variance-highlight-threshold", async (req, res) => {
     try {
-      const { pin, thresholdPct, overrides } = req.body || {};
-      if (!pin) return res.status(403).json({ message: "Admin PIN required" });
-      if (!(await storage.verifyPin("admin", pin))) {
-        return res.status(403).json({ message: "Invalid admin PIN" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { thresholdPct, overrides } = req.body || {};
       let savedThreshold: number | undefined;
       if (thresholdPct !== undefined) {
         const num = Number(thresholdPct);
@@ -727,30 +703,14 @@ export async function registerRoutes(
     }
   });
 
-  // Change Manager PIN (admin only)
-  app.post("/api/admin/change-manager-pin", async (req, res) => {
-    try {
-      const input = changePinSchema.parse(req.body);
-      
-      // Admin PIN required to change manager PIN
-      const isAdmin = await storage.verifyPin("admin", input.currentPin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid admin PIN" });
-      }
-      
-      await storage.setSetting("manager_pin", input.newPin);
-      res.json({ message: "Manager PIN updated successfully" });
-    } catch (err) {
-      res.status(500).json({ message: "Failed to update PIN" });
-    }
-  });
+  // (change-manager-pin endpoint removed — see Task #229 note above.)
 
 
   // Create a new version of DPR with edited data
   // Creates a copy with timestamp instead of overwriting original
   const versionSchema = z.object({
-    pin: z.string().min(0),
-    editedBy: z.enum(["manager", "admin", "engineer"]),
+    pin: z.string().optional(),
+    editedBy: z.enum(["manager", "admin", "engineer"]).optional(),
     data: createDprRequestSchema,
     clientTimestamp: z.string().optional(),
   });
@@ -759,36 +719,38 @@ export async function registerRoutes(
     try {
       const originalId = Number(req.params.id);
       const input = versionSchema.parse(req.body);
-      
-      if (input.editedBy === "engineer") {
+
+      if (!assertEdit(req, res, "site_dprs")) return;
+      const editedBy = input.editedBy || "engineer";
+
+      if (editedBy === "engineer") {
         const original = await storage.getDpr(originalId);
         if (!original) {
           return res.status(404).json({ message: "DPR not found" });
         }
         const equipment = Array.isArray(original.equipment) ? original.equipment : [];
-        const hasPendingClosing = equipment.some((e: any) => 
+        const hasPendingClosing = equipment.some((e: any) =>
           e.machine && e.openingReading != null && e.closingReading == null
         );
         if (!hasPendingClosing) {
           return res.status(403).json({ message: "Engineer completion only allowed for DPRs with pending closing entries" });
         }
-      } else {
-        const isValid = await storage.verifyPin(input.editedBy, input.pin);
-        if (!isValid) {
-          return res.status(403).json({ message: "Invalid PIN for editing" });
-        }
       }
-      
-      const newVersion = await storage.createVersionDpr(originalId, input.data, input.editedBy, input.clientTimestamp);
-      
+
+      const newVersion = await storage.createVersionDpr(originalId, input.data, editedBy, input.clientTimestamp);
+
+      const actor = currentUserName(req);
       await storage.createNotification({
         type: "info",
         title: "DPR Updated",
-        message: `DPR for ${input.data.site} (${input.data.date}) was edited by ${input.editedBy}`,
+        message: `DPR for ${input.data.site} (${input.data.date}) was edited by ${actor}`,
         isRead: 0,
       });
-      sendPushToAll("DPR Updated", `${input.editedBy} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
-      
+      sendPushToAll("DPR Updated", `${actor} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
+
+      // Re-lock the DPR after a save (record-locking policy, Task #229)
+      try { await relockResource("dpr", newVersion.id, req.authUser!.id); } catch {}
+
       res.status(201).json(newVersion);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -801,38 +763,37 @@ export async function registerRoutes(
     }
   });
 
-  // Clone DPR (for manager edits as copies)
-  // Requires manager or admin role with PIN verification
+  // Clone DPR (for manager edits as copies). Requires the user to have edit
+  // permission on the site_dprs section.
   const cloneSchema = z.object({
-    editedBy: z.enum(["manager", "admin"]),
-    pin: z.string().length(4),
+    editedBy: z.enum(["manager", "admin"]).optional(),
+    pin: z.string().optional(),
     clientTimestamp: z.string().optional(),
   });
-  
+
   app.post("/api/dprs/:id/clone", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_dprs")) return;
       const id = Number(req.params.id);
       const input = cloneSchema.parse(req.body);
-      
-      // Server-side PIN validation using database
-      const isValid = await storage.verifyPin(input.editedBy, input.pin);
-      if (!isValid) {
-        return res.status(403).json({ message: "Invalid PIN for role verification" });
-      }
-      
-      const cloned = await storage.cloneDpr(id, input.editedBy, input.clientTimestamp);
+      const editedBy = input.editedBy || (req.authUser?.isAdmin ? "admin" : "manager");
+
+      const cloned = await storage.cloneDpr(id, editedBy, input.clientTimestamp);
       if (!cloned) {
         return res.status(404).json({ message: "Original DPR not found" });
       }
-      
+
+      const actor = currentUserName(req);
       await storage.createNotification({
         type: "success",
         title: "DPR Cloned",
-        message: `DPR cloned for ${cloned.site} (${cloned.date}) by ${input.editedBy}`,
+        message: `DPR cloned for ${cloned.site} (${cloned.date}) by ${actor}`,
         isRead: 0,
       });
       sendPushToAll("DPR Cloned", `${cloned.site} - ${cloned.date}`, "/site-reports").catch(() => {});
-      
+
+      try { await relockResource("dpr", cloned.id, req.authUser!.id); } catch {}
+
       res.status(201).json(cloned);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -845,22 +806,11 @@ export async function registerRoutes(
     }
   });
 
-  // Delete DPR (admin only with PIN verification)
-  const deleteSchema = z.object({
-    pin: z.string().length(4),
-  });
-
+  // Delete DPR (admin only)
   app.delete("/api/dprs/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
-      const input = deleteSchema.parse(req.body);
-      
-      // Server-side PIN validation - admin only using database
-      const isAdmin = await storage.verifyPin("admin", input.pin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid admin PIN for deletion" });
-      }
-      
       const dprToDelete = await storage.getDpr(id);
       const deleted = await storage.deleteDpr(id);
       if (!deleted) {
@@ -920,26 +870,22 @@ export async function registerRoutes(
   });
 
   const plantCloneSchema = z.object({
-    editedBy: z.enum(["manager", "admin"]),
-    pin: z.string().length(4),
+    editedBy: z.enum(["manager", "admin"]).optional(),
+    pin: z.string().optional(),
   });
 
   app.post("/api/plant/:id/clone", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_shift_logs")) return;
       const id = Number(req.params.id);
       const input = plantCloneSchema.parse(req.body);
-      
-      // Server-side PIN validation using database
-      const isValid = await storage.verifyPin(input.editedBy, input.pin);
-      if (!isValid) {
-        return res.status(403).json({ message: "Invalid PIN for role verification" });
-      }
-      
-      const cloned = await storage.clonePlantReport(id, input.editedBy);
+      const editedBy = input.editedBy || (req.authUser?.isAdmin ? "admin" : "manager");
+
+      const cloned = await storage.clonePlantReport(id, editedBy);
       if (!cloned) {
         return res.status(404).json({ message: "Original plant report not found" });
       }
-      sendPushToAll("Plant Report Cloned", `Plant report cloned by ${input.editedBy}`, "/plant").catch(() => {});
+      sendPushToAll("Plant Report Cloned", `Plant report cloned by ${currentUserName(req)}`, "/plant").catch(() => {});
       res.status(201).json(cloned);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -973,21 +919,10 @@ export async function registerRoutes(
     }
   });
 
-  const plantDeleteSchema = z.object({
-    pin: z.string().length(4),
-  });
-
   app.delete("/api/plant/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
-      const input = plantDeleteSchema.parse(req.body);
-      
-      // Server-side PIN validation - admin only using database
-      const isAdmin = await storage.verifyPin("admin", input.pin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid admin PIN for deletion" });
-      }
-      
       const deleted = await storage.deletePlantReport(id);
       if (!deleted) {
         return res.status(404).json({ message: "Plant report not found" });
@@ -1725,10 +1660,13 @@ export async function registerRoutes(
   app.put("/api/plant-module/equipment-usage/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (!assertEdit(req, res, "plant_equipment")) return;
+      if (!(await assertWritable(res, "equipment_usage", id))) return;
       const updated = await storage.updateEquipmentUsage(id, req.body);
       if (!updated) {
         return res.status(404).json({ message: "Equipment usage not found" });
       }
+      try { await relockResource("equipment_usage", id, req.authUser!.id); } catch {}
       const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId || id}`;
       sendPushToAll("Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.json(updated);
@@ -1739,6 +1677,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/equipment-usage/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteEquipmentUsage(id);
       if (!deleted) {
@@ -2025,10 +1964,8 @@ export async function registerRoutes(
   // Body: { materialId, fromPartyId, toPartyId, transactionType?, dateFrom?, dateTo? }
   app.post("/api/plant-module/reassign-ledger/preview", async (req, res) => {
     try {
-      const { pin, materialId, fromPartyId, dateFrom, dateTo, transactionType } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { materialId, fromPartyId, dateFrom, dateTo, transactionType } = req.body || {};
       if (!materialId || !fromPartyId) {
         return res.status(400).json({ message: "materialId and fromPartyId are required" });
       }
@@ -2050,13 +1987,9 @@ export async function registerRoutes(
   // Requires admin PIN. Body adds: pin (string), toPartyId (int).
   app.post("/api/plant-module/reassign-ledger/execute", async (req, res) => {
     try {
-      const { pin, actor, materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
+      const actor = currentUserName(req);
       if (!materialId || !fromPartyId || !toPartyId) {
         return res.status(400).json({ message: "materialId, fromPartyId and toPartyId are required" });
       }
@@ -2093,10 +2026,8 @@ export async function registerRoutes(
   // legacy data moves. Requires admin PIN.
   app.post("/api/plant-module/recompute-balance-after", async (req, res) => {
     try {
-      const { pin, materialId } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { materialId } = req.body || {};
       if (!materialId) {
         return res.status(400).json({ message: "materialId is required" });
       }
@@ -2111,10 +2042,8 @@ export async function registerRoutes(
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER for review.
   app.post("/api/plant-module/shift-log-manpower/review-list", async (req, res) => {
     try {
-      const { pin, dateFrom, dateTo, plantName } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { dateFrom, dateTo, plantName } = req.body || {};
       const plantTrim = String(plantName || "").trim();
       const rows = await storage.listShiftLogManpowerNeedingReview({
         dateFrom: dateFrom || undefined,
@@ -2133,13 +2062,9 @@ export async function registerRoutes(
   // `fromNames` (array) and `toName` are provided.
   app.post("/api/plant-module/shift-log-manpower/bulk-relabel", async (req, res) => {
     try {
-      const { pin, actor, name, fromNames, toName, contractorName, category, gender } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { name, fromNames, toName, contractorName, category, gender } = req.body || {};
+      const actor = currentUserName(req);
       const fromList: string[] = Array.isArray(fromNames) && fromNames.length > 0
         ? fromNames.map((n: unknown) => String(n || "")).filter((n: string) => n.trim().length > 0)
         : (name ? [String(name)] : []);
@@ -2182,10 +2107,7 @@ export async function registerRoutes(
   // info needed to render an Undo button.
   app.post("/api/plant-module/shift-log-manpower/recent-merges", async (req, res) => {
     try {
-      const { pin } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
       const [batches, dupActivity] = await Promise.all([
         storage.getRecentShiftLogManpowerRelabelBatches(30),
         storage.getRecentShiftLogManpowerDupActivity(30),
@@ -2200,13 +2122,9 @@ export async function registerRoutes(
   // Admin: undo a previous merge/relabel batch by restoring the per-row snapshot.
   app.post("/api/plant-module/shift-log-manpower/undo-merge", async (req, res) => {
     try {
-      const { pin, actor, batchId } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { batchId } = req.body || {};
+      const actor = currentUserName(req);
       const id = Number(batchId);
       if (!Number.isFinite(id) || id <= 0) {
         return res.status(400).json({ message: "Valid batchId is required" });
@@ -2231,10 +2149,7 @@ export async function registerRoutes(
   // any future "MD ..." vs "MOHAMMED ..." pair is suggested automatically).
   app.post("/api/plant-module/shift-log-manpower/learned-aliases", async (req, res) => {
     try {
-      const { pin } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
       const aliases = await storage.getShiftLogManpowerLearnedAliases();
       res.json(aliases);
     } catch (err) {
@@ -2248,10 +2163,7 @@ export async function registerRoutes(
   // screen can render a Manage panel and apply both kinds to its suggester.
   app.post("/api/plant-module/shift-log-manpower/custom-aliases", async (req, res) => {
     try {
-      const { pin } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
       const aliases = await storage.listShiftLogManpowerCustomAliases();
       res.json(aliases);
     } catch (err) {
@@ -2269,13 +2181,9 @@ export async function registerRoutes(
   //                               undoing the merges that taught it)
   app.post("/api/plant-module/shift-log-manpower/add-custom-alias", async (req, res) => {
     try {
-      const { pin, actor, tokenA, tokenB, kind } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { tokenA, tokenB, kind } = req.body || {};
+      const actor = currentUserName(req);
       const k =
         kind === "suppress_learned" ? "suppress_learned"
         : kind === "suppress_learned_pair" ? "suppress_learned_pair"
@@ -2302,13 +2210,9 @@ export async function registerRoutes(
   // Admin: delete a custom alias / unsuppress a previously-suppressed pair.
   app.post("/api/plant-module/shift-log-manpower/delete-custom-alias", async (req, res) => {
     try {
-      const { pin, actor, id } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { id } = req.body || {};
+      const actor = currentUserName(req);
       const numId = Number(id);
       if (!Number.isFinite(numId) || numId <= 0) {
         return res.status(400).json({ message: "Valid id is required" });
@@ -2331,10 +2235,8 @@ export async function registerRoutes(
   // across sessions and devices.
   app.post("/api/plant-module/shift-log-manpower/dismissed-pairs", async (req, res) => {
     try {
-      const { pin, plantName } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { plantName } = req.body || {};
       const plant = String(plantName || "").trim();
       if (!plant) return res.status(400).json({ message: "plantName is required" });
       const pairs = await storage.listShiftLogManpowerDismissedDuplicatePairs(plant);
@@ -2350,13 +2252,9 @@ export async function registerRoutes(
   // unordered; existing entries are preserved (ON CONFLICT DO NOTHING).
   app.post("/api/plant-module/shift-log-manpower/dismiss-pairs", async (req, res) => {
     try {
-      const { pin, actor, pairs, plantName } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { pairs, plantName } = req.body || {};
+      const actor = currentUserName(req);
       const plant = String(plantName || "").trim();
       if (!plant) return res.status(400).json({ message: "plantName is required" });
       if (!Array.isArray(pairs) || pairs.length === 0) {
@@ -2402,13 +2300,9 @@ export async function registerRoutes(
   // Admin: undo a previous dismissal so the pair can suggest itself again.
   app.post("/api/plant-module/shift-log-manpower/restore-dismissed-pair", async (req, res) => {
     try {
-      const { pin, actor, id } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { id } = req.body || {};
+      const actor = currentUserName(req);
       const pairId = Number(id);
       if (!Number.isFinite(pairId) || pairId <= 0) {
         return res.status(400).json({ message: "Valid id is required" });
@@ -2445,13 +2339,9 @@ export async function registerRoutes(
   // line summarising the operator, plant scope and number of pairs restored.
   app.post("/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs", async (req, res) => {
     try {
-      const { pin, actor, ids, olderThanDays, plantName } = req.body || {};
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(401).json({ message: "Admin PIN required" });
-      }
-      if (!actor || typeof actor !== "string" || actor.trim().length < 2) {
-        return res.status(400).json({ message: "Operator name (actor) is required for audit log" });
-      }
+      if (!assertAdmin(req, res)) return;
+      const { ids, olderThanDays, plantName } = req.body || {};
+      const actor = currentUserName(req);
       const plant = String(plantName || "").trim();
       if (!plant) return res.status(400).json({ message: "plantName is required" });
       const idList = Array.isArray(ids)
@@ -2762,11 +2652,18 @@ export async function registerRoutes(
     try {
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
       const parsed = upsertPlantShiftLogSchema.parse(req.body);
-      const editedBy = parsed.editedBy || "operator";
-      // Operator save flow — no PIN gating; always treat as authorized so finalized logs can be re-edited freely.
+      const incomingId = (parsed as any).id ? Number((parsed as any).id) : null;
+      // Edit permission required for any save (create or update).
+      if (!assertEdit(req, res, "plant_shift_logs")) return;
+      // If updating an existing finalized/locked log, ensure unlocked.
+      if (incomingId) {
+        if (!(await assertWritable(res, "plant_shift_log", incomingId))) return;
+      }
+      const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
+        try { await relockResource("plant_shift_log", saved.id, req.authUser!.id); } catch {}
         sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
         res.status(201).json(saved);
       } catch (e: any) {
@@ -2792,10 +2689,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/shift-logs/:id", async (req, res) => {
     try {
-      const pin = req.body && req.body.pin;
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(403).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const ok = await storage.deletePlantShiftLog(id);
       if (!ok) return res.status(404).json({ message: "Shift log not found" });
@@ -3585,14 +3479,15 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
+      const id = parseInt(req.params.id);
+      if (!assertEdit(req, res, "plant_heating")) return;
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
-      const editedBy = parsed.editedBy || "operator";
-      // Operator-driven save flow — no PIN gating; finalized rows can be re-edited freely.
+      const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertBitumenHeatingSession(
-          { ...parsed, id: parseInt(req.params.id) },
+          { ...parsed, id },
           editedBy,
           authorizedRole,
         );
@@ -3624,10 +3519,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
-      const pin = req.body?.pin;
-      if (!pin || !(await storage.verifyPin("admin", pin))) {
-        return res.status(403).json({ message: "Admin PIN required" });
-      }
+      if (!assertAdmin(req, res)) return;
       const ok = await storage.deleteBitumenHeatingSession(parseInt(req.params.id));
       if (!ok) return res.status(404).json({ message: "Heating session not found" });
       res.json({ success: true });
@@ -3823,17 +3715,8 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin, approvedItems, remarks } = req.body;
 
-      if (!pin || typeof pin !== "string") {
-        return res.status(400).json({ message: "PIN is required" });
-      }
-
-      const isAdmin = await storage.verifyPin("admin", pin);
-      const isManager = await storage.verifyPin("manager", pin);
-      if (!isAdmin && !isManager) {
-        return res.status(403).json({ message: "Invalid PIN" });
-      }
-
-      const approvedBy = isAdmin ? "ADMIN" : "MANAGER";
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const approvedBy = currentUserName(req);
 
       const approvedItemsSchema = z.array(z.object({
         itemId: z.number(),
@@ -3859,19 +3742,10 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/:id/reject", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, reason } = req.body;
+      const { reason } = req.body;
 
-      if (!pin || typeof pin !== "string") {
-        return res.status(400).json({ message: "PIN is required" });
-      }
-
-      const isAdmin = await storage.verifyPin("admin", pin);
-      const isManager = await storage.verifyPin("manager", pin);
-      if (!isAdmin && !isManager) {
-        return res.status(403).json({ message: "Invalid PIN" });
-      }
-
-      const rejectedBy = isAdmin ? "ADMIN" : "MANAGER";
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const rejectedBy = currentUserName(req);
 
       if (!reason || typeof reason !== "string") {
         return res.status(400).json({ message: "Rejection reason is required" });
@@ -3960,22 +3834,14 @@ export async function registerRoutes(
   app.patch("/api/purchase-indent-items/:id/cancel", async (req, res) => {
     try {
       const itemId = Number(req.params.id);
-      const { pin, reason } = req.body;
+      const { reason } = req.body;
 
-      if (!pin || typeof pin !== "string") {
-        return res.status(400).json({ message: "PIN is required" });
-      }
       if (!reason || typeof reason !== "string" || !reason.trim()) {
         return res.status(400).json({ message: "Cancellation reason is required" });
       }
 
-      const isAdmin = await storage.verifyPin("admin", pin);
-      const isManager = await storage.verifyPin("manager", pin);
-      if (!isAdmin && !isManager) {
-        return res.status(403).json({ message: "Invalid PIN" });
-      }
-
-      const cancelledBy = isAdmin ? "ADMIN" : "MANAGER";
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const cancelledBy = currentUserName(req);
       const item = await storage.cancelPurchaseItem(itemId, cancelledBy, reason);
       if (!item) {
         return res.status(404).json({ message: "Purchase indent item not found" });
@@ -4006,21 +3872,15 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/:id/force-close", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, reason } = req.body;
+      const { reason } = req.body;
 
-      if (!pin || typeof pin !== "string") {
-        return res.status(400).json({ message: "PIN is required" });
-      }
       if (!reason || typeof reason !== "string" || !reason.trim()) {
         return res.status(400).json({ message: "Reason is required" });
       }
 
-      const isAdmin = await storage.verifyPin("admin", pin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Admin PIN required for force close" });
-      }
+      if (!assertAdmin(req, res)) return;
 
-      const indent = await storage.forceCloseIndent(id, "ADMIN", reason);
+      const indent = await storage.forceCloseIndent(id, currentUserName(req), reason);
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
@@ -4038,23 +3898,25 @@ export async function registerRoutes(
   app.put("/api/purchase-indents/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, ...data } = req.body;
-      if (!pin) return res.status(403).json({ message: "PIN required to edit indent" });
+      const { pin: _pin, ...data } = req.body;
 
       const existing = await storage.getPurchaseIndent(id);
       if (!existing) return res.status(404).json({ message: "Purchase indent not found" });
 
+      // Lock check (Task #229) — must be unlocked before edit.
+      if (!(await assertWritable(res, "purchase_indent", id))) return;
+
       if (existing.status !== "pending") {
-        const isAdmin = await storage.verifyPin("admin", pin);
-        if (!isAdmin) return res.status(403).json({ message: "Admin PIN required to edit non-pending indent" });
+        if (!assertAdmin(req, res)) return;
       } else {
-        const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
-        if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+        if (!assertEdit(req, res, "site_procurement")) return;
       }
 
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
+
+      try { await relockResource("purchase_indent", id, req.authUser!.id); } catch {}
       res.json(indent);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -4066,12 +3928,8 @@ export async function registerRoutes(
 
   app.delete("/api/purchase-indents/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
-      const { pin } = req.body;
-      if (!pin) return res.status(403).json({ message: "Admin PIN required to delete indent" });
-      const isAdmin = await storage.verifyPin("admin", pin);
-      if (!isAdmin) return res.status(403).json({ message: "Invalid admin PIN" });
-
       const deleted = await storage.deletePurchaseIndent(id);
       if (!deleted) return res.status(404).json({ message: "Purchase indent not found" });
       res.json({ success: true });
@@ -4175,19 +4033,10 @@ export async function registerRoutes(
   app.patch("/api/diesel-requirements/:id/approve", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, approvedItems } = req.body;
+      const { approvedItems } = req.body;
 
-      if (!pin || typeof pin !== "string") {
-        return res.status(400).json({ message: "PIN is required" });
-      }
-
-      const isAdmin = await storage.verifyPin("admin", pin);
-      const isManager = await storage.verifyPin("manager", pin);
-      if (!isAdmin && !isManager) {
-        return res.status(403).json({ message: "Invalid PIN" });
-      }
-
-      const approvedBy = isAdmin ? "ADMIN" : "MANAGER";
+      if (!assertEdit(req, res, "site_diesel")) return;
+      const approvedBy = currentUserName(req);
 
       const approvedItemsSchema = z.array(z.object({
         itemId: z.number(),
@@ -4213,19 +4062,10 @@ export async function registerRoutes(
   app.patch("/api/diesel-requirements/:id/reject", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, reason } = req.body;
+      const { reason } = req.body;
 
-      if (!pin || typeof pin !== "string") {
-        return res.status(400).json({ message: "PIN is required" });
-      }
-
-      const isAdmin = await storage.verifyPin("admin", pin);
-      const isManager = await storage.verifyPin("manager", pin);
-      if (!isAdmin && !isManager) {
-        return res.status(403).json({ message: "Invalid PIN" });
-      }
-
-      const rejectedBy = isAdmin ? "ADMIN" : "MANAGER";
+      if (!assertEdit(req, res, "site_diesel")) return;
+      const rejectedBy = currentUserName(req);
 
       if (!reason || typeof reason !== "string") {
         return res.status(400).json({ message: "Rejection reason is required" });
@@ -4273,23 +4113,24 @@ export async function registerRoutes(
   app.put("/api/diesel-requirements/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, ...data } = req.body;
-      if (!pin) return res.status(403).json({ message: "PIN required to edit diesel requirement" });
+      const { pin: _pin, ...data } = req.body;
 
       const existing = await storage.getDieselRequirement(id);
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
 
+      if (!(await assertWritable(res, "diesel_requirement", id))) return;
+
       if (existing.status !== "pending") {
-        const isAdmin = await storage.verifyPin("admin", pin);
-        if (!isAdmin) return res.status(403).json({ message: "Admin PIN required to edit non-pending diesel requirement" });
+        if (!assertAdmin(req, res)) return;
       } else {
-        const role = await storage.verifyPin("manager", pin) ? "manager" : (await storage.verifyPin("admin", pin) ? "admin" : null);
-        if (!role) return res.status(403).json({ message: "Invalid manager/admin PIN" });
+        if (!assertEdit(req, res, "site_diesel")) return;
       }
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);
       if (!requirement) return res.status(404).json({ message: "Diesel requirement not found" });
+
+      try { await relockResource("diesel_requirement", id, req.authUser!.id); } catch {}
       res.json(requirement);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -4301,12 +4142,8 @@ export async function registerRoutes(
 
   app.delete("/api/diesel-requirements/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
-      const { pin } = req.body;
-      if (!pin) return res.status(403).json({ message: "Admin PIN required to delete diesel requirement" });
-      const isAdmin = await storage.verifyPin("admin", pin);
-      if (!isAdmin) return res.status(403).json({ message: "Invalid admin PIN" });
-
       const deleted = await storage.deleteDieselRequirement(id);
       if (!deleted) return res.status(404).json({ message: "Diesel requirement not found" });
       res.json({ success: true });
@@ -4787,7 +4624,7 @@ export async function registerRoutes(
   app.put("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, ...billData } = req.body;
+      const { pin: _pin, ...billData } = req.body;
       const input = createVendorBillRequestSchema.parse(billData);
 
       const existing = await storage.getVendorBill(id);
@@ -4795,21 +4632,21 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
+      if (!(await assertWritable(res, "vendor_bill", id))) return;
+
       if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {
-        if (!pin) {
-          return res.status(403).json({ message: "Admin PIN required to edit verified/approved/paid bills" });
-        }
-        const isAdmin = await storage.verifyPin("admin", pin);
-        if (!isAdmin) {
-          return res.status(403).json({ message: "Invalid admin PIN" });
-        }
+        if (!assertAdmin(req, res)) return;
         input.status = "draft";
+      } else {
+        if (!assertEdit(req, res, "vendor_bills")) return;
       }
 
       const bill = await storage.updateVendorBill(id, input);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
+
+      try { await relockResource("vendor_bill", id, req.authUser!.id); } catch {}
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4825,24 +4662,17 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const statusSchema = z.object({
         status: z.enum(["draft", "verified", "approved", "paid"]),
-        actor: z.string().min(1),
-        pin: z.string().optional(),
       });
-      const { status, actor, pin } = statusSchema.parse(req.body);
+      const { status } = statusSchema.parse(req.body);
 
-      if (status === "verified" || status === "approved") {
-        if (!pin) {
-          return res.status(400).json({ message: "PIN is required for verification/approval" });
-        }
-        const role = status === "verified" ? "manager" : "admin";
-        const isValid = await storage.verifyPin(role, pin);
-        if (!isValid) {
-          const isOtherValid = await storage.verifyPin(role === "manager" ? "admin" : "manager", pin);
-          if (!isOtherValid) {
-            return res.status(403).json({ message: `Invalid PIN for ${status}` });
-          }
-        }
+      if (status === "approved") {
+        if (!assertAdmin(req, res)) return;
+      } else if (status === "verified" || status === "paid") {
+        if (!assertEdit(req, res, "vendor_bills")) return;
+      } else {
+        if (!assertEdit(req, res, "vendor_bills")) return;
       }
+      const actor = currentUserName(req);
 
       const bill = await storage.updateVendorBillStatus(id, status, actor);
       if (!bill) {
@@ -5215,20 +5045,13 @@ export async function registerRoutes(
   app.delete("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const pin = req.body?.pin as string | undefined;
 
       const bill = await storage.getVendorBill(id);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
-      if (!pin) {
-        return res.status(403).json({ message: "Admin PIN required to delete bills" });
-      }
-      const isAdmin = await storage.verifyPin("admin", pin);
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Invalid admin PIN" });
-      }
+      if (!assertAdmin(req, res)) return;
 
       const deleted = await storage.deleteVendorBill(id);
       if (!deleted) {
@@ -5363,10 +5186,8 @@ export async function registerRoutes(
 
   app.post("/api/admin/export-data", async (req, res) => {
     try {
-      const { tables, pin } = req.body;
-      if (!pin) return res.status(400).json({ message: "PIN required" });
-      const isValid = await storage.verifyPin("admin", pin);
-      if (!isValid) return res.status(403).json({ message: "Invalid admin PIN" });
+      if (!assertAdmin(req, res)) return;
+      const { tables } = req.body;
       if (!tables || !Array.isArray(tables) || tables.length === 0) {
         return res.status(400).json({ message: "No tables selected" });
       }
@@ -5389,10 +5210,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/reset-sequences", async (req, res) => {
     try {
-      const { pin } = req.body;
-      if (!pin) return res.status(400).json({ message: "PIN required" });
-      const isValid = await storage.verifyPin("admin", pin);
-      if (!isValid) return res.status(403).json({ message: "Invalid admin PIN" });
+      if (!assertAdmin(req, res)) return;
       await storage.resetAllSequences();
       res.json({ success: true, message: "All sequences reset successfully" });
     } catch (err) {
@@ -5403,10 +5221,8 @@ export async function registerRoutes(
 
   app.post("/api/admin/import-data", async (req, res) => {
     try {
-      const { data, pin } = req.body;
-      if (!pin) return res.status(400).json({ message: "PIN required" });
-      const isValid = await storage.verifyPin("admin", pin);
-      if (!isValid) return res.status(403).json({ message: "Invalid admin PIN" });
+      if (!assertAdmin(req, res)) return;
+      const { data } = req.body;
       if (!data || typeof data !== "object") {
         return res.status(400).json({ message: "Invalid import data" });
       }

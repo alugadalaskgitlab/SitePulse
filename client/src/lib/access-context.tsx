@@ -1,74 +1,24 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+// Backward-compat shim. The real auth lives in `@/lib/auth-context`. This
+// file used to host the localStorage-based AccessProvider + PIN logic that
+// gated edit/delete with hardcoded PINs. That entire model has been replaced
+// by per-user accounts + a permission matrix; we keep this module so existing
+// pages keep importing `useAccess` / `AccessProvider` without crashing.
+//
+// `useAccess` returns the SAME legacy shape it always did, but values are
+// derived from the authenticated user (`isAdmin`) and their permission matrix
+// (any `edit`/`view_reports` permission ⇒ canEdit/canViewReports).
+//
+// Long-term, callers should switch to `useAuth().sectionCan(section, action)`
+// for fine-grained section/action checks.
+import type { ReactNode } from "react";
+import { useAccess as useAuthAccess } from "@/lib/auth-context";
 
 export type AccessLevel = "engineer" | "manager" | "admin";
 
-interface AccessContextType {
-  access: AccessLevel;
-  setAccess: (level: AccessLevel) => void;
-  canEdit: boolean;  // Manager and Admin
-  canDelete: boolean; // Admin only
-  canViewReports: boolean; // Manager and Admin
-  isAdmin: boolean; // Is currently admin
-  requestAdminAccess: (pin: string) => boolean; // Try to get admin access with PIN
-}
+export const useAccess = useAuthAccess;
 
-const AccessContext = createContext<AccessContextType | undefined>(undefined);
-
+// AccessProvider is now a pass-through. The real provider is <AuthProvider>
+// in App.tsx. Keeping this exported lets any old test wrappers still mount.
 export function AccessProvider({ children }: { children: ReactNode }) {
-  const [access, setAccessState] = useState<AccessLevel>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("accessLevel");
-      if (stored && (stored === "engineer" || stored === "manager" || stored === "admin")) {
-        return stored;
-      }
-    }
-    return "engineer";
-  });
-
-  const setAccess = (level: AccessLevel) => {
-    setAccessState(level);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("accessLevel", level);
-    }
-  };
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("accessLevel");
-      if (stored && (stored === "engineer" || stored === "manager" || stored === "admin")) {
-        setAccessState(stored);
-      }
-    }
-  }, []);
-
-  const canEdit = access === "admin" || access === "manager";
-  const canDelete = access === "admin";
-  const canViewReports = access === "manager" || access === "admin"; // Manager and Admin can view reports
-  const isAdmin = access === "admin";
-  
-  // Admin PIN verification - in production this should be server-side
-  const ADMIN_PIN = "1234";
-  const requestAdminAccess = (pin: string): boolean => {
-    const trimmedPin = pin.trim();
-    console.log("PIN attempt:", trimmedPin, "Expected:", ADMIN_PIN, "Match:", trimmedPin === ADMIN_PIN);
-    if (trimmedPin === ADMIN_PIN) {
-      setAccess("admin");
-      return true;
-    }
-    return false;
-  };
-
-  return (
-    <AccessContext.Provider value={{ access, setAccess, canEdit, canDelete, canViewReports, isAdmin, requestAdminAccess }}>
-      {children}
-    </AccessContext.Provider>
-  );
-}
-
-export function useAccess() {
-  const context = useContext(AccessContext);
-  if (context === undefined) {
-    throw new Error("useAccess must be used within an AccessProvider");
-  }
-  return context;
+  return <>{children}</>;
 }

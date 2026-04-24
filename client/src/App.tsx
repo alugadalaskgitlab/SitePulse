@@ -2,7 +2,11 @@ import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { AccessProvider } from "@/lib/access-context";
+import { AuthProvider } from "@/lib/auth-context";
+import RequireAuth from "@/components/RequireAuth";
+import Login from "@/pages/Login";
+import UserManagement from "@/pages/UserManagement";
+import DeviceApproval from "@/pages/DeviceApproval";
 import Home from "@/pages/Home";
 import SiteHome from "@/pages/SiteHome";
 import SiteDashboard from "@/pages/SiteDashboard";
@@ -85,6 +89,26 @@ function AppHeader() {
 
 function Router() {
   return (
+    <Switch>
+      {/* Public routes — login & estimator portal stay outside the auth shell. */}
+      <Route path="/login" component={Login} />
+      <Route path="/estimator-login" component={EstimatorLogin} />
+      <Route path="/estimator-hub" component={EstimatorHub} />
+      <Route path="/concrete-calculator" component={ConcreteCalculator} />
+      <Route path="/concrete-calculator-v2" component={ConcreteCalculatorV2} />
+
+      {/* Authenticated app shell. */}
+      <Route>
+        <RequireAuth>
+          <AuthedShell />
+        </RequireAuth>
+      </Route>
+    </Switch>
+  );
+}
+
+function AuthedShell() {
+  return (
     <div className="min-h-screen bg-background relative">
       <Watermark />
       <AppHeader />
@@ -133,16 +157,14 @@ function Router() {
             <Route path="/plant/data-sync" component={DataSync} />
             <Route path="/plant/:id" component={PlantDetails} />
             <Route path="/admin/settings" component={AdminSettings} />
-            <Route path="/estimator-login" component={EstimatorLogin} />
-            <Route path="/estimator-hub" component={EstimatorHub} />
+            <Route path="/admin/users" component={UserManagement} />
+            <Route path="/admin/devices" component={DeviceApproval} />
             <Route path="/admin/reports" component={AdminReports} />
             <Route path="/admin/mix-estimates" component={MixEstimates} />
             <Route path="/admin/mix-impact" component={MixImpact} />
             <Route path="/admin/mix-comparison" component={MixComparativeReport} />
             <Route path="/admin/scenario-comparison" component={ScenarioComparison} />
             <Route path="/admin/concrete-estimates" component={ConcreteEstimates} />
-            <Route path="/concrete-calculator" component={ConcreteCalculator} />
-            <Route path="/concrete-calculator-v2" component={ConcreteCalculatorV2} />
             <Route component={NotFound} />
           </Switch>
         </div>
@@ -154,10 +176,10 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AccessProvider>
+      <AuthProvider>
         <Toaster />
         <Router />
-      </AccessProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
