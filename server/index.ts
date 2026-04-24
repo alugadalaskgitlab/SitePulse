@@ -74,6 +74,12 @@ app.use((req, res, next) => {
     console.error("Startup: Failed to reset sequences:", e);
   }
 
+  try {
+    await storage.migrateLegacyGeneratorNamesToCanonical();
+  } catch (e) {
+    console.error("Startup: Failed to migrate legacy generator names:", e);
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

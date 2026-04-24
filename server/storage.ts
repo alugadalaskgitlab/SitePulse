@@ -339,6 +339,9 @@ export interface IStorage {
   // Backfill contractorName / category / gender on legacy plant_shift_log_manpower rows
   migrateLegacyPlantShiftLogManpower(): Promise<{ updated: number; skipped: number; errors: number }>;
 
+  // Rewrite legacy short generator names (e.g. "600 KVA") to canonical Equipment Master names ("600 KVA GENERATOR")
+  migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }>;
+
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
   listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
     name: string;
@@ -6915,6 +6918,77 @@ export class DatabaseStorage implements IStorage {
       }
     } catch (err) {
       console.error('migrateLegacyPlantShiftLogManpower: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
+  }
+
+  async migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }> {
+    const result = { generatorLogsUpdated: 0, heatingSessionsUpdated: 0, errors: 0 };
+    try {
+      const allEquipment = await db.select().from(equipmentMaster);
+      const canonicalByStripped = new Map<string, string>();
+      for (const eq of allEquipment) {
+        const name = (eq.name || "").trim();
+        if (!name) continue;
+        const upper = name.toUpperCase().replace(/\s+/g, " ");
+        if (!/\sGENERATOR$/.test(upper)) continue;
+        const stripped = upper.replace(/\s+GENERATOR$/, "").trim();
+        if (!stripped) continue;
+        if (!canonicalByStripped.has(stripped)) {
+          canonicalByStripped.set(stripped, name);
+        }
+      }
+
+      if (canonicalByStripped.size === 0) {
+        return result;
+      }
+
+      const normalize = (raw: string | null | undefined): string | null => {
+        if (!raw) return null;
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        const upper = trimmed.toUpperCase().replace(/\s+/g, " ");
+        const stripped = upper.replace(/\s+GENERATOR$/, "").trim();
+        const canonical = canonicalByStripped.get(stripped);
+        if (!canonical) return null;
+        if (trimmed === canonical) return null;
+        return canonical;
+      };
+
+      const allGenLogs = await db.select().from(generatorLogs);
+      for (const row of allGenLogs) {
+        try {
+          const newName = normalize(row.generatorName);
+          if (newName) {
+            await db.update(generatorLogs).set({ generatorName: newName }).where(eq(generatorLogs.id, row.id));
+            result.generatorLogsUpdated++;
+          }
+        } catch (err) {
+          console.error(`migrateLegacyGeneratorNamesToCanonical: Error updating generator_logs ${row.id}:`, err);
+          result.errors++;
+        }
+      }
+
+      const allHeating = await db.select().from(bitumenHeatingSessions).where(isNotNull(bitumenHeatingSessions.dgGeneratorName));
+      for (const row of allHeating) {
+        try {
+          const newName = normalize(row.dgGeneratorName);
+          if (newName) {
+            await db.update(bitumenHeatingSessions).set({ dgGeneratorName: newName }).where(eq(bitumenHeatingSessions.id, row.id));
+            result.heatingSessionsUpdated++;
+          }
+        } catch (err) {
+          console.error(`migrateLegacyGeneratorNamesToCanonical: Error updating bitumen_heating_sessions ${row.id}:`, err);
+          result.errors++;
+        }
+      }
+
+      if (result.generatorLogsUpdated > 0 || result.heatingSessionsUpdated > 0 || result.errors > 0) {
+        console.log(`migrateLegacyGeneratorNamesToCanonical: generator_logs updated ${result.generatorLogsUpdated}, bitumen_heating_sessions updated ${result.heatingSessionsUpdated}, errors ${result.errors}`);
+      }
+    } catch (err) {
+      console.error('migrateLegacyGeneratorNamesToCanonical: Fatal error:', err);
       result.errors++;
     }
     return result;
