@@ -921,6 +921,32 @@ export const plantShiftLogManpowerCustomAliases = pgTable("plant_shift_log_manpo
 
 export type PlantShiftLogManpowerCustomAlias = typeof plantShiftLogManpowerCustomAliases.$inferSelect;
 
+// Audit feed for custom-alias dictionary edits (add/remove of explicit token
+// equivalences and add/remove of admin-suppressed learned aliases). Mirrors
+// plantShiftLogManpowerDupActivity so the same recent-activity timeline can
+// surface alias changes alongside merges and dismissals. Each row snapshots
+// the (tokenA, tokenB, kind) tuple so the original entry can still be rendered
+// (and re-applied as a one-click revert) even after the underlying custom-
+// alias row has been deleted. `action` is one of:
+//   - 'add'    → admin added a custom alias or muted a learned alias.
+//   - 'remove' → admin removed a custom alias or unmuted a learned alias.
+// `kind` carries the same discriminator stored on plantShiftLogManpowerCustomAliases
+// ('alias', 'suppress_learned', 'suppress_learned_pair') so a revert knows how
+// to round-trip the entry through the existing add/delete endpoints.
+export const plantShiftLogManpowerAliasActivity = pgTable("plant_shift_log_manpower_alias_activity", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  actor: text("actor").notNull(),
+  action: text("action").notNull(),
+  kind: text("kind").notNull(),
+  tokenA: text("token_a").notNull(),
+  tokenB: text("token_b").notNull(),
+}, (t) => ({
+  createdAtIdx: index("psl_alias_activity_created_idx").on(t.createdAt),
+}));
+
+export type PlantShiftLogManpowerAliasActivity = typeof plantShiftLogManpowerAliasActivity.$inferSelect;
+
 // Audit feed for "not a duplicate" dismissals and their restores (single +
 // bulk). Mirrors the merge audit kept in plantShiftLogManpowerRelabelBatches
 // so the worker-cleanup screen can show every action in a single recent-

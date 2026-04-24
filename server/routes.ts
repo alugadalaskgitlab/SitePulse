@@ -2040,11 +2040,12 @@ export async function registerRoutes(
   app.post("/api/plant-module/shift-log-manpower/recent-merges", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const [batches, dupActivity] = await Promise.all([
+      const [batches, dupActivity, aliasActivity] = await Promise.all([
         storage.getRecentShiftLogManpowerRelabelBatches(30),
         storage.getRecentShiftLogManpowerDupActivity(30),
+        storage.getRecentShiftLogManpowerAliasActivity(30),
       ]);
-      res.json({ merges: batches, dupActivity });
+      res.json({ merges: batches, dupActivity, aliasActivity });
     } catch (err) {
       console.error("shift-log-manpower recent-merges error:", err);
       res.status(500).json({ message: "Failed to load recent merges" });
@@ -2131,6 +2132,23 @@ export async function registerRoutes(
         `at=${new Date().toISOString()} add kind=${k} added=${result.added} ` +
         `tokenA=${tokenA} tokenB=${tokenB}`
       );
+      // Audit write is best-effort: only log when the row was newly inserted
+      // (no-op on already-saved pairs so the activity feed mirrors real state
+      // changes). Snapshot the storage-side normalized tokens so a revert can
+      // round-trip them through delete/add cleanly.
+      if (result.added && result.alias) {
+        try {
+          await storage.addShiftLogManpowerAliasActivity({
+            actor: actor.trim(),
+            action: "add",
+            kind: k,
+            tokenA: result.alias.tokenA,
+            tokenB: result.alias.tokenB,
+          });
+        } catch (auditErr) {
+          console.error("shift-log-manpower add-custom-alias audit write failed:", auditErr);
+        }
+      }
       res.json(result);
     } catch (err) {
       console.error("shift-log-manpower add-custom-alias error:", err);
@@ -2154,7 +2172,28 @@ export async function registerRoutes(
         `[ShiftLogManpowerCustomAlias] actor="${actor.trim()}" role=admin ` +
         `at=${new Date().toISOString()} delete id=${numId} removed=${result.removed}`
       );
-      res.json(result);
+      // Audit write is best-effort: only log when a row was actually deleted.
+      // Snapshot the (tokenA, tokenB, kind) tuple from the deleted row so the
+      // revert button can re-add the exact same entry even after this audit
+      // row is the only remaining trace of it.
+      if (result.removed && result.tokenA && result.tokenB && result.kind) {
+        const k =
+          result.kind === "suppress_learned" ? "suppress_learned"
+          : result.kind === "suppress_learned_pair" ? "suppress_learned_pair"
+          : "alias";
+        try {
+          await storage.addShiftLogManpowerAliasActivity({
+            actor: actor.trim(),
+            action: "remove",
+            kind: k,
+            tokenA: result.tokenA,
+            tokenB: result.tokenB,
+          });
+        } catch (auditErr) {
+          console.error("shift-log-manpower delete-custom-alias audit write failed:", auditErr);
+        }
+      }
+      res.json({ removed: result.removed });
     } catch (err) {
       console.error("shift-log-manpower delete-custom-alias error:", err);
       const msg = err instanceof Error ? err.message : "Failed to delete custom alias";

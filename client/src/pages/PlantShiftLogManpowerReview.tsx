@@ -636,6 +636,15 @@ export default function PlantShiftLogManpowerReview() {
     pairs: Array<[string, string]>;
     pairCount: number;
   };
+  type AliasActivity = {
+    id: number;
+    createdAt: string;
+    actor: string;
+    action: "add" | "remove";
+    kind: "alias" | "suppress_learned" | "suppress_learned_pair";
+    tokenA: string;
+    tokenB: string;
+  };
   // Unified recent-activity feed entry. Merges and dismissal/restore actions
   // share the same row layout; the `kind` discriminator drives which fields
   // are rendered and whether the Undo button is available.
@@ -645,8 +654,10 @@ export default function PlantShiftLogManpowerReview() {
 
   const [recentMerges, setRecentMerges] = useState<RecentMerge[] | null>(null);
   const [recentDupActivity, setRecentDupActivity] = useState<DupActivity[] | null>(null);
+  const [recentAliasActivity, setRecentAliasActivity] = useState<AliasActivity[] | null>(null);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [undoingId, setUndoingId] = useState<number | null>(null);
+  const [revertingAliasActivityId, setRevertingAliasActivityId] = useState<number | null>(null);
 
   const fetchRecentMerges = async () => {
     if (adminPin === null) return;
@@ -665,9 +676,11 @@ export default function PlantShiftLogManpowerReview() {
       if (Array.isArray(body)) {
         setRecentMerges(body as RecentMerge[]);
         setRecentDupActivity([]);
+        setRecentAliasActivity([]);
       } else {
         setRecentMerges((body.merges || []) as RecentMerge[]);
         setRecentDupActivity((body.dupActivity || []) as DupActivity[]);
+        setRecentAliasActivity((body.aliasActivity || []) as AliasActivity[]);
       }
     } catch (err) {
       toast({ title: "Failed to load recent activity", description: getErrorMessage(err), variant: "destructive" });
@@ -757,7 +770,7 @@ export default function PlantShiftLogManpowerReview() {
       });
       setNewAliasA("");
       setNewAliasB("");
-      await fetchCustomAliases();
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
     } catch (err) {
       toast({ title: "Failed to save alias", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -782,11 +795,81 @@ export default function PlantShiftLogManpowerReview() {
       if (res.status === 401) { setAdminPin(null); return; }
       if (!res.ok) throw new Error(await res.text());
       toast({ title: "Removed" });
-      await fetchCustomAliases();
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
     } catch (err) {
       toast({ title: "Failed to remove", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setDeletingAliasId(null);
+    }
+  };
+
+  // One-click revert for an entry in the alias-activity audit feed.
+  // - For an "add" entry, look up the matching custom-alias row by
+  //   (tokenA, tokenB, kind) and delete it via the existing endpoint. The
+  //   id is needed because deleteShiftLogManpowerCustomAlias is keyed by id.
+  //   If the alias was already removed (e.g. someone hit Remove on the
+  //   Manage aliases list), we surface a soft toast instead of failing.
+  // - For a "remove" entry, re-add the snapshotted (tokenA, tokenB, kind)
+  //   tuple via the existing add-custom-alias endpoint.
+  // Each successful revert itself appends a new audit row so the feed
+  // continues to be a complete history of every state change.
+  const revertAliasActivity = async (a: AliasActivity) => {
+    if (adminPin === null) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    setRevertingAliasActivityId(a.id);
+    try {
+      if (a.action === "add") {
+        const match = (customAliases || []).find(
+          (c) => c.tokenA === a.tokenA && c.tokenB === a.tokenB && c.kind === a.kind
+        );
+        if (!match) {
+          toast({
+            title: "Already reverted",
+            description: `${a.tokenA} ↔ ${a.tokenB} is no longer in the dictionary.`,
+          });
+          await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+          return;
+        }
+        const res = await fetch("/api/plant-module/shift-log-manpower/delete-custom-alias", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ pin: adminPin, actor: actor.trim(), id: match.id }),
+        });
+        if (res.status === 401) { setAdminPin(null); return; }
+        if (!res.ok) throw new Error(await res.text());
+        toast({
+          title: "Reverted",
+          description: `Removed ${a.tokenA} ↔ ${a.tokenB} from the alias dictionary.`,
+        });
+      } else {
+        const res = await fetch("/api/plant-module/shift-log-manpower/add-custom-alias", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            pin: adminPin, actor: actor.trim(),
+            tokenA: a.tokenA, tokenB: a.tokenB, kind: a.kind,
+          }),
+        });
+        if (res.status === 401) { setAdminPin(null); return; }
+        if (!res.ok) throw new Error(await res.text());
+        const result = (await res.json()) as { added: boolean };
+        toast({
+          title: result.added ? "Reverted" : "Already restored",
+          description: result.added
+            ? `Re-added ${a.tokenA} ↔ ${a.tokenB} to the alias dictionary.`
+            : `${a.tokenA} ↔ ${a.tokenB} was already in the dictionary.`,
+        });
+      }
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+    } catch (err) {
+      toast({ title: "Revert failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setRevertingAliasActivityId(null);
     }
   };
 
@@ -816,7 +899,7 @@ export default function PlantShiftLogManpowerReview() {
         title: result.added ? "Learned name-pair suppressed" : "Already suppressed",
         description: `${a} ↔ ${b} will no longer trigger duplicate suggestions.`,
       });
-      await fetchCustomAliases();
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
     } catch (err) {
       toast({ title: "Failed to suppress", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -848,7 +931,7 @@ export default function PlantShiftLogManpowerReview() {
         title: result.added ? "Learned alias suppressed" : "Already suppressed",
         description: `${a} ↔ ${b} will no longer trigger duplicate suggestions.`,
       });
-      await fetchCustomAliases();
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
     } catch (err) {
       toast({ title: "Failed to suppress", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -1637,6 +1720,86 @@ export default function PlantShiftLogManpowerReview() {
               <div className="text-[11px] text-muted-foreground mt-1">
                 Tokens are case-insensitive and stored UPPER-cased. Punctuation/spaces are stripped.
               </div>
+            </div>
+
+            <div data-testid="section-recent-alias-changes">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-sm font-semibold">
+                  Recent alias changes ({(recentAliasActivity || []).length})
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs"
+                  onClick={fetchRecentMerges}
+                  disabled={loadingRecent}
+                  data-testid="button-refresh-recent-alias-changes"
+                >
+                  {loadingRecent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Refresh"}
+                </Button>
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-2">
+                Last 30 days of add / remove / mute / unmute actions in the alias dictionary.
+                Hit Revert to undo a single change without touching the rest.
+              </div>
+              {recentAliasActivity === null ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-loading">
+                  Loading…
+                </div>
+              ) : recentAliasActivity.length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-empty">
+                  No alias add/remove/mute actions in the last 30 days.
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-auto" data-testid="list-recent-alias-changes">
+                  {recentAliasActivity.map(a => {
+                    const when = new Date(a.createdAt);
+                    const isAdd = a.action === "add";
+                    // Map (action, kind) to a human label and badge tone. Mute
+                    // = add of a suppress_learned* row; Unmute = remove of one.
+                    const isMute = a.kind !== "alias";
+                    const label = isMute
+                      ? (isAdd ? "Muted learned alias" : "Unmuted learned alias")
+                      : (isAdd ? "Added custom alias" : "Removed custom alias");
+                    const badgeTone = isAdd
+                      ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+                      : "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200";
+                    const revertLabel = isAdd ? "Remove" : "Re-add";
+                    return (
+                      <div
+                        key={a.id}
+                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-xs border border-purple-200 dark:border-purple-800"
+                        data-testid={`alias-activity-${a.id}`}
+                      >
+                        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${badgeTone}`}>
+                          {label}
+                        </span>
+                        <span className="font-mono">{a.tokenA}</span>
+                        <span className="text-muted-foreground">↔</span>
+                        <span className="font-mono">{a.tokenB}</span>
+                        <span className="text-muted-foreground ml-2">
+                          by {a.actor} · {when.toLocaleDateString()} {when.toLocaleTimeString()}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 ml-auto text-purple-800 dark:text-purple-200"
+                          disabled={revertingAliasActivityId === a.id || actor.trim().length < 2}
+                          onClick={() => revertAliasActivity(a)}
+                          data-testid={`button-revert-alias-activity-${a.id}`}
+                          title={isAdd
+                            ? `Remove ${a.tokenA} ↔ ${a.tokenB} from the dictionary`
+                            : `Re-add ${a.tokenA} ↔ ${a.tokenB} to the dictionary`}
+                        >
+                          {revertingAliasActivityId === a.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <><Undo2 className="w-3.5 h-3.5 mr-1" />{revertLabel}</>}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>

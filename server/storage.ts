@@ -40,10 +40,12 @@ import {
   plantShiftLogManpowerDismissedDups,
   plantShiftLogManpowerCustomAliases,
   plantShiftLogManpowerDupActivity,
+  plantShiftLogManpowerAliasActivity,
   type PlantShiftLogManpowerRelabelBatch,
   type PlantShiftLogManpowerDismissedDup,
   type PlantShiftLogManpowerCustomAlias,
   type PlantShiftLogManpowerDupActivity,
+  type PlantShiftLogManpowerAliasActivity,
   plantShiftLogIdle,
   plantShiftLogVersions,
   type PlantShiftLog,
@@ -452,7 +454,26 @@ export interface IStorage {
     kind: "alias" | "suppress_learned" | "suppress_learned_pair";
     actor: string;
   }): Promise<{ added: boolean; alias: PlantShiftLogManpowerCustomAlias | null }>;
-  deleteShiftLogManpowerCustomAlias(id: number): Promise<{ removed: boolean }>;
+  /** Returns the (tokenA, tokenB, kind) of the deleted row so callers can
+   * snapshot it into the alias-activity audit before it disappears. */
+  deleteShiftLogManpowerCustomAlias(id: number): Promise<{
+    removed: boolean;
+    tokenA: string | null;
+    tokenB: string | null;
+    kind: string | null;
+  }>;
+
+  // Audit feed of custom-alias dictionary edits (add/remove of aliases and
+  // mute/unmute of learned aliases). Used to render the "Recent alias changes"
+  // sub-panel inside Manage aliases with a one-click revert per entry.
+  addShiftLogManpowerAliasActivity(input: {
+    actor: string;
+    action: "add" | "remove";
+    kind: "alias" | "suppress_learned" | "suppress_learned_pair";
+    tokenA: string;
+    tokenB: string;
+  }): Promise<void>;
+  getRecentShiftLogManpowerAliasActivity(days: number): Promise<PlantShiftLogManpowerAliasActivity[]>;
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
@@ -7713,12 +7734,61 @@ export class DatabaseStorage implements IStorage {
     return { added: true, alias: inserted[0] };
   }
 
-  async deleteShiftLogManpowerCustomAlias(id: number): Promise<{ removed: boolean }> {
+  async deleteShiftLogManpowerCustomAlias(id: number): Promise<{
+    removed: boolean;
+    tokenA: string | null;
+    tokenB: string | null;
+    kind: string | null;
+  }> {
     if (!Number.isFinite(id) || id <= 0) throw new Error("Valid id is required");
     const res = await db.delete(plantShiftLogManpowerCustomAliases)
       .where(eq(plantShiftLogManpowerCustomAliases.id, id))
-      .returning({ id: plantShiftLogManpowerCustomAliases.id });
-    return { removed: res.length > 0 };
+      .returning({
+        id: plantShiftLogManpowerCustomAliases.id,
+        tokenA: plantShiftLogManpowerCustomAliases.tokenA,
+        tokenB: plantShiftLogManpowerCustomAliases.tokenB,
+        kind: plantShiftLogManpowerCustomAliases.kind,
+      });
+    if (res.length === 0) {
+      return { removed: false, tokenA: null, tokenB: null, kind: null };
+    }
+    const r = res[0];
+    return { removed: true, tokenA: r.tokenA, tokenB: r.tokenB, kind: r.kind };
+  }
+
+  async addShiftLogManpowerAliasActivity(input: {
+    actor: string;
+    action: "add" | "remove";
+    kind: "alias" | "suppress_learned" | "suppress_learned_pair";
+    tokenA: string;
+    tokenB: string;
+  }): Promise<void> {
+    const actorTrim = String(input.actor || "").trim();
+    const tokenA = String(input.tokenA || "").trim();
+    const tokenB = String(input.tokenB || "").trim();
+    if (!actorTrim || !tokenA || !tokenB) return;
+    if (input.action !== "add" && input.action !== "remove") return;
+    if (
+      input.kind !== "alias"
+      && input.kind !== "suppress_learned"
+      && input.kind !== "suppress_learned_pair"
+    ) return;
+    await db.insert(plantShiftLogManpowerAliasActivity).values({
+      actor: actorTrim,
+      action: input.action,
+      kind: input.kind,
+      tokenA,
+      tokenB,
+    });
+  }
+
+  async getRecentShiftLogManpowerAliasActivity(days: number): Promise<PlantShiftLogManpowerAliasActivity[]> {
+    const safeDays = Math.max(1, Math.min(365, Math.floor(days || 30)));
+    const cutoff = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+    return await db.select().from(plantShiftLogManpowerAliasActivity)
+      .where(gte(plantShiftLogManpowerAliasActivity.createdAt, cutoff))
+      .orderBy(desc(plantShiftLogManpowerAliasActivity.createdAt))
+      .limit(200);
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
