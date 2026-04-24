@@ -1025,23 +1025,6 @@ export type BitumenHeatingSession = typeof bitumenHeatingSessions.$inferSelect;
 export type InsertBitumenHeatingSession = z.infer<typeof insertBitumenHeatingSessionSchema>;
 export type PlantHeatingSessionVersion = typeof plantHeatingSessionVersions.$inferSelect;
 
-// Tracks the most recent fired/cleared state of each heating-session alert
-// so the post-save hook can dedupe and only re-fire on ok→bad transitions
-// (or significant value changes). One row per (scopeKey).
-//   scopeKey examples:
-//     "session:42:hotOilLow"
-//     "session:42:ldoHigh"
-//     "mismatch:2026-04-24:Main Plant"
-export const heatingAlertHistory = pgTable("heating_alert_history", {
-  id: serial("id").primaryKey(),
-  scopeKey: text("scope_key").notNull().unique(),
-  state: text("state").notNull(), // "ok" | "bad"
-  lastMessage: text("last_message"),
-  lastFiredAt: timestamp("last_fired_at"),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-export type HeatingAlertHistory = typeof heatingAlertHistory.$inferSelect;
-
 export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSchema.extend({
   id: z.number().optional(),
   pin: z.string().optional(),
@@ -1492,66 +1475,6 @@ export const vendorRateCards = pgTable("vendor_rate_cards", {
 export const insertVendorRateCardSchema = createInsertSchema(vendorRateCards).omit({ id: true, updatedAt: true });
 export type VendorRateCard = typeof vendorRateCards.$inferSelect;
 export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
-
-// ============================================
-// PLANT ALERT THRESHOLDS (stored in app_settings)
-// ============================================
-// Used by the boiler / heating session post-save alert hook to decide when
-// to fire push + inbox notifications. Values are persisted as JSON under the
-// app_settings key `plant_alert_thresholds`.
-export const PLANT_ALERT_THRESHOLDS_KEY = "plant_alert_thresholds";
-
-export const PLANT_ALERT_THRESHOLD_DEFAULTS = {
-  hotOilEndTempMinC: 240,
-  ldoLitersPerHourMax: 25,
-  sessionsVsShiftMismatchL: 5,
-  // Hot-oil supply-minus-return delta floor (°C). On a healthy heat
-  // exchanger, hot oil drops by ~15-25°C as it gives up heat to the
-  // bitumen. As the exchanger fouls, less heat transfers and the return
-  // temperature creeps closer to the supply temperature, so the delta
-  // shrinks. Days where the daily average delta drops below this floor
-  // are flagged as suspected fouling on the Heating Trends report.
-  hotOilDeltaMinC: 15,
-  // Persistent diesel over-consumer (PlantEquipmentUsage monthly rollup).
-  // A machine is flagged when its month-to-date diesel variance is at or
-  // above `monthlyOverConsumerVariancePct`, AND it has overshot the daily
-  // variance threshold on at least `monthlyOverConsumerMinDays` distinct
-  // days inside the same month.
-  monthlyOverConsumerVariancePct: 15,
-  monthlyOverConsumerMinDays: 2,
-} as const;
-
-export const plantAlertThresholdsSchema = z.object({
-  hotOilEndTempMinC: z.number().nonnegative(),
-  ldoLitersPerHourMax: z.number().positive(),
-  sessionsVsShiftMismatchL: z.number().positive(),
-  hotOilDeltaMinC: z.number().nonnegative().default(15),
-  monthlyOverConsumerVariancePct: z.number().positive().max(500).default(15),
-  monthlyOverConsumerMinDays: z.number().int().positive().max(31).default(2),
-});
-export type PlantAlertThresholds = z.infer<typeof plantAlertThresholdsSchema>;
-
-// ============================================
-// VARIANCE HIGHLIGHT THRESHOLD (stored in app_settings)
-// ============================================
-// Used by the PlantEquipmentUsage daily footer (and monthly rollup) to decide
-// when |variance %| of actual-vs-expected diesel is large enough to highlight
-// a row. Persisted as a plain numeric percent under app_settings key
-// `variance_highlight_threshold_pct`. Admin-tunable from Admin Settings.
-export const VARIANCE_HIGHLIGHT_THRESHOLD_KEY = "variance_highlight_threshold_pct";
-// Per-equipment-type overrides live in a sibling app_settings key as a JSON
-// map of `{ [equipmentType]: pct }`. When a row's equipment type has an
-// override, that value wins over the global threshold above. Equipment
-// without an override falls back to the global value as before.
-export const VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY = "variance_highlight_threshold_overrides";
-
-export const VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT = 15;
-
-export const varianceHighlightThresholdSchema = z.object({
-  thresholdPct: z.number().min(0).max(100),
-  overrides: z.record(z.string(), z.number().min(0).max(100)).default({}),
-});
-export type VarianceHighlightThreshold = z.infer<typeof varianceHighlightThresholdSchema>;
 
 // ============================================
 // USERS & PERMISSIONS (Task #229)

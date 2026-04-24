@@ -461,7 +461,7 @@ export default function PlantLdoLogs() {
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/ton</p>
-                      <Badge variant={isExcess ? "destructive" : "secondary"} className="gap-1 mt-1">
+                      <Badge variant="secondary" className="gap-1 mt-1">
                         {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {Math.abs(variance).toFixed(3)} L {isExcess ? "excess" : "saved"}
                       </Badge>

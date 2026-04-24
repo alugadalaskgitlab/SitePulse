@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, AlertTriangle, TrendingUp, TrendingDown, FileWarning, Lock } from "lucide-react";
+import { ChevronLeft, TrendingUp, TrendingDown, FileWarning, Lock } from "lucide-react";
 import { format } from "date-fns";
 import { PinAuth } from "@/components/PinAuth";
 import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
@@ -85,15 +85,7 @@ export default function PlantVarianceReport() {
 
   const getVarianceBadge = (variance: number | null) => {
     if (variance === null || variance === undefined) return null;
-    const absVariance = Math.abs(Number(variance));
-    
-    if (absVariance > 10) {
-      return <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" /> {formatVariance(variance)}</Badge>;
-    } else if (absVariance > 5) {
-      return <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">{formatVariance(variance)}</Badge>;
-    } else {
-      return <Badge variant="outline" className="gap-1">{formatVariance(variance)}</Badge>;
-    }
+    return <Badge variant="outline" className="gap-1">{formatVariance(variance)}</Badge>;
   };
 
   const getBitumenDiffKg = (dispatch: TruckDispatch) => {

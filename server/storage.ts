@@ -34,7 +34,6 @@ import {
   plantShiftLogs,
   bitumenHeatingSessions,
   plantHeatingSessionVersions,
-  heatingAlertHistory,
   plantShiftLogManpower,
   plantShiftLogManpowerRelabelBatches,
   plantShiftLogManpowerRelabelSnapshots,
@@ -57,16 +56,7 @@ import {
   type UpsertBitumenHeatingSessionInput,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import {
-  PLANT_ALERT_THRESHOLDS_KEY,
-  PLANT_ALERT_THRESHOLD_DEFAULTS,
-  plantAlertThresholdsSchema,
-  type PlantAlertThresholds,
-  VARIANCE_HIGHLIGHT_THRESHOLD_KEY,
-  VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY,
-  VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT,
-} from "@shared/schema";
-import { sendPushToAll, sendPushToAudience } from "./push";
+import { sendPushToAll } from "./push";
 import {
   type CreateDprRequest,
   type Dpr,
@@ -644,14 +634,6 @@ export interface IStorage {
   deleteBitumenHeatingSession(id: number): Promise<boolean>;
   getHeatingTrends(filters: { dateFrom: string; dateTo: string; plantName?: string }): Promise<HeatingTrendsResult>;
   getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName?: string): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null>;
-
-  // Plant alert thresholds (stored in app_settings)
-  getPlantAlertThresholds(): Promise<PlantAlertThresholds>;
-  setPlantAlertThresholds(thresholds: PlantAlertThresholds): Promise<PlantAlertThresholds>;
-  getVarianceHighlightThresholdPct(): Promise<number>;
-  setVarianceHighlightThresholdPct(thresholdPct: number): Promise<number>;
-  getVarianceHighlightThresholdOverrides(): Promise<Record<string, number>>;
-  setVarianceHighlightThresholdOverrides(overrides: Record<string, number>): Promise<Record<string, number>>;
 }
 
 export type HeatingTrendsBucket = {
@@ -2179,10 +2161,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
-    const result = await this._createEquipmentUsageTxn(usage);
-    this._emitPersistentOverConsumerAlert(result.equipmentId, result.date)
-      .catch((err: any) => console.error("[OverConsumerAlert] create hook failed:", err?.message || err));
-    return result;
+    return this._createEquipmentUsageTxn(usage);
   }
 
   private async _createEquipmentUsageTxn(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
@@ -2359,12 +2338,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
-    const result = await this._updateEquipmentUsageTxn(id, usage);
-    if (result) {
-      this._emitPersistentOverConsumerAlert(result.equipmentId, result.date)
-        .catch((err: any) => console.error("[OverConsumerAlert] update hook failed:", err?.message || err));
-    }
-    return result;
+    return this._updateEquipmentUsageTxn(id, usage);
   }
 
   private async _updateEquipmentUsageTxn(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
@@ -9835,354 +9809,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       return saved;
-    }).then(async (saved) => {
-      // Fire-and-forget alert hook: never let notifications break a save.
-      this._emitHeatingSessionAlerts(saved).catch((err) => {
-        console.error("[HeatingAlerts] Failed to emit alerts:", err?.message || err);
-      });
-      return saved;
     });
-  }
-
-  // ============================================================
-  // PLANT ALERT THRESHOLDS (admin-configurable)
-  // ============================================================
-  async getPlantAlertThresholds(): Promise<PlantAlertThresholds> {
-    const raw = await this.getSetting(PLANT_ALERT_THRESHOLDS_KEY);
-    if (!raw) return { ...PLANT_ALERT_THRESHOLD_DEFAULTS };
-    try {
-      const parsed = plantAlertThresholdsSchema.parse(JSON.parse(raw));
-      return parsed;
-    } catch {
-      return { ...PLANT_ALERT_THRESHOLD_DEFAULTS };
-    }
-  }
-
-  async setPlantAlertThresholds(thresholds: PlantAlertThresholds): Promise<PlantAlertThresholds> {
-    const validated = plantAlertThresholdsSchema.parse(thresholds);
-    await this.setSetting(PLANT_ALERT_THRESHOLDS_KEY, JSON.stringify(validated));
-    return validated;
-  }
-
-  async getVarianceHighlightThresholdPct(): Promise<number> {
-    const raw = await this.getSetting(VARIANCE_HIGHLIGHT_THRESHOLD_KEY);
-    if (!raw) return VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-      return VARIANCE_HIGHLIGHT_THRESHOLD_DEFAULT;
-    }
-    return parsed;
-  }
-
-  async setVarianceHighlightThresholdPct(thresholdPct: number): Promise<number> {
-    if (!Number.isFinite(thresholdPct) || thresholdPct < 0 || thresholdPct > 100) {
-      throw new Error("Threshold must be between 0 and 100");
-    }
-    await this.setSetting(VARIANCE_HIGHLIGHT_THRESHOLD_KEY, String(thresholdPct));
-    return thresholdPct;
-  }
-
-  async getVarianceHighlightThresholdOverrides(): Promise<Record<string, number>> {
-    const raw = await this.getSetting(VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY);
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-      const out: Record<string, number> = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        const num = Number(v);
-        if (typeof k === "string" && k.trim() && Number.isFinite(num) && num >= 0 && num <= 100) {
-          out[k] = num;
-        }
-      }
-      return out;
-    } catch {
-      return {};
-    }
-  }
-
-  async setVarianceHighlightThresholdOverrides(overrides: Record<string, number>): Promise<Record<string, number>> {
-    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
-      throw new Error("Overrides must be an object map of equipment-type to percent");
-    }
-    const cleaned: Record<string, number> = {};
-    for (const [k, v] of Object.entries(overrides)) {
-      const key = String(k || "").trim();
-      const num = Number(v);
-      if (!key) continue;
-      if (!Number.isFinite(num) || num < 0 || num > 100) {
-        throw new Error(`Override for "${key}" must be a number between 0 and 100`);
-      }
-      cleaned[key] = num;
-    }
-    await this.setSetting(VARIANCE_HIGHLIGHT_THRESHOLD_OVERRIDES_KEY, JSON.stringify(cleaned));
-    return cleaned;
-  }
-
-  // Post-save hook: check thresholds against the just-saved heating session
-  // and any related shift-meter data, then push + write inbox entries for
-  // each violated threshold. Each alert is independent so multiple may fire
-  // for a single save.
-  //
-  // De-duplication: every alert has a stable `scopeKey` (per session+type, or
-  // per date+plant for the cross-shift mismatch). We persist the last-known
-  // state ("ok"/"bad") and message in `heating_alert_history`. An alert only
-  // re-fires when the state transitions ok→bad, or when it's still bad but
-  // the formatted message has materially changed (a different rounded value,
-  // different threshold, etc). This prevents notification fatigue from repeat
-  // saves of the same heating session.
-  private async _emitHeatingSessionAlerts(saved: BitumenHeatingSession): Promise<void> {
-    const thresholds = await this.getPlantAlertThresholds();
-    const url = `/plant/heating-sessions/${saved.date}`;
-    const plantTag = saved.plantName ? ` [${saved.plantName}]` : "";
-    const dateTag = saved.date ? ` ${saved.date}` : "";
-
-    // Each candidate carries the current state for its scope. `state: "ok"`
-    // means the threshold is currently fine — we update history but don't
-    // fire. `state: "bad"` means the threshold is violated and we may fire
-    // depending on the prior history row.
-    type Candidate =
-      | { scopeKey: string; state: "ok" }
-      | { scopeKey: string; state: "bad"; type: "warning" | "error"; title: string; message: string };
-    const candidates: Candidate[] = [];
-
-    // 1. Hot-oil end temperature out of band (low end temp = boiler underperforming).
-    // Always emit an "ok" candidate when not violating — including when the
-    // input field is now null — so a prior "bad" history row gets cleared
-    // and a later genuine violation can re-fire as a fresh transition.
-    const hotOilKey = `session:${saved.id}:hotOilLow`;
-    if (saved.hotOilTempEnd != null && saved.hotOilTempEnd < thresholds.hotOilEndTempMinC) {
-      candidates.push({
-        scopeKey: hotOilKey,
-        state: "bad",
-        type: "warning",
-        title: "Hot-oil end temp below target",
-        message: `Session #${saved.id}${plantTag}${dateTag}: end temp ${saved.hotOilTempEnd}°C < ${thresholds.hotOilEndTempMinC}°C target`,
-      });
-    } else {
-      candidates.push({ scopeKey: hotOilKey, state: "ok" });
-    }
-
-    // 2. LDO L/Hour above limit (boiler burning too much fuel). Same "always
-    // push ok" pattern — if the inputs are missing or the rate is fine, clear
-    // any stale "bad" history so a future violation re-fires properly.
-    const ldoKey = `session:${saved.id}:ldoHigh`;
-    if (saved.ldoTank1Consumed != null && saved.durationHours != null && saved.durationHours > 0) {
-      const lPerHour = saved.ldoTank1Consumed / saved.durationHours;
-      if (lPerHour > thresholds.ldoLitersPerHourMax) {
-        candidates.push({
-          scopeKey: ldoKey,
-          state: "bad",
-          type: "warning",
-          title: "Boiler LDO L/hour above limit",
-          message: `Session #${saved.id}${plantTag}${dateTag}: ${lPerHour.toFixed(1)} L/hr > ${thresholds.ldoLitersPerHourMax} L/hr limit (${saved.ldoTank1Consumed.toFixed(1)} L over ${saved.durationHours.toFixed(2)} hr)`,
-        });
-      } else {
-        candidates.push({ scopeKey: ldoKey, state: "ok" });
-      }
-    } else {
-      candidates.push({ scopeKey: ldoKey, state: "ok" });
-    }
-
-    // 3. Sessions vs shift-meter Tank-1 mismatch (totals across the day).
-    // Scoped per (date, plant) so multiple sessions on the same day collapse
-    // to one alert, and only re-fire when the discrepancy meaningfully shifts.
-    // When the comparison can't be performed (no shift meter yet, or no
-    // sessions left after a delete) we still mark the scope "ok" to clear
-    // any stale "bad" state from a previous evaluation.
-    const mismatchKey = `mismatch:${saved.date}:${saved.plantName ?? ""}`;
-    try {
-      const sameDaySessions = await this.getBitumenHeatingSessions({
-        date: saved.date,
-        plantName: saved.plantName,
-      });
-      const sessionsLdoT1L = sameDaySessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
-      const shift = await this.getPlantShiftLogByDate(saved.date, undefined, saved.plantName);
-      let shiftLdoT1L: number | null = null;
-      if (shift?.ldoTank1OpeningMeter != null && shift?.ldoTank1ClosingMeter != null) {
-        shiftLdoT1L = Math.max(0, shift.ldoTank1ClosingMeter - shift.ldoTank1OpeningMeter);
-      }
-      if (shiftLdoT1L != null && sessionsLdoT1L > 0) {
-        const diff = sessionsLdoT1L - shiftLdoT1L;
-        if (Math.abs(diff) > thresholds.sessionsVsShiftMismatchL) {
-          candidates.push({
-            scopeKey: mismatchKey,
-            state: "bad",
-            type: "error",
-            title: "Boiler LDO mismatch vs shift meter",
-            message: `${saved.date}${plantTag}: heating sessions ${sessionsLdoT1L.toFixed(1)} L vs shift Tank-1 ${shiftLdoT1L.toFixed(1)} L (Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(1)} L > ±${thresholds.sessionsVsShiftMismatchL} L)`,
-          });
-        } else {
-          candidates.push({ scopeKey: mismatchKey, state: "ok" });
-        }
-      } else {
-        candidates.push({ scopeKey: mismatchKey, state: "ok" });
-      }
-    } catch (err: any) {
-      console.error("[HeatingAlerts] Mismatch check failed:", err?.message || err);
-    }
-
-    if (candidates.length === 0) return;
-
-    // Load prior history for all scope keys we touched, in one round-trip.
-    const scopeKeys = candidates.map(c => c.scopeKey);
-    const priorRows = await db.select().from(heatingAlertHistory)
-      .where(inArray(heatingAlertHistory.scopeKey, scopeKeys));
-    const priorByKey = new Map(priorRows.map(r => [r.scopeKey, r]));
-
-    const now = new Date();
-    for (const c of candidates) {
-      const prior = priorByKey.get(c.scopeKey);
-      if (c.state === "ok") {
-        // Threshold is fine now. Record/refresh state but never notify.
-        if (!prior) {
-          await db.insert(heatingAlertHistory).values({
-            scopeKey: c.scopeKey,
-            state: "ok",
-            lastMessage: null,
-            lastFiredAt: null,
-            updatedAt: now,
-          }).onConflictDoNothing();
-        } else if (prior.state !== "ok") {
-          await db.update(heatingAlertHistory)
-            .set({ state: "ok", updatedAt: now })
-            .where(eq(heatingAlertHistory.scopeKey, c.scopeKey));
-        }
-        continue;
-      }
-
-      // c.state === "bad": only fire on transition (no prior, or prior was
-      // "ok") or when the formatted message has changed (significant shift).
-      const isTransition = !prior || prior.state !== "bad";
-      const messageChanged = !!prior && prior.state === "bad" && prior.lastMessage !== c.message;
-      if (!isTransition && !messageChanged) {
-        // Identical repeat — skip notification, leave history as-is.
-        continue;
-      }
-
-      try {
-        await this.createNotification({ type: c.type, title: c.title, message: c.message });
-      } catch (err: any) {
-        console.error("[HeatingAlerts] createNotification failed:", err?.message || err);
-      }
-      sendPushToAll(c.title, c.message, url).catch(() => {});
-
-      const historyRow = {
-        scopeKey: c.scopeKey,
-        state: "bad" as const,
-        lastMessage: c.message,
-        lastFiredAt: now,
-        updatedAt: now,
-      };
-      try {
-        await db.insert(heatingAlertHistory).values(historyRow)
-          .onConflictDoUpdate({
-            target: heatingAlertHistory.scopeKey,
-            set: {
-              state: historyRow.state,
-              lastMessage: historyRow.lastMessage,
-              lastFiredAt: historyRow.lastFiredAt,
-              updatedAt: historyRow.updatedAt,
-            },
-          });
-      } catch (err: any) {
-        console.error("[HeatingAlerts] history upsert failed:", err?.message || err);
-      }
-    }
-  }
-
-  // Post-save hook: when an equipment-usage entry is created or updated,
-  // re-evaluate that machine's month-to-date diesel consumption against the
-  // admin-tunable persistent over-consumer thresholds. If the machine has
-  // crossed the line for the first time this month, fire a single alert
-  // (push + admin inbox). De-duplication keys on the alert title which
-  // includes the machine + YYYY-MM, so subsequent saves in the same month
-  // are silent.
-  private async _emitPersistentOverConsumerAlert(
-    equipmentId: number,
-    dateStr: string | null | undefined,
-  ): Promise<void> {
-    try {
-      if (!equipmentId || !dateStr || !/^\d{4}-\d{2}/.test(dateStr)) return;
-      const month = dateStr.slice(0, 7);
-      const monthStart = `${month}-01`;
-      const [yr, mo] = month.split("-").map(Number);
-      const nextMonth = mo === 12
-        ? `${yr + 1}-01-01`
-        : `${yr}-${String(mo + 1).padStart(2, "0")}-01`;
-
-      const thresholds = await this.getPlantAlertThresholds();
-      const variancePct = thresholds.monthlyOverConsumerVariancePct;
-      const minDays = thresholds.monthlyOverConsumerMinDays;
-      if (!variancePct || variancePct <= 0) return;
-      if (!minDays || minDays <= 0) return;
-
-      const [equip] = await db.select().from(equipmentMaster)
-        .where(eq(equipmentMaster.id, equipmentId)).limit(1);
-      if (!equip) return;
-
-      const entries = await db.select().from(equipmentUsage).where(and(
-        eq(equipmentUsage.equipmentId, equipmentId),
-        gte(equipmentUsage.date, monthStart),
-        lt(equipmentUsage.date, nextMonth),
-      ));
-
-      let totalActual = 0;
-      let totalExpected = 0;
-      const overshootDays = new Set<string>();
-      for (const e of entries) {
-        const isPartial = e.openingReading != null
-          && e.closingReading == null
-          && e.tripBasedEntry !== true;
-        if (isPartial) continue;
-        if (e.dieselIncluded === true) continue;
-        if ((e.entryType || "").toLowerCase() === "shifting") continue;
-
-        const opening = e.openingDiesel ?? 0;
-        const issued = e.dieselIssued ?? 0;
-        const closing = e.dieselBalanceInTank ?? e.closingDiesel;
-        const expected = e.expectedDiesel ?? 0;
-        const consumed = closing != null
-          ? Math.max(0, opening + issued - closing)
-          : expected;
-        totalActual += consumed;
-        totalExpected += expected;
-        if (expected > 0 && ((consumed - expected) / expected) * 100 >= variancePct) {
-          overshootDays.add(e.date);
-        }
-      }
-
-      if (totalExpected <= 0) return;
-      const monthVariancePct = ((totalActual - totalExpected) / totalExpected) * 100;
-      if (monthVariancePct < variancePct) return;
-      if (overshootDays.size < minDays) return;
-
-      const equipName = equip.name + (equip.registrationNumber ? ` (${equip.registrationNumber})` : "");
-      // Stable dedup key, machine-id + month, embedded in the title so we
-      // can recognise prior alerts even if the equipment is later renamed
-      // or another machine happens to share the same display name.
-      const dedupKey = `[eq:${equipmentId}|${month}]`;
-      const title = `Persistent diesel over-consumer ${dedupKey} — ${equipName} — ${month}`;
-
-      // De-dup: one alert per (equipmentId, month). The key is a literal
-      // substring of every prior alert's title for this machine + month.
-      const existing = await db.select({ id: adminNotifications.id })
-        .from(adminNotifications)
-        .where(ilike(adminNotifications.title, `%${dedupKey}%`))
-        .limit(1);
-      if (existing.length > 0) return;
-
-      const dayWord = overshootDays.size === 1 ? "day" : "days";
-      const message = `${equipName} is averaging ${monthVariancePct.toFixed(1)}% over diesel norm for ${month} `
-        + `(${overshootDays.size} ${dayWord} ≥ ${variancePct}% over norm; min ${minDays}). `
-        + `Actual ${totalActual.toFixed(1)} L vs expected ${totalExpected.toFixed(1)} L.`;
-
-      await this.createNotification({ type: "warning", title, message });
-      sendPushToAudience(title, message, "/plant/equipment-usage", "managers")
-        .catch(() => {});
-    } catch (err: any) {
-      console.error("[OverConsumerAlert] check failed:", err?.message || err);
-    }
   }
 
   async finalizeBitumenHeatingSession(id: number, finalizedBy: string): Promise<BitumenHeatingSession | undefined> {
@@ -10221,10 +9848,13 @@ export class DatabaseStorage implements IStorage {
       lte(plantShiftLogs.date, dateTo),
       eq(plantShiftLogs.plantName, plantName),
     ));
-    const thresholds = await this.getPlantAlertThresholds();
-    const hotOilEndTempMinC = thresholds.hotOilEndTempMinC;
-    const hotOilDeltaMinC = thresholds.hotOilDeltaMinC;
-    const mismatchThresholdL = thresholds.sessionsVsShiftMismatchL;
+    // Fixed operational guard rails (inline constants, no admin tuning).
+    // The previous admin-tunable threshold layer was removed in Task #248;
+    // these defaults are the long-standing values used to flag suspect days
+    // on the Heating Trends report and its Excel export.
+    const hotOilEndTempMinC = 240;
+    const hotOilDeltaMinC = 15;
+    const mismatchThresholdL = 5;
 
     // Aggregate shift-meter Tank-1 L per day (closing − opening). When more
     // than one shift log exists for a date (multi-shift days), sum them so
