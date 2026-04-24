@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { unzipSync, strFromU8 } from "fflate";
 
 type PartyOpt = { id: number; name: string };
 type MixTypeOpt = { id: number; name: string };
@@ -320,15 +321,10 @@ export default function PlantDailyReports() {
         const msg = await res.text().catch(() => "");
         throw new Error(`Bulk ZIP failed: ${msg}`);
       }
-      // Parse per-date status from response headers (base64-encoded JSON).
-      const total = Number(res.headers.get("X-Bulk-Total") || "0");
-      const succeeded = Number(res.headers.get("X-Bulk-Succeeded") || "0");
-      const failed = Number(res.headers.get("X-Bulk-Failed") || "0");
-      const statusB64 = res.headers.get("X-Bulk-Status") || "";
-      let statusEntries: BulkStatus[] = [];
-      if (statusB64) {
-        try { statusEntries = JSON.parse(atob(statusB64)); } catch { /* ignore */ }
-      }
+      // Server now streams the ZIP, so per-entry status arrives inside
+      // `manifest.json` rather than headers. Total is still sent as a header
+      // so we can show "N PDFs queued" before parsing the archive.
+      const totalHeader = Number(res.headers.get("X-Bulk-Total") || "0");
 
       const blob = await res.blob();
       const sortedDates = [...new Set(rows.map((r) => r.date))].sort();
@@ -340,6 +336,28 @@ export default function PlantDailyReports() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+
+      // Extract the embedded manifest so we can keep showing the per-entry
+      // status panel. Falling back to header counts if the manifest can't be
+      // read keeps the toast working even when parsing fails.
+      let total = totalHeader;
+      let succeeded = totalHeader;
+      let failed = 0;
+      let statusEntries: BulkStatus[] = [];
+      try {
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        const files = unzipSync(buf, { filter: (f) => f.name === "manifest.json" });
+        const manifestRaw = files["manifest.json"];
+        if (manifestRaw) {
+          const manifest = JSON.parse(strFromU8(manifestRaw));
+          total = Number(manifest.total ?? totalHeader);
+          succeeded = Number(manifest.succeeded ?? totalHeader);
+          failed = Number(manifest.failed ?? 0);
+          if (Array.isArray(manifest.entries)) statusEntries = manifest.entries;
+        }
+      } catch {
+        /* ignore — fall back to header total */
+      }
 
       setBulkResult({ total, succeeded, failed, entries: statusEntries });
       setBulkProgress("");

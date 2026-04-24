@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
+import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -3362,11 +3363,14 @@ export async function registerRoutes(
     }
   });
 
-  // Bulk PDF export — accepts a list of (date, plant) entries and streams ONE STORE-mode ZIP
-  // containing all PDFs (across plants). Per-date success/failure is reported in two ways:
-  //   1. Response headers `X-Bulk-Total`, `X-Bulk-Succeeded`, `X-Bulk-Failed` and `X-Bulk-Status`
-  //      (a JSON array of { date, plant, ok, error? }).
-  //   2. A `manifest.json` file embedded inside the ZIP with the same per-entry status list.
+  // Bulk PDF export — accepts a list of (date, plant) entries and streams ONE
+  // STORE-mode ZIP (via `archiver`) containing all PDFs (across plants), built
+  // and appended one at a time so peak memory stays flat regardless of entry
+  // count. The per-date success/failure list is recorded in a `manifest.json`
+  // file embedded inside the ZIP (the response body is already streaming, so
+  // it's no longer possible to set per-entry headers after the fact). The
+  // `X-Bulk-Total` response header still carries the requested entry count up
+  // front so the client can show a progress label before parsing the ZIP.
   // Backward-compat: also accepts the old { plant, dates: [...] } shape.
   app.post("/api/plant-module/daily-reports/bulk-zip", async (req, res) => {
     try {
@@ -3383,148 +3387,126 @@ export async function registerRoutes(
       if (!entries.length) {
         return res.status(400).json({ message: "Provide at least one entry" });
       }
-      // Guard rail: cap each request to keep memory bounded (each PDF ≈ 150-200 KB).
-      const MAX_ENTRIES = 200;
+      // Sanity guard: with archiver streaming the response, memory stays flat
+      // regardless of entry count — but keep a generous upper bound to prevent
+      // a runaway request from holding a request slot for hours.
+      const MAX_ENTRIES = 1000;
       if (entries.length > MAX_ENTRIES) {
         return res.status(400).json({ message: `Too many reports (${entries.length}). Max ${MAX_ENTRIES} per ZIP — narrow the date range and try again.` });
       }
 
-      // Build PDFs sequentially to keep memory reasonable.
       type Status = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
       const status: Status[] = [];
-      const files: Array<{ name: string; data: Buffer }> = [];
       const slugPlant = (p: string) => p.replace(/[^A-Za-z0-9._-]+/g, "_");
-
-      // Cover sheet — a single index PDF listing every (date, plant) row with totals
-      // + party/mix breakdown so accountants can scan the export without opening
-      // each per-day PDF. Empty days render as "—". Built from
-      // getDailyPlantReportIndex (same shape as the Daily Reports list page).
-      try {
-        const sortedDatesForCover = entries.map((e) => e.date).sort();
-        const coverFromD = sortedDatesForCover[0];
-        const coverToD = sortedDatesForCover[sortedDatesForCover.length - 1];
-        const indexRows = await storage.getDailyPlantReportIndex({ from: coverFromD, to: coverToD });
-        const indexByKey = new Map(indexRows.map((r) => [`${r.date}|${r.plantName}`, r]));
-        const coverBuf = await buildBulkZipCoverSheetPdf(entries, indexByKey, coverFromD, coverToD);
-        // 00- prefix keeps it sorted to the top in most ZIP viewers.
-        files.push({ name: "00-cover-sheet.pdf", data: coverBuf });
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        files.push({ name: "00-cover-sheet-ERROR.txt", data: Buffer.from(`Failed to build cover sheet: ${msg}`) });
-      }
-
-      for (const e of entries) {
-        try {
-          const buf = await buildDailyPlantReportPdfBuffer(e.date, e.plant);
-          files.push({ name: `daily-plant-report-${slugPlant(e.plant)}-${e.date}.pdf`, data: buf });
-          status.push({ date: e.date, plant: e.plant, ok: true, bytes: buf.length });
-        } catch (err: any) {
-          const msg = err?.message || String(err);
-          files.push({ name: `ERROR-${slugPlant(e.plant)}-${e.date}.txt`, data: Buffer.from(`Failed to build PDF for ${e.plant} on ${e.date}: ${msg}`) });
-          status.push({ date: e.date, plant: e.plant, ok: false, error: msg });
-        }
-      }
-      const manifest = {
-        generatedAt: new Date().toISOString(),
-        total: status.length,
-        succeeded: status.filter((s) => s.ok).length,
-        failed: status.filter((s) => !s.ok).length,
-        entries: status,
-      };
-      files.push({ name: "manifest.json", data: Buffer.from(JSON.stringify(manifest, null, 2)) });
-
-      // Minimal STORE-mode ZIP encoder (no compression, supports any byte data).
-      const crc32Table = (() => {
-        const t = new Uint32Array(256);
-        for (let n = 0; n < 256; n++) {
-          let c = n;
-          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-          t[n] = c >>> 0;
-        }
-        return t;
-      })();
-      const crc32 = (buf: Buffer): number => {
-        let c = 0xFFFFFFFF;
-        for (let i = 0; i < buf.length; i++) c = (crc32Table[(c ^ buf[i]) & 0xFF] ^ (c >>> 8)) >>> 0;
-        return (c ^ 0xFFFFFFFF) >>> 0;
-      };
-
-      const localParts: Buffer[] = [];
-      const centralParts: Buffer[] = [];
-      let offset = 0;
-      for (const f of files) {
-        const nameBuf = Buffer.from(f.name, "utf8");
-        const crc = crc32(f.data);
-        const size = f.data.length;
-
-        const local = Buffer.alloc(30);
-        local.writeUInt32LE(0x04034b50, 0); // local header sig
-        local.writeUInt16LE(20, 4);          // version needed
-        local.writeUInt16LE(0x0800, 6);      // flags (UTF-8 name)
-        local.writeUInt16LE(0, 8);           // method = STORE
-        local.writeUInt16LE(0, 10);          // mod time
-        local.writeUInt16LE(0, 12);          // mod date
-        local.writeUInt32LE(crc, 14);
-        local.writeUInt32LE(size, 18);
-        local.writeUInt32LE(size, 22);
-        local.writeUInt16LE(nameBuf.length, 26);
-        local.writeUInt16LE(0, 28);          // extra length
-        localParts.push(local, nameBuf, f.data);
-
-        const central = Buffer.alloc(46);
-        central.writeUInt32LE(0x02014b50, 0);
-        central.writeUInt16LE(20, 4);        // version made by
-        central.writeUInt16LE(20, 6);        // version needed
-        central.writeUInt16LE(0x0800, 8);    // flags
-        central.writeUInt16LE(0, 10);        // method
-        central.writeUInt16LE(0, 12);        // mod time
-        central.writeUInt16LE(0, 14);        // mod date
-        central.writeUInt32LE(crc, 16);
-        central.writeUInt32LE(size, 20);
-        central.writeUInt32LE(size, 24);
-        central.writeUInt16LE(nameBuf.length, 28);
-        central.writeUInt16LE(0, 30);        // extra
-        central.writeUInt16LE(0, 32);        // comment
-        central.writeUInt16LE(0, 34);        // disk #
-        central.writeUInt16LE(0, 36);        // internal attrs
-        central.writeUInt32LE(0, 38);        // external attrs
-        central.writeUInt32LE(offset, 42);
-        centralParts.push(central, nameBuf);
-
-        offset += local.length + nameBuf.length + size;
-      }
-
-      const centralStart = offset;
-      const centralBuf = Buffer.concat(centralParts);
-      const eocd = Buffer.alloc(22);
-      eocd.writeUInt32LE(0x06054b50, 0);
-      eocd.writeUInt16LE(0, 4);              // disk #
-      eocd.writeUInt16LE(0, 6);              // disk w/ central
-      eocd.writeUInt16LE(files.length, 8);
-      eocd.writeUInt16LE(files.length, 10);
-      eocd.writeUInt32LE(centralBuf.length, 12);
-      eocd.writeUInt32LE(centralStart, 16);
-      eocd.writeUInt16LE(0, 20);             // comment length
-
-      const zip = Buffer.concat([...localParts, centralBuf, eocd]);
       const sortedDates = entries.map((e) => e.date).sort();
       const fromD = sortedDates[0];
       const toD = sortedDates[sortedDates.length - 1];
       const filename = `daily-plant-reports-${fromD}_to_${toD}.zip`;
-      const statusJson = JSON.stringify(status);
+
+      // Send headers up-front so we can stream the ZIP body straight to the
+      // client without buffering it. The X-Bulk-Total header lets the client
+      // show "N PDFs queued" before the download finishes; the per-entry
+      // succeeded/failed status is recorded in `manifest.json` inside the ZIP
+      // (which the client extracts after the download completes).
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Length", String(zip.length));
-      res.setHeader("X-Bulk-Total", String(manifest.total));
-      res.setHeader("X-Bulk-Succeeded", String(manifest.succeeded));
-      res.setHeader("X-Bulk-Failed", String(manifest.failed));
-      // Encode as base64 to avoid header-unsafe characters in error messages.
-      res.setHeader("X-Bulk-Status", Buffer.from(statusJson, "utf8").toString("base64"));
-      res.setHeader("Access-Control-Expose-Headers", "X-Bulk-Total, X-Bulk-Succeeded, X-Bulk-Failed, X-Bulk-Status, Content-Disposition");
-      res.end(zip);
+      res.setHeader("X-Bulk-Total", String(entries.length));
+      res.setHeader("Access-Control-Expose-Headers", "X-Bulk-Total, Content-Disposition");
+
+      // STORE-mode ZIP (matches the previous hand-rolled encoder — PDFs barely
+      // benefit from DEFLATE, and STORE keeps CPU low during a year-long export).
+      const archive = archiver("zip", { store: true });
+      let aborted = false;
+      archive.on("error", (err: any) => {
+        console.error("Bulk ZIP archiver error", err);
+        try { if (!res.writableEnded) res.destroy(err); } catch { /* ignore */ }
+      });
+      // Warning events are non-fatal (e.g. file stat issues we don't trigger here).
+      archive.on("warning", (err: any) => {
+        if (err?.code !== "ENOENT") console.warn("Bulk ZIP archiver warning", err);
+      });
+      res.on("close", () => {
+        if (!res.writableEnded) {
+          aborted = true;
+          try { archive.abort(); } catch { /* ignore */ }
+        }
+      });
+      archive.pipe(res);
+
+      // Append a buffer entry and wait for archiver to finish writing it before
+      // we move on. This caps in-flight memory at ~one PDF (≈150-200 KB).
+      const appendBuffer = (data: Buffer, name: string) =>
+        new Promise<void>((resolve, reject) => {
+          const onEntry = () => {
+            archive.removeListener("error", onError);
+            resolve();
+          };
+          const onError = (err: Error) => {
+            archive.removeListener("entry", onEntry);
+            reject(err);
+          };
+          archive.once("entry", onEntry);
+          archive.once("error", onError);
+          archive.append(data, { name });
+        });
+
+      try {
+        // Cover sheet — a single index PDF listing every (date, plant) row with
+        // totals + party/mix breakdown so accountants can scan the export
+        // without opening each per-day PDF. Empty days render as "—". Built
+        // from getDailyPlantReportIndex (same shape as the Daily Reports list).
+        try {
+          const indexRows = await storage.getDailyPlantReportIndex({ from: fromD, to: toD });
+          const indexByKey = new Map(indexRows.map((r) => [`${r.date}|${r.plantName}`, r]));
+          const coverBuf = await buildBulkZipCoverSheetPdf(entries, indexByKey, fromD, toD);
+          // 00- prefix keeps it sorted to the top in most ZIP viewers.
+          await appendBuffer(coverBuf, "00-cover-sheet.pdf");
+        } catch (err: any) {
+          const msg = err?.message || String(err);
+          await appendBuffer(Buffer.from(`Failed to build cover sheet: ${msg}`), "00-cover-sheet-ERROR.txt");
+        }
+
+        // Build PDFs one at a time and stream each into the archive. The buffer
+        // for each PDF is released as soon as archiver consumes it, so peak
+        // memory stays flat regardless of how many dates are exported.
+        for (const e of entries) {
+          if (aborted) break;
+          try {
+            const buf = await buildDailyPlantReportPdfBuffer(e.date, e.plant);
+            await appendBuffer(buf, `daily-plant-report-${slugPlant(e.plant)}-${e.date}.pdf`);
+            status.push({ date: e.date, plant: e.plant, ok: true, bytes: buf.length });
+          } catch (err: any) {
+            const msg = err?.message || String(err);
+            await appendBuffer(Buffer.from(`Failed to build PDF for ${e.plant} on ${e.date}: ${msg}`), `ERROR-${slugPlant(e.plant)}-${e.date}.txt`);
+            status.push({ date: e.date, plant: e.plant, ok: false, error: msg });
+          }
+        }
+
+        if (!aborted) {
+          const manifest = {
+            generatedAt: new Date().toISOString(),
+            total: status.length,
+            succeeded: status.filter((s) => s.ok).length,
+            failed: status.filter((s) => !s.ok).length,
+            entries: status,
+          };
+          await appendBuffer(Buffer.from(JSON.stringify(manifest, null, 2)), "manifest.json");
+          await archive.finalize();
+        }
+      } catch (err: any) {
+        console.error("Bulk ZIP streaming error", err);
+        try { archive.abort(); } catch { /* ignore */ }
+        if (!res.writableEnded) {
+          try { res.destroy(err); } catch { /* ignore */ }
+        }
+      }
     } catch (err: any) {
       console.error("Bulk ZIP error", err);
-      res.status(500).json({ message: err.message || "Failed to build bulk ZIP" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: err.message || "Failed to build bulk ZIP" });
+      } else if (!res.writableEnded) {
+        try { res.destroy(err); } catch { /* ignore */ }
+      }
     }
   });
 
