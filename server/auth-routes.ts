@@ -52,6 +52,8 @@ import {
   clearDeviceCookie,
   hashPassword,
   verifyPassword,
+  signToken,
+  verifySignedToken,
   loadUserPermissionsMatrix,
   setUserPermissions,
   toSafeUser,
@@ -176,13 +178,34 @@ export function registerAuthRoutes(app: Express) {
         autoApprove,
       });
 
-      if (setNewCookie) setDeviceCookie(res, device.deviceToken);
+      // Cross-user safety: if the browser already had an APPROVED device
+      // cookie for some OTHER user, do NOT rotate that cookie just because
+      // we minted a fresh pending device for the new login. Rotating in
+      // that case strands the original user (their cookie now points at
+      // a pending device they can't approve from a logged-out state).
+      // Instead, hand the new pending device's signed token back in the
+      // body. The client uses it to poll device-status and to claim the
+      // device once an admin approves it; only at that point does the
+      // cookie rotate.
+      const preserveExistingCookie =
+        setNewCookie &&
+        device.status === "pending" &&
+        deviceLookup.kind === "approved" &&
+        deviceLookup.device.userId !== user.id;
+
+      if (setNewCookie && !preserveExistingCookie) {
+        setDeviceCookie(res, device.deviceToken);
+      }
 
       if (device.status === "pending") {
         return res.status(202).json({
           status: "device_pending",
           deviceLabel: device.deviceLabel,
           user: { email: user.email, fullName: user.fullName },
+          // Only present when we suppressed the cookie rotation. The client
+          // uses this token to poll for approval and to claim the device
+          // without overwriting the existing approved-user cookie.
+          pendingDeviceToken: preserveExistingCookie ? signToken(device.deviceToken) : undefined,
         });
       }
       if (device.status === "revoked") {
@@ -251,13 +274,65 @@ export function registerAuthRoutes(app: Express) {
 
   // Polled by the "device pending" screen so it can navigate away once the
   // admin approves it. Returns the current device state (no session needed).
+  // Accepts an optional ?token=<signed> query param so the cross-user login
+  // flow (which deliberately does NOT rotate the device cookie) can poll the
+  // status of the freshly-minted pending device without disturbing the
+  // existing approved-user cookie.
   app.get("/api/auth/device-status", async (req, res) => {
+    const tokenParam = typeof req.query.token === "string" ? req.query.token : undefined;
+    if (tokenParam) {
+      const raw = verifySignedToken(tokenParam);
+      if (!raw) return res.json({ status: "none" });
+      const [device] = await db.select().from(userDevices).where(eq(userDevices.deviceToken, raw));
+      if (!device) return res.json({ status: "none" });
+      return res.json({ status: device.status, deviceLabel: device.deviceLabel });
+    }
     const lookup = await lookupDeviceFromCookie(req.headers.cookie);
     if (lookup.kind === "missing") return res.json({ status: "none" });
     res.json({
       status: lookup.device.status,
       deviceLabel: lookup.device.deviceLabel,
     });
+  });
+
+  // Companion to the above. After polling sees the device move to "approved",
+  // the client posts the same signed token here. We verify the device really
+  // is approved, mint a session, rotate the device + session cookies to the
+  // newly-approved device, and return the standard logged-in payload. This
+  // is the ONLY moment in the cross-user flow where we overwrite the
+  // existing approved-user device cookie — and only after admin approval.
+  app.post("/api/auth/claim-device", async (req, res) => {
+    try {
+      const tokenParam = typeof req.body?.token === "string" ? req.body.token : "";
+      const raw = verifySignedToken(tokenParam);
+      if (!raw) return res.status(400).json({ error: "invalid_token" });
+      const [device] = await db.select().from(userDevices).where(eq(userDevices.deviceToken, raw));
+      if (!device) return res.status(404).json({ error: "device_not_found" });
+      if (device.status === "revoked") {
+        return res.status(403).json({ status: "device_revoked", deviceLabel: device.deviceLabel });
+      }
+      if (device.status !== "approved") {
+        return res.status(202).json({ status: "device_pending", deviceLabel: device.deviceLabel });
+      }
+      const u = await getUserById(device.userId);
+      if (!u) return res.status(404).json({ error: "user_not_found" });
+      if (!u.isActive) return res.status(403).json({ error: "user_inactive" });
+
+      setDeviceCookie(res, device.deviceToken);
+      const { token } = await createSession({ userId: u.id, deviceId: device.id });
+      setSessionCookie(res, token);
+
+      const matrix = await loadUserPermissionsMatrix(u.id);
+      res.json({
+        status: "ok",
+        user: toSafeUser(u),
+        permissions: matrix,
+        device: { id: device.id, label: device.deviceLabel, status: device.status },
+      });
+    } catch (err) {
+      console.error("[/api/auth/claim-device]", err);
+      res.status(500).json({ error: "server_error" });
+    }
   });
 
   // -----------------------------------------------------------------

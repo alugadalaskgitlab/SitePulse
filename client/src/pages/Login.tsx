@@ -12,7 +12,17 @@ import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_17
 
 type LoginResult =
   | { status: "ok" }
-  | { status: "device_pending"; deviceLabel?: string; user?: { fullName: string } }
+  | {
+      status: "device_pending";
+      deviceLabel?: string;
+      user?: { fullName: string };
+      // Set when the server suppressed the device-cookie rotation because
+      // the browser already had an approved cookie for a different user.
+      // We use this token to poll for status and to claim the device once
+      // an admin approves it, so we never disturb the original user's
+      // working device cookie until approval actually happens.
+      pendingDeviceToken?: string;
+    }
   | { status: "device_revoked"; deviceLabel?: string }
   | { status: "error"; message: string };
 
@@ -32,20 +42,27 @@ export default function Login() {
   }, [isAuthenticated, navigate]);
 
   // While stuck on "device_pending", poll the server every 5s. As soon as the
-  // admin approves it the polling endpoint reports "approved" and we retry the
-  // login automatically.
+  // admin approves it the polling endpoint reports "approved" and we either
+  // claim the device (cross-user case, no cookie was rotated) or retry the
+  // login (same-user case, cookie already points at the new pending device).
   useEffect(() => {
     if (!result || result.status !== "device_pending") return;
+    const pendingToken = result.pendingDeviceToken;
+    const statusUrl = pendingToken
+      ? `/api/auth/device-status?token=${encodeURIComponent(pendingToken)}`
+      : "/api/auth/device-status";
     const t = window.setInterval(async () => {
       try {
-        const r = await fetch("/api/auth/device-status", {
-          credentials: "include",
-        });
+        const r = await fetch(statusUrl, { credentials: "include" });
         if (!r.ok) return;
         const j = await r.json();
         if (j?.status === "approved") {
           window.clearInterval(t);
-          await doLogin(); // re-attempt now that the device is approved
+          if (pendingToken) {
+            await claimDevice(pendingToken);
+          } else {
+            await doLogin();
+          }
         }
         if (j?.status === "revoked") {
           window.clearInterval(t);
@@ -58,6 +75,40 @@ export default function Login() {
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result?.status]);
+
+  async function claimDevice(token: string) {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auth/claim-device", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 200 && j?.status === "ok") {
+        qc.clear();
+        await refresh();
+        setResult({ status: "ok" });
+        navigate("/");
+        return;
+      }
+      if (r.status === 403 && j?.status === "device_revoked") {
+        setResult({ status: "device_revoked", deviceLabel: j.deviceLabel });
+        return;
+      }
+      // Anything else: drop the user back to the form so they can re-try.
+      setResult({
+        status: "error",
+        message: j?.error || "Couldn't claim the approved device. Please sign in again.",
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Network error";
+      setResult({ status: "error", message: msg });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function doLogin() {
     setBusy(true);
@@ -82,6 +133,7 @@ export default function Login() {
           status: "device_pending",
           deviceLabel: j.deviceLabel,
           user: j.user,
+          pendingDeviceToken: typeof j.pendingDeviceToken === "string" ? j.pendingDeviceToken : undefined,
         });
         return;
       }

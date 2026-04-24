@@ -65,12 +65,12 @@ export function parseCookie(header: string | undefined, name: string): string | 
   return undefined;
 }
 
-function signToken(token: string): string {
+export function signToken(token: string): string {
   const hmac = crypto.createHmac("sha256", getSessionSecret()).update(token).digest("hex");
   return `${token}.${hmac}`;
 }
 
-function verifySignedToken(val: string | undefined): string | null {
+export function verifySignedToken(val: string | undefined): string | null {
   if (!val) return null;
   const dot = val.indexOf(".");
   if (dot < 0) return null;

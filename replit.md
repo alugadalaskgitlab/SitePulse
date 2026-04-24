@@ -30,7 +30,7 @@ PostgreSQL is the primary database, managed with Drizzle ORM and `drizzle-zod` f
         - **v2**: Location-centric rebuild with detailed dimensions, aggregate sourcing, rebar design, and cost parameters, providing a rate analysis sheet and updated EstimatorHub.
 - **QTO & BOQ Tab**: Provides structure dimensions, volume summary, per-meter rate card, earthwork, ancillary rates, and a BOQ Estimator with Excel import.
 - **Estimator Portal**: A unified portal (`/estimator-hub`) with server-side cookie authentication and role-based access for all rate calculators.
-- **Authentication & Access Control**: Role-Based Access Control (Engineer, Manager, Admin) with PIN authentication for critical actions.
+- **Authentication & Access Control**: Role-Based Access Control (Engineer, Manager, Admin) with PIN authentication for critical actions. Cross-user login on a shared browser preserves the original user's approved-device cookie until the new device is actually approved: when login lands on `device_pending` and the cookie pointed to an approved device for a different user, the server returns a signed `pendingDeviceToken` instead of rotating the cookie. The Login page polls `/api/auth/device-status?token=…` and, on approval, calls `POST /api/auth/claim-device { token }` — the only path that rotates the cookie to the newly-approved device. This prevents the "everyone-locked-out" failure mode where attempting to log in as a new user from an admin's browser would otherwise overwrite the admin's cookie.
 - **Reporting**: Includes Materials Received and Site Purchases reports.
 - **Data Export/Import**: Admin-only tools for selected table data transfer.
 
