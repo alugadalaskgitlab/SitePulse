@@ -41,8 +41,6 @@ export default function SitePurchasesReport() {
     billNo: "",
     amount: "",
   });
-  const [adminPin, setAdminPin] = useState("");
-
   const queryString = new URLSearchParams({
     ...(dateFrom && { dateFrom }),
     ...(dateTo && { dateTo }),
@@ -68,14 +66,13 @@ export default function SitePurchasesReport() {
   const totalItems = purchases?.length || 0;
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, pin, data }: { id: number; pin: string; data: any }) => {
-      const res = await apiRequest("PUT", `/api/site-purchases/${id}`, { pin, data });
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PUT", `/api/site-purchases/${id}`, { data });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       setEditingItem(null);
-      setAdminPin("");
       toast({
         title: "Purchase Updated",
         description: "The site purchase entry has been updated successfully.",
@@ -105,14 +102,12 @@ export default function SitePurchasesReport() {
       billNo: item.billNo || "",
       amount: item.amount?.toString() || "",
     });
-    setAdminPin("");
   };
 
   const handleSaveEdit = () => {
-    if (!editingItem || !adminPin) return;
+    if (!editingItem) return;
     updateMutation.mutate({
       id: editingItem.id,
-      pin: adminPin,
       data: {
         itemDescription: editForm.itemDescription,
         quantity: editForm.quantity ? Number(editForm.quantity) : null,
@@ -336,17 +331,6 @@ export default function SitePurchasesReport() {
                 />
               </div>
             </div>
-            <div>
-              <Label className="text-xs">Admin PIN</Label>
-              <Input
-                type="password"
-                maxLength={4}
-                value={adminPin}
-                onChange={(e) => setAdminPin(e.target.value)}
-                placeholder="Enter admin PIN"
-                data-testid="input-edit-pin"
-              />
-            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setEditingItem(null)} data-testid="button-cancel-edit">
@@ -354,7 +338,7 @@ export default function SitePurchasesReport() {
             </Button>
             <Button
               onClick={handleSaveEdit}
-              disabled={!adminPin || updateMutation.isPending}
+              disabled={updateMutation.isPending}
               data-testid="button-save-edit"
             >
               {updateMutation.isPending ? (

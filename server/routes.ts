@@ -1955,7 +1955,7 @@ export async function registerRoutes(
   });
 
   // Admin: actually move ledger rows from one party to another.
-  // Requires admin PIN. Body adds: pin (string), toPartyId (int).
+  // Auth: session-role check via assertAdmin (no legacy PIN field).
   app.post("/api/plant-module/reassign-ledger/execute", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
@@ -1994,7 +1994,7 @@ export async function registerRoutes(
 
   // Admin: rewrite the historical `balance_after` column for a given material,
   // chronologically per (party, material). Used to clean up displays after
-  // legacy data moves. Requires admin PIN.
+  // legacy data moves. Auth: session-role check via assertAdmin (no legacy PIN field).
   app.post("/api/plant-module/recompute-balance-after", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
