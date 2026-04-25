@@ -2240,6 +2240,54 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: bulk-revert multiple alias-activity entries in one round-trip.
+  // Accepts an array of activity objects; for each "add" entry the alias is
+  // deleted, for each "remove" entry the alias is re-added.  One audit row is
+  // written per successfully-reverted entry.
+  app.post("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const { activities } = req.body || {};
+      const actor = currentUserName(req);
+      if (!Array.isArray(activities) || activities.length === 0) {
+        return res.status(400).json({ message: "activities[] is required and must be non-empty" });
+      }
+      const valid = activities
+        .filter((a: unknown) => {
+          if (!a || typeof a !== "object") return false;
+          const obj = a as Record<string, unknown>;
+          return (
+            (obj.action === "add" || obj.action === "remove") &&
+            (obj.kind === "alias" || obj.kind === "suppress_learned" || obj.kind === "suppress_learned_pair") &&
+            typeof obj.tokenA === "string" && obj.tokenA.trim().length > 0 &&
+            typeof obj.tokenB === "string" && obj.tokenB.trim().length > 0
+          );
+        })
+        .map((a: unknown) => {
+          const obj = a as Record<string, unknown>;
+          return {
+            action: obj.action as "add" | "remove",
+            kind: obj.kind as "alias" | "suppress_learned" | "suppress_learned_pair",
+            tokenA: String(obj.tokenA).trim(),
+            tokenB: String(obj.tokenB).trim(),
+          };
+        });
+      if (valid.length === 0) {
+        return res.status(400).json({ message: "No valid activity entries in activities[]" });
+      }
+      const result = await storage.bulkRevertShiftLogManpowerAliasActivities({ actor: actor.trim(), activities: valid });
+      console.info(
+        `[ShiftLogManpowerCustomAlias] actor="${actor.trim()}" role=admin ` +
+        `at=${new Date().toISOString()} bulk-revert reverted=${result.reverted} skipped=${result.skipped}`
+      );
+      res.json(result);
+    } catch (err) {
+      console.error("shift-log-manpower bulk-revert-alias-activity error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to bulk-revert alias activities";
+      res.status(400).json({ message: msg });
+    }
+  });
+
   // Admin: list "not a duplicate" name-pairs that have been dismissed on the
   // worker-cleanup screen. Used to suppress repeated false-positive suggestions
   // across sessions and devices.

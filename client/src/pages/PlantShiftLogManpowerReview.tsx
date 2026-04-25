@@ -658,6 +658,8 @@ export default function PlantShiftLogManpowerReview() {
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [revertingAliasActivityId, setRevertingAliasActivityId] = useState<number | null>(null);
+  const [selectedAliasActivityIds, setSelectedAliasActivityIds] = useState<Record<number, boolean>>({});
+  const [bulkRevertingAlias, setBulkRevertingAlias] = useState(false);
 
   const fetchRecentMerges = async () => {
     if (!isAdmin) return;
@@ -682,6 +684,7 @@ export default function PlantShiftLogManpowerReview() {
         setRecentDupActivity((body.dupActivity || []) as DupActivity[]);
         setRecentAliasActivity((body.aliasActivity || []) as AliasActivity[]);
       }
+      setSelectedAliasActivityIds({});
     } catch (err) {
       toast({ title: "Failed to load recent activity", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -870,6 +873,57 @@ export default function PlantShiftLogManpowerReview() {
       toast({ title: "Revert failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setRevertingAliasActivityId(null);
+    }
+  };
+
+  const bulkRevertAliasActivity = async () => {
+    if (!isAdmin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    const ids = Object.entries(selectedAliasActivityIds)
+      .filter(([, v]) => v)
+      .map(([k]) => Number(k))
+      .filter(n => Number.isFinite(n) && n > 0);
+    if (ids.length === 0) return;
+    const activities = (recentAliasActivity || []).filter(a => ids.includes(a.id));
+    if (activities.length === 0) return;
+    const ok = window.confirm(
+      `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}?\n\nThis will undo every checked add/remove in one step. Continue?`
+    );
+    if (!ok) return;
+    setBulkRevertingAlias(true);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          actor: actor.trim(),
+          activities: activities.map(a => ({
+            action: a.action,
+            kind: a.kind,
+            tokenA: a.tokenA,
+            tokenB: a.tokenB,
+          })),
+        }),
+      });
+      if (res.status === 401) { window.location.assign("/login"); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { reverted: number; skipped: number };
+      toast({
+        title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
+        description: result.reverted > 0
+          ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
+          : "All selected entries were already undone.",
+      });
+      setSelectedAliasActivityIds({});
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+    } catch (err) {
+      toast({ title: "Bulk revert failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setBulkRevertingAlias(false);
     }
   };
 
@@ -1359,6 +1413,11 @@ export default function PlantShiftLogManpowerReview() {
     [selectedDismissedIds],
   );
 
+  const selectedAliasActivityCount = useMemo(
+    () => Object.values(selectedAliasActivityIds).filter(Boolean).length,
+    [selectedAliasActivityIds],
+  );
+
   // Export the currently filtered dismissed-pairs list to a CSV that opens
   // cleanly in Excel / Google Sheets. Columns mirror the on-screen list:
   // name A, name B, dismissed by, dismissed at (ISO), plant. Honors the
@@ -1727,20 +1786,59 @@ export default function PlantShiftLogManpowerReview() {
                 <div className="text-sm font-semibold">
                   Recent alias changes ({(recentAliasActivity || []).length})
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs"
-                  onClick={fetchRecentMerges}
-                  disabled={loadingRecent}
-                  data-testid="button-refresh-recent-alias-changes"
-                >
-                  {loadingRecent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Refresh"}
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  {(recentAliasActivity || []).length > 0 && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        disabled={loadingRecent || bulkRevertingAlias}
+                        onClick={() => {
+                          const all = recentAliasActivity || [];
+                          const allSelected = all.length > 0 && all.every(a => selectedAliasActivityIds[a.id]);
+                          const next: Record<number, boolean> = {};
+                          if (!allSelected) {
+                            for (const a of all) next[a.id] = true;
+                          }
+                          setSelectedAliasActivityIds(next);
+                        }}
+                        data-testid="button-alias-activity-toggle-all"
+                      >
+                        {(recentAliasActivity || []).every(a => selectedAliasActivityIds[a.id])
+                          ? "Unselect all"
+                          : "Select all"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px] border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
+                        disabled={bulkRevertingAlias || selectedAliasActivityCount === 0 || actor.trim().length < 2}
+                        onClick={bulkRevertAliasActivity}
+                        data-testid="button-alias-activity-bulk-revert"
+                      >
+                        {bulkRevertingAlias
+                          ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                          : <Undo2 className="w-3.5 h-3.5 mr-1" />}
+                        Revert selected ({selectedAliasActivityCount})
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={fetchRecentMerges}
+                    disabled={loadingRecent}
+                    data-testid="button-refresh-recent-alias-changes"
+                  >
+                    {loadingRecent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Refresh"}
+                  </Button>
+                </div>
               </div>
               <div className="text-[11px] text-muted-foreground mb-2">
                 Last 30 days of add / remove / mute / unmute actions in the alias dictionary.
-                Hit Revert to undo a single change without touching the rest.
+                Check rows and hit Revert selected to undo many changes in one step.
               </div>
               {recentAliasActivity === null ? (
                 <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-loading">
@@ -1771,6 +1869,22 @@ export default function PlantShiftLogManpowerReview() {
                         className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-xs border border-purple-200 dark:border-purple-800"
                         data-testid={`alias-activity-${a.id}`}
                       >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 cursor-pointer shrink-0"
+                          checked={!!selectedAliasActivityIds[a.id]}
+                          onChange={(ev) => {
+                            const checked = ev.target.checked;
+                            setSelectedAliasActivityIds(prev => {
+                              const next = { ...prev };
+                              if (checked) next[a.id] = true;
+                              else delete next[a.id];
+                              return next;
+                            });
+                          }}
+                          data-testid={`checkbox-alias-activity-${a.id}`}
+                          aria-label={`Select ${a.tokenA} ↔ ${a.tokenB}`}
+                        />
                         <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${badgeTone}`}>
                           {label}
                         </span>
@@ -1784,7 +1898,7 @@ export default function PlantShiftLogManpowerReview() {
                           size="sm"
                           variant="ghost"
                           className="h-6 px-2 ml-auto text-purple-800 dark:text-purple-200"
-                          disabled={revertingAliasActivityId === a.id || actor.trim().length < 2}
+                          disabled={revertingAliasActivityId === a.id || bulkRevertingAlias || actor.trim().length < 2}
                           onClick={() => revertAliasActivity(a)}
                           data-testid={`button-revert-alias-activity-${a.id}`}
                           title={isAdd

@@ -492,6 +492,22 @@ export interface IStorage {
   }): Promise<void>;
   getRecentShiftLogManpowerAliasActivity(days: number): Promise<PlantShiftLogManpowerAliasActivity[]>;
 
+  /** Bulk-revert a list of alias-activity entries in one call.
+   * For "add" entries: deletes the matching alias row (if still present).
+   * For "remove" entries: re-inserts the alias row (if not already present).
+   * Writes one audit row per successfully-reverted entry.
+   * Returns a count of reverted and skipped (already-reverted / no-op) entries.
+   */
+  bulkRevertShiftLogManpowerAliasActivities(input: {
+    actor: string;
+    activities: Array<{
+      action: "add" | "remove";
+      kind: "alias" | "suppress_learned" | "suppress_learned_pair";
+      tokenA: string;
+      tokenB: string;
+    }>;
+  }): Promise<{ reverted: number; skipped: number }>;
+
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
   
@@ -8107,6 +8123,70 @@ export class DatabaseStorage implements IStorage {
       .where(gte(plantShiftLogManpowerAliasActivity.createdAt, cutoff))
       .orderBy(desc(plantShiftLogManpowerAliasActivity.createdAt))
       .limit(200);
+  }
+
+  async bulkRevertShiftLogManpowerAliasActivities(input: {
+    actor: string;
+    activities: Array<{
+      action: "add" | "remove";
+      kind: "alias" | "suppress_learned" | "suppress_learned_pair";
+      tokenA: string;
+      tokenB: string;
+    }>;
+  }): Promise<{ reverted: number; skipped: number }> {
+    const actorTrim = String(input.actor || "").trim();
+    if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
+    let reverted = 0;
+    let skipped = 0;
+    for (const a of input.activities) {
+      if (a.action === "add") {
+        const rows = await db.select().from(plantShiftLogManpowerCustomAliases)
+          .where(and(
+            eq(plantShiftLogManpowerCustomAliases.tokenA, a.tokenA),
+            eq(plantShiftLogManpowerCustomAliases.tokenB, a.tokenB),
+            eq(plantShiftLogManpowerCustomAliases.kind, a.kind),
+          ))
+          .limit(1);
+        if (rows.length === 0) { skipped++; continue; }
+        await db.delete(plantShiftLogManpowerCustomAliases)
+          .where(eq(plantShiftLogManpowerCustomAliases.id, rows[0].id));
+        try {
+          await db.insert(plantShiftLogManpowerAliasActivity).values({
+            actor: actorTrim,
+            action: "remove",
+            kind: a.kind,
+            tokenA: a.tokenA,
+            tokenB: a.tokenB,
+          });
+        } catch (auditErr) {
+          console.error("shift-log-manpower bulk-revert-alias audit write failed (remove):", auditErr);
+        }
+        reverted++;
+      } else {
+        const result = await this.addShiftLogManpowerCustomAlias({
+          tokenA: a.tokenA,
+          tokenB: a.tokenB,
+          kind: a.kind,
+          actor: actorTrim,
+        });
+        if (!result.added) { skipped++; continue; }
+        if (result.alias) {
+          try {
+            await db.insert(plantShiftLogManpowerAliasActivity).values({
+              actor: actorTrim,
+              action: "add",
+              kind: a.kind,
+              tokenA: result.alias.tokenA,
+              tokenB: result.alias.tokenB,
+            });
+          } catch (auditErr) {
+            console.error("shift-log-manpower bulk-revert-alias audit write failed (add):", auditErr);
+          }
+        }
+        reverted++;
+      }
+    }
+    return { reverted, skipped };
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
