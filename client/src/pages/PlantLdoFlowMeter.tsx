@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock, Ruler, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -62,6 +62,28 @@ export default function PlantLdoFlowMeter() {
   const isAdmin = pageRole === "admin";
   const urlPlant = sp.get("plant") || "Main Plant";
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
+  const [, setLocation] = useLocation();
+
+  const { data: plantsList } = useQuery<string[]>({
+    queryKey: ["/api/plant-module/shift-logs/plants"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
+      if (!res.ok) return ["Main Plant"];
+      return res.json();
+    },
+  });
+
+  const plantOptions = useMemo(() => {
+    const list = plantsList && plantsList.length ? plantsList : ["Main Plant"];
+    return list.includes(urlPlant) ? list : [...list, urlPlant];
+  }, [plantsList, urlPlant]);
+
+  const handlePlantChange = (newPlant: string) => {
+    if (newPlant === urlPlant) return;
+    const next = new URLSearchParams(searchString || window.location.search);
+    next.set("plant", newPlant);
+    setLocation(`/plant/ldo-flow-meter?${next.toString()}`);
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<LdoFlowReading | null>(null);
@@ -941,7 +963,9 @@ export default function PlantLdoFlowMeter() {
             </Button>
           </Link>
           <Gauge className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-          <h1 className="text-2xl font-bold flex-1">LDO Flow Meter Tracker</h1>
+          <h1 className="text-2xl font-bold flex-1">
+            LDO Flow Meter Tracker — {urlPlant}
+          </h1>
         </div>
         <Card className="py-12">
           <CardContent className="text-center">
@@ -966,7 +990,22 @@ export default function PlantLdoFlowMeter() {
           </Button>
         </Link>
         <Gauge className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-        <h1 className="text-2xl font-bold flex-1">LDO Flow Meter Tracker</h1>
+        <h1 className="text-2xl font-bold flex-1" data-testid="text-page-title">
+          LDO Flow Meter Tracker — <span data-testid="text-active-plant">{urlPlant}</span>
+        </h1>
+        {plantOptions.length > 1 && (
+          <select
+            value={urlPlant}
+            onChange={e => handlePlantChange(e.target.value)}
+            className="border rounded px-2 py-1 text-sm bg-background"
+            data-testid="select-plant"
+            aria-label="Switch plant"
+          >
+            {plantOptions.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="text-sm text-muted-foreground">
