@@ -31,7 +31,7 @@ export default function Login() {
   const qc = useQueryClient();
   const { isAuthenticated, refresh } = useAuth();
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<LoginResult | null>(null);
@@ -118,7 +118,7 @@ export default function Login() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.status === 200 && j?.status === "ok") {
@@ -143,7 +143,7 @@ export default function Login() {
       }
       const msg =
         j?.error === "invalid_credentials"
-          ? "Invalid email or password."
+          ? "Invalid credentials. Check your email/phone and password."
           : j?.error === "user_inactive"
           ? "This account has been disabled. Contact an administrator."
           : j?.error || "Login failed. Try again.";
@@ -158,7 +158,7 @@ export default function Login() {
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !password || busy) return;
+    if (!identifier || !password || busy) return;
     doLogin();
   }
 
@@ -205,15 +205,16 @@ export default function Login() {
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="identifier">Email or phone number</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="you@example.com or +91 98765 43210"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
-                  data-testid="input-email"
+                  data-testid="input-identifier"
                 />
               </div>
               <div className="space-y-2">

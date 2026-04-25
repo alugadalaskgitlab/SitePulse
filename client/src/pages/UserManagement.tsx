@@ -51,7 +51,8 @@ import {
 
 type SafeUser = {
   id: number;
-  email: string;
+  email: string | null;
+  phone: string | null;
   fullName: string;
   isAdmin: boolean;
   isActive: boolean;
@@ -67,6 +68,9 @@ type SafeUser = {
 function friendlyUserError(raw: string): string {
   if (/email_in_use|email_exists/i.test(raw)) {
     return "That email is already used by another user.";
+  }
+  if (/phone_exists/i.test(raw)) {
+    return "That phone number is already used by another user.";
   }
   if (/cannot_demote_last_admin/i.test(raw)) {
     return "There must always be at least one active admin. Promote another user to admin first.";
@@ -236,7 +240,9 @@ function UserRow({
   return (
     <tr className="border-b last:border-0" data-testid={`row-user-${user.id}`}>
       <td className="py-2 pr-4 font-medium">{user.fullName}</td>
-      <td className="py-2 pr-4 text-muted-foreground">{user.email}</td>
+      <td className="py-2 pr-4 text-muted-foreground">
+        {user.email ?? <span className="text-xs italic">{user.phone ?? "—"}</span>}
+      </td>
       <td className="py-2 pr-4">
         {user.isAdmin ? (
           <Badge variant="default">Admin</Badge>
@@ -319,6 +325,7 @@ function CreateUserDialog({
   const qc = useQueryClient();
   const { toast } = useToast();
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -328,7 +335,8 @@ function CreateUserDialog({
   const create = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("POST", "/api/auth/users", {
-        email: email.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
         fullName: fullName.trim(),
         password,
         isAdmin,
@@ -363,8 +371,12 @@ function CreateUserDialog({
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="input-new-fullname" />
           </div>
           <div>
-            <Label>Email</Label>
+            <Label>Email <span className="text-muted-foreground font-normal">(optional if phone provided)</span></Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-new-email" />
+          </div>
+          <div>
+            <Label>Phone <span className="text-muted-foreground font-normal">(optional if email provided)</span></Label>
+            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" data-testid="input-new-phone" />
           </div>
           <div>
             <Label>Password</Label>
@@ -399,7 +411,7 @@ function CreateUserDialog({
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => create.mutate()}
-            disabled={!email || !fullName || password.length < 8 || create.isPending}
+            disabled={(!email.trim() && !phone.trim()) || !fullName.trim() || password.length < 8 || create.isPending}
             data-testid="button-create-user-confirm"
           >
             {create.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -427,6 +439,7 @@ function EditUserDialog({
 
   const [fullName, setFullName] = useState(target?.fullName ?? "");
   const [email, setEmail] = useState(target?.email ?? "");
+  const [phone, setPhone] = useState(target?.phone ?? "");
   const [isAdmin, setIsAdmin] = useState(target?.isAdmin ?? false);
   const [canUnlock, setCanUnlock] = useState(target?.canUnlockRecords ?? false);
   const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
@@ -440,9 +453,17 @@ function EditUserDialog({
     const patch: Partial<SafeUser> = {};
     const trimmedName = fullName.trim();
     const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
     if (trimmedName && trimmedName !== target.fullName) patch.fullName = trimmedName;
-    if (trimmedEmail && trimmedEmail.toLowerCase() !== target.email.toLowerCase()) {
-      patch.email = trimmedEmail;
+    // email: send null to clear, or new value if changed
+    const targetEmail = target.email ?? "";
+    if (trimmedEmail.toLowerCase() !== targetEmail.toLowerCase()) {
+      patch.email = trimmedEmail || null;
+    }
+    // phone: send null to clear, or new value if changed
+    const targetPhone = target.phone ?? "";
+    if (trimmedPhone !== targetPhone) {
+      patch.phone = trimmedPhone || null;
     }
     if (isAdmin !== target.isAdmin) patch.isAdmin = isAdmin;
     if (canUnlock !== target.canUnlockRecords) patch.canUnlockRecords = canUnlock;
@@ -478,7 +499,8 @@ function EditUserDialog({
   }
 
   const dirty = Object.keys(buildPatch()).length > 0;
-  const emailValid = /.+@.+\..+/.test(email.trim());
+  // At least one of email/phone must remain set after the edit.
+  const hasContact = !!email.trim() || !!phone.trim();
 
   return (
     <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
@@ -503,9 +525,18 @@ function EditUserDialog({
               onChange={(e) => setEmail(e.target.value)}
               data-testid="input-edit-email"
             />
+          </div>
+          <div>
+            <Label>Phone</Label>
+            <Input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+91 98765 43210"
+              data-testid="input-edit-phone"
+            />
             <p className="text-xs text-muted-foreground mt-1">
-              Used to sign in. Changing this for the bootstrap admin is the
-              recommended way to switch from a personal email to an official one.
+              At least one of email or phone is required for sign-in.
             </p>
           </div>
           <div className="flex items-center justify-between">
@@ -545,7 +576,7 @@ function EditUserDialog({
           </Button>
           <Button
             onClick={() => save.mutate()}
-            disabled={!dirty || !fullName.trim() || !emailValid || save.isPending}
+            disabled={!dirty || !fullName.trim() || !hasContact || save.isPending}
             data-testid="button-edit-save"
           >
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

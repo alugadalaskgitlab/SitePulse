@@ -59,6 +59,8 @@ import {
   toSafeUser,
   getUserById,
   getUserByEmail,
+  getUserByPhone,
+  getUserByIdentifier,
   listAllUsers,
   createUserRow,
   updateUserPassword,
@@ -87,23 +89,32 @@ export const LOCKABLE_TABLE_NAMES: Record<LockableResourceType, string> = {
   vendor_bill: "vendor_bills",
 };
 
+// Task #280 — identifier accepts either an email address or a phone number.
 const loginSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(1, "Enter your email or phone number"),
   password: z.string().min(1),
 });
 
 const createUserSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: z.string().optional(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   fullName: z.string().min(1),
   isAdmin: z.boolean().optional(),
   canUnlockRecords: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
+}).superRefine((d, ctx) => {
+  const hasEmail = !!d.email && d.email.trim().length > 0;
+  const hasPhone = !!d.phone && d.phone.trim().length > 0;
+  if (!hasEmail && !hasPhone) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one of email or phone is required", path: ["email"] });
+  }
 });
 
 const patchUserSchema = z.object({
   fullName: z.string().min(1).optional(),
-  email: z.string().email().optional(),
+  email: z.string().email().nullable().optional(),
+  phone: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
   canUnlockRecords: z.boolean().optional(),
@@ -140,7 +151,7 @@ export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const input = loginSchema.parse(req.body);
-      const user = await getUserByEmail(input.email);
+      const user = await getUserByIdentifier(input.identifier);
       if (!user) return res.status(401).json({ error: "invalid_credentials" });
       if (!user.isActive) return res.status(403).json({ error: "user_inactive" });
       const ok = await verifyPassword(input.password, user.passwordHash);
@@ -161,7 +172,7 @@ export function registerAuthRoutes(app: Express) {
       // approve their device. This closes the prior security hole where
       // every admin could self-approve their first device.
       const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || "").trim().toLowerCase();
-      const isBootstrapUser = !!bootstrapEmail && user.email.toLowerCase() === bootstrapEmail;
+      const isBootstrapUser = !!bootstrapEmail && !!user.email && user.email.toLowerCase() === bootstrapEmail;
       let autoApprove = false;
       if (isBootstrapUser && user.isAdmin) {
         const [anyApproved] = await db.select({ id: userDevices.id }).from(userDevices)
@@ -397,9 +408,20 @@ export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/users", requireAuth, requireUserMgmt("create"), async (req, res) => {
     try {
       const input = createUserSchema.parse(req.body);
-      const existing = await getUserByEmail(input.email);
-      if (existing) return res.status(409).json({ error: "email_exists" });
-      const u = await createUserRow(input);
+      // Check uniqueness for email and phone separately.
+      if (input.email) {
+        const existing = await getUserByEmail(input.email);
+        if (existing) return res.status(409).json({ error: "email_exists" });
+      }
+      if (input.phone) {
+        const existingPhone = await getUserByPhone(input.phone);
+        if (existingPhone) return res.status(409).json({ error: "phone_exists" });
+      }
+      const u = await createUserRow({
+        ...input,
+        email: input.email || null,
+        phone: input.phone || null,
+      });
       // Initialize an empty permission set for the new user (admins skip).
       if (!u.isAdmin) await setUserPermissions(u.id, emptyMatrix());
       else await setUserPermissions(u.id, fullMatrix());

@@ -210,13 +210,29 @@ export async function getUserByEmail(email: string): Promise<User | undefined> {
   return u;
 }
 
+export async function getUserByPhone(phone: string): Promise<User | undefined> {
+  const norm = phone.trim();
+  const [u] = await db.select().from(users).where(eq(users.phone, norm));
+  return u;
+}
+
+// Task #280 — resolve a login identifier that may be an email address or a
+// phone number. If the identifier contains "@" it's treated as email;
+// otherwise it's treated as phone.
+export async function getUserByIdentifier(identifier: string): Promise<User | undefined> {
+  const trimmed = identifier.trim();
+  if (trimmed.includes("@")) return getUserByEmail(trimmed);
+  return getUserByPhone(trimmed);
+}
+
 export async function listAllUsers(): Promise<SafeUser[]> {
   const rows = await db.select().from(users).orderBy(desc(users.isAdmin), users.fullName);
   return rows.map(toSafeUser);
 }
 
 export async function createUserRow(input: {
-  email: string;
+  email?: string | null;
+  phone?: string | null;
   password: string;
   fullName: string;
   isAdmin?: boolean;
@@ -225,7 +241,8 @@ export async function createUserRow(input: {
 }): Promise<User> {
   const passwordHash = await hashPassword(input.password);
   const [row] = await db.insert(users).values({
-    email: input.email.trim().toLowerCase(),
+    email: input.email ? input.email.trim().toLowerCase() : null,
+    phone: input.phone ? input.phone.trim() : null,
     passwordHash,
     fullName: input.fullName.trim(),
     isActive: true,
@@ -248,7 +265,8 @@ export async function updateUserPassword(userId: number, newPassword: string): P
 
 export async function updateUserProfile(userId: number, patch: Partial<{
   fullName: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   isActive: boolean;
   isAdmin: boolean;
   canUnlockRecords: boolean;
@@ -256,7 +274,8 @@ export async function updateUserProfile(userId: number, patch: Partial<{
 }>): Promise<User | undefined> {
   const update: Record<string, unknown> = {};
   if (patch.fullName !== undefined) update.fullName = patch.fullName.trim();
-  if (patch.email !== undefined) update.email = patch.email.trim().toLowerCase();
+  if (patch.email !== undefined) update.email = patch.email ? patch.email.trim().toLowerCase() : null;
+  if (patch.phone !== undefined) update.phone = patch.phone ? patch.phone.trim() : null;
   if (patch.isActive !== undefined) update.isActive = patch.isActive;
   if (patch.isAdmin !== undefined) update.isAdmin = patch.isAdmin;
   if (patch.canUnlockRecords !== undefined) update.canUnlockRecords = patch.canUnlockRecords;

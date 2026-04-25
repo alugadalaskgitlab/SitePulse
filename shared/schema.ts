@@ -1582,7 +1582,10 @@ export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
+  // Task #280 — email is now nullable so phone-only accounts can be created.
+  // At least one of email/phone must be set (enforced at the app layer).
+  email: text("email").unique(),
+  phone: text("phone").unique(),
   passwordHash: text("password_hash").notNull(),
   fullName: text("full_name").notNull(),
   isActive: boolean("is_active").notNull().default(true),
