@@ -235,6 +235,7 @@ export async function registerRoutes(
   // Create a new site material trip
   app.post("/api/site-material-trips", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "site_materials")) return;
       const input = insertSiteMaterialTripSchema.parse(req.body);
       const trip = await storage.createSiteMaterialTrip(input);
       sendPushToAll("Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
@@ -286,6 +287,7 @@ export async function registerRoutes(
 
   app.post("/api/sites", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const input = insertSiteSchema.parse(req.body);
       const site = await storage.createSite(input);
       res.status(201).json(site);
@@ -321,6 +323,7 @@ export async function registerRoutes(
 
   app.post("/api/sites/seed", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const count = await storage.seedSitesFromDprs();
       res.json({ seeded: count });
     } catch (err) {
@@ -344,6 +347,7 @@ export async function registerRoutes(
 
   app.post("/api/personnel", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const parsed = insertPersonnelSchema.parse(req.body);
       const person = await storage.createPersonnel(parsed);
       res.status(201).json(person);
@@ -783,6 +787,7 @@ export async function registerRoutes(
 
   app.post("/api/plant", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const input = createPlantReportRequestSchema.parse(req.body);
       const report = await storage.createPlantReport(input);
       sendPushToAll("Plant Report Created", `Plant report for ${input.date}`, "/plant").catch(() => {});
@@ -885,6 +890,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/parties", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const party = await storage.createParty(req.body);
       res.status(201).json(party);
     } catch (err) {
@@ -924,6 +930,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/materials", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const material = await storage.createPlantMaterial(req.body);
       res.status(201).json(material);
     } catch (err) {
@@ -963,6 +970,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/mix-types", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const result = await storage.createMixType(req.body);
       res.status(201).json(result);
     } catch (err) {
@@ -1021,6 +1029,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/mix-templates", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const { components, ...template } = req.body;
       const result = await storage.createMixTemplate(template, components);
       res.status(201).json(result);
@@ -1063,6 +1072,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/equipment", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const equipment = await storage.createEquipment(req.body);
       res.status(201).json(equipment);
     } catch (err) {
@@ -1121,6 +1131,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-receipts", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
@@ -1186,6 +1197,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-issues", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const input = insertMaterialIssueSchema.parse(req.body);
       const issue = await storage.createMaterialIssue(input);
       
@@ -1259,6 +1271,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-returns", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const input = insertMaterialReturnSchema.parse(req.body);
       const result = await storage.createMaterialReturn(input);
 
@@ -1346,6 +1359,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/opening-stocks", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const input = insertMaterialOpeningStockSchema.parse(req.body);
       const stock = await storage.createMaterialOpeningStock(input);
       sendPushToAll("Opening Stock Set", `Opening stock entry created`, "/plant").catch(() => {});
@@ -1401,6 +1415,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/dispatches", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_production")) return;
       const result = await storage.createTruckDispatchWithStockDeduction(req.body);
       const dispatch = result.dispatch;
       await storage.createNotification({
@@ -1495,6 +1510,7 @@ export async function registerRoutes(
   // Recalculate all dispatch consumption from mix templates
   app.post("/api/plant-module/dispatches/recalculate-all", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const result = await storage.recalculateAllDispatchConsumption();
       res.json(result);
     } catch (err) {
@@ -1670,6 +1686,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/generator-logs", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_equipment")) return;
       const log = await storage.createGeneratorLog(req.body);
       sendPushToAll("Generator Log Added", `Generator log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
@@ -1757,6 +1774,7 @@ export async function registerRoutes(
   // be referenced via generator_log_id FK from a heating session.
   app.post("/api/plant-module/generator-logs/from-equipment-usage", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_equipment")) return;
       const id = Number(req.body?.equipmentUsageId);
       if (!Number.isFinite(id)) return res.status(400).json({ message: "equipmentUsageId is required" });
 
@@ -1822,6 +1840,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/ldo-logs", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const log = await storage.createLdoLog(req.body);
       sendPushToAll("LDO Log Added", `LDO log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
@@ -1844,6 +1863,7 @@ export async function registerRoutes(
   // Physical stock correction — reconcile book stock to physical measurement
   app.post("/api/plant-module/stock-correction", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const { materialId, partyId, physicalQty, uom, date, notes, correctedBy } = req.body;
       if (!materialId || !partyId || physicalQty === undefined || !uom || !date) {
         return res.status(400).json({ message: "materialId, partyId, physicalQty, uom and date are required" });
@@ -1866,6 +1886,7 @@ export async function registerRoutes(
   // Reconcile stock balances from ledger (admin maintenance endpoint)
   app.post("/api/plant-module/reconcile-stock-balances", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const result = await storage.reconcileStockBalancesFromLedger();
       res.json({ 
         message: "Stock balances reconciled from ledger entries", 
@@ -1879,6 +1900,7 @@ export async function registerRoutes(
   // Backfill missing equipment usage ledger entries (admin maintenance endpoint)
   app.post("/api/plant-module/reconcile-equipment-usage-ledger", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       // First create missing ledger entries
       const ledgerResult = await storage.reconcileEquipmentUsageLedger();
       // Then reconcile stock balances from all ledger entries
@@ -2432,6 +2454,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/bitumen-dip-readings", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const parsed = insertBitumenDipReadingSchema.parse(req.body);
       const reading = await storage.createBitumenDipReading(parsed);
       sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.dipDepth}cm`, "/plant/bitumen-stock").catch(() => {});
@@ -2487,6 +2510,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/ldo-flow-readings", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const parsed = insertLdoFlowReadingSchema.parse(req.body);
       const reading = await storage.createLdoFlowReading(parsed);
       sendPushToAll("LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
@@ -2644,6 +2668,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/ldo-dip-readings", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_stock")) return;
       const parsed = insertLdoDipReadingSchema.parse(req.body);
       const reading = await storage.createLdoDipReading(parsed);
       sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.dipDepth}cm`, "/plant/ldo-flow-meter").catch(() => {});
@@ -2783,9 +2808,19 @@ export async function registerRoutes(
     try {
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
       const parsed = upsertPlantShiftLogSchema.parse(req.body);
-      const incomingId = (parsed as any).id ? Number((parsed as any).id) : null;
-      // Permission gate: an update needs edit, a brand-new shift log needs create.
-      if (incomingId) {
+      // Permission gate: derive create-vs-edit from actual persistence state,
+      // NOT from the presence of `id` in the request body. `upsertPlantShiftLog`
+      // matches existing rows by (date, plantName) and ignores `id` for matching,
+      // so a client could otherwise bypass the gate by toggling `id` either way:
+      // an edit-only user sending no `id` could overwrite an existing row, and
+      // a create-only user sending a fake `id` could insert a brand-new row.
+      const dateForLookup = parsed.date;
+      const plantForLookup = parsed.plantName || "Main Plant";
+      const existingRow = dateForLookup
+        ? await storage.getPlantShiftLogByDate(dateForLookup, undefined, plantForLookup)
+        : null;
+      const existingId = existingRow?.id ?? null;
+      if (existingId) {
         if (!assertEdit(req, res, "plant_shift_logs")) return;
       } else {
         if (!assertCreate(req, res, "plant_shift_logs")) return;
@@ -2793,8 +2828,8 @@ export async function registerRoutes(
       // For an update of an existing shift log, atomically claim the unlock
       // (flip 'unlocked' → 'locked') BEFORE the data save. For a brand-new
       // shift log we skip the claim and lock the new row after insert.
-      if (incomingId) {
-        if (!(await claimUnlockOrLockedRow(res, "plant_shift_log", incomingId, req.authUser!.id))) return;
+      if (existingId) {
+        if (!(await claimUnlockOrLockedRow(res, "plant_shift_log", existingId, req.authUser!.id))) return;
       }
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const authorizedRole: "admin" | "manager" | null = "manager";
@@ -2802,7 +2837,7 @@ export async function registerRoutes(
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
         // For a brand-new shift log, lock the freshly inserted row. For an
         // existing one, the atomic claim above already left it locked.
-        if (!incomingId) {
+        if (!existingId) {
           await lockNewRow("plant_shift_log", saved.id, req.authUser!.id);
         }
         sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
@@ -3649,6 +3684,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/heating-sessions", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "plant_heating")) return;
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
       if (parsed.id != null) {
@@ -4696,6 +4732,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-aliases", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const { canonicalName, alias } = req.body;
       if (!canonicalName || !alias) {
         return res.status(400).json({ message: "canonicalName and alias are required" });
@@ -5326,6 +5363,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-rate-cards", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const card = await storage.upsertVendorRateCard(req.body);
       res.status(201).json(card);
     } catch (err) {
@@ -5336,6 +5374,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-rate-cards/bulk-upsert", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const items = req.body.items as any[];
       const results = [];
       for (const item of items) {

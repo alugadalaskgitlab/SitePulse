@@ -34,6 +34,41 @@ PostgreSQL is the primary database, managed with Drizzle ORM and `drizzle-zod` f
 - **Reporting**: Includes Materials Received and Site Purchases reports.
 - **Data Export/Import**: Admin-only tools for selected table data transfer.
 
+### Permission Gating — `assertCreate` on POST endpoints
+Every POST create endpoint that maps to a permission-managed section in `shared/permissions.ts` calls `assertCreate(req, res, section)` (from `server/auth-routes.ts`) before any DB write. On failure the helper responds with `403 { error: "forbidden", action: "create", section }`. Admins bypass all checks. Estimator routes (`/api/estimator/*`, `/api/mix-estimates`, `/api/concrete-estimates`, `/api/price-scenarios`), notifications, push subscriptions, admin-only maintenance endpoints, read-only export endpoints, and edit-shape POSTs (`:id/clone`, `:id/finalize`, `:id/notify`) are intentionally excluded.
+
+| POST endpoint | Section |
+| --- | --- |
+| `/api/dprs` | `site_dprs` |
+| `/api/site-material-trips` | `site_materials` |
+| `/api/purchase-indents` | `site_procurement` |
+| `/api/diesel-requirements` | `site_diesel` |
+| `/api/plant-module/shift-logs` (when no existing row) | `plant_shift_logs` |
+| `/api/plant-module/heating-sessions` | `plant_heating` |
+| `/api/plant-module/equipment-usage` | `plant_equipment` |
+| `/api/plant-module/generator-logs` | `plant_equipment` |
+| `/api/plant-module/generator-logs/from-equipment-usage` | `plant_equipment` |
+| `/api/plant-module/material-receipts` | `plant_stock` |
+| `/api/plant-module/material-issues` | `plant_stock` |
+| `/api/plant-module/material-returns` | `plant_stock` |
+| `/api/plant-module/opening-stocks` | `plant_stock` |
+| `/api/plant-module/ldo-logs` | `plant_stock` |
+| `/api/plant-module/bitumen-dip-readings` | `plant_stock` |
+| `/api/plant-module/ldo-flow-readings` | `plant_stock` |
+| `/api/plant-module/ldo-dip-readings` | `plant_stock` |
+| `/api/plant-module/dispatches` | `plant_production` |
+| `/api/vendor-bills` | `vendor_bills` |
+| `/api/sites`, `/api/sites/seed` | `admin_settings` |
+| `/api/personnel` | `admin_settings` |
+| `/api/plant` (plant report create) | `admin_settings` |
+| `/api/plant-module/parties` | `admin_settings` |
+| `/api/plant-module/materials` | `admin_settings` |
+| `/api/plant-module/mix-types` | `admin_settings` |
+| `/api/plant-module/mix-templates` | `admin_settings` |
+| `/api/plant-module/equipment` | `admin_settings` |
+| `/api/vendor-aliases` | `admin_settings` |
+| `/api/vendor-rate-cards`, `/api/vendor-rate-cards/bulk-upsert` | `admin_settings` |
+
 ### Build System
 Development uses `tsx` and Vite; production builds use esbuild for the server and Vite for the client.
 
