@@ -663,16 +663,18 @@ export async function backfillSplitPermissions(): Promise<{ deleteUpdated: numbe
     console.log("backfillSplitPermissions: already applied, skipping.");
     return { deleteUpdated: 0, exportUpdated: 0, skipped: true };
   }
-  const deleteResult = await db.update(userPermissions)
-    .set({ canDelete: sql`${userPermissions.canEdit}` })
-    .where(and(eq(userPermissions.canDelete, false), eq(userPermissions.canEdit, true)))
-    .returning({ id: userPermissions.id });
-  const exportResult = await db.update(userPermissions)
-    .set({ canExport: sql`${userPermissions.canViewReports}` })
-    .where(and(eq(userPermissions.canExport, false), eq(userPermissions.canViewReports, true)))
-    .returning({ id: userPermissions.id });
-  await db.insert(appSettings).values({ key: SPLIT_PERMS_FLAG, value: new Date().toISOString() });
-  const result = { deleteUpdated: deleteResult.length, exportUpdated: exportResult.length, skipped: false };
+  const result = await db.transaction(async (tx) => {
+    const deleteRows = await tx.update(userPermissions)
+      .set({ canDelete: sql`${userPermissions.canEdit}` })
+      .where(and(eq(userPermissions.canDelete, false), eq(userPermissions.canEdit, true)))
+      .returning({ id: userPermissions.id });
+    const exportRows = await tx.update(userPermissions)
+      .set({ canExport: sql`${userPermissions.canViewReports}` })
+      .where(and(eq(userPermissions.canExport, false), eq(userPermissions.canViewReports, true)))
+      .returning({ id: userPermissions.id });
+    await tx.insert(appSettings).values({ key: SPLIT_PERMS_FLAG, value: new Date().toISOString() });
+    return { deleteUpdated: deleteRows.length, exportUpdated: exportRows.length, skipped: false };
+  });
   console.log(`backfillSplitPermissions: delete updated ${result.deleteUpdated}, export updated ${result.exportUpdated}`);
   return result;
 }
