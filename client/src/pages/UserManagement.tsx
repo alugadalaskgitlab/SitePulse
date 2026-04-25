@@ -705,7 +705,7 @@ function PermissionsDialog({
     },
   ];
 
-  function PermMatrix({ sections }: { sections: SectionKey[] }) {
+  function PermMatrix({ sections, labelOverrides, rowKeySuffix }: { sections: SectionKey[]; labelOverrides?: Partial<Record<SectionKey, string>>; rowKeySuffix?: string }) {
     return (
       <div className="overflow-x-auto border rounded">
         <table className="w-full text-sm">
@@ -724,15 +724,16 @@ function PermissionsDialog({
             {sections.map((s) => {
               const row = matrix[s];
               const all = ACTIONS.every((a) => row[a]);
+              const rowKey = rowKeySuffix ? `${s}-${rowKeySuffix}` : s;
               return (
-                <tr key={s} className="border-t" data-testid={`row-perm-${s}`}>
-                  <td className="px-3 py-2 font-medium text-xs">{SECTION_LABELS[s]}</td>
+                <tr key={rowKey} className="border-t" data-testid={`row-perm-${rowKey}`}>
+                  <td className="px-3 py-2 font-medium text-xs">{labelOverrides?.[s] ?? SECTION_LABELS[s]}</td>
                   {ACTIONS.map((a) => (
                     <td key={a} className="text-center px-2 py-2">
                       <Checkbox
                         checked={row[a]}
                         onCheckedChange={() => toggleCell(s, a)}
-                        data-testid={`checkbox-${s}-${a}`}
+                        data-testid={`checkbox-${rowKey}-${a}`}
                       />
                     </td>
                   ))}
@@ -740,7 +741,7 @@ function PermissionsDialog({
                     <Checkbox
                       checked={all}
                       onCheckedChange={(v) => setAllForSection(s, !!v)}
-                      data-testid={`checkbox-${s}-all`}
+                      data-testid={`checkbox-${rowKey}-all`}
                     />
                   </td>
                 </tr>
@@ -811,21 +812,28 @@ function PermissionsDialog({
                       },
                       {
                         label: "Reports",
-                        sections: ["plant_daily_reports"] as SectionKey[],
-                        note: "Heating Trends uses the Heating Sessions permission (Operations).",
+                        sections: ["plant_daily_reports", "plant_heating"] as SectionKey[],
+                        labelOverrides: { plant_heating: "Heating Trends" } as Partial<Record<SectionKey, string>>,
+                        rowKeySuffix: "reports",
                       },
                       {
                         label: "Masters",
                         sections: [] as SectionKey[],
                         note: "Plant master data (parties, materials, mix templates, equipment, personnel) is controlled by the Admin Settings permission in the Masters tab.",
                       },
-                    ] as { label: string; sections: SectionKey[]; note?: string }[]
+                    ] as { label: string; sections: SectionKey[]; labelOverrides?: Partial<Record<SectionKey, string>>; rowKeySuffix?: string; note?: string }[]
                   ).map((sub) => (
                     <div key={sub.label}>
                       <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">
                         {sub.label}
                       </div>
-                      {sub.sections.length > 0 && <PermMatrix sections={sub.sections} />}
+                      {sub.sections.length > 0 && (
+                        <PermMatrix
+                          sections={sub.sections}
+                          labelOverrides={sub.labelOverrides}
+                          rowKeySuffix={sub.rowKeySuffix}
+                        />
+                      )}
                       {sub.note && (
                         <p className="text-xs text-muted-foreground mt-2 px-1 italic">{sub.note}</p>
                       )}
