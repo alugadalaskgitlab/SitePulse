@@ -22,7 +22,6 @@ export default function AdminSettings() {
   // Page-level access is enforced by <RequireAuth section="admin_settings"> in
   // App.tsx. Reaching this component implies the user can view the section.
   const authenticated = true;
-  const [authenticatedPin, setAuthenticatedPin] = useState("");
   
   // Admin PIN change state
   const [newAdminPin, setNewAdminPin] = useState("");
@@ -50,22 +49,20 @@ export default function AdminSettings() {
   const [calibNewPlantName, setCalibNewPlantName] = useState<string>("");
 
   const changeAdminPinMutation = useMutation({
-    mutationFn: async (data: { currentPin: string; newPin: string }) => {
+    mutationFn: async (data: { newPin: string }) => {
       const response = await apiRequest("POST", "/api/admin/change-pin", data);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || "Failed to update PIN");
       }
-      return data.newPin;
     },
-    onSuccess: (newPin: string) => {
+    onSuccess: () => {
       toast({
         title: "Admin PIN Updated",
         description: "Admin PIN has been changed successfully.",
       });
       setNewAdminPin("");
       setConfirmAdminPin("");
-      setAuthenticatedPin(newPin);
     },
     onError: (error: any) => {
       toast({
@@ -77,13 +74,12 @@ export default function AdminSettings() {
   });
 
   const changeManagerPinMutation = useMutation({
-    mutationFn: async (data: { currentPin: string; newPin: string }) => {
+    mutationFn: async (data: { newPin: string }) => {
       const response = await apiRequest("POST", "/api/admin/change-manager-pin", data);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || "Failed to update PIN");
       }
-      return response.json();
     },
     onSuccess: () => {
       toast({
@@ -256,7 +252,7 @@ export default function AdminSettings() {
       return;
     }
 
-    changeAdminPinMutation.mutate({ currentPin: authenticatedPin, newPin: newAdminPin });
+    changeAdminPinMutation.mutate({ newPin: newAdminPin });
   };
 
   const handleChangeManagerPin = (e: React.FormEvent) => {
@@ -280,7 +276,7 @@ export default function AdminSettings() {
       return;
     }
 
-    changeManagerPinMutation.mutate({ currentPin: authenticatedPin, newPin: newManagerPin });
+    changeManagerPinMutation.mutate({ newPin: newManagerPin });
   };
 
   return (

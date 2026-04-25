@@ -82,14 +82,6 @@ export default function Home() {
             Estimate Manager
           </Button>
         </Link>
-        {canViewReports && (
-          <Link href="/admin/reports">
-            <Button variant="ghost" className="gap-2 text-muted-foreground" data-testid="button-admin-reports">
-              <BarChart3 className="w-4 h-4" />
-              Admin Reports
-            </Button>
-          </Link>
-        )}
         {canViewSettings && (
           <Link href="/admin/settings">
             <Button variant="ghost" className="gap-2" data-testid="button-admin-settings">

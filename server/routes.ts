@@ -621,18 +621,34 @@ export async function registerRoutes(
     }
   });
 
-  // NOTE: Legacy PIN endpoints (/api/auth/verify-pin, /api/admin/change-pin,
-  // /api/admin/change-manager-pin) were removed in Task #229 in favour of
-  // real email/password login + per-user permissions. The estimator portal
-  // (/api/estimator/*) keeps its own PIN-based auth and is unaffected.
+  // Task #287 — Restore PIN-change endpoints. These were removed in Task #229
+  // but AdminSettings.tsx still calls them. Page access is already gated to
+  // admins via RBAC, so no currentPin verification is needed here.
+  app.post('/api/admin/change-pin', async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    const { newPin } = req.body || {};
+    if (!newPin || typeof newPin !== 'string' || !/^\d{4}$/.test(newPin)) {
+      return res.status(400).json({ message: 'PIN must be exactly 4 digits.' });
+    }
+    await storage.setSetting('admin_pin', newPin);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/admin/change-manager-pin', async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    const { newPin } = req.body || {};
+    if (!newPin || typeof newPin !== 'string' || !/^\d{4}$/.test(newPin)) {
+      return res.status(400).json({ message: 'PIN must be exactly 4 digits.' });
+    }
+    await storage.setSetting('manager_pin', newPin);
+    res.json({ ok: true });
+  });
 
   // NOTE (Task #248): The /api/plant-module/alert-thresholds and
   // /api/plant-module/variance-highlight-threshold endpoints were removed
   // along with the underlying admin-tunable alert layer. The Heating Trends
   // report still flags hot-oil and shift-meter mismatch days, but it now
   // uses fixed inline guard rails computed inside getHeatingTrends.
-
-  // (change-manager-pin endpoint removed — see Task #229 note above.)
 
 
   // Create a new version of DPR with edited data
