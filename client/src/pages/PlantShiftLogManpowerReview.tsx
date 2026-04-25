@@ -645,12 +645,14 @@ export default function PlantShiftLogManpowerReview() {
     tokenA: string;
     tokenB: string;
   };
-  // Unified recent-activity feed entry. Merges and dismissal/restore actions
-  // share the same row layout; the `kind` discriminator drives which fields
-  // are rendered and whether the Undo button is available.
+  // Unified recent-activity feed entry. Merges, dismissal/restore actions and
+  // alias add/remove/mute events share the same row layout; the `kind`
+  // discriminator drives which fields are rendered and whether the Undo/Revert
+  // button is available.
   type RecentActivityEntry =
     | { kind: "merge"; createdAt: string; actor: string; merge: RecentMerge }
-    | { kind: "dup"; createdAt: string; actor: string; activity: DupActivity };
+    | { kind: "dup"; createdAt: string; actor: string; activity: DupActivity }
+    | { kind: "alias"; createdAt: string; actor: string; aliasActivity: AliasActivity };
 
   const [recentMerges, setRecentMerges] = useState<RecentMerge[] | null>(null);
   const [recentDupActivity, setRecentDupActivity] = useState<DupActivity[] | null>(null);
@@ -692,11 +694,11 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
-  // Combined, newest-first feed of merges/relabels and dismiss/restore actions
-  // for the recent-activity card. Memoized so re-renders during Undo don't
-  // re-sort on every keystroke.
+  // Combined, newest-first feed of merges/relabels, dismiss/restore actions and
+  // alias changes for the recent-activity card. Memoized so re-renders during
+  // Undo don't re-sort on every keystroke.
   const recentActivityFeed = useMemo<RecentActivityEntry[] | null>(() => {
-    if (recentMerges === null && recentDupActivity === null) return null;
+    if (recentMerges === null && recentDupActivity === null && recentAliasActivity === null) return null;
     const items: RecentActivityEntry[] = [];
     for (const m of recentMerges || []) {
       items.push({ kind: "merge", createdAt: m.createdAt, actor: m.actor, merge: m });
@@ -704,9 +706,12 @@ export default function PlantShiftLogManpowerReview() {
     for (const a of recentDupActivity || []) {
       items.push({ kind: "dup", createdAt: a.createdAt, actor: a.actor, activity: a });
     }
+    for (const a of recentAliasActivity || []) {
+      items.push({ kind: "alias", createdAt: a.createdAt, actor: a.actor, aliasActivity: a });
+    }
     items.sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
     return items;
-  }, [recentMerges, recentDupActivity]);
+  }, [recentMerges, recentDupActivity, recentAliasActivity]);
 
   const fetchLearnedAliases = async () => {
     if (!isAdmin) return;
@@ -1582,9 +1587,9 @@ export default function PlantShiftLogManpowerReview() {
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="text-xs text-muted-foreground">
-            Every merge, relabel, "not a duplicate" dismissal and restore done from this screen
-            shows up here. Hit Undo within 30 days to restore every affected shift-log row to its
-            original worker name, contractor, category and gender.
+            Every merge, relabel, "not a duplicate" dismissal, restore and alias add/remove/mute
+            done from this screen shows up here. Hit Undo/Revert within 30 days to reverse the
+            action.
           </div>
           {recentActivityFeed === null ? (
             <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-merges-loading">
@@ -1592,7 +1597,7 @@ export default function PlantShiftLogManpowerReview() {
             </div>
           ) : recentActivityFeed.length === 0 ? (
             <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-merges-empty">
-              No merges, dismissals or restores in the last 30 days.
+              No merges, dismissals, restores or alias changes in the last 30 days.
             </div>
           ) : (
             <div className="overflow-auto border rounded-md">
@@ -1641,6 +1646,55 @@ export default function PlantShiftLogManpowerReview() {
                                 ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                 : <Undo2 className="w-4 h-4 mr-2" />}
                               Undo
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    if (entry.kind === "alias") {
+                      const aa = entry.aliasActivity;
+                      const isAdd = aa.action === "add";
+                      const isMute = aa.kind !== "alias";
+                      const aliasLabel = isMute
+                        ? (isAdd ? "Muted learned alias" : "Unmuted learned alias")
+                        : (isAdd ? "Added custom alias" : "Removed custom alias");
+                      const aliasBadgeColor = isAdd
+                        ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+                        : "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200";
+                      const revertLabel = isAdd ? "Remove" : "Re-add";
+                      return (
+                        <tr key={`aa-${aa.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-alias-${aa.id}`}>
+                          <td className="p-2 text-xs whitespace-nowrap">
+                            {when.toLocaleDateString()}<br />
+                            <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
+                          </td>
+                          <td className="p-2 text-xs">{aa.actor}</td>
+                          <td className="p-2 text-xs">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${aliasBadgeColor}`}>
+                                {aliasLabel}
+                              </span>
+                            </div>
+                            <div className="font-mono">
+                              {aa.tokenA} <span className="text-muted-foreground">↔</span> {aa.tokenB}
+                            </div>
+                          </td>
+                          <td className="p-2 tabular-nums text-muted-foreground">—</td>
+                          <td className="p-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
+                              disabled={revertingAliasActivityId === aa.id || bulkRevertingAlias || actor.trim().length < 2}
+                              onClick={() => revertAliasActivity(aa)}
+                              data-testid={`button-revert-alias-activity-feed-${aa.id}`}
+                              title={isAdd
+                                ? `Remove ${aa.tokenA} ↔ ${aa.tokenB} from the dictionary`
+                                : `Re-add ${aa.tokenA} ↔ ${aa.tokenB} to the dictionary`}
+                            >
+                              {revertingAliasActivityId === aa.id
+                                ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                : <><Undo2 className="w-4 h-4 mr-2" />{revertLabel}</>}
                             </Button>
                           </td>
                         </tr>
