@@ -319,10 +319,8 @@ export default function PlantLdoFlowMeter() {
 
   const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
 
-  // Task #255 — Per-tank stock balances. Routing through `computeTankStock`
-  // (shared/lib/ldoStock.ts) means dryer-meter rows tagged with
-  // `dryerFedFrom = "TANK_1"` debit Tank-1 stock instead of Tank-2,
-  // matching the actual physical flow.
+  // Per-tank stock balances. Dryer-meter rows tagged with
+  // dryerFedFrom="TANK_1" debit Tank-1 instead of Tank-2.
   const tankStock = useMemo(() => {
     return {
       tank1: computeTankStock(readings, 1),

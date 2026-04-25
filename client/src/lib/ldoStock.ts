@@ -1,23 +1,8 @@
-// Task #255 — Shared client-side helpers for computing per-tank LDO usable
-// stock from the ldo_flow_readings ledger. Used by both PlantLdoFlowMeter
-// (per-tank cards + Combined card) and PlantLdoLogs (header strip) so the
-// numbers always agree.
-//
-// Routing rule (the whole point of Task #255):
-//
-//   • Boiler-meter rows (tankNumber === 1) always debit Tank-1 stock.
-//   • Receipts (readingType === "receipt") and stock baselines
-//     (readingType === "stock") are physical events tied to a specific
-//     storage tank — they keep their tankNumber as-is.
-//   • Dryer-meter rows (tankNumber === 2) debit whichever tank fed the
-//     dryer at the time. The shift log writes the dryer-source tag onto
-//     each generated row in `dryerFedFrom`. NULL means "tank-2" for
-//     backward compatibility with manually-entered rows from before this
-//     feature.
-//
-// Effective stock tank is therefore:
-//   tankNumber === 2 && dryerFedFrom === "TANK_1"  →  1
-//   anything else                                  →  reading.tankNumber
+// Per-tank LDO usable-stock helpers backed by the ldo_flow_readings ledger.
+// Boiler-meter rows (tankNumber=1) always debit Tank-1. Receipts and stock
+// baselines stay on their physical tankNumber. Dryer-meter rows (tankNumber=2)
+// debit whichever tank fed the dryer; the shift log records this via
+// `dryerFedFrom`, with NULL treated as TANK_2 for legacy rows.
 
 import type { LdoFlowReading } from "@shared/schema";
 
@@ -32,11 +17,9 @@ export function effectiveStockTank(r: Pick<LdoFlowReading, "tankNumber" | "dryer
   return r.tankNumber;
 }
 
-// Re-creates the per-tank stock balance starting from the most recent manual
-// "stock" entry for that tank, then applying receipts and consumption that
-// happened *after* it. Returns null when there is no stock baseline to anchor
-// the calculation. Mirrors the legacy in-page logic in PlantLdoFlowMeter so
-// the header strip and the per-tank cards stay in sync.
+// Re-creates the per-tank stock balance starting from the most recent
+// manual "stock" entry, then applying receipts and consumption that
+// happened after it. Returns null when no stock baseline exists.
 export function computeTankStock(
   readings: LdoFlowReading[] | undefined | null,
   tankNum: number,

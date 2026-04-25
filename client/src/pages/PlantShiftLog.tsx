@@ -62,10 +62,8 @@ export default function PlantShiftLog() {
   const [ldoTank1ClosingMeter, setLdoTank1ClosingMeter] = useState("");
   const [ldoTank2OpeningMeter, setLdoTank2OpeningMeter] = useState("");
   const [ldoTank2ClosingMeter, setLdoTank2ClosingMeter] = useState("");
-  // Task #255 — Which physical LDO tank fed the dryer this shift. The
-  // dryer flow-meter records what was burned at the dryer; this picker
-  // tells the stock ledger which tank's balance to debit. Defaults to
-  // TANK_2 to match prior behaviour.
+  // Which physical tank fed the dryer this shift; controls which tank's
+  // stock balance the dryer-meter consumption debits.
   const [dryerFedFrom, setDryerFedFrom] = useState<"TANK_1" | "TANK_2">("TANK_2");
   // Task #254 — operator toggle: when on, the boiler runs during production
   // and the Boiler Meter opening/closing inputs are shown (auto-fill from the
@@ -201,9 +199,6 @@ export default function PlantShiftLog() {
     setBitumenTank2OpeningDip(""); setBitumenTank2ClosingDip("");
     setLdoTank1OpeningMeter(""); setLdoTank1ClosingMeter("");
     setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
-    // Task #255 — reset the dryer-source picker back to its TANK_2 default
-    // so a new shift log doesn't inherit a stale TANK_1 selection from the
-    // previously-edited row.
     setDryerFedFrom("TANK_2");
     setBoilerRunsDuringProduction(false);
     setManpower([]); setIdleEvents([]);
@@ -256,9 +251,7 @@ export default function PlantShiftLog() {
     setLdoTank1ClosingMeter(existing.ldoTank1ClosingMeter?.toString() || "");
     setLdoTank2OpeningMeter(existing.ldoTank2OpeningMeter?.toString() || "");
     setLdoTank2ClosingMeter(existing.ldoTank2ClosingMeter?.toString() || "");
-    setDryerFedFrom(
-      (existing as any).dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2",
-    );
+    setDryerFedFrom(existing.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
     // Task #254 — back-compat: rows saved before the toggle existed default
     // boilerRunsDuringProduction to 0. If they have any T1 reading recorded,
     // treat the toggle as ON so editing+saving doesn't silently null those
@@ -332,8 +325,6 @@ export default function PlantShiftLog() {
         ldoTank1ClosingMeter: boilerRunsDuringProduction ? numOrNull(ldoTank1ClosingMeter) : null,
         ldoTank2OpeningMeter: numOrNull(ldoTank2OpeningMeter),
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
-        // Task #255 — Persist which tank fed the dryer this shift; the
-        // server uses this to debit the right tank's stock balance.
         dryerFedFrom,
         boilerRunsDuringProduction: boilerRunsDuringProduction ? 1 : 0,
         manpower: manpower
@@ -705,10 +696,7 @@ export default function PlantShiftLog() {
               <p className="text-xs text-muted-foreground">Both meters draw from the main LDO tank.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {/* Task #255 — Dryer source picker. Tells the stock ledger
-                  which physical tank the dryer was drawing from this shift,
-                  so the litres logged on the Dryer Meter debit the right
-                  balance. Defaults to Tank 2. */}
+              {/* Routes the dryer-meter consumption to the selected tank. */}
               <div className="flex items-center gap-2 rounded border border-dashed border-blue-300 bg-blue-50/40 dark:bg-blue-950/20 px-3 py-2">
                 <Label htmlFor="dryer-fed-from" className="text-xs">Dryer fed from</Label>
                 <Select value={dryerFedFrom} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
