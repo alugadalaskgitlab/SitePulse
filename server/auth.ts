@@ -39,7 +39,7 @@ import {
   SESSION_COOKIE_NAME,
   DEVICE_COOKIE_NAME,
 } from "@shared/permissions";
-import { and, eq, gt, isNull, desc } from "drizzle-orm";
+import { and, eq, gt, isNull, desc, sql } from "drizzle-orm";
 import * as crypto from "crypto";
 import bcrypt from "bcryptjs";
 import type { Request, Response, NextFunction } from "express";
@@ -646,4 +646,25 @@ export function getClientIp(req: Request): string | undefined {
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length > 0) return xff.split(",")[0].trim();
   return req.socket?.remoteAddress || undefined;
+}
+
+// Task #278 — backward-compatible migration: when the schema added separate
+// `can_delete` and `can_export` columns (both default false), existing rows
+// had the new columns zeroed out. This migration propagates the prior combined
+// values: can_delete ← can_edit, can_export ← can_view_reports for every row
+// where the new column is still false while the old source column is true.
+// Idempotent: rows already migrated (can_delete = can_edit or both false) are
+// unaffected. Runs at server startup so production environments self-heal.
+export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number }> {
+  const deleteResult = await db.update(userPermissions)
+    .set({ canDelete: sql`${userPermissions.canEdit}` })
+    .where(and(eq(userPermissions.canDelete, false), eq(userPermissions.canEdit, true)))
+    .returning({ id: userPermissions.id });
+  const exportResult = await db.update(userPermissions)
+    .set({ canExport: sql`${userPermissions.canViewReports}` })
+    .where(and(eq(userPermissions.canExport, false), eq(userPermissions.canViewReports, true)))
+    .returning({ id: userPermissions.id });
+  const result = { deleteUpdated: deleteResult.length, exportUpdated: exportResult.length };
+  console.log(`backfillSplitPermissions: delete updated ${result.deleteUpdated}, export updated ${result.exportUpdated}`);
+  return result;
 }
