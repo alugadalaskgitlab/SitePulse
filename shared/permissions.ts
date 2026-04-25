@@ -42,21 +42,25 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   device_approval: "Device Approval",
 };
 
-export const ACTIONS = ["view", "create", "edit", "view_reports"] as const;
+export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export"] as const;
 export type Action = (typeof ACTIONS)[number];
 
 export const ACTION_LABELS: Record<Action, string> = {
   view: "View",
   create: "Create",
-  edit: "Edit / Delete",
-  view_reports: "Reports / Export",
+  edit: "Edit",
+  delete: "Delete",
+  view_reports: "View Reports",
+  export: "Export",
 };
 
 export type SectionPermission = {
   view: boolean;
   create: boolean;
   edit: boolean;
+  delete: boolean;
   view_reports: boolean;
+  export: boolean;
 };
 
 export type PermissionMatrix = Record<SectionKey, SectionPermission>;
@@ -65,14 +69,18 @@ export const EMPTY_PERMISSION: SectionPermission = {
   view: false,
   create: false,
   edit: false,
+  delete: false,
   view_reports: false,
+  export: false,
 };
 
 export const FULL_PERMISSION: SectionPermission = {
   view: true,
   create: true,
   edit: true,
+  delete: true,
   view_reports: true,
+  export: true,
 };
 
 export function emptyMatrix(): PermissionMatrix {

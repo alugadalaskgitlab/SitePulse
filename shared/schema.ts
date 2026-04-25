@@ -1606,7 +1606,9 @@ export const userPermissions = pgTable("user_permissions", {
   canView: boolean("can_view").notNull().default(false),
   canCreate: boolean("can_create").notNull().default(false),
   canEdit: boolean("can_edit").notNull().default(false),
+  canDelete: boolean("can_delete").notNull().default(false),
   canViewReports: boolean("can_view_reports").notNull().default(false),
+  canExport: boolean("can_export").notNull().default(false),
 }, (t) => ({
   userSectionUq: uniqueIndex("user_permissions_user_section_uq").on(t.userId, t.sectionKey),
 }));

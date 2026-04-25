@@ -148,7 +148,9 @@ export async function loadUserPermissionsMatrix(userId: number): Promise<Permiss
         view: r.canView,
         create: r.canCreate,
         edit: r.canEdit,
+        delete: r.canDelete,
         view_reports: r.canViewReports,
+        export: r.canExport,
       };
     }
   }
@@ -159,14 +161,16 @@ export async function setUserPermissions(userId: number, matrix: PermissionMatri
   await db.transaction(async (tx) => {
     await tx.delete(userPermissions).where(eq(userPermissions.userId, userId));
     const rows = SECTION_KEYS.map((k) => {
-      const p = matrix[k] || { view: false, create: false, edit: false, view_reports: false };
+      const p = matrix[k] || { view: false, create: false, edit: false, delete: false, view_reports: false, export: false };
       return {
         userId,
         sectionKey: k,
         canView: !!p.view,
         canCreate: !!p.create,
         canEdit: !!p.edit,
+        canDelete: !!p.delete,
         canViewReports: !!p.view_reports,
+        canExport: !!p.export,
       };
     });
     if (rows.length) await tx.insert(userPermissions).values(rows);

@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!u) return false;
       if (u.isAdmin) return true;
       const row = perms[section];
-      return !!row && (row.view || row.create || row.edit || row.view_reports);
+      return !!row && (row.view || row.create || row.edit || row.delete || row.view_reports || row.export);
     };
 
     return {
@@ -178,6 +178,7 @@ type LegacyAccessContextType = {
   canEdit: boolean;
   canDelete: boolean;
   canViewReports: boolean;
+  canExport: boolean;
   isAdmin: boolean;
   requestAdminAccess: (pin: string) => boolean;
 };
@@ -190,9 +191,17 @@ export function useAccess(): LegacyAccessContextType {
     isAdmin ||
     Object.values(permissions).some((p) => p.edit)
   );
+  const anyDelete = !!user && (
+    isAdmin ||
+    Object.values(permissions).some((p) => p.delete)
+  );
   const anyReports = !!user && (
     isAdmin ||
     Object.values(permissions).some((p) => p.view_reports)
+  );
+  const anyExport = !!user && (
+    isAdmin ||
+    Object.values(permissions).some((p) => p.export)
   );
 
   const access: LegacyAccessLevel = isAdmin
@@ -207,8 +216,9 @@ export function useAccess(): LegacyAccessContextType {
       // No-op in the new auth model. Kept so legacy callers don't crash.
     },
     canEdit: anyEdit,
-    canDelete: isAdmin,
+    canDelete: anyDelete,
     canViewReports: anyReports,
+    canExport: anyExport,
     isAdmin,
     requestAdminAccess: () => false,
   };

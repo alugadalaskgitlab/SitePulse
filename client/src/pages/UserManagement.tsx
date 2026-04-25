@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -633,16 +634,88 @@ function PermissionsDialog({
         view: value,
         create: value,
         edit: value,
+        delete: value,
         view_reports: value,
+        export: value,
       },
     }));
   }
 
   const otherUsers = users.filter((u) => u.id !== userId && !u.isAdmin);
 
+  const TAB_GROUPS: { id: string; label: string; sections: SectionKey[] }[] = [
+    {
+      id: "site",
+      label: "Site",
+      sections: ["dashboard", "site_dprs", "site_materials", "site_procurement", "site_diesel"],
+    },
+    {
+      id: "plant",
+      label: "Plant",
+      sections: ["plant_shift_logs", "plant_heating", "plant_equipment", "plant_stock", "plant_production", "plant_daily_reports"],
+    },
+    {
+      id: "finance",
+      label: "Finance & Reports",
+      sections: ["vendor_bills", "reports"],
+    },
+    {
+      id: "admin",
+      label: "Admin",
+      sections: ["admin_settings", "user_management", "device_approval"],
+    },
+  ];
+
+  function PermMatrix({ sections }: { sections: SectionKey[] }) {
+    return (
+      <div className="overflow-x-auto border rounded">
+        <table className="w-full text-sm">
+          <thead className="bg-muted sticky top-0">
+            <tr>
+              <th className="text-left px-3 py-2 min-w-[160px]">Section</th>
+              {ACTIONS.map((a) => (
+                <th key={a} className="px-2 py-2 text-center whitespace-nowrap text-xs">
+                  {ACTION_LABELS[a]}
+                </th>
+              ))}
+              <th className="px-2 py-2 text-center text-xs">All</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sections.map((s) => {
+              const row = matrix[s];
+              const all = ACTIONS.every((a) => row[a]);
+              return (
+                <tr key={s} className="border-t" data-testid={`row-perm-${s}`}>
+                  <td className="px-3 py-2 font-medium text-xs">{SECTION_LABELS[s]}</td>
+                  {ACTIONS.map((a) => (
+                    <td key={a} className="text-center px-2 py-2">
+                      <Checkbox
+                        checked={row[a]}
+                        onCheckedChange={() => toggleCell(s, a)}
+                        data-testid={`checkbox-${s}-${a}`}
+                      />
+                    </td>
+                  ))}
+                  <td className="text-center px-2 py-2">
+                    <Checkbox
+                      checked={all}
+                      onCheckedChange={(v) => setAllForSection(s, !!v)}
+                      data-testid={`checkbox-${s}-all`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
     <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>
             Permissions — {target?.fullName} ({target?.email})
@@ -675,48 +748,20 @@ function PermissionsDialog({
           )}
         </div>
 
-        <div className="overflow-x-auto max-h-[55vh] overflow-y-auto border rounded">
-          <table className="w-full text-sm">
-            <thead className="bg-muted sticky top-0">
-              <tr>
-                <th className="text-left px-3 py-2">Section</th>
-                {ACTIONS.map((a) => (
-                  <th key={a} className="px-2 py-2 text-center">
-                    {ACTION_LABELS[a]}
-                  </th>
-                ))}
-                <th className="px-2 py-2 text-center">All</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SECTION_KEYS.map((s) => {
-                const row = matrix[s];
-                const all = row.view && row.create && row.edit && row.view_reports;
-                return (
-                  <tr key={s} className="border-t" data-testid={`row-perm-${s}`}>
-                    <td className="px-3 py-2 font-medium">{SECTION_LABELS[s]}</td>
-                    {ACTIONS.map((a) => (
-                      <td key={a} className="text-center px-2 py-2">
-                        <Checkbox
-                          checked={row[a]}
-                          onCheckedChange={() => toggleCell(s, a)}
-                          data-testid={`checkbox-${s}-${a}`}
-                        />
-                      </td>
-                    ))}
-                    <td className="text-center px-2 py-2">
-                      <Checkbox
-                        checked={all}
-                        onCheckedChange={(v) => setAllForSection(s, !!v)}
-                        data-testid={`checkbox-${s}-all`}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <Tabs defaultValue="site">
+          <TabsList className="mb-2">
+            {TAB_GROUPS.map((g) => (
+              <TabsTrigger key={g.id} value={g.id} data-testid={`tab-perms-${g.id}`}>
+                {g.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {TAB_GROUPS.map((g) => (
+            <TabsContent key={g.id} value={g.id} className="max-h-[50vh] overflow-y-auto">
+              <PermMatrix sections={g.sections} />
+            </TabsContent>
+          ))}
+        </Tabs>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
