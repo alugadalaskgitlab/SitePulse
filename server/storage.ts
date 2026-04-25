@@ -60,7 +60,8 @@ import {
   type InsertBitumenHeatingSession,
   type UpsertBitumenHeatingSessionInput,
 } from "@shared/schema";
-import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { sendPushToAll } from "./push";
 import {
   type CreateDprRequest,
@@ -5555,6 +5556,109 @@ export class DatabaseStorage implements IStorage {
   async deleteLdoDipReading(id: number): Promise<boolean> {
     const [deleted] = await db.delete(ldoDipReadings).where(eq(ldoDipReadings.id, id)).returning();
     return !!deleted;
+  }
+
+  // --- LDO Dip Backfill (admin-only historical entry) ------------------------
+  // Mirrors `upsertLdoFlowReadingsBackfill` but for physical dip-stick readings.
+  // Backfill rows live in `ldo_dip_readings` alongside operator-entered manual
+  // rows and are identified by a "[BACKFILL ...]" marker in `notes`. Idempotency
+  // is per (date, plant, tank, opening|closing): on re-save the storage method
+  // deletes the existing backfill row for that key and re-inserts. Manual rows
+  // (notes without the BACKFILL marker) are NEVER overwritten — they are
+  // returned as conflicts.
+
+  private isLdoDipBackfillRow(notes: string | null | undefined): boolean {
+    return !!notes && notes.toUpperCase().startsWith("[BACKFILL");
+  }
+
+  async getLdoDipReadingsForBackfill(filters: { dateFrom: string; dateTo: string; plant?: string }): Promise<LdoDipReading[]> {
+    const conds = [
+      gte(ldoDipReadings.date, filters.dateFrom),
+      lte(ldoDipReadings.date, filters.dateTo),
+    ];
+    if (filters.plant) conds.push(eq(ldoDipReadings.plantName, filters.plant));
+
+    return db.select().from(ldoDipReadings)
+      .where(and(...conds))
+      .orderBy(asc(ldoDipReadings.date), asc(ldoDipReadings.tankNumber), asc(ldoDipReadings.readingType), asc(ldoDipReadings.time));
+  }
+
+  async upsertLdoDipReadingsBackfill(
+    rows: Array<{ date: string; plant: string; tank: number; openingDepth: number | null; closingDepth: number | null; remarks: string | null }>,
+    actor: string,
+  ): Promise<{ inserted: number; deleted: number; skipped: number; conflicts: Array<{ date: string; plant: string; tank: number; reason: string }> }> {
+    let inserted = 0, deleted = 0, skipped = 0;
+    const conflicts: Array<{ date: string; plant: string; tank: number; reason: string }> = [];
+
+    await db.transaction(async (tx) => {
+      for (const row of rows) {
+        const tank = row.tank;
+        const plant = row.plant || "Main Plant";
+        const maxDepth = getLdoMaxDepth(tank);
+
+        if (row.openingDepth != null && (row.openingDepth < 0 || row.openingDepth > maxDepth)) {
+          conflicts.push({ date: row.date, plant, tank, reason: `opening depth out of range (0..${maxDepth} cm)` });
+          skipped++;
+          continue;
+        }
+        if (row.closingDepth != null && (row.closingDepth < 0 || row.closingDepth > maxDepth)) {
+          conflicts.push({ date: row.date, plant, tank, reason: `closing depth out of range (0..${maxDepth} cm)` });
+          skipped++;
+          continue;
+        }
+
+        const existing = await tx.select().from(ldoDipReadings).where(and(
+          eq(ldoDipReadings.date, row.date),
+          eq(ldoDipReadings.tankNumber, tank),
+          eq(ldoDipReadings.plantName, plant),
+        ));
+
+        for (const rt of ["opening", "closing"] as const) {
+          const depth = rt === "opening" ? row.openingDepth : row.closingDepth;
+          const sameType = existing.filter(e => e.readingType === rt);
+          const protectedRow = sameType.find(e => !this.isLdoDipBackfillRow(e.notes));
+
+          if (protectedRow) {
+            if (depth != null && depth !== protectedRow.depthCm) {
+              conflicts.push({ date: row.date, plant, tank, reason: `${rt} blocked by manual reading` });
+              skipped++;
+            }
+            continue;
+          }
+
+          // Delete existing backfill row(s) for this plant/date/tank/type
+          // before re-inserting. Other plants' backfill rows are isolated by
+          // plant_name and not touched by this query.
+          const toDelete = sameType.filter(e => this.isLdoDipBackfillRow(e.notes));
+          for (const b of toDelete) {
+            await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.id, b.id));
+            deleted++;
+          }
+
+          if (depth != null) {
+            const time = rt === "opening" ? "06:00" : "18:00";
+            const volume = getLdoVolumeAtDepth(tank, depth);
+            const weight = volume * LDO_DENSITY_KG_PER_LITER;
+            const noteBits = [`[BACKFILL BY ${(actor || "admin").toUpperCase()}]`];
+            if (row.remarks) noteBits.push(row.remarks);
+            await tx.insert(ldoDipReadings).values({
+              date: row.date,
+              time,
+              tankNumber: tank,
+              depthCm: depth,
+              volumeLiters: Math.round(volume * 100) / 100,
+              weightKg: Math.round(weight * 100) / 100,
+              readingType: rt,
+              notes: noteBits.join(" ").toUpperCase(),
+              plantName: plant,
+            } satisfies InsertLdoDipReading);
+            inserted++;
+          }
+        }
+      }
+    });
+
+    return { inserted, deleted, skipped, conflicts };
   }
 
   // Personnel Master

@@ -767,6 +767,21 @@ function StockDetailsTab() {
                 </CardContent>
               </Card>
             </Link>
+
+            <Link href={appendRoleAndTab("/plant/ldo-dip-backfill")}>
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="card-ldo-dip-backfill">
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
+                    <Droplets className="w-7 h-7 text-cyan-600 dark:text-cyan-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">LDO Dip-Stick Backfill</h3>
+                    <p className="text-sm text-muted-foreground">Enter historical Tank-1 / Tank-2 dip-stick depths so book vs physical reconciliation is complete</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </>
       )}
