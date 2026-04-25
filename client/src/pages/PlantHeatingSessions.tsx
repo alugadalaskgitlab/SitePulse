@@ -83,6 +83,19 @@ export default function PlantHeatingSessions() {
   const [filterDateFrom, setFilterDateFrom] = useState(dateParam || defaultFrom);
   const [filterDateTo, setFilterDateTo] = useState(dateParam || today);
 
+  // Task #238 — when navigated from the heating-mismatch drill-in we accept
+  // `?openSession=<id>` and auto-open the edit dialog for that session once
+  // the row has loaded, so the operator lands directly on the offending row.
+  const openSessionIdFromUrl = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    const raw = sp.get("openSession");
+    if (!raw) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  }, []);
+  const autoOpenedRef = useRef(false);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
 
@@ -488,6 +501,19 @@ export default function PlantHeatingSessions() {
     return out;
   }, [sessions]);
   const groupedDates = Object.keys(grouped);
+
+  // Task #238 — auto-open the requested session once it loads. Guarded by a
+  // ref so it fires exactly once even if the sessions query refetches.
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (openSessionIdFromUrl == null) return;
+    if (!sessions) return;
+    const target = sessions.find(s => s.id === openSessionIdFromUrl);
+    if (!target) return;
+    autoOpenedRef.current = true;
+    openEdit(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, openSessionIdFromUrl]);
 
   return (
     <div className="space-y-6">

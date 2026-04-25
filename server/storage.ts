@@ -174,6 +174,11 @@ import {
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import {
+  HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C,
+  HEATING_TRENDS_HOT_OIL_DELTA_MIN_C,
+  HEATING_TRENDS_MISMATCH_THRESHOLD_L,
+} from "@shared/heating-trends-constants";
 
 export interface IStorage {
   // DPRs
@@ -10153,10 +10158,12 @@ export class DatabaseStorage implements IStorage {
     // Fixed operational guard rails (inline constants, no admin tuning).
     // The previous admin-tunable threshold layer was removed in Task #248;
     // these defaults are the long-standing values used to flag suspect days
-    // on the Heating Trends report and its Excel export.
-    const hotOilEndTempMinC = 240;
-    const hotOilDeltaMinC = 15;
-    const mismatchThresholdL = 5;
+    // on the Heating Trends report and its Excel export. Centralized in
+    // `shared/heating-trends-constants.ts` so the trends badge, the API
+    // payload and the mismatch drill-down view (Task #238) stay in sync.
+    const hotOilEndTempMinC = HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C;
+    const hotOilDeltaMinC = HEATING_TRENDS_HOT_OIL_DELTA_MIN_C;
+    const mismatchThresholdL = HEATING_TRENDS_MISMATCH_THRESHOLD_L;
 
     // Aggregate shift-meter Tank-1 L per day (closing − opening). When more
     // than one shift log exists for a date (multi-shift days), sum them so

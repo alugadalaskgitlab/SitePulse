@@ -444,17 +444,25 @@ export default function PlantHeatingTrends() {
                           {r.mismatchL == null ? (
                             <span className="text-muted-foreground">—</span>
                           ) : r.mismatchFlag ? (
-                            <Badge
-                              variant="destructive"
-                              className="gap-1"
-                              title={r.total.count === 0
-                                ? `No heating sessions logged but shift-meter shows ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — check if sessions were missed`
-                                : `Sessions ${r.total.ldoT1L.toFixed(1)} L vs shift-meter ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL > 0 ? "+" : ""}${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L)`}
-                              data-testid={`badge-mismatch-${r.date}`}
+                            <Link
+                              href={appendPlantContext(
+                                `/plant/heating-mismatch/${r.date}?plant=${encodeURIComponent(plant)}`,
+                                { defaultTab: "reports" },
+                              )}
+                              data-testid={`link-mismatch-${r.date}`}
                             >
-                              <AlertTriangle className="w-3 h-3" />
-                              {r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}
-                            </Badge>
+                              <Badge
+                                variant="destructive"
+                                className="gap-1 cursor-pointer hover-elevate"
+                                title={r.total.count === 0
+                                  ? `No heating sessions logged but shift-meter shows ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — click to drill into this date`
+                                  : `Sessions ${r.total.ldoT1L.toFixed(1)} L vs shift-meter ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL > 0 ? "+" : ""}${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — click to drill into this date`}
+                                data-testid={`badge-mismatch-${r.date}`}
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                {r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}
+                              </Badge>
+                            </Link>
                           ) : (
                             <span className="text-muted-foreground">{r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}</span>
                           )}

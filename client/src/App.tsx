@@ -43,6 +43,7 @@ import PlantDailyReport from "@/pages/PlantDailyReport";
 import PlantDailyReports from "@/pages/PlantDailyReports";
 import PlantHeatingSessions from "@/pages/PlantHeatingSessions";
 import PlantHeatingTrends from "@/pages/PlantHeatingTrends";
+import PlantHeatingMismatch from "@/pages/PlantHeatingMismatch";
 import PurchaseIndents from "@/pages/PurchaseIndents";
 import DieselRequirements from "@/pages/DieselRequirements";
 import VendorBills from "@/pages/VendorBills";
@@ -166,6 +167,7 @@ function AuthedShell() {
             <Route path="/plant/heating-sessions" component={gated(PlantHeatingSessions, "plant_heating")} />
             <Route path="/plant/heating-sessions/:date" component={gated(PlantHeatingSessions, "plant_heating")} />
             <Route path="/plant/heating-trends" component={gated(PlantHeatingTrends, "plant_heating")} />
+            <Route path="/plant/heating-mismatch/:date" component={gated(PlantHeatingMismatch, "plant_heating")} />
             <Route path="/plant/purchase-indents" component={gated(PurchaseIndents, "site_procurement")} />
             <Route path="/plant/diesel-requirements" component={gated(DieselRequirements, "site_diesel")} />
             <Route path="/plant/vendor-bills" component={gated(VendorBills, "vendor_bills")} />
