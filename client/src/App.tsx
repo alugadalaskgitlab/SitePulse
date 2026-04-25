@@ -144,9 +144,9 @@ function AuthedShell() {
             <Route path="/plant" component={PlantHome} />
             <Route path="/plant/dashboard" component={Plant} />
             <Route path="/plant/new" component={gated(PlantNew, "admin_settings")} />
-            <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_stock")} />
-            <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_stock")} />
-            <Route path="/plant/material-returns" component={gated(PlantMaterialReturns, "plant_stock")} />
+            <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_materials")} />
+            <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_materials")} />
+            <Route path="/plant/material-returns" component={gated(PlantMaterialReturns, "plant_materials")} />
             <Route path="/plant/dispatches" component={gated(PlantDispatches, "plant_production")} />
             <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
             <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />

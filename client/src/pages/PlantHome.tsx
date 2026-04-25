@@ -7,6 +7,7 @@ import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_17
 export default function PlantHome() {
   const { sectionVisible } = useAuth();
   const canSeePlant =
+    sectionVisible("plant_materials") ||
     sectionVisible("plant_stock") ||
     sectionVisible("plant_production") ||
     sectionVisible("plant_equipment") ||

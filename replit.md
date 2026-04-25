@@ -48,9 +48,9 @@ Every POST create endpoint that maps to a permission-managed section in `shared/
 | `/api/plant-module/equipment-usage` | `plant_equipment` |
 | `/api/plant-module/generator-logs` | `plant_equipment` |
 | `/api/plant-module/generator-logs/from-equipment-usage` | `plant_equipment` |
-| `/api/plant-module/material-receipts` | `plant_stock` |
-| `/api/plant-module/material-issues` | `plant_stock` |
-| `/api/plant-module/material-returns` | `plant_stock` |
+| `/api/plant-module/material-receipts` | `plant_materials` |
+| `/api/plant-module/material-issues` | `plant_materials` |
+| `/api/plant-module/material-returns` | `plant_materials` |
 | `/api/plant-module/opening-stocks` | `plant_stock` |
 | `/api/plant-module/ldo-logs` | `plant_stock` |
 | `/api/plant-module/bitumen-dip-readings` | `plant_stock` |

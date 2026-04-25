@@ -41,7 +41,7 @@ export default function Plant() {
   }, [tabParam]);
 
   const opsVisible =
-    sectionVisible("plant_stock") ||
+    sectionVisible("plant_materials") ||
     sectionVisible("plant_production") ||
     sectionVisible("plant_equipment") ||
     sectionVisible("plant_shift_logs") ||
@@ -140,7 +140,7 @@ function OperationsTab() {
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {sectionVisible("plant_stock") && (
+      {sectionVisible("plant_materials") && (
       <Link href={opLink("/plant/material-receipts")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -158,7 +158,7 @@ function OperationsTab() {
 
       )}
 
-      {sectionVisible("plant_stock") && (
+      {sectionVisible("plant_materials") && (
       <Link href={opLink("/plant/material-issues")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -176,7 +176,7 @@ function OperationsTab() {
 
       )}
 
-      {sectionVisible("plant_stock") && (
+      {sectionVisible("plant_materials") && (
       <Link href={opLink("/plant/material-returns")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">

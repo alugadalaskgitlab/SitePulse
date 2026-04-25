@@ -1147,7 +1147,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-receipts", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_stock")) return;
+      if (!assertCreate(req, res, "plant_materials")) return;
       const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
@@ -1213,7 +1213,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-issues", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_stock")) return;
+      if (!assertCreate(req, res, "plant_materials")) return;
       const input = insertMaterialIssueSchema.parse(req.body);
       const issue = await storage.createMaterialIssue(input);
       
@@ -1287,7 +1287,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-returns", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_stock")) return;
+      if (!assertCreate(req, res, "plant_materials")) return;
       const input = insertMaterialReturnSchema.parse(req.body);
       const result = await storage.createMaterialReturn(input);
 

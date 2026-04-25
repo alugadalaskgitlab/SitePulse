@@ -20,6 +20,7 @@ export default function Home() {
     sectionVisible("site_diesel");
   // Plant landing — visible if any plant section is reachable.
   const canSeePlant =
+    sectionVisible("plant_materials") ||
     sectionVisible("plant_stock") ||
     sectionVisible("plant_production") ||
     sectionVisible("plant_equipment") ||

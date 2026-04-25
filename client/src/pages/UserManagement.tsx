@@ -686,7 +686,7 @@ function PermissionsDialog({
     {
       id: "plant",
       label: "Plant",
-      sections: ["plant_shift_logs", "plant_heating", "plant_equipment", "plant_stock", "plant_production", "plant_daily_reports"],
+      sections: [],
     },
     {
       id: "finance",
@@ -797,7 +797,44 @@ function PermissionsDialog({
           </TabsList>
           {TAB_GROUPS.map((g) => (
             <TabsContent key={g.id} value={g.id} className="max-h-[50vh] overflow-y-auto">
-              <PermMatrix sections={g.sections} />
+              {g.id === "plant" ? (
+                <div className="space-y-5">
+                  {(
+                    [
+                      {
+                        label: "Operations",
+                        sections: ["plant_shift_logs", "plant_heating", "plant_equipment", "plant_production", "plant_materials", "site_procurement", "site_diesel"] as SectionKey[],
+                      },
+                      {
+                        label: "Management",
+                        sections: ["plant_stock"] as SectionKey[],
+                      },
+                      {
+                        label: "Reports",
+                        sections: ["plant_daily_reports"] as SectionKey[],
+                        note: "Heating Trends uses the Heating Sessions permission (Operations).",
+                      },
+                      {
+                        label: "Masters",
+                        sections: [] as SectionKey[],
+                        note: "Plant master data (parties, materials, mix templates, equipment, personnel) is controlled by the Admin Settings permission in the Masters tab.",
+                      },
+                    ] as { label: string; sections: SectionKey[]; note?: string }[]
+                  ).map((sub) => (
+                    <div key={sub.label}>
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">
+                        {sub.label}
+                      </div>
+                      {sub.sections.length > 0 && <PermMatrix sections={sub.sections} />}
+                      {sub.note && (
+                        <p className="text-xs text-muted-foreground mt-2 px-1 italic">{sub.note}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <PermMatrix sections={g.sections} />
+              )}
             </TabsContent>
           ))}
         </Tabs>
