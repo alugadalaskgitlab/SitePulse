@@ -30,7 +30,7 @@ type DailyPlantSummary = {
   receipts: { byMaterial: Array<{ materialName: string; quantity: number; uom: string; lines: number }>; totalLines: number };
   runningHours: number | null;
   productiveHours: number | null;
-  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null };
+  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null; dryerFedFrom?: "TANK_1" | "TANK_2"; tank1DeductedL?: number | null; tank2DeductedL?: number | null };
   bitumenDips: unknown[];
   ldoFlows: unknown[];
   ldoDips: unknown[];
@@ -345,6 +345,17 @@ export default function PlantDailyReport() {
               {data.ldo.primarySourceT1 === "sessions" && data.ldo.reconciliationT1ShiftL != null && (
                 <KV label="Boiler Meter Shift (recon)" value={fmt(data.ldo.reconciliationT1ShiftL, 1)} />
               )}
+            </CardContent>
+            <CardContent className="border-t pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="md:col-span-4 text-xs text-muted-foreground">
+                Tank stock deducted today (dryer meter is routed to{" "}
+                <span className="font-medium" data-testid="text-dryer-fed-from-summary">
+                  {data.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2"}
+                </span>
+                )
+              </div>
+              <KV label="Tank 1 stock used (L)" value={fmt(data.ldo.tank1DeductedL ?? null, 1)} />
+              <KV label="Tank 2 stock used (L)" value={fmt(data.ldo.tank2DeductedL ?? null, 1)} />
             </CardContent>
           </Card>
 

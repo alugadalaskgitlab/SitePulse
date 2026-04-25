@@ -2905,6 +2905,10 @@ export async function registerRoutes(
       line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
       line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
       line("Boiler L / MT Production", summary.ldo.boilerLPerMT ?? "—");
+      const dryerFedFromLabel = summary.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+      line("Dryer fed from", dryerFedFromLabel);
+      line("Tank 1 stock used (L)", summary.ldo.tank1DeductedL?.toFixed(1) ?? "—");
+      line("Tank 2 stock used (L)", summary.ldo.tank2DeductedL?.toFixed(1) ?? "—");
 
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);

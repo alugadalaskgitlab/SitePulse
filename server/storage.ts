@@ -9671,6 +9671,22 @@ export class DatabaseStorage implements IStorage {
     const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveT1L || 0) > 0)
       ? Math.round(((effectiveT1L as number) / totalProductionMT) * 1000) / 1000 : null;
 
+    // Per-tank stock-deducted view: dryer-meter litres are attributed to
+    // whichever tank the operator pointed the dryer at. Boiler meter always
+    // debits Tank-1. Anything not recorded stays null so the report doesn't
+    // imply a zero where nothing was metered.
+    const dryerFedFromShift: "TANK_1" | "TANK_2" =
+      shift?.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2";
+    const dryerL = ldoConsumedT2;
+    const hasAnyT1 = (effectiveT1L != null) || (dryerFedFromShift === "TANK_1" && dryerL != null);
+    const hasAnyT2 = (dryerFedFromShift === "TANK_2" && dryerL != null);
+    const tank1DeductedL = hasAnyT1
+      ? (effectiveT1L ?? 0) + (dryerFedFromShift === "TANK_1" ? (dryerL ?? 0) : 0)
+      : null;
+    const tank2DeductedL = hasAnyT2
+      ? (dryerFedFromShift === "TANK_2" ? (dryerL ?? 0) : 0)
+      : null;
+
     return {
       date,
       plantName,
@@ -9700,6 +9716,9 @@ export class DatabaseStorage implements IStorage {
         source: ldoSource,
         primarySourceT1: t1PrimarySource,
         reconciliationT1ShiftL,
+        dryerFedFrom: dryerFedFromShift,
+        tank1DeductedL,
+        tank2DeductedL,
       },
       bitumenDips,
       ldoFlows,
