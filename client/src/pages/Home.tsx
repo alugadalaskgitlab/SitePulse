@@ -58,7 +58,7 @@ export default function Home() {
         )}
 
         {canSeePlant && (
-          <Link href="/plant/dashboard?origin=portal">
+          <Link href="/plant/dashboard">
             <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-purple-500/50" data-testid="card-plant-report">
               <CardContent className="p-8 flex flex-col items-center text-center">
                 <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />

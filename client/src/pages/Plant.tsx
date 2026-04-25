@@ -32,7 +32,7 @@ export default function Plant() {
   const { sectionVisible } = useAuth();
 
   const { getBackLink } = useOrigin();
-  const backLink = getBackLink("/plant");
+  const backLink = getBackLink("/");
 
   useEffect(() => {
     if (tabParam && ["operations", "stock", "reports", "masters"].includes(tabParam)) {
