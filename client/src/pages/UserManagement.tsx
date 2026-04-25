@@ -72,6 +72,9 @@ function friendlyUserError(raw: string): string {
   if (/phone_exists/i.test(raw)) {
     return "That phone number is already used by another user.";
   }
+  if (/at_least_one_contact_required/i.test(raw)) {
+    return "At least one of email or phone must be set for this user.";
+  }
   if (/cannot_demote_last_admin/i.test(raw)) {
     return "There must always be at least one active admin. Promote another user to admin first.";
   }

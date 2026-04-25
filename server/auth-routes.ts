@@ -437,14 +437,36 @@ export function registerAuthRoutes(app: Express) {
     try {
       const id = Number(req.params.id);
       const input = patchUserSchema.parse(req.body);
+
+      // Load the current user record so we can enforce invariants.
+      const current = await getUserById(id);
+      if (!current) return res.status(404).json({ error: "not_found" });
+
+      // Guard: at least one of email/phone must remain set after the patch.
+      // `undefined` means "no change"; `null` / empty string means "clear".
+      const resultEmail = input.email !== undefined
+        ? (input.email || null)
+        : current.email;
+      const resultPhone = input.phone !== undefined
+        ? (input.phone || null)
+        : current.phone;
+      if (!resultEmail && !resultPhone) {
+        return res.status(400).json({ error: "at_least_one_contact_required", message: "User must have at least one of email or phone." });
+      }
+
+      // Pre-flight uniqueness checks to return 409 instead of a raw DB error.
+      if (input.email && input.email !== current.email) {
+        const conflict = await getUserByEmail(input.email);
+        if (conflict && conflict.id !== id) return res.status(409).json({ error: "email_exists" });
+      }
+      if (input.phone && input.phone !== current.phone) {
+        const conflict = await getUserByPhone(input.phone);
+        if (conflict && conflict.id !== id) return res.status(409).json({ error: "phone_exists" });
+      }
+
       // Don't let an admin demote / disable the last remaining admin.
       if (input.isAdmin === false || input.isActive === false) {
-        const target = await getUserById(id);
-        if (target?.isAdmin) {
-          const [otherAdmin] = await db.select({ id: users.id }).from(users)
-            .where(and(eq(users.isAdmin, true), eq(users.isActive, true)))
-            .limit(2);
-          // Only allow if there's another active admin besides this one.
+        if (current.isAdmin) {
           const activeAdmins = await db.select({ id: users.id }).from(users)
             .where(and(eq(users.isAdmin, true), eq(users.isActive, true)));
           if (activeAdmins.length <= 1 && activeAdmins[0]?.id === id) {
