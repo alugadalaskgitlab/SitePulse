@@ -1,5 +1,8 @@
 export const BITUMEN_DENSITY_KG_PER_LITER = 1.02;
 export const LDO_DENSITY_KG_PER_LITER = 0.84;
+// Task #253 — default density used by the per-plant tank calibration when an
+// admin has not explicitly set bitumenDensityKgPerL on plant_settings.
+export const DEFAULT_BITUMEN_DENSITY_KG_PER_L = 1.01;
 export const DEFAULT_DEAD_STOCK_DEPTH = 12.5;
 export const TANK_CAPACITY_LITERS = 52032;
 export const TANK_DIAMETER_CM = 250;
@@ -284,4 +287,23 @@ export function getUsableVolume(depthCm: number, deadStockDepthCm: number = DEFA
   const totalVolume = getVolumeAtDepth(depthCm);
   const deadStockVolume = getDeadStockVolume(deadStockDepthCm);
   return Math.max(0, totalVolume - deadStockVolume);
+}
+
+// Task #253 — derive bitumen stock in MT from an operator-typed dip reading
+// using per-plant tank calibration. Returns null when calibration is missing
+// or invalid (no fallback to the shared dip chart — the caller decides how
+// to surface the missing-calibration condition).
+export function dipCmToMt(
+  dipCm: number | null | undefined,
+  litresPerCm: number | null | undefined,
+  densityKgPerL: number | null | undefined,
+): number | null {
+  if (dipCm === null || dipCm === undefined || isNaN(dipCm)) return null;
+  if (litresPerCm === null || litresPerCm === undefined || !(litresPerCm > 0)) return null;
+  const density =
+    densityKgPerL !== null && densityKgPerL !== undefined && densityKgPerL > 0
+      ? densityKgPerL
+      : DEFAULT_BITUMEN_DENSITY_KG_PER_L;
+  const litres = Math.max(0, dipCm) * litresPerCm;
+  return (litres * density) / 1000;
 }

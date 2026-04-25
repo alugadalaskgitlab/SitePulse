@@ -10,6 +10,9 @@ import {
   dprVersions,
   plantVersions,
   appSettings,
+  plantSettings,
+  type PlantSettings,
+  type InsertPlantSettings,
   parties,
   plantMaterials,
   mixTypes,
@@ -194,6 +197,10 @@ export interface IStorage {
   // App Settings (PIN management)
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string): Promise<void>;
+  // Task #253 — per-plant tank calibration (bitumen dip → MT).
+  getPlantSettings(plantName: string): Promise<PlantSettings | null>;
+  listPlantSettings(): Promise<PlantSettings[]>;
+  upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings>;
   verifyPin(role: "manager" | "admin", pin: string): Promise<boolean>;
   
   // Plant Module Phase-1 - Masters
@@ -1702,6 +1709,40 @@ export class DatabaseStorage implements IStorage {
     } else {
       await db.insert(appSettings).values({ key, value });
     }
+  }
+
+  // Task #253 — per-plant tank calibration. Stored on a small table keyed by
+  // plantName so different plants can have different tank geometries. Density
+  // default (1.01 kg/L) is applied at compute time in the dipCmToMt helper.
+  async getPlantSettings(plantName: string): Promise<PlantSettings | null> {
+    const rows = await db.select().from(plantSettings).where(eq(plantSettings.plantName, plantName)).limit(1);
+    return rows[0] ?? null;
+  }
+
+  async listPlantSettings(): Promise<PlantSettings[]> {
+    return db.select().from(plantSettings).orderBy(plantSettings.plantName);
+  }
+
+  async upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings> {
+    const existing = await this.getPlantSettings(input.plantName);
+    const patch = {
+      bitumenTank1LitresPerCm: input.bitumenTank1LitresPerCm ?? null,
+      bitumenTank2LitresPerCm: input.bitumenTank2LitresPerCm ?? null,
+      bitumenDensityKgPerL: input.bitumenDensityKgPerL ?? null,
+      updatedAt: new Date(),
+    };
+    if (existing) {
+      const [updated] = await db.update(plantSettings)
+        .set(patch)
+        .where(eq(plantSettings.plantName, input.plantName))
+        .returning();
+      return updated;
+    }
+    const [inserted] = await db.insert(plantSettings).values({
+      plantName: input.plantName,
+      ...patch,
+    }).returning();
+    return inserted;
   }
 
   async verifyPin(role: "manager" | "admin", pin: string): Promise<boolean> {

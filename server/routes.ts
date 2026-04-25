@@ -9,7 +9,8 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { dipCmToMt } from "@shared/bitumen-dip-chart";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
@@ -2680,6 +2681,60 @@ export async function registerRoutes(
   // PLANT SHIFT LOG (operator daily log)
   // ============================================
 
+  // ============================================
+  // PLANT SETTINGS — per-plant tank calibration (Task #253)
+  // bitumen tank litres-per-cm + density. Read by Shift Log + Daily Report
+  // to derive bitumen MT from operator dip readings (single source of truth).
+  // ============================================
+
+  app.get("/api/plant-module/plant-settings", async (_req, res) => {
+    try {
+      const all = await storage.listPlantSettings();
+      res.json(all);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch plant settings" });
+    }
+  });
+
+  app.get("/api/plant-module/plant-settings/:plantName", async (req, res) => {
+    try {
+      const plantName = decodeURIComponent(req.params.plantName);
+      const row = await storage.getPlantSettings(plantName);
+      // Return null-fields object so the client always knows the shape and can
+      // surface "no calibration" rather than a 404 (calibration is optional).
+      if (!row) {
+        return res.json({
+          plantName,
+          bitumenTank1LitresPerCm: null,
+          bitumenTank2LitresPerCm: null,
+          bitumenDensityKgPerL: null,
+        });
+      }
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch plant settings" });
+    }
+  });
+
+  app.put("/api/plant-module/plant-settings/:plantName", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const plantName = decodeURIComponent(req.params.plantName).trim();
+      if (!plantName) return res.status(400).json({ message: "plantName is required" });
+      const parsed = insertPlantSettingsSchema.parse({
+        plantName,
+        bitumenTank1LitresPerCm: req.body?.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: req.body?.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: req.body?.bitumenDensityKgPerL ?? null,
+      });
+      const saved = await storage.upsertPlantSettings(parsed);
+      res.json(saved);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message || "Failed to save plant settings" });
+    }
+  });
+
   app.get("/api/plant-module/shift-logs/plants", async (_req, res) => {
     try {
       const all = await storage.getPlantShiftLogs({});
@@ -2800,7 +2855,7 @@ export async function registerRoutes(
   });
 
   // Render the Daily Plant Report into a given PDFDocument (shared by single + bulk endpoints).
-  const renderDailyPlantPdfBody = (doc: PDFKit.PDFDocument, date: string, summary: any) => {
+  const renderDailyPlantPdfBody = async (doc: PDFKit.PDFDocument, date: string, summary: any) => {
       // Header with company logo (matches DPR/bill print style)
       const logoPath = path.join(process.cwd(), "attached_assets", "1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg");
       try {
@@ -2913,12 +2968,32 @@ export async function registerRoutes(
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
       line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
-      line("Tank 1 Approx Stock (MT)", summary.shift?.bitumenTank1StockApproxMt);
-      line("Tank 2 Approx Stock (MT)", summary.shift?.bitumenTank2StockApproxMt);
+      // Task #253 — derive MT from dip + per-plant calibration. The dip is the
+      // single source of truth; the legacy approx-MT columns are kept for
+      // audit but no longer rendered. When calibration is missing the helper
+      // returns null and we render "—" so it's obvious calibration is needed.
+      // plantName is taken from the summary (renderer is shared by single +
+      // bulk endpoints and doesn't have access to req.query).
+      const pdfPlantName: string = summary?.plantName || summary?.shift?.plantName || "Main Plant";
+      const plantSettingsForPdf = await storage.getPlantSettings(pdfPlantName);
+      const t1Lpc = plantSettingsForPdf?.bitumenTank1LitresPerCm ?? null;
+      const t2Lpc = plantSettingsForPdf?.bitumenTank2LitresPerCm ?? null;
+      const density = plantSettingsForPdf?.bitumenDensityKgPerL ?? null;
+      const fmtMt = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)} MT`);
       line("Tank 1 Opening Dip (cm)", summary.shift?.bitumenTank1OpeningDip);
+      line("Tank 1 Opening Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank1OpeningDip ?? null, t1Lpc, density)));
       line("Tank 1 Closing Dip (cm)", summary.shift?.bitumenTank1ClosingDip);
+      line("Tank 1 Closing Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank1ClosingDip ?? null, t1Lpc, density)));
       line("Tank 2 Opening Dip (cm)", summary.shift?.bitumenTank2OpeningDip);
+      line("Tank 2 Opening Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank2OpeningDip ?? null, t2Lpc, density)));
       line("Tank 2 Closing Dip (cm)", summary.shift?.bitumenTank2ClosingDip);
+      line("Tank 2 Closing Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank2ClosingDip ?? null, t2Lpc, density)));
+      if (t1Lpc == null && t2Lpc == null) {
+        doc.fontSize(8).font("Helvetica-Oblique").fillColor("gray").text(
+          `Note: no bitumen tank calibration set for "${pdfPlantName}". Set litres/cm in Admin Settings to derive MT.`
+        );
+        doc.fillColor("black");
+      }
 
       if (summary.generators?.items?.length) {
         section(`Generator Logs (${summary.generators.items.length})  Total Diesel: ${summary.generators.totalDieselConsumedL?.toFixed(1) || 0} L`);
@@ -3162,10 +3237,12 @@ export async function registerRoutes(
       doc.on("data", (c: Buffer) => chunks.push(c));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
-      try {
-        renderDailyPlantPdfBody(doc, date, summary);
-        doc.end();
-      } catch (e) { reject(e); }
+      (async () => {
+        try {
+          await renderDailyPlantPdfBody(doc, date, summary);
+          doc.end();
+        } catch (e) { reject(e); }
+      })();
     });
   };
 
@@ -3501,7 +3578,7 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `inline; filename="daily-plant-report-${date}.pdf"`);
       doc.pipe(res);
 
-      renderDailyPlantPdfBody(doc, date, summary);
+      await renderDailyPlantPdfBody(doc, date, summary);
       doc.end();
     } catch (err: any) {
       console.error("PDF error", err);

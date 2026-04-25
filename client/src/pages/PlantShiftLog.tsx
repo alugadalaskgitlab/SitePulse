@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Switch } from "@/components/ui/switch";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
-import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
+import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession, PlantSettings } from "@shared/schema";
+import { dipCmToMt } from "@shared/bitumen-dip-chart";
 
 type ManpowerRow = {
   name: string;
@@ -150,8 +151,6 @@ export default function PlantShiftLog() {
 
   const [isFinalized, setIsFinalized] = useState(0);
   const [plantName, setPlantName] = useState("Main Plant");
-  const [bitumenTank1StockApproxMt, setBitumenTank1StockApproxMt] = useState("");
-  const [bitumenTank2StockApproxMt, setBitumenTank2StockApproxMt] = useState("");
   const [savedId, setSavedId] = useState<number | null>(null);
   const [autoFillT1Source, setAutoFillT1Source] = useState<string>("");
   const [autoFillT1ClosingSource, setAutoFillT1ClosingSource] = useState<string>("");
@@ -203,7 +202,6 @@ export default function PlantShiftLog() {
     setDryerFedFrom("TANK_2");
     setBoilerRunsDuringProduction(false);
     setManpower([]); setIdleEvents([]);
-    setBitumenTank1StockApproxMt(""); setBitumenTank2StockApproxMt("");
     setAutoFillT1Source(""); setAutoFillT1ClosingSource(""); setAutoFillT2Source("");
     autoFilledT1ValueRef.current = null;
     autoFilledT1ClosingValueRef.current = null;
@@ -281,9 +279,30 @@ export default function PlantShiftLog() {
     })));
     setIsFinalized(existing.isFinalized || 0);
     setPlantName(existing.plantName || "Main Plant");
-    setBitumenTank1StockApproxMt(existing.bitumenTank1StockApproxMt?.toString() || "");
-    setBitumenTank2StockApproxMt(existing.bitumenTank2StockApproxMt?.toString() || "");
   }, [existing]);
+
+  // Task #253 — fetch per-plant tank calibration so we can derive bitumen MT
+  // from the operator's dip readings inline next to each input. The dip is
+  // the single source of truth; derived MT is read-only.
+  const { data: plantSettings } = useQuery<PlantSettings | null>({
+    queryKey: ["/api/plant-module/plant-settings", plantName],
+    enabled: !!plantName,
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(plantName)}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+  const t1Lpc = plantSettings?.bitumenTank1LitresPerCm ?? null;
+  const t2Lpc = plantSettings?.bitumenTank2LitresPerCm ?? null;
+  const density = plantSettings?.bitumenDensityKgPerL ?? null;
+  const numOrNullSafe = (s: string) => (s.trim() === "" ? null : parseFloat(s));
+  const dipHint = (cm: string, lpc: number | null) => {
+    if (cm.trim() === "") return null;
+    const mt = dipCmToMt(numOrNullSafe(cm), lpc, density);
+    if (mt === null) return "≈ — MT (no calibration)";
+    return `≈ ${mt.toFixed(2)} MT`;
+  };
 
   const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
 
@@ -307,8 +326,9 @@ export default function PlantShiftLog() {
         plantStopTime: plantStopTime || null,
         weather: weather || null,
         ambientTemp: numOrNull(ambientTemp),
-        bitumenTank1StockApproxMt: numOrNull(bitumenTank1StockApproxMt),
-        bitumenTank2StockApproxMt: numOrNull(bitumenTank2StockApproxMt),
+        // Task #253 — bitumenTank{1,2}StockApproxMt removed from the form.
+        // The columns remain on the table for audit; existing values are no
+        // longer overwritten on save (server-side upsert preserves them).
         operatorName: operatorName || null,
         supervisorName: supervisorName || null,
         remarks: remarks || null,
@@ -675,21 +695,53 @@ export default function PlantShiftLog() {
           </div>
           <div><Label>Ambient Temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
           <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
-          <div><Label>Bitumen Tank 1 Stock ≈ MT</Label><Input type="number" step="0.01" value={bitumenTank1StockApproxMt} onChange={e => setBitumenTank1StockApproxMt(e.target.value)} data-testid="input-bitumen-tank1-stock-mt" /></div>
-          <div><Label>Bitumen Tank 2 Stock ≈ MT</Label><Input type="number" step="0.01" value={bitumenTank2StockApproxMt} onChange={e => setBitumenTank2StockApproxMt(e.target.value)} data-testid="input-bitumen-tank2-stock-mt" /></div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Bitumen Tanks (Theoretical)</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Bitumen Tanks (Theoretical)</CardTitle>
+          {/* Task #253 — dip readings (cm) are the single source of truth.
+              Derived MT shown under each input uses the per-plant calibration
+              (litres/cm + density). Set calibration in Admin Settings. */}
+          {(t1Lpc == null && t2Lpc == null) && (
+            <p className="text-xs text-amber-700 dark:text-amber-400" data-testid="text-no-calibration">
+              No bitumen tank calibration set for "{plantName}". An admin can set litres/cm in Admin Settings to derive MT from dip readings.
+            </p>
+          )}
+        </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div><Label>Tank 1 Temp °C</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
-          <div><Label>Tank 1 Opening Dip (cm)</Label><Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => setBitumenTank1OpeningDip(e.target.value)} data-testid="input-bitumen-t1-open" /></div>
-          <div><Label>Tank 1 Closing Dip (cm)</Label><Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" /></div>
+          <div>
+            <Label>Tank 1 Opening Dip (cm)</Label>
+            <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => setBitumenTank1OpeningDip(e.target.value)} data-testid="input-bitumen-t1-open" />
+            {dipHint(bitumenTank1OpeningDip, t1Lpc) && (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip, t1Lpc)}</p>
+            )}
+          </div>
+          <div>
+            <Label>Tank 1 Closing Dip (cm)</Label>
+            <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
+            {dipHint(bitumenTank1ClosingDip, t1Lpc) && (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip, t1Lpc)}</p>
+            )}
+          </div>
           <div />
           <div><Label>Tank 2 Temp °C</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
-          <div><Label>Tank 2 Opening Dip (cm)</Label><Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => setBitumenTank2OpeningDip(e.target.value)} data-testid="input-bitumen-t2-open" /></div>
-          <div><Label>Tank 2 Closing Dip (cm)</Label><Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" /></div>
+          <div>
+            <Label>Tank 2 Opening Dip (cm)</Label>
+            <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => setBitumenTank2OpeningDip(e.target.value)} data-testid="input-bitumen-t2-open" />
+            {dipHint(bitumenTank2OpeningDip, t2Lpc) && (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip, t2Lpc)}</p>
+            )}
+          </div>
+          <div>
+            <Label>Tank 2 Closing Dip (cm)</Label>
+            <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
+            {dipHint(bitumenTank2ClosingDip, t2Lpc) && (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip, t2Lpc)}</p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

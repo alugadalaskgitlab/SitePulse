@@ -162,6 +162,26 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Task #253 — Per-plant tank calibration. Used to derive bitumen stock in MT
+// from the operator's dip readings (cm) on the Plant Shift Log. The dip is
+// the single source of truth; derived MT is read-only. Density default is
+// applied at compute time (DEFAULT_BITUMEN_DENSITY_KG_PER_L = 1.01) when the
+// admin has not set bitumenDensityKgPerL.
+export const plantSettings = pgTable("plant_settings", {
+  id: serial("id").primaryKey(),
+  plantName: text("plant_name").notNull(),
+  bitumenTank1LitresPerCm: real("bitumen_tank1_litres_per_cm"),
+  bitumenTank2LitresPerCm: real("bitumen_tank2_litres_per_cm"),
+  bitumenDensityKgPerL: real("bitumen_density_kg_per_l"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  plantNameUq: uniqueIndex("plant_settings_plant_name_uq").on(table.plantName),
+}));
+
+export const insertPlantSettingsSchema = createInsertSchema(plantSettings).omit({ id: true, updatedAt: true });
+export type PlantSettings = typeof plantSettings.$inferSelect;
+export type InsertPlantSettings = z.infer<typeof insertPlantSettingsSchema>;
+
 // ============================================
 // PLANT MODULE PHASE-1 - MASTERS
 // ============================================

@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ChevronLeft, Download, Edit, Loader2, History } from "lucide-react";
 import { format } from "date-fns";
 import { heatingSessionTypeLabel } from "@shared/schema";
-import type { PlantShiftLogWithDetails } from "@shared/schema";
+import type { PlantShiftLogWithDetails, PlantSettings } from "@shared/schema";
+import { dipCmToMt } from "@shared/bitumen-dip-chart";
 
 type DailyPlantSummary = {
   date: string;
@@ -126,6 +127,23 @@ export default function PlantDailyReport() {
   const fmt = (n: number | null | undefined, dp = 2) =>
     n === null || n === undefined || isNaN(n) ? "—" : n.toFixed(dp);
 
+  // Task #253 — fetch per-plant tank calibration so derived bitumen MT (dip ×
+  // litres-per-cm × density) can replace the legacy operator-typed approx-MT
+  // cells. Calibration is optional; when missing we render "—" + a hint.
+  const { data: plantSettings } = useQuery<PlantSettings | null>({
+    queryKey: ["/api/plant-module/plant-settings", plantName],
+    enabled: !!plantName,
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(plantName)}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+  const t1Lpc = plantSettings?.bitumenTank1LitresPerCm ?? null;
+  const t2Lpc = plantSettings?.bitumenTank2LitresPerCm ?? null;
+  const density = plantSettings?.bitumenDensityKgPerL ?? null;
+  const fmtMt = (mt: number | null) => (mt === null ? "—" : mt.toFixed(2));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -181,12 +199,22 @@ export default function PlantDailyReport() {
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><div className="text-muted-foreground">Tank-1 Temp °C</div><div className="font-medium" data-testid="text-bitumen-tank1-temp">{fmt(data.shift?.bitumenTank1Temp, 1)}</div></div>
               <div><div className="text-muted-foreground">Tank-2 Temp °C</div><div className="font-medium" data-testid="text-bitumen-tank2-temp">{fmt(data.shift?.bitumenTank2Temp, 1)}</div></div>
-              <div><div className="text-muted-foreground">Tank-1 Approx Stock MT</div><div className="font-medium" data-testid="text-bitumen-tank1-stock">{fmt(data.shift?.bitumenTank1StockApproxMt, 2)}</div></div>
-              <div><div className="text-muted-foreground">Tank-2 Approx Stock MT</div><div className="font-medium" data-testid="text-bitumen-tank2-stock">{fmt(data.shift?.bitumenTank2StockApproxMt, 2)}</div></div>
+              {/* Task #253 — dip is the single source of truth; MT is derived
+                  from dip × litres-per-cm × density per plant calibration. The
+                  legacy approx-MT cells are removed (DB columns kept for audit). */}
               <div><div className="text-muted-foreground">Tank-1 Opening Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank1OpeningDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-1 Opening MT (derived)</div><div className="font-medium" data-testid="text-bitumen-tank1-open-mt">{fmtMt(dipCmToMt(data.shift?.bitumenTank1OpeningDip ?? null, t1Lpc, density))}</div></div>
               <div><div className="text-muted-foreground">Tank-1 Closing Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank1ClosingDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-1 Closing MT (derived)</div><div className="font-medium" data-testid="text-bitumen-tank1-close-mt">{fmtMt(dipCmToMt(data.shift?.bitumenTank1ClosingDip ?? null, t1Lpc, density))}</div></div>
               <div><div className="text-muted-foreground">Tank-2 Opening Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank2OpeningDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-2 Opening MT (derived)</div><div className="font-medium" data-testid="text-bitumen-tank2-open-mt">{fmtMt(dipCmToMt(data.shift?.bitumenTank2OpeningDip ?? null, t2Lpc, density))}</div></div>
               <div><div className="text-muted-foreground">Tank-2 Closing Dip cm</div><div className="font-medium">{fmt(data.shift?.bitumenTank2ClosingDip, 1)}</div></div>
+              <div><div className="text-muted-foreground">Tank-2 Closing MT (derived)</div><div className="font-medium" data-testid="text-bitumen-tank2-close-mt">{fmtMt(dipCmToMt(data.shift?.bitumenTank2ClosingDip ?? null, t2Lpc, density))}</div></div>
+              {(t1Lpc == null && t2Lpc == null) && (
+                <div className="col-span-2 md:col-span-4 text-xs text-amber-700 dark:text-amber-400" data-testid="text-no-calibration">
+                  No bitumen tank calibration set for this plant. An admin can set litres/cm in Admin Settings to derive MT.
+                </div>
+              )}
             </CardContent>
           </Card>
 
