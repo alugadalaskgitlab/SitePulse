@@ -686,6 +686,11 @@ export default function PlantHeatingSessions() {
                                   DG inline (unsaved)
                                 </Badge>
                               )}
+                              {(s.dryerFedFrom === "TANK_1" || s.dryerFedFrom === "TANK_2") && (
+                                <Badge variant="outline" className="text-xs border-sky-400 text-sky-700 dark:text-sky-400" data-testid={`badge-dryer-fed-${s.id}`}>
+                                  Dryer: {s.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                               <span>Staff: {s.staffName || "—"}</span>

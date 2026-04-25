@@ -91,6 +91,7 @@ type IndexRow = {
   totalProductionMt: number;
   sessionsCount: number;
   shiftLogFinalized: boolean;
+  dryerFedFrom: "TANK_1" | "TANK_2" | null;
   breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
 };
 
@@ -597,6 +598,11 @@ export default function PlantDailyReports() {
                           {r.hasBitumenDips && <Badge variant="outline">Bitumen Dips</Badge>}
                           {r.hasLdoMeter && <Badge variant="outline">LDO Meter</Badge>}
                           {r.hasHeatingSessions && <Badge variant="outline" className="border-orange-400 text-orange-700 dark:text-orange-300">Heating</Badge>}
+                          {r.dryerFedFrom != null && (
+                            <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dryer-fed-${r.date}-${r.plantName}`}>
+                              Dryer: {r.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">{r.totalLoads || "—"}</TableCell>

@@ -693,6 +693,7 @@ export interface IStorage {
     totalProductionMt: number;
     sessionsCount: number;
     shiftLogFinalized: boolean;
+    dryerFedFrom: "TANK_1" | "TANK_2" | null;
     breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
   }>>;
 
@@ -9422,6 +9423,7 @@ export class DatabaseStorage implements IStorage {
     hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
     totalLoads: number; totalProductionMt: number; sessionsCount: number;
     shiftLogFinalized: boolean;
+    dryerFedFrom: "TANK_1" | "TANK_2" | null;
     breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
   }>> {
     const from = filters?.from;
@@ -9473,6 +9475,7 @@ export class DatabaseStorage implements IStorage {
       hasBitumenDips: boolean; hasLdoMeter: boolean; hasHeatingSessions: boolean;
       totalLoads: number; totalProductionMt: number; sessionsCount: number;
       shiftLogFinalized: boolean;
+      dryerFedFrom: "TANK_1" | "TANK_2" | null;
       breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
     };
     const map = new Map<string, Row>();
@@ -9486,6 +9489,7 @@ export class DatabaseStorage implements IStorage {
           hasBitumenDips: false, hasLdoMeter: false, hasHeatingSessions: false,
           totalLoads: 0, totalProductionMt: 0, sessionsCount: 0,
           shiftLogFinalized: false,
+          dryerFedFrom: null,
           breakdown: [],
         };
         map.set(key, r);
@@ -9570,12 +9574,16 @@ export class DatabaseStorage implements IStorage {
       date: plantShiftLogs.date,
       plantName: plantShiftLogs.plantName,
       isFinalized: plantShiftLogs.isFinalized,
+      dryerFedFrom: plantShiftLogs.dryerFedFrom,
     }).from(plantShiftLogs)
       .where(and(dateRange(plantShiftLogs.date), plantEq(plantShiftLogs.plantName)));
     for (const r of slRows) {
       const row = get(r.date, r.plantName);
       row.hasShiftLog = true;
       if (r.isFinalized) row.shiftLogFinalized = true;
+      if (r.dryerFedFrom === "TANK_1" || r.dryerFedFrom === "TANK_2") {
+        row.dryerFedFrom = r.dryerFedFrom;
+      }
     }
 
     const hsRows = await db.select({

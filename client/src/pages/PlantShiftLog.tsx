@@ -608,6 +608,11 @@ export default function PlantShiftLog() {
                                 <span className="text-xs text-muted-foreground">{r.plantName}</span>
                                 {r.isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : <Badge variant="secondary">Draft</Badge>}
                                 <LockBadge record={r} resourceType="plant_shift_log" resourceId={r.id} compact />
+                                {(r.dryerFedFrom === "TANK_1" || r.dryerFedFrom === "TANK_2") && (
+                                  <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dryer-fed-${r.id}`}>
+                                    Dryer: {r.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
+                                  </Badge>
+                                )}
                               </div>
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                                 <span>Operator: {r.operatorName || "—"}</span>
