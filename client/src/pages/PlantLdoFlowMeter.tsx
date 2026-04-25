@@ -27,6 +27,26 @@ import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
 
+type ReadingSource = "shift-log" | "heating-session" | "backfill" | "manual";
+
+const SOURCE_LABELS: Record<ReadingSource, string> = {
+  "shift-log": "Shift Log",
+  "heating-session": "Heating",
+  "backfill": "Backfill",
+  "manual": "Manual",
+};
+
+function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeatingSessionId?: number | null; notes?: string | null }): ReadingSource {
+  // Task #239: the "[BACKFILL ...]" notes prefix is the source of truth, so
+  // it wins over source IDs. In normal operation backfill rows never have a
+  // source ID (the backfill upsert skips owned rows), but if both ever
+  // co-exist we still want the row to read as "Backfill" to match the spec.
+  if (r.notes && r.notes.toUpperCase().startsWith("[BACKFILL")) return "backfill";
+  if (r.sourceShiftLogId != null) return "shift-log";
+  if (r.sourceHeatingSessionId != null) return "heating-session";
+  return "manual";
+}
+
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
   const { sectionCan, isAdmin: isAdminUser } = useAuth();
@@ -50,7 +70,7 @@ export default function PlantLdoFlowMeter() {
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
   const PLANT_LDO_FILTER_URL_KEYS = [
-    "filterDateFrom", "filterDateTo", "filterTank",
+    "filterDateFrom", "filterDateTo", "filterTank", "filterSource",
     "reconDateFrom", "reconDateTo", "reconPartyId", "reconMixTemplateId", "reconSite",
   ];
   const urlHasLdoFilterParams = (() => {
@@ -64,6 +84,7 @@ export default function PlantLdoFlowMeter() {
       filterDateFrom: "",
       filterDateTo: "",
       filterTank: "all",
+      filterSource: "all" as "all" | "hide-backfill" | ReadingSource,
       reconDateFrom: "",
       reconDateTo: "",
       reconPartyId: "all",
@@ -72,10 +93,11 @@ export default function PlantLdoFlowMeter() {
     },
     { shouldHydrate: !urlHasLdoFilterParams },
   );
-  const { filterDateFrom, filterDateTo, filterTank, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
+  const { filterDateFrom, filterDateTo, filterTank, filterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
   const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
   const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
   const setFilterTank = (v: string) => setPersistedFilters((f) => ({ ...f, filterTank: v }));
+  const setFilterSource = (v: string) => setPersistedFilters((f) => ({ ...f, filterSource: v as typeof persistedFilters.filterSource }));
   const setReconDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateFrom: v }));
   const setReconDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateTo: v }));
   const setReconPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, reconPartyId: v }));
@@ -237,9 +259,17 @@ export default function PlantLdoFlowMeter() {
       if (filterDateFrom && r.date < filterDateFrom) return false;
       if (filterDateTo && r.date > filterDateTo) return false;
       if (filterTank !== "all" && r.tankNumber !== parseInt(filterTank)) return false;
+      if (filterSource !== "all") {
+        const src = classifyReadingSource(r);
+        if (filterSource === "hide-backfill") {
+          if (src === "backfill") return false;
+        } else if (src !== filterSource) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [readings, filterDateFrom, filterDateTo, filterTank]);
+  }, [readings, filterDateFrom, filterDateTo, filterTank, filterSource]);
 
   const latestTank1 = useMemo(() => {
     if (!readings) return null;
@@ -834,6 +864,7 @@ export default function PlantLdoFlowMeter() {
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
+      Source: SOURCE_LABELS[classifyReadingSource(r)],
       Notes: r.notes || "",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
@@ -870,10 +901,11 @@ export default function PlantLdoFlowMeter() {
       r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
+      SOURCE_LABELS[classifyReadingSource(r)],
       r.notes || "",
     ]);
     autoTable(doc, {
-      head: [["Date", "Time", "Tank", "Meter (L)", "Type", "Receipt Qty (L)", "Notes"]],
+      head: [["Date", "Time", "Tank", "Meter (L)", "Type", "Receipt Qty (L)", "Source", "Notes"]],
       body: tableData,
       startY: 28,
       styles: { fontSize: 9 },
@@ -886,8 +918,8 @@ export default function PlantLdoFlowMeter() {
       <html><head><title>LDO Flow Meter Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
-      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -1830,7 +1862,20 @@ export default function PlantLdoFlowMeter() {
                 <SelectItem value="2">Dryer Meter</SelectItem>
               </SelectContent>
             </Select>
-            {(filterDateFrom || filterDateTo || filterTank !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
+            <Select value={filterSource} onValueChange={setFilterSource}>
+              <SelectTrigger className="w-48" data-testid="select-filter-source">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="hide-backfill">Hide Backfill rows</SelectItem>
+                <SelectItem value="shift-log">Only Shift Log</SelectItem>
+                <SelectItem value="heating-session">Only Heating</SelectItem>
+                <SelectItem value="manual">Only Manual</SelectItem>
+                <SelectItem value="backfill">Only Backfill</SelectItem>
+              </SelectContent>
+            </Select>
+            {(filterDateFrom || filterDateTo || filterTank !== "all" || filterSource !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1858,12 +1903,23 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-right p-2">Meter Reading (L)</th>
                     <th className="text-left p-2">Type</th>
                     <th className="text-right p-2">Qty (L)</th>
+                    <th className="text-left p-2">Source</th>
                     <th className="text-left p-2">Notes</th>
                     {isAdmin && <th className="text-center p-2">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReadings.map(r => (
+                  {filteredReadings.map(r => {
+                    const src = classifyReadingSource(r);
+                    const srcClass =
+                      src === "backfill"
+                        ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 no-default-hover-elevate no-default-active-elevate"
+                        : src === "shift-log"
+                          ? "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200 no-default-hover-elevate no-default-active-elevate"
+                          : src === "heating-session"
+                            ? "bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200 no-default-hover-elevate no-default-active-elevate"
+                            : "no-default-hover-elevate no-default-active-elevate";
+                    return (
                     <tr key={r.id} className="border-b" data-testid={`row-reading-${r.id}`}>
                       <td className="p-2">{r.date}</td>
                       <td className="p-2">{r.time || "-"}</td>
@@ -1880,6 +1936,24 @@ export default function PlantLdoFlowMeter() {
                         </Badge>
                       </td>
                       <td className="p-2 text-right">{r.quantityLiters ? r.quantityLiters.toFixed(3) : "-"}</td>
+                      <td className="p-2">
+                        <Badge
+                          variant={src === "manual" ? "outline" : "secondary"}
+                          className={srcClass}
+                          data-testid={`badge-source-${r.id}`}
+                          title={
+                            src === "backfill"
+                              ? "Entered via the admin LDO Backfill tool"
+                              : src === "shift-log"
+                                ? "Auto-created from a plant shift log"
+                                : src === "heating-session"
+                                  ? "Auto-created from a bitumen heating session"
+                                  : "Manually entered on this page"
+                          }
+                        >
+                          {SOURCE_LABELS[src]}
+                        </Badge>
+                      </td>
                       <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
                       {isAdmin && (
                         <td className="p-2 text-center">
@@ -1905,7 +1979,8 @@ export default function PlantLdoFlowMeter() {
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
