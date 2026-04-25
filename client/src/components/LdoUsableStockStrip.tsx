@@ -27,8 +27,11 @@ function formatAsOf(a?: AsOf): string {
 
 export function LdoUsableStockStrip({ tank1L, tank2L, tank1AsOf, tank2AsOf }: Props) {
   const totalL = tank1L == null && tank2L == null ? null : (tank1L || 0) + (tank2L || 0);
+  // Compare date AND time so two same-date entries pick the later timestamp
+  // for the "as of" footer (treat missing time as start of day).
+  const asOfKey = (a: AsOf) => `${a.date}T${a.time || "00:00"}`;
   const totalAsOf = tank1AsOf && tank2AsOf
-    ? tank1AsOf.date >= tank2AsOf.date ? tank1AsOf : tank2AsOf
+    ? asOfKey(tank1AsOf) >= asOfKey(tank2AsOf) ? tank1AsOf : tank2AsOf
     : tank1AsOf || tank2AsOf;
 
   return (
