@@ -312,6 +312,33 @@ export async function ensureDeviceForUser(input: {
     const stuckUnderBootstrap =
       !!input.autoApprove && input.existingDevice.status !== "approved";
     if (!stuckUnderBootstrap) {
+      // If the cookie's device is pending or revoked AND we have a user-agent,
+      // check whether this user already has an approved device for the same
+      // browser. If so, silently upgrade to it — this fixes the case where
+      // repeated login attempts or a server restart leaves the cookie pointing
+      // at a newer pending row while an older approved row for the same
+      // (userId, userAgent) still exists.
+      if (input.userAgent && input.existingDevice.status !== "approved") {
+        const [approvedForUa] = await db
+          .select()
+          .from(userDevices)
+          .where(
+            and(
+              eq(userDevices.userId, input.userId),
+              eq(userDevices.userAgent, input.userAgent),
+              eq(userDevices.status, "approved"),
+            ),
+          )
+          .orderBy(desc(userDevices.approvedAt), desc(userDevices.lastSeenAt))
+          .limit(1);
+        if (approvedForUa) {
+          await db.update(userDevices)
+            .set({ lastSeenAt: new Date(), ipAddress: input.ipAddress })
+            .where(eq(userDevices.id, approvedForUa.id));
+          const [refreshed] = await db.select().from(userDevices).where(eq(userDevices.id, approvedForUa.id));
+          return { device: refreshed, setNewCookie: true };
+        }
+      }
       await db.update(userDevices)
         .set({ lastSeenAt: new Date(), userAgent: input.userAgent, ipAddress: input.ipAddress })
         .where(eq(userDevices.id, input.existingDevice.id));
