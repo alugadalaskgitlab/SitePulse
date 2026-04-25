@@ -694,9 +694,14 @@ function PermissionsDialog({
       sections: ["vendor_bills", "reports"],
     },
     {
+      id: "masters",
+      label: "Masters",
+      sections: ["admin_settings"],
+    },
+    {
       id: "admin",
       label: "Admin",
-      sections: ["admin_settings", "user_management", "device_approval"],
+      sections: ["user_management", "device_approval"],
     },
   ];
 
@@ -752,7 +757,7 @@ function PermissionsDialog({
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>
-            Permissions — {target?.fullName} ({target?.email})
+            Permissions — {target?.fullName} ({target?.email ?? target?.phone ?? "—"})
           </DialogTitle>
         </DialogHeader>
 
