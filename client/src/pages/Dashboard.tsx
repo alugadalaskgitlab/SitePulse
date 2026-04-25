@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PinAuth } from "@/components/PinAuth";
+import { LockBadge } from "@/components/LockBadge";
 import { useAccess } from "@/lib/access-context";
 import { format } from "date-fns";
 
@@ -230,9 +231,9 @@ export default function Dashboard() {
             <ul className="divide-y">
               {dprs.map((dpr) => (
                 <li key={dpr.id}>
-                  <Link href={`/dpr/${dpr.id}`}>
-                    <div className="flex items-center justify-between p-4 hover-elevate cursor-pointer group">
-                      <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between p-4 hover-elevate group">
+                    <Link href={`/dpr/${dpr.id}`} className="flex-1 min-w-0">
+                      <div className="flex items-center gap-4 cursor-pointer">
                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
                           {dpr.site.charAt(0).toUpperCase()}
                         </div>
@@ -243,9 +244,17 @@ export default function Dashboard() {
                           </p>
                         </div>
                       </div>
+                    </Link>
+                    <div className="flex items-center gap-2 ml-3">
+                      <LockBadge
+                        record={dpr}
+                        resourceType="dpr"
+                        resourceId={dpr.id}
+                        compact
+                      />
                       <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
                     </div>
-                  </Link>
+                  </div>
                 </li>
               ))}
             </ul>

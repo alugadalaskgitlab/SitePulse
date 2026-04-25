@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PinAuth } from "@/components/PinAuth";
+import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { useAccess } from "@/lib/access-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -201,19 +202,29 @@ export default function DprDetails() {
             <p className="text-xs text-muted-foreground mt-1">
               Current Access: {getRoleLabel(access)}
             </p>
+            <div className="mt-2">
+              <LockBadge
+                record={dpr}
+                resourceType="dpr"
+                resourceId={dpr.id}
+              />
+            </div>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          <Button 
-            variant="secondary" 
+          <LockAwareEditButton
+            record={dpr}
+            resourceType="dpr"
+            resourceId={dpr.id}
+            variant="secondary"
             className="gap-2"
             onClick={handleEditClick}
-            disabled={cloneMutation.isPending}
+            pending={cloneMutation.isPending}
             data-testid="button-edit-dpr"
           >
             <Edit className="w-4 h-4" />
             {cloneMutation.isPending ? "Cloning..." : "Edit Report"}
-          </Button>
+          </LockAwareEditButton>
           <Button 
             variant="destructive" 
             size="sm" 

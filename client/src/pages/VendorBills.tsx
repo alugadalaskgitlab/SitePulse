@@ -14,6 +14,7 @@ import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Chec
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
+import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
@@ -2232,7 +2233,8 @@ export default function VendorBills() {
             </Button>
             <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <LockBadge record={bill} resourceType="vendor_bill" resourceId={bill.id} />
             {["verified", "approved", "paid"].includes(bill.status) && (
               <Button
                 variant="outline"
@@ -2251,9 +2253,17 @@ export default function VendorBills() {
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>
-            <Button size="sm" onClick={() => handleEditBill(bill)} data-testid="button-edit-bill">
+            <LockAwareEditButton
+              record={bill}
+              resourceType="vendor_bill"
+              resourceId={bill.id}
+              variant="default"
+              size="sm"
+              onClick={() => handleEditBill(bill)}
+              data-testid="button-edit-bill"
+            >
               <Edit className="w-4 h-4 mr-1" /> EDIT
-            </Button>
+            </LockAwareEditButton>
           </div>
         </div>
 
@@ -2939,6 +2949,9 @@ export default function VendorBills() {
                     <Badge variant="outline" className={`uppercase ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-bill-status-${bill.id}`}>
                       {bill.status}
                     </Badge>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <LockBadge record={bill} resourceType="vendor_bill" resourceId={bill.id} compact />
+                    </span>
                   </div>
                 </div>
               </CardContent>

@@ -15,6 +15,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
 
@@ -586,6 +587,7 @@ export default function PlantShiftLog() {
                                 {dur != null && <span className="text-sm text-muted-foreground">({dur} h)</span>}
                                 <span className="text-xs text-muted-foreground">{r.plantName}</span>
                                 {r.isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : <Badge variant="secondary">Draft</Badge>}
+                                <LockBadge record={r} resourceType="plant_shift_log" resourceId={r.id} compact />
                               </div>
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                                 <span>Operator: {r.operatorName || "—"}</span>
@@ -630,6 +632,9 @@ export default function PlantShiftLog() {
         </div>
         <div className="flex items-center gap-2">
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
+          {savedId && existing && (
+            <LockBadge record={existing} resourceType="plant_shift_log" resourceId={savedId} />
+          )}
           <Link href={appendPlantContext(`/plant/daily-report/${date}`, { defaultTab: "operations" })}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
           </Link>
@@ -1030,10 +1035,25 @@ export default function PlantShiftLog() {
           </Button>
         )}
         <Button variant="ghost" onClick={goBackToList} data-testid="button-cancel">Cancel</Button>
-        <Button onClick={() => saveMutation.mutate(undefined)} disabled={saveMutation.isPending} data-testid="button-save">
-          {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
-          Save & Close
-        </Button>
+        {savedId && existing ? (
+          <LockAwareEditButton
+            record={existing}
+            resourceType="plant_shift_log"
+            resourceId={savedId}
+            variant="default"
+            onClick={() => saveMutation.mutate(undefined)}
+            pending={saveMutation.isPending}
+            data-testid="button-save"
+          >
+            {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+            Save & Close
+          </LockAwareEditButton>
+        ) : (
+          <Button onClick={() => saveMutation.mutate(undefined)} disabled={saveMutation.isPending} data-testid="button-save">
+            {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+            Save & Close
+          </Button>
+        )}
       </div>
     </div>
   );

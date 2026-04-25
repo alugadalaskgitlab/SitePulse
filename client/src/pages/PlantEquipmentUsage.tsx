@@ -17,6 +17,7 @@ import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, Arr
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
+import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -1721,9 +1722,18 @@ export default function PlantEquipmentUsage() {
                                   <Gauge className="w-3 h-3" /> Complete
                                 </Button>
                               )}
-                              <Button size="icon" variant="ghost" onClick={() => handleEditClick(entry)} data-testid={`button-edit-usage-${entry.id}`}>
+                              <LockBadge record={entry} resourceType="equipment_usage" resourceId={entry.id} compact />
+                              <LockAwareEditButton
+                                record={entry}
+                                resourceType="equipment_usage"
+                                resourceId={entry.id}
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleEditClick(entry)}
+                                data-testid={`button-edit-usage-${entry.id}`}
+                              >
                                 <Edit className="w-4 h-4" />
-                              </Button>
+                              </LockAwareEditButton>
                               <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
                                 <Trash2 className="w-4 h-4 text-destructive" />
                               </Button>

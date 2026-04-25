@@ -13,6 +13,7 @@ import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2, Pencil,
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PinAuth } from "@/components/PinAuth";
+import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import type { DieselRequirementWithItems, DieselRequirement, DieselRequirementItem, EquipmentMasterType } from "@shared/schema";
 
@@ -605,6 +606,9 @@ export default function DieselRequirements() {
                             {req.items && ` \u2022 ${req.items.length} equipment/DGs`}
                             {req.approvedBy && ` \u2022 Approved by ${req.approvedBy}`}
                           </p>
+                          <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                            <LockBadge record={req} resourceType="diesel_requirement" resourceId={req.id} compact />
+                          </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="text-right">
@@ -801,11 +805,15 @@ export default function DieselRequirements() {
           ) : selectedRequirement ? (
             <>
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <LockBadge record={selectedRequirement} resourceType="diesel_requirement" resourceId={selectedRequirement.id} />
                     <>
-                      <Button
+                      <LockAwareEditButton
+                        record={selectedRequirement}
+                        resourceType="diesel_requirement"
+                        resourceId={selectedRequirement.id}
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300"
@@ -813,7 +821,7 @@ export default function DieselRequirements() {
                         data-testid="button-edit-requirement"
                       >
                         <Pencil className="w-3 h-3 mr-1" /> EDIT
-                      </Button>
+                      </LockAwareEditButton>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1028,10 +1036,14 @@ export default function DieselRequirements() {
           ) : selectedRequirement ? (
             <>
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Button
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <LockBadge record={selectedRequirement} resourceType="diesel_requirement" resourceId={selectedRequirement.id} />
+                    <LockAwareEditButton
+                      record={selectedRequirement}
+                      resourceType="diesel_requirement"
+                      resourceId={selectedRequirement.id}
                       variant="outline"
                       size="sm"
                       className="text-blue-600 border-blue-300"
@@ -1039,7 +1051,7 @@ export default function DieselRequirements() {
                       data-testid="button-edit-requirement-update"
                     >
                       <Pencil className="w-3 h-3 mr-1" /> EDIT
-                    </Button>
+                    </LockAwareEditButton>
                     <Button
                       variant="outline"
                       size="sm"
