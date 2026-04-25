@@ -20,6 +20,7 @@ import {
   userPermissions,
   userDevices,
   userSessions,
+  appSettings,
   type User,
   type SafeUser,
   type UserPermission,
@@ -648,14 +649,20 @@ export function getClientIp(req: Request): string | undefined {
   return req.socket?.remoteAddress || undefined;
 }
 
-// Task #278 — backward-compatible migration: when the schema added separate
+// Task #278 — one-time migration: when the schema added separate
 // `can_delete` and `can_export` columns (both default false), existing rows
 // had the new columns zeroed out. This migration propagates the prior combined
-// values: can_delete ← can_edit, can_export ← can_view_reports for every row
-// where the new column is still false while the old source column is true.
-// Idempotent: rows already migrated (can_delete = can_edit or both false) are
-// unaffected. Runs at server startup so production environments self-heal.
-export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number }> {
+// values: can_delete ← can_edit, can_export ← can_view_reports for every row.
+// A flag in app_settings ensures it runs exactly once — subsequent startups
+// are a no-op so intentional "edit without delete" splits set by an admin
+// after the migration are never overwritten.
+const SPLIT_PERMS_FLAG = "perm_v278_split_done";
+export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number; skipped: boolean }> {
+  const existing = await db.select().from(appSettings).where(eq(appSettings.key, SPLIT_PERMS_FLAG));
+  if (existing.length > 0) {
+    console.log("backfillSplitPermissions: already applied, skipping.");
+    return { deleteUpdated: 0, exportUpdated: 0, skipped: true };
+  }
   const deleteResult = await db.update(userPermissions)
     .set({ canDelete: sql`${userPermissions.canEdit}` })
     .where(and(eq(userPermissions.canDelete, false), eq(userPermissions.canEdit, true)))
@@ -664,7 +671,8 @@ export async function backfillSplitPermissions(): Promise<{ deleteUpdated: numbe
     .set({ canExport: sql`${userPermissions.canViewReports}` })
     .where(and(eq(userPermissions.canExport, false), eq(userPermissions.canViewReports, true)))
     .returning({ id: userPermissions.id });
-  const result = { deleteUpdated: deleteResult.length, exportUpdated: exportResult.length };
+  await db.insert(appSettings).values({ key: SPLIT_PERMS_FLAG, value: new Date().toISOString() });
+  const result = { deleteUpdated: deleteResult.length, exportUpdated: exportResult.length, skipped: false };
   console.log(`backfillSplitPermissions: delete updated ${result.deleteUpdated}, export updated ${result.exportUpdated}`);
   return result;
 }
