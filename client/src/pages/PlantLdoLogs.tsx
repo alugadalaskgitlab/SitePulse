@@ -11,7 +11,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -23,15 +23,13 @@ import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
 export default function PlantLdoLogs() {
   const { toast } = useToast();
+  const { sectionCan } = useAuth();
+  const canCreate = sectionCan("plant_stock", "create");
+  const canExport = sectionCan("plant_stock", "view_reports");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  
-  // PIN auth state for per-action authentication
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" } | null>(null);
   const [openingStock, setOpeningStock] = useState("");
   const [ldoReceived, setLdoReceived] = useState("");
   const [ldoConsumed, setLdoConsumed] = useState("");
@@ -85,43 +83,6 @@ export default function PlantLdoLogs() {
   };
 
   const expectedLdo = tonsProduced ? parseFloat(tonsProduced) * DEFAULT_LDO_NORM : 0;
-
-  // Per-action PIN authentication handlers
-  const requestPinAuth = (action: typeof pendingAction) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
-
-    switch (pendingAction.type) {
-      case "export-excel":
-        exportToExcel();
-        break;
-      case "export-pdf":
-        exportToPDF();
-        break;
-      case "print":
-        handlePrint();
-        break;
-    }
-    setPendingAction(null);
-  };
-
-  const handleExportExcelClick = () => {
-    requestPinAuth({ type: "export-excel" });
-  };
-
-  const handleExportPdfClick = () => {
-    requestPinAuth({ type: "export-pdf" });
-  };
-
-  const handlePrintClick = () => {
-    requestPinAuth({ type: "print" });
-  };
 
   // Build filename with timestamp
   const buildFilename = (extension: string) => {
@@ -364,11 +325,13 @@ export default function PlantLdoLogs() {
           />
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" data-testid="button-add-ldo-log">
-              <Plus className="w-4 h-4" /> New Entry
-            </Button>
-          </DialogTrigger>
+          {canCreate && (
+            <DialogTrigger asChild>
+              <Button className="gap-2" data-testid="button-add-ldo-log">
+                <Plus className="w-4 h-4" /> New Entry
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Record LDO Consumption</DialogTitle>
@@ -425,30 +388,21 @@ export default function PlantLdoLogs() {
         </Dialog>
       </div>
 
-      {/* PIN Auth Modal */}
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAuthTarget}
-          onSuccess={handlePinSuccess}
-          onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-        />
-      )}
-
-      {/* Export/Print Actions - Always visible, PIN required on click */}
-      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
-        <span className="text-sm text-muted-foreground">Admin PIN required for Export and Print</span>
-        <div className="flex items-center gap-2 ml-auto flex-wrap">
-          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!logs?.length} data-testid="button-export-excel">
-            <Download className="w-4 h-4" /> Export Excel
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!logs?.length} data-testid="button-export-pdf">
-            <Download className="w-4 h-4" /> Export PDF
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
-            <Printer className="w-4 h-4" /> Print
-          </Button>
+      {canExport && (
+        <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!logs?.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!logs?.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <Card>
         <CardHeader>

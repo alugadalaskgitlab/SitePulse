@@ -12,7 +12,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2, Pencil, AlertTriangle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import type { DieselRequirementWithItems, DieselRequirement, DieselRequirementItem, EquipmentMasterType } from "@shared/schema";
@@ -108,10 +108,13 @@ export default function DieselRequirements() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([]);
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAction, setPinAction] = useState<"approve" | "reject" | "edit" | "delete" | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
-  const [storedPin, setStoredPin] = useState("");
+
+  const { sectionCan, isAdmin } = useAuth();
+  const canEdit = sectionCan("site_diesel", "edit");
+  const canCreate = sectionCan("site_diesel", "create");
+  const canApprove = sectionCan("site_diesel", "edit");
+  const canDelete = isAdmin;
 
   const [purchaseQty, setPurchaseQty] = useState("");
   const [purchaseSupplier, setPurchaseSupplier] = useState("");
@@ -173,9 +176,8 @@ export default function DieselRequirements() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: (data: { id: number; pin: string; approvedItems: ApprovalItem[] }) =>
+    mutationFn: (data: { id: number; approvedItems: ApprovalItem[] }) =>
       apiRequest("PATCH", `/api/diesel-requirements/${data.id}/approve`, {
-        pin: data.pin,
         approvedItems: data.approvedItems,
       }),
     onSuccess: () => {
@@ -191,9 +193,8 @@ export default function DieselRequirements() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (data: { id: number; pin: string; reason: string }) =>
+    mutationFn: (data: { id: number; reason: string }) =>
       apiRequest("PATCH", `/api/diesel-requirements/${data.id}/reject`, {
-        pin: data.pin,
         reason: data.reason,
       }),
     onSuccess: () => {
@@ -240,8 +241,8 @@ export default function DieselRequirements() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) =>
-      apiRequest("DELETE", `/api/diesel-requirements/${id}`, { pin }),
+    mutationFn: ({ id }: { id: number }) =>
+      apiRequest("DELETE", `/api/diesel-requirements/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] });
@@ -332,7 +333,7 @@ export default function DieselRequirements() {
     };
 
     if (editId) {
-      editMutation.mutate({ id: editId, data: { ...payload, pin: storedPin } });
+      editMutation.mutate({ id: editId, data: payload });
     } else {
       createMutation.mutate(payload);
     }
@@ -359,36 +360,41 @@ export default function DieselRequirements() {
     }
   };
 
-  const handlePinSuccess = (_role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    setStoredPin(pin);
-    if (pinAction === "approve" && selectedId) {
-      approveMutation.mutate({ id: selectedId, pin, approvedItems: approvalItems });
-    } else if (pinAction === "reject" && selectedId) {
-      if (!rejectionReason.trim()) {
-        toast({ title: "Rejection reason is required", variant: "destructive" });
-        return;
-      }
-      rejectMutation.mutate({ id: selectedId, pin, reason: rejectionReason.toUpperCase() });
-    } else if (pinAction === "edit" && selectedId && selectedRequirement) {
-      setEditId(selectedId);
-      setFormDate(selectedRequirement.date);
-      setFormRaisedBy(selectedRequirement.raisedBy);
-      setFormRemarks(selectedRequirement.remarks || "");
-      setFormItems(selectedRequirement.items.map(item => ({
-        equipmentId: item.equipmentId,
-        equipmentName: item.equipmentName,
-        purpose: item.purpose || "",
-        estHours: item.estHours != null ? String(item.estHours) : "",
-        norm: item.norm != null ? String(item.norm) : "",
-        normType: ((item as any).normType || "hourly") as "hourly" | "distance",
-        plannedQty: String(item.plannedQty),
-      })));
-      setView("form");
-    } else if (pinAction === "delete" && selectedId) {
-      deleteMutation.mutate({ id: selectedId, pin });
+  const handleApproveClick = () => {
+    if (!selectedId) return;
+    approveMutation.mutate({ id: selectedId, approvedItems: approvalItems });
+  };
+
+  const handleRejectClick = () => {
+    if (!selectedId) return;
+    if (!rejectionReason.trim()) {
+      toast({ title: "Rejection reason is required", variant: "destructive" });
+      return;
     }
-    setPinAction(null);
+    rejectMutation.mutate({ id: selectedId, reason: rejectionReason.toUpperCase() });
+  };
+
+  const handleEditClick = () => {
+    if (!selectedId || !selectedRequirement) return;
+    setEditId(selectedId);
+    setFormDate(selectedRequirement.date);
+    setFormRaisedBy(selectedRequirement.raisedBy);
+    setFormRemarks(selectedRequirement.remarks || "");
+    setFormItems(selectedRequirement.items.map(item => ({
+      equipmentId: item.equipmentId,
+      equipmentName: item.equipmentName,
+      purpose: item.purpose || "",
+      estHours: item.estHours != null ? String(item.estHours) : "",
+      norm: item.norm != null ? String(item.norm) : "",
+      normType: ((item as any).normType || "hourly") as "hourly" | "distance",
+      plannedQty: String(item.plannedQty),
+    })));
+    setView("form");
+  };
+
+  const handleDeleteClick = () => {
+    if (!selectedId) return;
+    deleteMutation.mutate({ id: selectedId });
   };
 
   const handlePurchaseSubmit = () => {
@@ -441,14 +447,6 @@ export default function DieselRequirements() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAction === "delete" ? "admin" : (pinAction === "edit" && selectedRequirement && selectedRequirement.status !== "pending") ? "admin" : "any"}
-          onSuccess={handlePinSuccess}
-          onClose={() => { setShowPinAuth(false); setPinAction(null); }}
-        />
-      )}
-
       {showDeleteConfirm && (
         <Card className="border-red-200 dark:border-red-800">
           <CardContent className="p-4 space-y-3">
@@ -465,14 +463,13 @@ export default function DieselRequirements() {
                 variant="outline"
                 className="text-red-600 border-red-300"
                 disabled={deleteMutation.isPending}
-                onClick={() => { setPinAction("delete"); setShowPinAuth(true); }}
+                onClick={handleDeleteClick}
                 data-testid="button-confirm-delete"
               >
                 {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
                 DELETE PERMANENTLY
               </Button>
             </div>
-            <p className="text-xs text-center text-muted-foreground italic">ADMIN PIN REQUIRED</p>
           </CardContent>
         </Card>
       )}
@@ -495,12 +492,16 @@ export default function DieselRequirements() {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setView("report"); setReportGenerated(false); }} data-testid="button-comparison-report">
-                COMPARISON REPORT
-              </Button>
-              <Button size="sm" className="gap-1" onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-requirement">
-                <Plus className="w-4 h-4" /> RAISE REQUIREMENT
-              </Button>
+              {sectionCan("site_diesel", "view_reports") && (
+                <Button variant="outline" size="sm" onClick={() => { setView("report"); setReportGenerated(false); }} data-testid="button-comparison-report">
+                  COMPARISON REPORT
+                </Button>
+              )}
+              {canCreate && (
+                <Button size="sm" className="gap-1" onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-requirement">
+                  <Plus className="w-4 h-4" /> RAISE REQUIREMENT
+                </Button>
+              )}
             </div>
           </div>
 
@@ -809,7 +810,7 @@ export default function DieselRequirements() {
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
                     <LockBadge record={selectedRequirement} resourceType="diesel_requirement" resourceId={selectedRequirement.id} />
-                    <>
+                    {canEdit && (
                       <LockAwareEditButton
                         record={selectedRequirement}
                         resourceType="diesel_requirement"
@@ -817,11 +818,13 @@ export default function DieselRequirements() {
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300"
-                        onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                        onClick={handleEditClick}
                         data-testid="button-edit-requirement"
                       >
                         <Pencil className="w-3 h-3 mr-1" /> EDIT
                       </LockAwareEditButton>
+                    )}
+                    {canDelete && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -831,7 +834,7 @@ export default function DieselRequirements() {
                       >
                         <Trash2 className="w-3 h-3 mr-1" /> DELETE
                       </Button>
-                    </>
+                    )}
                     {getStatusBadge(selectedRequirement.status)}
                   </div>
                 </CardHeader>
@@ -974,7 +977,7 @@ export default function DieselRequirements() {
                   </table>
                 </CardContent>
 
-                {selectedRequirement.status === "pending" && (
+                {selectedRequirement.status === "pending" && canApprove && (
                   <div className="flex justify-between items-center gap-4 p-4 border-t bg-muted/30 flex-wrap">
                     <div className="flex gap-2 items-center">
                       <Input
@@ -988,7 +991,7 @@ export default function DieselRequirements() {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => { setPinAction("reject"); setShowPinAuth(true); }}
+                        onClick={handleRejectClick}
                         disabled={rejectMutation.isPending}
                         data-testid="button-reject"
                       >
@@ -999,7 +1002,7 @@ export default function DieselRequirements() {
                     <Button
                       className="bg-green-600 hover:bg-green-700 text-white"
                       size="sm"
-                      onClick={() => { setPinAction("approve"); setShowPinAuth(true); }}
+                      onClick={handleApproveClick}
                       disabled={approveMutation.isPending}
                       data-testid="button-approve"
                     >
@@ -1009,10 +1012,6 @@ export default function DieselRequirements() {
                   </div>
                 )}
               </Card>
-
-              <p className="text-center text-xs text-muted-foreground italic">
-                {selectedRequirement.status === "pending" ? "PIN required to approve or reject" : ""}
-              </p>
             </>
           ) : (
             <Card><CardContent className="p-8 text-center text-muted-foreground">Requirement not found</CardContent></Card>
@@ -1040,27 +1039,31 @@ export default function DieselRequirements() {
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
                     <LockBadge record={selectedRequirement} resourceType="diesel_requirement" resourceId={selectedRequirement.id} />
-                    <LockAwareEditButton
-                      record={selectedRequirement}
-                      resourceType="diesel_requirement"
-                      resourceId={selectedRequirement.id}
-                      variant="outline"
-                      size="sm"
-                      className="text-blue-600 border-blue-300"
-                      onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
-                      data-testid="button-edit-requirement-update"
-                    >
-                      <Pencil className="w-3 h-3 mr-1" /> EDIT
-                    </LockAwareEditButton>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 border-red-300"
-                      onClick={() => setShowDeleteConfirm(true)}
-                      data-testid="button-delete-requirement-update"
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                    </Button>
+                    {canEdit && (
+                      <LockAwareEditButton
+                        record={selectedRequirement}
+                        resourceType="diesel_requirement"
+                        resourceId={selectedRequirement.id}
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300"
+                        onClick={handleEditClick}
+                        data-testid="button-edit-requirement-update"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> EDIT
+                      </LockAwareEditButton>
+                    )}
+                    {canDelete && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-300"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        data-testid="button-delete-requirement-update"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                      </Button>
+                    )}
                     {getStatusBadge(selectedRequirement.status)}
                   </div>
                 </CardHeader>

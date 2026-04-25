@@ -15,13 +15,17 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialIssue, MaterialReturn } from "@shared/schema";
 
 export default function PlantMaterialReturns() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
+  const { sectionCan } = useAuth();
+  const canCreate = sectionCan("plant_stock", "create");
+  const canEdit = sectionCan("plant_stock", "edit");
+  const canExport = sectionCan("plant_stock", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -30,10 +34,6 @@ export default function PlantMaterialReturns() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterMaterialId, setFilterMaterialId] = useState("all");
-
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager" | "any">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; returnId?: number } | null>(null);
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>("");
   const [selectedIssueId, setSelectedIssueId] = useState<string>("");
@@ -230,37 +230,27 @@ export default function PlantMaterialReturns() {
     return Object.values(totalsMap);
   }, [filteredReturns, materials]);
 
-  const handlePinSuccess = () => {
-    setShowPinAuth(false);
-    if (pendingAction) {
-      switch (pendingAction.type) {
-        case "edit":
-          if (pendingAction.returnId) {
-            const ret = returns?.find(r => r.id === pendingAction.returnId);
-            if (ret) openEditReturn(ret);
-          }
-          break;
-        case "delete":
-          if (pendingAction.returnId) setDeleteConfirmId(pendingAction.returnId);
-          break;
-        case "export-excel":
-          exportToExcel();
-          break;
-        case "export-pdf":
-          exportToPDF();
-          break;
-        case "print":
-          handlePrint();
-          break;
-      }
-      setPendingAction(null);
-    }
-  };
-
   const requireAuth = (action: { type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; returnId?: number }) => {
-    setPendingAction(action);
-    setPinAuthTarget(action.type === "edit" ? "any" : "admin");
-    setShowPinAuth(true);
+    switch (action.type) {
+      case "edit":
+        if (action.returnId) {
+          const ret = returns?.find(r => r.id === action.returnId);
+          if (ret) openEditReturn(ret);
+        }
+        break;
+      case "delete":
+        if (action.returnId) setDeleteConfirmId(action.returnId);
+        break;
+      case "export-excel":
+        exportToExcel();
+        break;
+      case "export-pdf":
+        exportToPDF();
+        break;
+      case "print":
+        handlePrint();
+        break;
+    }
   };
 
   const exportToExcel = () => {
@@ -399,21 +389,27 @@ export default function PlantMaterialReturns() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "export-excel" })} data-testid="button-export-excel">
-            <Download className="w-4 h-4 mr-1" /> Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "export-pdf" })} data-testid="button-export-pdf">
-            <Download className="w-4 h-4 mr-1" /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "print" })} data-testid="button-print">
-            <Printer className="w-4 h-4 mr-1" /> Print
-          </Button>
-          <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
-            <DialogTrigger asChild>
-              <Button className="gap-1" data-testid="button-add-return">
-                <Plus className="w-4 h-4" /> New Return
+          {canExport && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "export-excel" })} data-testid="button-export-excel">
+                <Download className="w-4 h-4 mr-1" /> Excel
               </Button>
-            </DialogTrigger>
+              <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "export-pdf" })} data-testid="button-export-pdf">
+                <Download className="w-4 h-4 mr-1" /> PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "print" })} data-testid="button-print">
+                <Printer className="w-4 h-4 mr-1" /> Print
+              </Button>
+            </>
+          )}
+          <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
+            {canCreate && (
+              <DialogTrigger asChild>
+                <Button className="gap-1" data-testid="button-add-return">
+                  <Plus className="w-4 h-4" /> New Return
+                </Button>
+              </DialogTrigger>
+            )}
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingReturn ? "Edit Material Return" : "Record Material Return"}</DialogTitle>
@@ -631,14 +627,16 @@ export default function PlantMaterialReturns() {
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "edit", returnId: ret.id })} data-testid={`button-edit-${ret.id}`}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "delete", returnId: ret.id })} data-testid={`button-delete-${ret.id}`}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "edit", returnId: ret.id })} data-testid={`button-edit-${ret.id}`}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "delete", returnId: ret.id })} data-testid={`button-delete-${ret.id}`}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -662,15 +660,6 @@ export default function PlantMaterialReturns() {
         </DialogContent>
       </Dialog>
 
-      {showPinAuth && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <PinAuth
-            targetRole={pinAuthTarget}
-            onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-            onSuccess={handlePinSuccess}
-          />
-        </div>
-      )}
     </div>
   );
 }

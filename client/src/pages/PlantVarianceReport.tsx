@@ -7,16 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, TrendingUp, TrendingDown, FileWarning, Lock } from "lucide-react";
+import { ChevronLeft, TrendingUp, TrendingDown, FileWarning } from "lucide-react";
 import { format } from "date-fns";
-import { PinAuth } from "@/components/PinAuth";
 import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
 
 export default function PlantVarianceReport() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-  
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
 
@@ -29,41 +27,15 @@ export default function PlantVarianceReport() {
       const res = await fetch(`/api/plant-module/dispatches/variance-report?${params}`);
       return res.json();
     },
-    enabled: isAuthenticated,
   });
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
-    enabled: isAuthenticated,
   });
 
   const { data: templates } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
-    enabled: isAuthenticated,
   });
-  
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-background p-4 flex flex-col items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-amber-600 dark:text-amber-400" />
-            </div>
-            <CardTitle>Variance Report Access</CardTitle>
-            <p className="text-sm text-muted-foreground mt-2">Enter Admin PIN to view variance report</p>
-          </CardHeader>
-          <CardContent>
-            <PinAuth
-              targetRole="admin"
-              onSuccess={() => setIsAuthenticated(true)}
-              onClose={() => window.history.back()}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
 

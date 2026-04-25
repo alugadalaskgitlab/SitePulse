@@ -7,10 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import { ChevronLeft, ArrowRightLeft, Loader2, ShieldAlert, Search } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useOrigin } from "@/hooks/use-origin";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import type { Party, PlantMaterial as Material } from "@shared/schema";
 
 type PreviewRow = {
@@ -23,7 +23,6 @@ type PreviewRow = {
   notes: string | null;
 };
 
-// Real values present in stock_ledger.transaction_type.
 const TX_TYPES = [
   "all",
   "dispatch",
@@ -45,15 +44,8 @@ function getErrorMessage(err: unknown): string {
 export default function PlantStockReassign() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  // Stock Reassign is launched from the Plant Stock card (which lives on the
-  // "stock" tab), so back navigation lands on /plant/dashboard?tab=stock.
-  // getPlantBackLink also forwards `role` from the current URL when present,
-  // so a user who came in with an unlocked stock tab returns there unlocked.
+  const { isAdmin } = useAuth();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-
-  // Page-level admin gate: the PIN entered here is held in memory and reused
-  // for both preview (read-only ledger slice) and execute calls.
-  const [adminPin, setAdminPin] = useState<string | null>(null);
 
   const [materialId, setMaterialId] = useState<string>("");
   const [fromPartyId, setFromPartyId] = useState<string>("");
@@ -65,11 +57,10 @@ export default function PlantStockReassign() {
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
-  const [showExecutePin, setShowExecutePin] = useState(false);
   const [actor, setActor] = useState<string>("");
 
-  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: adminPin !== null });
-  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: adminPin !== null });
+  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: isAdmin });
+  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: isAdmin });
 
   const fromPartyName = useMemo(
     () => parties?.find(p => String(p.id) === fromPartyId)?.name || "",
@@ -96,11 +87,10 @@ export default function PlantStockReassign() {
     );
   }, [preview]);
 
-  const canSearch = adminPin !== null && materialId && fromPartyId;
-  const canExecute = canSearch && toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0 && actor.trim().length >= 2;
+  const canSearch = isAdmin && !!materialId && !!fromPartyId;
+  const canExecute = canSearch && !!toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0 && actor.trim().length >= 2;
 
   const buildBody = () => ({
-    pin: adminPin,
     materialId: parseInt(materialId),
     fromPartyId: parseInt(fromPartyId),
     toPartyId: toPartyId ? parseInt(toPartyId) : undefined,
@@ -113,19 +103,7 @@ export default function PlantStockReassign() {
     if (!canSearch) return;
     setPreviewLoading(true);
     try {
-      const res = await fetch("/api/plant-module/reassign-ledger/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(buildBody()),
-      });
-      if (res.status === 401) {
-        // PIN was rejected (e.g. session-mounted PIN became stale) — re-gate.
-        setAdminPin(null);
-        toast({ title: "Admin PIN required", variant: "destructive" });
-        return;
-      }
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("POST", "/api/plant-module/reassign-ledger/preview", buildBody());
       const rows = (await res.json()) as PreviewRow[];
       setPreview(rows);
     } catch (err) {
@@ -135,17 +113,11 @@ export default function PlantStockReassign() {
     }
   };
 
-  const handleExecutePinSuccess = async (_role: "manager" | "admin", pin: string) => {
-    setShowExecutePin(false);
+  const runExecute = async () => {
+    if (!canExecute) return;
     setExecuting(true);
     try {
-      const res = await fetch("/api/plant-module/reassign-ledger/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ ...buildBody(), pin, actor: actor.trim() }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("POST", "/api/plant-module/reassign-ledger/execute", { ...buildBody(), actor: actor.trim() });
       const result = await res.json() as {
         moved: number;
         reconciled: { updated: number; created: number; errors: number };
@@ -164,14 +136,14 @@ export default function PlantStockReassign() {
     }
   };
 
-  // Page-level admin PIN gate — required before any data is fetched.
-  if (adminPin === null) {
+  if (!isAdmin) {
     return (
-      <PinAuth
-        targetRole="admin"
-        onSuccess={(_role, pin) => setAdminPin(pin)}
-        onClose={() => { window.history.back(); }}
-      />
+      <div className="p-8 max-w-md mx-auto text-center space-y-4">
+        <ShieldAlert className="w-10 h-10 mx-auto text-amber-600" />
+        <h1 className="text-xl font-bold">Admin access required</h1>
+        <p className="text-sm text-muted-foreground">Stock ledger reassignment is restricted to administrators.</p>
+        <Link href={backLink}><Button variant="outline">Back</Button></Link>
+      </div>
     );
   }
 
@@ -185,9 +157,6 @@ export default function PlantStockReassign() {
         </Link>
         <ArrowRightLeft className="w-6 h-6 text-amber-700 dark:text-amber-500" />
         <h1 className="text-2xl font-bold flex-1">Stock Ledger Reassignment</h1>
-        <Button variant="ghost" size="sm" onClick={() => setAdminPin(null)} data-testid="button-lock">
-          Lock
-        </Button>
       </div>
 
       <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 p-3 text-sm flex items-start gap-2">
@@ -197,7 +166,6 @@ export default function PlantStockReassign() {
           <div className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
             Use this to move past dispatches or receipts from one party to another (for example, bitumen
             dispatches that were saved against HLC but actually belong to VATPALLY). Always preview first.
-            Execute is gated by Admin PIN.
           </div>
         </div>
       </div>
@@ -273,7 +241,7 @@ export default function PlantStockReassign() {
               variant="default"
               className="bg-amber-600 hover:bg-amber-700 text-white"
               disabled={!canExecute || executing}
-              onClick={() => setShowExecutePin(true)}
+              onClick={runExecute}
               data-testid="button-execute"
             >
               {executing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
@@ -327,14 +295,6 @@ export default function PlantStockReassign() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {showExecutePin && (
-        <PinAuth
-          targetRole="admin"
-          onSuccess={handleExecutePinSuccess}
-          onClose={() => setShowExecutePin(false)}
-        />
       )}
     </div>
   );

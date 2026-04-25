@@ -13,7 +13,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
@@ -227,6 +227,11 @@ export default function VendorBills() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
+  const { sectionCan, isAdmin } = useAuth();
+  const canCreate = sectionCan("vendor_bills", "create");
+  const canEdit = sectionCan("vendor_bills", "edit");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("vendor_bills", "view_reports");
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
@@ -261,16 +266,9 @@ export default function VendorBills() {
     setLabourFilter("all");
   }, [vendorName, periodFrom, periodTo]);
 
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pendingStatusAction, setPendingStatusAction] = useState<{ billId: number; status: string } | null>(null);
-  const [pendingEditAction, setPendingEditAction] = useState<{ bill: VendorBillWithItems } | null>(null);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number; billNo?: string; status?: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showEditPinAuth, setShowEditPinAuth] = useState(false);
-  const [showDeletePinAuth, setShowDeletePinAuth] = useState(false);
-  const [adminPinForUpdate, setAdminPinForUpdate] = useState<string | null>(null);
   const [showAliasDialog, setShowAliasDialog] = useState(false);
-  const [showAliasPinAuth, setShowAliasPinAuth] = useState(false);
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasValue, setAliasValue] = useState("");
   const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
@@ -388,13 +386,12 @@ export default function VendorBills() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data, pin }: { id: number; data: any; pin?: string | null }) => apiRequest("PUT", `/api/vendor-bills/${id}`, pin ? { ...data, pin } : data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PUT", `/api/vendor-bills/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Vendor bill updated successfully" });
       resetForm();
       setEditingBillId(null);
-      setAdminPinForUpdate(null);
       setView("list");
     },
     onError: (err: Error) => {
@@ -403,8 +400,8 @@ export default function VendorBills() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status, actor, pin }: { id: number; status: string; actor: string; pin?: string }) =>
-      apiRequest("PATCH", `/api/vendor-bills/${id}/status`, { status, actor, pin }),
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/vendor-bills/${id}/status`, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       if (selectedBillId) {
@@ -418,12 +415,13 @@ export default function VendorBills() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) => apiRequest("DELETE", `/api/vendor-bills/${id}`, { pin }),
+    mutationFn: ({ id }: { id: number }) => apiRequest("DELETE", `/api/vendor-bills/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Bill deleted" });
       setSelectedBillId(null);
       setShowDeleteConfirm(false);
+      setPendingDeleteAction(null);
       setView("list");
     },
     onError: (err: Error) => {
@@ -448,7 +446,6 @@ export default function VendorBills() {
     setGstRateLabour(0);
     setTdsRate(0);
     setEditingBillId(null);
-    setAdminPinForUpdate(null);
     setVendorSearch("");
     setShowVendorDropdown(false);
     setShowVendorDiscovery(false);
@@ -1000,7 +997,7 @@ export default function VendorBills() {
     }
 
     if (editingBillId) {
-      updateMutation.mutate({ id: editingBillId, data, pin: adminPinForUpdate });
+      updateMutation.mutate({ id: editingBillId, data });
     } else {
       createMutation.mutate(data);
     }
@@ -1012,51 +1009,11 @@ export default function VendorBills() {
   };
 
   const handleStatusChange = (billId: number, newStatus: string) => {
-    if (newStatus === "verified" || newStatus === "approved") {
-      setPendingStatusAction({ billId, status: newStatus });
-      setShowPinAuth(true);
-    } else {
-      statusMutation.mutate({ id: billId, status: newStatus, actor: "SYSTEM" });
-    }
-  };
-
-  const handlePinSuccess = (_role: "manager" | "admin", _pin: string) => {
-    setShowPinAuth(false);
-    if (pendingStatusAction) {
-      statusMutation.mutate({
-        id: pendingStatusAction.billId,
-        status: pendingStatusAction.status,
-        actor: _role.toUpperCase(),
-        pin: _pin,
-      });
-      setPendingStatusAction(null);
-    }
-  };
-
-  const handleEditPinSuccess = (_role: "manager" | "admin", _pin: string) => {
-    setShowEditPinAuth(false);
-    if (pendingEditAction) {
-      setAdminPinForUpdate(_pin);
-      loadBillForEdit(pendingEditAction.bill);
-      setPendingEditAction(null);
-    }
-  };
-
-  const handleDeletePinSuccess = (_role: "manager" | "admin", _pin: string) => {
-    setShowDeletePinAuth(false);
-    if (pendingDeleteAction) {
-      deleteMutation.mutate({ id: pendingDeleteAction.billId, pin: _pin });
-      setPendingDeleteAction(null);
-    }
+    statusMutation.mutate({ id: billId, status: newStatus });
   };
 
   const handleEditBill = (bill: VendorBillWithItems) => {
-    if (bill.status === "verified" || bill.status === "approved" || bill.status === "paid") {
-      setPendingEditAction({ bill });
-      setShowEditPinAuth(true);
-    } else {
-      loadBillForEdit(bill);
-    }
+    loadBillForEdit(bill);
   };
 
   const handleDeleteBill = (bill: VendorBillWithItems) => {
@@ -2199,14 +2156,6 @@ export default function VendorBills() {
             </div>
           </DialogContent>
         </Dialog>
-
-        {showPinAuth && (
-          <PinAuth
-            targetRole="any"
-            onSuccess={handlePinSuccess}
-            onClose={() => { setShowPinAuth(false); setPendingStatusAction(null); }}
-          />
-        )}
       </div>
     );
   }
@@ -2235,7 +2184,7 @@ export default function VendorBills() {
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <LockBadge record={bill} resourceType="vendor_bill" resourceId={bill.id} />
-            {["verified", "approved", "paid"].includes(bill.status) && (
+            {canExport && ["verified", "approved", "paid"].includes(bill.status) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -2253,17 +2202,19 @@ export default function VendorBills() {
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>
-            <LockAwareEditButton
-              record={bill}
-              resourceType="vendor_bill"
-              resourceId={bill.id}
-              variant="default"
-              size="sm"
-              onClick={() => handleEditBill(bill)}
-              data-testid="button-edit-bill"
-            >
-              <Edit className="w-4 h-4 mr-1" /> EDIT
-            </LockAwareEditButton>
+            {canEdit && (
+              <LockAwareEditButton
+                record={bill}
+                resourceType="vendor_bill"
+                resourceId={bill.id}
+                variant="default"
+                size="sm"
+                onClick={() => handleEditBill(bill)}
+                data-testid="button-edit-bill"
+              >
+                <Edit className="w-4 h-4 mr-1" /> EDIT
+              </LockAwareEditButton>
+            )}
           </div>
         </div>
 
@@ -2306,7 +2257,7 @@ export default function VendorBills() {
             </div>
 
             <div className="flex gap-2 pt-2 flex-wrap">
-              {nextStatus && (
+              {canEdit && nextStatus && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange(bill.id, nextStatus)}
@@ -2317,17 +2268,19 @@ export default function VendorBills() {
                   MARK AS {nextStatus.toUpperCase()}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive"
-                onClick={() => handleDeleteBill(bill)}
-                disabled={deleteMutation.isPending}
-                data-testid="button-delete-bill"
-              >
-                {deleteMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
-                <Trash2 className="w-3 h-3 mr-1" /> DELETE BILL
-              </Button>
+              {canDelete && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive"
+                  onClick={() => handleDeleteBill(bill)}
+                  disabled={deleteMutation.isPending}
+                  data-testid="button-delete-bill"
+                >
+                  {deleteMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+                  <Trash2 className="w-3 h-3 mr-1" /> DELETE BILL
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -2571,22 +2524,6 @@ export default function VendorBills() {
           </Card>
         )}
 
-        {showPinAuth && (
-          <PinAuth
-            targetRole="any"
-            onSuccess={handlePinSuccess}
-            onClose={() => { setShowPinAuth(false); setPendingStatusAction(null); }}
-          />
-        )}
-
-        {showEditPinAuth && (
-          <PinAuth
-            targetRole="admin"
-            onSuccess={handleEditPinSuccess}
-            onClose={() => { setShowEditPinAuth(false); setPendingEditAction(null); }}
-          />
-        )}
-
         {showDeleteConfirm && (
           <Dialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) { setShowDeleteConfirm(false); setPendingDeleteAction(null); } }}>
             <DialogContent>
@@ -2608,8 +2545,12 @@ export default function VendorBills() {
                 </Button>
                 <Button
                   variant="destructive"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => { setShowDeleteConfirm(false); setShowDeletePinAuth(true); }}
+                  disabled={deleteMutation.isPending || !pendingDeleteAction}
+                  onClick={() => {
+                    if (pendingDeleteAction) {
+                      deleteMutation.mutate({ id: pendingDeleteAction.billId });
+                    }
+                  }}
                   data-testid="button-confirm-delete"
                 >
                   {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
@@ -2618,13 +2559,6 @@ export default function VendorBills() {
               </div>
             </DialogContent>
           </Dialog>
-        )}
-        {showDeletePinAuth && (
-          <PinAuth
-            targetRole="admin"
-            onSuccess={handleDeletePinSuccess}
-            onClose={() => { setShowDeletePinAuth(false); setPendingDeleteAction(null); }}
-          />
         )}
       </div>
     );
@@ -2648,12 +2582,16 @@ export default function VendorBills() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={() => setShowAliasPinAuth(true)} title="Vendor Aliases" data-testid="button-vendor-aliases">
-            <Settings className="w-4 h-4" />
-          </Button>
-          <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-new-bill">
-            <Plus className="w-4 h-4 mr-1" /> NEW BILL
-          </Button>
+          {canEdit && (
+            <Button variant="outline" size="icon" onClick={() => setShowAliasDialog(true)} title="Vendor Aliases" data-testid="button-vendor-aliases">
+              <Settings className="w-4 h-4" />
+            </Button>
+          )}
+          {canCreate && (
+            <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-new-bill">
+              <Plus className="w-4 h-4 mr-1" /> NEW BILL
+            </Button>
+          )}
         </div>
       </div>
 
@@ -2959,25 +2897,6 @@ export default function VendorBills() {
             );
           })}
         </div>
-      )}
-
-      {showPinAuth && (
-        <PinAuth
-          targetRole="admin"
-          onSuccess={handlePinSuccess}
-          onClose={() => { setShowPinAuth(false); setPendingStatusAction(null); }}
-        />
-      )}
-
-      {showAliasPinAuth && (
-        <PinAuth
-          targetRole="admin"
-          onSuccess={() => {
-            setShowAliasPinAuth(false);
-            setShowAliasDialog(true);
-          }}
-          onClose={() => setShowAliasPinAuth(false)}
-        />
       )}
 
       <Dialog open={showAliasDialog} onOpenChange={setShowAliasDialog}>

@@ -10,7 +10,6 @@ import { Link, useSearch } from "wouter";
 import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
 
 type DiscoveredItem = {
   itemKey: string;
@@ -66,8 +65,7 @@ export default function RateCards() {
   const params = new URLSearchParams(searchString);
   const preselectedVendor = params.get("vendorName") || "";
 
-  const [authenticated, setAuthenticated] = useState(false);
-  const [showPinAuth, setShowPinAuth] = useState(true);
+  // Page-level access enforced via <RequireAuth section="admin_settings"> in App.tsx.
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
   const [rates, setRates] = useState<Record<string, number | string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
@@ -378,37 +376,6 @@ export default function RateCards() {
   const materialNameOptions = useMemo(() => {
     return plantMaterials.map((m: any) => m.name?.toUpperCase()?.trim()).filter(Boolean).sort();
   }, [plantMaterials]);
-
-  if (!authenticated) {
-    return (
-      <div className="max-w-md mx-auto p-8 space-y-4">
-        <div className="text-center space-y-2">
-          <Lock className="w-10 h-10 mx-auto text-muted-foreground" />
-          <h1 className="text-xl font-bold">RATE CARD MANAGEMENT</h1>
-          <p className="text-sm text-muted-foreground">Manager or Admin PIN required to access rate cards</p>
-        </div>
-        {showPinAuth && (
-          <PinAuth
-            targetRole="any"
-            onSuccess={() => { setAuthenticated(true); setShowPinAuth(false); }}
-            onClose={() => setShowPinAuth(false)}
-          />
-        )}
-        {!showPinAuth && (
-          <div className="text-center space-y-2">
-            <Button onClick={() => setShowPinAuth(true)} data-testid="button-retry-pin">
-              ENTER PIN
-            </Button>
-            <div>
-              <Link href="/plant/vendor-bills">
-                <Button variant="ghost" size="sm">BACK TO VENDOR BILLS</Button>
-              </Link>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   const renderItemRow = (item: DiscoveredItem, idx: number) => (
     <tr key={item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>

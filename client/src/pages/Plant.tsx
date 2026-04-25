@@ -17,8 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAccess } from "@/lib/access-context";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
@@ -28,67 +27,40 @@ export default function Plant() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString || window.location.search);
   const tabParam = params.get("tab");
-  const roleParam = params.get("role") as "manager" | "admin" | null;
-  
-  const initialUnlocked = new Map<string, "manager" | "admin">();
-  if (tabParam && roleParam && ["stock", "masters"].includes(tabParam)) {
-    initialUnlocked.set(tabParam, roleParam);
-  }
-  
+
   const [activeTab, setActiveTab] = useState(tabParam || "operations");
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [unlockedTabs, setUnlockedTabs] = useState<Map<string, "manager" | "admin">>(initialUnlocked);
-  const { toast } = useToast();
-  const { setAccess } = useAccess();
-  
-  const { getBackLink, appendOrigin } = useOrigin();
+  const { sectionVisible } = useAuth();
+
+  const { getBackLink } = useOrigin();
   const backLink = getBackLink("/plant");
 
   useEffect(() => {
     if (tabParam && ["operations", "stock", "reports", "masters"].includes(tabParam)) {
       setActiveTab(tabParam);
-      if (roleParam && ["stock", "reports", "masters"].includes(tabParam)) {
-        setUnlockedTabs(prev => {
-          const newMap = new Map(prev);
-          newMap.set(tabParam, roleParam);
-          return newMap;
-        });
-        setAccess(roleParam);
-      }
     }
-  }, [tabParam, roleParam]);
+  }, [tabParam]);
 
-  const handleTabChange = (tab: string) => {
-    if ((tab === "masters" || tab === "stock") && !unlockedTabs.has(tab)) {
-      setPendingTab(tab);
-      setShowPinAuth(true);
-      return;
-    }
-    setActiveTab(tab);
-  };
+  const opsVisible =
+    sectionVisible("plant_stock") ||
+    sectionVisible("plant_production") ||
+    sectionVisible("plant_equipment") ||
+    sectionVisible("plant_shift_logs") ||
+    sectionVisible("plant_heating") ||
+    sectionVisible("site_procurement") ||
+    sectionVisible("site_diesel");
+  const stockVisible = sectionVisible("plant_stock");
+  const reportsVisible = sectionVisible("plant_daily_reports") || sectionVisible("plant_heating");
+  const mastersVisible = sectionVisible("admin_settings");
 
-  const handlePinSuccess = (role: "manager" | "admin") => {
-    if (pendingTab) {
-      setAccess(role);
-      setUnlockedTabs(prev => {
-        const newMap = new Map(prev);
-        newMap.set(pendingTab, role);
-        return newMap;
-      });
-      setActiveTab(pendingTab);
-      const tabNames: Record<string, string> = { masters: "Masters", stock: "Management" };
-      toast({ title: `${tabNames[pendingTab] || pendingTab} unlocked`, description: role === "manager" ? "View and add only" : "Full access" });
-    }
-    setShowPinAuth(false);
-    setPendingTab(null);
-  };
+  const visibleTabs = [
+    { key: "operations", visible: opsVisible },
+    { key: "stock", visible: stockVisible },
+    { key: "reports", visible: reportsVisible },
+    { key: "masters", visible: mastersVisible },
+  ].filter(t => t.visible);
+  const tabCount = visibleTabs.length || 1;
+  const gridColsClass = tabCount === 1 ? "grid-cols-1" : tabCount === 2 ? "grid-cols-2" : tabCount === 3 ? "grid-cols-3" : "grid-cols-4";
 
-  const handlePinClose = () => {
-    setShowPinAuth(false);
-    setPendingTab(null);
-  };
-  
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -105,88 +77,57 @@ export default function Plant() {
         </div>
       </div>
 
-      {showPinAuth && (
-        <PinAuth
-          targetRole="any"
-          onSuccess={handlePinSuccess}
-          onClose={handlePinClose}
-        />
-      )}
-
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="operations" className="gap-2" data-testid="tab-operations">
-            <Truck className="w-4 h-4" />
-            <span className="hidden sm:inline">Operations</span>
-          </TabsTrigger>
-          <TabsTrigger value="stock" className="gap-2" data-testid="tab-management">
-            <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Management</span>
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="gap-2" data-testid="tab-reports">
-            <FileText className="w-4 h-4" />
-            <span className="hidden sm:inline">Reports</span>
-          </TabsTrigger>
-          <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
-            <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline">Masters</span>
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className={`grid w-full ${gridColsClass}`}>
+          {opsVisible && (
+            <TabsTrigger value="operations" className="gap-2" data-testid="tab-operations">
+              <Truck className="w-4 h-4" />
+              <span className="hidden sm:inline">Operations</span>
+            </TabsTrigger>
+          )}
+          {stockVisible && (
+            <TabsTrigger value="stock" className="gap-2" data-testid="tab-management">
+              <Layers className="w-4 h-4" />
+              <span className="hidden sm:inline">Management</span>
+            </TabsTrigger>
+          )}
+          {reportsVisible && (
+            <TabsTrigger value="reports" className="gap-2" data-testid="tab-reports">
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Reports</span>
+            </TabsTrigger>
+          )}
+          {mastersVisible && (
+            <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Masters</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="operations" className="mt-6">
-          <OperationsTab />
-        </TabsContent>
+        {opsVisible && (
+          <TabsContent value="operations" className="mt-6">
+            <OperationsTab />
+          </TabsContent>
+        )}
 
-        <TabsContent value="reports" className="mt-6">
-          {unlockedTabs.has("reports") ? (
-            <ReportsTab unlockedRole={unlockedTabs.get("reports")!} />
-          ) : (
-            <Card className="py-12">
-              <CardContent className="text-center">
-                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Reports — Manager / Admin PIN required</h3>
-                <p className="text-sm text-muted-foreground mb-4">Daily Plant Reports, historical reports and heating trends</p>
-                <Button onClick={() => { setPendingTab("reports"); setShowPinAuth(true); }} data-testid="button-unlock-reports">
-                  <Lock className="w-4 h-4 mr-2" /> Enter PIN
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
+        {reportsVisible && (
+          <TabsContent value="reports" className="mt-6">
+            <ReportsTab />
+          </TabsContent>
+        )}
 
-        <TabsContent value="stock" className="mt-6">
-          {unlockedTabs.has("stock") ? (
-            <StockDetailsTab unlockedRole={unlockedTabs.get("stock")!} />
-          ) : (
-            <Card className="py-12">
-              <CardContent className="text-center">
-                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
-                <p className="text-muted-foreground mb-4">Enter Manager or Admin PIN to access Management</p>
-                <Button onClick={() => handleTabChange("stock")} data-testid="button-unlock-stock">
-                  <Lock className="w-4 h-4 mr-2" /> Unlock Management
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
+        {stockVisible && (
+          <TabsContent value="stock" className="mt-6">
+            <StockDetailsTab />
+          </TabsContent>
+        )}
 
-        <TabsContent value="masters" className="mt-6">
-          {unlockedTabs.has("masters") ? (
-            <MastersTab unlockedRole={unlockedTabs.get("masters")!} />
-          ) : (
-            <Card className="py-12">
-              <CardContent className="text-center">
-                <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">PIN Required</h3>
-                <p className="text-muted-foreground mb-4">Enter Manager or Admin PIN to access Masters</p>
-                <Button onClick={() => handleTabChange("masters")} data-testid="button-unlock-masters">
-                  <Lock className="w-4 h-4 mr-2" /> Unlock Masters
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
+        {mastersVisible && (
+          <TabsContent value="masters" className="mt-6">
+            <MastersTab />
+          </TabsContent>
+        )}
 
       </Tabs>
     </div>
@@ -195,9 +136,11 @@ export default function Plant() {
 
 function OperationsTab() {
   const { appendPlantContext } = useOrigin();
+  const { sectionVisible } = useAuth();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {sectionVisible("plant_stock") && (
       <Link href={opLink("/plant/material-receipts")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -213,6 +156,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("plant_stock") && (
       <Link href={opLink("/plant/material-issues")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -228,6 +174,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("plant_stock") && (
       <Link href={opLink("/plant/material-returns")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -243,6 +192,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("plant_production") && (
       <Link href={opLink("/plant/dispatches")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -258,6 +210,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("plant_equipment") && (
       <Link href={opLink("/plant/equipment-usage")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -273,6 +228,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("site_procurement") && (
       <Link href={opLink("/plant/purchase-indents")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
           <CardContent className="p-6 flex items-center gap-4">
@@ -288,6 +246,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("plant_shift_logs") && (
       <Link href={opLink(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
         <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800" data-testid="tile-today-shift-log">
           <CardContent className="p-6 flex items-center gap-4">
@@ -303,6 +264,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("plant_heating") && (
       <Link href={opLink(`/plant/heating-sessions/${new Date().toISOString().slice(0, 10)}`)}>
         <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-sessions">
           <CardContent className="p-6 flex items-center gap-4">
@@ -318,6 +282,9 @@ function OperationsTab() {
         </Card>
       </Link>
 
+      )}
+
+      {sectionVisible("site_diesel") && (
       <Link href={opLink("/plant/diesel-requirements")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
           <CardContent className="p-6 flex items-center gap-4">
@@ -332,16 +299,18 @@ function OperationsTab() {
           </CardContent>
         </Card>
       </Link>
+      )}
 
     </div>
   );
 }
 
-function ReportsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
+function ReportsTab() {
+  const { sectionVisible } = useAuth();
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
     const sep = path.includes("?") ? "&" : "?";
-    return `${path}${sep}role=${unlockedRole}&tab=reports`;
+    return `${path}${sep}tab=reports`;
   };
   return (
     <div className="space-y-4">
@@ -349,6 +318,7 @@ function ReportsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
         Reports — All daily plant reports, historical reports, and heating trends. Use date / plant filters and bulk PDF / ZIP export.
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {sectionVisible("plant_daily_reports") && (
         <Link href={appendRoleAndTab(`/plant/daily-report/${todayStr}`)}>
           <Card className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800" data-testid="tile-today-daily-report-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -363,6 +333,8 @@ function ReportsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             </CardContent>
           </Card>
         </Link>
+        )}
+        {sectionVisible("plant_daily_reports") && (
         <Link href={appendRoleAndTab("/plant/daily-reports")}>
           <Card className="hover-elevate cursor-pointer h-full border-slate-200 dark:border-slate-800" data-testid="tile-historical-daily-reports-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -377,6 +349,8 @@ function ReportsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             </CardContent>
           </Card>
         </Link>
+        )}
+        {sectionVisible("plant_heating") && (
         <Link href={appendRoleAndTab("/plant/heating-trends")}>
           <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-trends-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -391,15 +365,15 @@ function ReportsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
             </CardContent>
           </Card>
         </Link>
+        )}
       </div>
     </div>
   );
 }
 
-function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
+function StockDetailsTab() {
   const { appendOrigin } = useOrigin();
-  const isAdmin = unlockedRole === "admin";
-  const isManager = unlockedRole === "manager";
+  const { sectionCan, sectionVisible, isAdmin } = useAuth();
   const { toast } = useToast();
 
   const [dieselCorrPhysicalL, setDieselCorrPhysicalL] = useState("");
@@ -411,7 +385,7 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
   const appendRoleAndTab = (path: string) => {
     const base = appendOrigin(path);
     const sep = base.includes("?") ? "&" : "?";
-    return `${base}${sep}tab=stock&role=${unlockedRole}`;
+    return `${base}${sep}tab=stock`;
   };
 
   const { data: ldoFlowReadings } = useQuery<LdoFlowReading[]>({
@@ -485,12 +459,6 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
 
   return (
     <div className="space-y-4">
-      {isManager && (
-        <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
-          Manager access: You can view and add new readings. Editing, deleting, and exports require Admin PIN.
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Link href={appendRoleAndTab("/plant/stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
@@ -742,6 +710,7 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
         </Card>
       )}
 
+      {sectionVisible("vendor_bills") && (<>
       <div className="mt-2">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Procurement & Finance</h3>
       </div>
@@ -761,8 +730,9 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
           </Card>
         </Link>
       </div>
+      </>)}
 
-      {unlockedRole === "admin" && (
+      {sectionCan("admin_settings", "edit") && (
         <>
           <div className="mt-2">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin Tools</h3>
@@ -804,30 +774,25 @@ function StockDetailsTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }
   );
 }
 
-function MastersTab({ unlockedRole }: { unlockedRole: "manager" | "admin" }) {
-  const isManager = unlockedRole === "manager";
+function MastersTab() {
   return (
     <div className="space-y-6">
-      {isManager && (
-        <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2 rounded-md text-sm">
-          Manager access: You can view, add, and edit entries. Deleting and exports require Admin PIN.
-        </div>
-      )}
-      <PartyMaster isManagerMode={isManager} />
-      <MaterialMaster isManagerMode={isManager} />
-      <MixTemplateMaster isManagerMode={isManager} />
-      <EquipmentMasterSection isManagerMode={isManager} />
-      <PersonnelMasterSection isManagerMode={isManager} />
+      <PartyMaster />
+      <MaterialMaster />
+      <MixTemplateMaster />
+      <EquipmentMasterSection />
+      <PersonnelMasterSection />
     </div>
   );
 }
 
-function PartyMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
+function PartyMaster() {
   const { toast } = useToast();
-  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = globalCanEdit;
-  const canDelete = !isManagerMode && globalCanDelete;
-  const canExport = !isManagerMode;
+  const { sectionCan, isAdmin } = useAuth();
+  const canEdit = sectionCan("admin_settings", "edit");
+  const canCreate = sectionCan("admin_settings", "create");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("admin_settings", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
@@ -921,11 +886,13 @@ function PartyMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
             </>
           )}
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+            {canCreate && (
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1" data-testid="button-add-party">
                 <Plus className="w-4 h-4" /> Add Party
               </Button>
             </DialogTrigger>
+            )}
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingParty ? "Edit Party" : "Add New Party"}</DialogTitle>
@@ -995,12 +962,13 @@ function PartyMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
   );
 }
 
-function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
+function MaterialMaster() {
   const { toast } = useToast();
-  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = globalCanEdit;
-  const canDelete = !isManagerMode && globalCanDelete;
-  const canExport = !isManagerMode;
+  const { sectionCan, isAdmin } = useAuth();
+  const canEdit = sectionCan("admin_settings", "edit");
+  const canCreate = sectionCan("admin_settings", "create");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("admin_settings", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
@@ -1016,8 +984,6 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
   const [stockNotes, setStockNotes] = useState("");
   const [editingOpeningStock, setEditingOpeningStock] = useState<MaterialOpeningStock | null>(null);
   const [deleteOpeningStockId, setDeleteOpeningStockId] = useState<number | null>(null);
-  const [showOSPinAuth, setShowOSPinAuth] = useState(false);
-  const [pendingOSAction, setPendingOSAction] = useState<{ type: "delete"; stockId: number } | null>(null);
 
   const exportToExcel = (data: PlantMaterial[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(m => ({ Name: m.name, Category: m.category || "", UOM: m.defaultUom })));
@@ -1178,21 +1144,6 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
     setOpeningStockDialogOpen(true);
   };
 
-  const handleOSPinSuccess = () => {
-    setShowOSPinAuth(false);
-    if (pendingOSAction) {
-      if (pendingOSAction.type === "delete") {
-        setDeleteOpeningStockId(pendingOSAction.stockId);
-      }
-      setPendingOSAction(null);
-    }
-  };
-
-  const requireOSAuth = (action: { type: "delete"; stockId: number }) => {
-    setPendingOSAction(action);
-    setShowOSPinAuth(true);
-  };
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
@@ -1207,11 +1158,13 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
             </Button>
           )}
           <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-1" data-testid="button-add-material">
-                <Plus className="w-4 h-4" /> Add Material
-              </Button>
-            </DialogTrigger>
+            {canCreate && (
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-1" data-testid="button-add-material">
+                  <Plus className="w-4 h-4" /> Add Material
+                </Button>
+              </DialogTrigger>
+            )}
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{editingMaterial ? "Edit Material" : "Add New Material"}</DialogTitle>
@@ -1324,7 +1277,7 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
                       </Button>
                     )}
                     {canDelete && (
-                      <Button variant="ghost" size="icon" onClick={() => requireOSAuth({ type: "delete", stockId: os.id })} data-testid={`button-delete-opening-stock-${os.id}`}>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteOpeningStockId(os.id)} data-testid={`button-delete-opening-stock-${os.id}`}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     )}
@@ -1333,14 +1286,6 @@ function MaterialMaster({ isManagerMode = false }: { isManagerMode?: boolean }) 
               ))}
             </div>
           </div>
-        )}
-
-        {showOSPinAuth && (
-          <PinAuth
-            targetRole="admin"
-            onSuccess={handleOSPinSuccess}
-            onClose={() => { setShowOSPinAuth(false); setPendingOSAction(null); }}
-          />
         )}
 
         {/* Opening Stock Dialog */}
@@ -1451,12 +1396,13 @@ type MixTemplateComponent = {
   uom: string;
 };
 
-function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean }) {
+function MixTemplateMaster() {
   const { toast } = useToast();
-  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = globalCanEdit;
-  const canDelete = !isManagerMode && globalCanDelete;
-  const canExport = !isManagerMode;
+  const { sectionCan, isAdmin } = useAuth();
+  const canEdit = sectionCan("admin_settings", "edit");
+  const canCreate = sectionCan("admin_settings", "create");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("admin_settings", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
   const [name, setName] = useState("");
@@ -1619,11 +1565,13 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
           Mix Template Master
         </CardTitle>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1" data-testid="button-add-mix-template">
-              <Plus className="w-4 h-4" /> Add Template
-            </Button>
-          </DialogTrigger>
+          {canCreate && (
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1" data-testid="button-add-mix-template">
+                <Plus className="w-4 h-4" /> Add Template
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingTemplate ? "Edit Mix Template" : "Add Mix Template"}</DialogTitle>
@@ -1853,12 +1801,13 @@ function MixTemplateMaster({ isManagerMode = false }: { isManagerMode?: boolean 
   );
 }
 
-function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boolean }) {
+function EquipmentMasterSection() {
   const { toast } = useToast();
-  const { canEdit: globalCanEdit, canDelete: globalCanDelete } = useAccess();
-  const canEdit = globalCanEdit;
-  const canDelete = !isManagerMode && globalCanDelete;
-  const canExport = !isManagerMode;
+  const { sectionCan, isAdmin } = useAuth();
+  const canEdit = sectionCan("admin_settings", "edit");
+  const canCreate = sectionCan("admin_settings", "create");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("admin_settings", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
@@ -1975,11 +1924,13 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
             <Label htmlFor="show-inactive" className="text-sm cursor-pointer">Show Inactive</Label>
           </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1" data-testid="button-add-equipment">
-              <Plus className="w-4 h-4" /> Add Equipment
-            </Button>
-          </DialogTrigger>
+          {canCreate && (
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1" data-testid="button-add-equipment">
+                <Plus className="w-4 h-4" /> Add Equipment
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
@@ -2127,17 +2078,17 @@ function EquipmentMasterSection({ isManagerMode = false }: { isManagerMode?: boo
   );
 }
 
-function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boolean }) {
+function PersonnelMasterSection() {
   const { toast } = useToast();
-  const { canEdit: globalCanEdit } = useAccess();
-  const canEdit = globalCanEdit;
+  const { sectionCan } = useAuth();
+  const canEdit = sectionCan("admin_settings", "edit");
+  const canCreate = sectionCan("admin_settings", "create");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Personnel | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("Engineer");
   const [phone, setPhone] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [showAddPinAuth, setShowAddPinAuth] = useState(false);
 
   const { data: personnel, isLoading } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel", showInactive ? "all" : "active"],
@@ -2196,16 +2147,7 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
 
   const openCreate = () => {
     resetForm();
-    setShowAddPinAuth(true);
-  };
-
-  const handleAddPinSuccess = (_role: "manager" | "admin") => {
-    setShowAddPinAuth(false);
     setDialogOpen(true);
-  };
-
-  const handleAddPinClose = () => {
-    setShowAddPinAuth(false);
   };
 
   const handleSubmit = () => {
@@ -2235,9 +2177,11 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
             />
             <Label htmlFor="show-inactive-personnel" className="text-xs cursor-pointer">Show Inactive</Label>
           </div>
-          <Button size="sm" onClick={openCreate} data-testid="button-add-personnel">
-            <Plus className="w-4 h-4 mr-1" /> Add Personnel
-          </Button>
+          {canCreate && (
+            <Button size="sm" onClick={openCreate} data-testid="button-add-personnel">
+              <Plus className="w-4 h-4 mr-1" /> Add Personnel
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -2286,14 +2230,6 @@ function PersonnelMasterSection({ isManagerMode = false }: { isManagerMode?: boo
           </div>
         )}
       </CardContent>
-
-      {showAddPinAuth && (
-        <PinAuth
-          targetRole="any"
-          onSuccess={handleAddPinSuccess}
-          onClose={handleAddPinClose}
-        />
-      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">

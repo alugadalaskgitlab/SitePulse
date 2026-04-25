@@ -3,8 +3,7 @@ import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
-import { useAccess } from "@/lib/access-context";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
@@ -66,9 +65,9 @@ function getBaseSiteName(site: string): string {
 
 export default function SiteDashboard() {
   const { toast } = useToast();
-  const { isAdmin, access, setAccess } = useAccess();
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"reports-excel" | "reports-pdf" | "reports-print" | null>(null);
+  const { sectionCan, isAdmin } = useAuth();
+  const canCreate = sectionCan("site_dprs", "create");
+  const canExport = sectionCan("site_dprs", "view_reports");
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState("dpr-summary");
   // DPR filter state — persisted across visits in localStorage so the page
@@ -431,21 +430,8 @@ export default function SiteDashboard() {
     !!materialSupplierFilter ||
     !!materialStockOwnerFilter;
 
-  // Export action handlers - ALWAYS requires manager or admin PIN
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
-    // Always require PIN for exports (even if already authenticated)
-    setPendingAction(action);
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", _pin: string) => {
-    setAccess(role);
-    setShowPinAuth(false);
-    // Both manager and admin can export/print
-    if (pendingAction && (role === "admin" || role === "manager")) {
-      executeAction(pendingAction);
-    }
-    setPendingAction(null);
+    executeAction(action);
   };
 
   const executeAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
@@ -975,24 +961,30 @@ export default function SiteDashboard() {
         </div>
         {activeTab === "dpr-summary" && (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
-              <FileSpreadsheet className="w-4 h-4" />
-              Excel
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
-              <FileText className="w-4 h-4" />
-              PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
-              <Printer className="w-4 h-4" />
-              Print
-            </Button>
-            <Link href={appendOrigin("/site/new")}>
-              <Button className="gap-2" data-testid="button-new-report">
-                <Plus className="w-4 h-4" />
-                New Report
-              </Button>
-            </Link>
+            {canExport && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Excel
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
+                  <FileText className="w-4 h-4" />
+                  PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
+                  <Printer className="w-4 h-4" />
+                  Print
+                </Button>
+              </>
+            )}
+            {canCreate && (
+              <Link href={appendOrigin("/site/new")}>
+                <Button className="gap-2" data-testid="button-new-report">
+                  <Plus className="w-4 h-4" />
+                  New Report
+                </Button>
+              </Link>
+            )}
           </div>
         )}
       </div>
@@ -1807,17 +1799,6 @@ export default function SiteDashboard() {
         </TabsContent>
       </Tabs>
 
-      {/* PIN Auth Modal - Manager or Admin can export */}
-      {showPinAuth && (
-        <PinAuth
-          targetRole="any"
-          onSuccess={handlePinSuccess}
-          onClose={() => {
-            setShowPinAuth(false);
-            setPendingAction(null);
-          }}
-        />
-      )}
     </div>
   );
 }

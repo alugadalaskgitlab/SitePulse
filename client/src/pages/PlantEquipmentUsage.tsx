@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, ArrowRightLeft } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
@@ -27,6 +27,11 @@ import { METER_TYPES } from "@shared/schema";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
+  const { sectionCan, isAdmin } = useAuth();
+  const canCreate = sectionCan("plant_equipment", "create");
+  const canEdit = sectionCan("plant_equipment", "edit");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("plant_equipment", "view_reports");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -140,10 +145,6 @@ export default function PlantEquipmentUsage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterEquipmentId, setFilterEquipmentId] = useState("all");
 
-  // PIN auth state for per-action authentication
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; usageId?: number } | null>(null);
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
@@ -412,60 +413,24 @@ export default function PlantEquipmentUsage() {
     }
   };
 
-  // Per-action PIN authentication handlers
-  const requestPinAuth = (action: typeof pendingAction) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin"); // All plant module actions require admin PIN
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
-
-    switch (pendingAction.type) {
-      case "edit":
-        if (pendingAction.usageId) {
-          const entry = usage?.find(u => u.id === pendingAction.usageId);
-          if (entry) openEditDialog(entry);
-        }
-        break;
-      case "delete":
-        if (pendingAction.usageId) {
-          setDeleteConfirmId(pendingAction.usageId);
-        }
-        break;
-      case "export-excel":
-        exportToExcel();
-        break;
-      case "export-pdf":
-        exportToPdf();
-        break;
-      case "print":
-        handlePrint();
-        break;
-    }
-    setPendingAction(null);
-  };
-
   const handleEditClick = (entry: EquipmentUsage) => {
-    requestPinAuth({ type: "edit", usageId: entry.id });
+    openEditDialog(entry);
   };
 
   const handleDeleteClick = (usageId: number) => {
-    requestPinAuth({ type: "delete", usageId });
+    setDeleteConfirmId(usageId);
   };
 
   const handleExportExcelClick = () => {
-    requestPinAuth({ type: "export-excel" });
+    exportToExcel();
   };
 
   const handleExportPdfClick = () => {
-    requestPinAuth({ type: "export-pdf" });
+    exportToPdf();
   };
 
   const handlePrintClick = () => {
-    requestPinAuth({ type: "print" });
+    handlePrint();
   };
 
   const handleCompleteClick = (entry: EquipmentUsage) => {
@@ -827,11 +792,13 @@ export default function PlantEquipmentUsage() {
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" data-testid="button-add-usage">
-              <Plus className="w-4 h-4" /> New Entry
-            </Button>
-          </DialogTrigger>
+          {canCreate && (
+            <DialogTrigger asChild>
+              <Button className="gap-2" data-testid="button-add-usage">
+                <Plus className="w-4 h-4" /> New Entry
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}</DialogTitle>
@@ -1268,13 +1235,13 @@ export default function PlantEquipmentUsage() {
         <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
           <CardTitle className="text-base">Filters</CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredUsage.length} data-testid="button-export-excel">
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredUsage.length} data-testid="button-export-excel" style={{ display: canExport ? undefined : "none" }}>
               <Download className="w-4 h-4" /> Excel
             </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredUsage.length} data-testid="button-export-pdf">
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredUsage.length} data-testid="button-export-pdf" style={{ display: canExport ? undefined : "none" }}>
               <Download className="w-4 h-4" /> PDF
             </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print" style={{ display: canExport ? undefined : "none" }}>
               <Printer className="w-4 h-4" /> Print
             </Button>
           </div>
@@ -1796,16 +1763,6 @@ export default function PlantEquipmentUsage() {
         </CardContent>
       </Card>
 
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAuthTarget}
-          onSuccess={handlePinSuccess}
-          onClose={() => {
-            setShowPinAuth(false);
-            setPendingAction(null);
-          }}
-        />
-      )}
     </div>
   );
 }

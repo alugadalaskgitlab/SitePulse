@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -9,14 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PinAuth } from "@/components/PinAuth";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import type { Personnel } from "@shared/schema";
-
-const MANAGER_PIN = "1234";
-const ADMIN_PIN = "5678";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -24,6 +21,9 @@ export default function SiteReport() {
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { toast } = useToast();
+  const { sectionCan, user } = useAuth();
+  const canEdit = sectionCan("site_dprs", "edit");
+  const canDelete = !!user?.isAdmin;
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
@@ -34,50 +34,12 @@ export default function SiteReport() {
   };
   const { appendOrigin } = useOrigin();
   const backLink = appendOrigin("/site/dashboard");
-  
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [authenticatedRole, setAuthenticatedRole] = useState<"manager" | "admin" | null>(null);
-  const [authenticatedPin, setAuthenticatedPin] = useState<string | null>(null);
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Restore authenticated role from sessionStorage on mount
-  useEffect(() => {
-    const storedRole = sessionStorage.getItem(`auth_role_${id}`);
-    const storedPin = sessionStorage.getItem(`edit_pin_${id}`);
-    if (storedRole && storedPin) {
-      setAuthenticatedRole(storedRole as "manager" | "admin");
-      setAuthenticatedPin(storedPin);
-    }
-  }, [id]);
-
-  const cloneMutation = useMutation({
-    mutationFn: async ({ role, pin }: { role: string; pin: string }) => {
-      const response = await apiRequest("POST", `/api/dprs/${id}/clone`, { editedBy: role, pin });
-      return response.json();
-    },
-    onSuccess: (newDpr) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
-      toast({
-        title: "Report Cloned",
-        description: "A new version has been created. Redirecting...",
-      });
-      setLocation(appendOrigin(`/site/report/${newDpr.id}`));
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to clone report",
-        variant: "destructive",
-      });
-    },
-  });
-
   const deleteMutation = useMutation({
-    mutationFn: async (pin: string) => {
-      await apiRequest("DELETE", `/api/dprs/${id}`, { pin });
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/dprs/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
@@ -100,39 +62,15 @@ export default function SiteReport() {
   });
 
   const handleEditClick = () => {
-    setShowPinModal(true);
+    if (canEdit) setLocation(appendOrigin(`/site/edit/${id}`));
   };
 
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinModal(false);
-    setAuthenticatedRole(role);
-    setAuthenticatedPin(pin);
-    
-    // Store PIN and role in sessionStorage (not exposed in URL)
-    sessionStorage.setItem(`edit_pin_${id}`, pin);
-    sessionStorage.setItem(`auth_role_${id}`, role);
-    // Stay on report page - user can now choose Edit or Delete
-  };
-
-  const handleAdminEdit = () => {
-    if (authenticatedRole && authenticatedPin) {
-      // Store PIN and role in sessionStorage (not exposed in URL)
-      sessionStorage.setItem(`edit_pin_${id}`, authenticatedPin);
-      sessionStorage.setItem(`auth_role_${id}`, authenticatedRole);
-      setLocation(appendOrigin(`/site/edit/${id}`));
-    }
-  };
-
-  const handleAdminDelete = () => {
-    if (authenticatedRole === "admin") {
-      setShowDeleteConfirm(true);
-    }
+  const handleDeleteClick = () => {
+    if (canDelete) setShowDeleteConfirm(true);
   };
 
   const confirmDelete = () => {
-    if (authenticatedPin) {
-      deleteMutation.mutate(authenticatedPin);
-    }
+    deleteMutation.mutate();
     setShowDeleteConfirm(false);
   };
 
@@ -164,14 +102,6 @@ export default function SiteReport() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
-      {showPinModal && (
-        <PinAuth
-          targetRole="any"
-          onSuccess={handlePinSuccess}
-          onClose={() => setShowPinModal(false)}
-        />
-      )}
-
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="max-w-md w-full">
@@ -206,41 +136,27 @@ export default function SiteReport() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          {authenticatedRole ? (
-            <>
-              <Button 
-                variant="secondary" 
-                className="gap-2"
-                onClick={handleAdminEdit}
-                disabled={cloneMutation.isPending}
-                data-testid="button-admin-edit"
-              >
-                <Edit className="w-4 h-4" />
-                {cloneMutation.isPending ? "Saving..." : "Edit (Create Version)"}
-              </Button>
-              {authenticatedRole === "admin" && (
-                <Button 
-                  variant="destructive" 
-                  className="gap-2"
-                  onClick={handleAdminDelete}
-                  disabled={deleteMutation.isPending}
-                  data-testid="button-admin-delete"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete
-                </Button>
-              )}
-            </>
-          ) : (
-            <Button 
-              variant="secondary" 
+          {canEdit && (
+            <Button
+              variant="secondary"
               className="gap-2"
               onClick={handleEditClick}
-              disabled={cloneMutation.isPending}
               data-testid="button-edit"
             >
               <Edit className="w-4 h-4" />
-              {cloneMutation.isPending ? "Cloning..." : "Edit"}
+              Edit
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="destructive"
+              className="gap-2"
+              onClick={handleDeleteClick}
+              disabled={deleteMutation.isPending}
+              data-testid="button-admin-delete"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
             </Button>
           )}
           <Button variant="outline" onClick={() => window.print()} className="gap-2" data-testid="button-print">

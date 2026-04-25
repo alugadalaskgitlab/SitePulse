@@ -16,7 +16,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { useDpr } from "@/hooks/use-dprs";
-import { PinAuth } from "@/components/PinAuth";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 
@@ -171,7 +170,6 @@ export default function SiteEdit() {
   });
 
   const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
-  const [showAddPersonnelPin, setShowAddPersonnelPin] = useState(false);
   const [newPersonnelName, setNewPersonnelName] = useState("");
   const [newPersonnelRole, setNewPersonnelRole] = useState("Engineer");
   const [newPersonnelPhone, setNewPersonnelPhone] = useState("");
@@ -555,7 +553,7 @@ export default function SiteEdit() {
                 type="button"
                 size="icon"
                 variant="outline"
-                onClick={() => setShowAddPersonnelPin(true)}
+                onClick={() => setAddPersonnelOpen(true)}
                 title="Add new personnel"
                 data-testid="button-add-engineer-personnel"
               >
@@ -798,7 +796,7 @@ export default function SiteEdit() {
                   value=""
                   onValueChange={(val) => {
                     if (val === "__add_new__") {
-                      setShowAddPersonnelPin(true);
+                      setAddPersonnelOpen(true);
                       return;
                     }
                     const pid = parseInt(val);
@@ -1477,17 +1475,6 @@ export default function SiteEdit() {
           Save Changes
         </Button>
       </div>
-
-      {showAddPersonnelPin && (
-        <PinAuth
-          targetRole="any"
-          onSuccess={() => {
-            setShowAddPersonnelPin(false);
-            setAddPersonnelOpen(true);
-          }}
-          onClose={() => setShowAddPersonnelPin(false)}
-        />
-      )}
 
       <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>
         <DialogContent className="sm:max-w-[400px]">

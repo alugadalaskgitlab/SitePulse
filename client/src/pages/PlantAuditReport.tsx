@@ -7,20 +7,17 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Shield, TrendingUp, TrendingDown, ClipboardList, Lock } from "lucide-react";
+import { ChevronLeft, Shield, TrendingUp, TrendingDown, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
-import { PinAuth } from "@/components/PinAuth";
 import type { ConsumptionAuditLog, TruckDispatch } from "@shared/schema";
 
 export default function PlantAuditReport() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-  
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
 
-  // All hooks must be called before any conditional returns
   const { data: auditLog, isLoading } = useQuery<ConsumptionAuditLog[]>({
     queryKey: ["/api/plant-module/consumption-audit-log", filterDateFrom, filterDateTo],
     queryFn: async () => {
@@ -30,37 +27,11 @@ export default function PlantAuditReport() {
       const res = await fetch(`/api/plant-module/consumption-audit-log?${params}`);
       return res.json();
     },
-    enabled: isAuthenticated,
   });
 
   const { data: dispatches } = useQuery<TruckDispatch[]>({
     queryKey: ["/api/plant-module/dispatches"],
-    enabled: isAuthenticated,
   });
-  
-  // Require PIN authentication before showing content (Admin only)
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-background p-4 flex flex-col items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-            </div>
-            <CardTitle>Audit Report Access</CardTitle>
-            <p className="text-sm text-muted-foreground mt-2">Enter Admin PIN to view consumption audit log</p>
-          </CardHeader>
-          <CardContent>
-            <PinAuth
-              targetRole="admin"
-              onSuccess={() => setIsAuthenticated(true)}
-              onClose={() => window.history.back()}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const getDispatchInfo = (dispatchId: number) => {
     const dispatch = dispatches?.find(d => d.id === dispatchId);

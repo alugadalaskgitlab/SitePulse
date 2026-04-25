@@ -1,9 +1,11 @@
 import { Switch, Route } from "wouter";
+import type { ComponentType, ReactNode } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
+import type { SectionKey } from "@shared/permissions";
 import Login from "@/pages/Login";
 import UserManagement from "@/pages/UserManagement";
 import DeviceApproval from "@/pages/DeviceApproval";
@@ -108,6 +110,18 @@ function Router() {
   );
 }
 
+// Wrap a page component in a section gate so direct URLs hit the "No access"
+// fallback when the user lacks `view` on that section.
+function gated(Component: ComponentType<any>, section?: SectionKey) {
+  return function GatedRoute(params: any): ReactNode {
+    return (
+      <RequireAuth section={section}>
+        <Component {...params} />
+      </RequireAuth>
+    );
+  };
+}
+
 function AuthedShell() {
   return (
     <div className="min-h-screen bg-background relative">
@@ -118,55 +132,55 @@ function AuthedShell() {
           <Switch>
             <Route path="/" component={Home} />
             <Route path="/site" component={SiteHome} />
-            <Route path="/site/dashboard" component={SiteDashboard} />
-            <Route path="/site/new" component={SiteEntry} />
-            <Route path="/site/edit/:id" component={SiteEdit} />
-            <Route path="/site/success/:id" component={SiteSuccess} />
-            <Route path="/site/report/:id" component={SiteReport} />
-            <Route path="/site/material-trips" component={SiteMaterialTrips} />
-            <Route path="/site/purchases" component={SitePurchasesReport} />
+            <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
+            <Route path="/site/new" component={gated(SiteEntry, "site_dprs")} />
+            <Route path="/site/edit/:id" component={gated(SiteEdit, "site_dprs")} />
+            <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
+            <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />
+            <Route path="/site/material-trips" component={gated(SiteMaterialTrips, "site_materials")} />
+            <Route path="/site/purchases" component={gated(SitePurchasesReport, "site_procurement")} />
             <Route path="/plant" component={PlantHome} />
             <Route path="/plant/dashboard" component={Plant} />
-            <Route path="/plant/new" component={PlantNew} />
-            <Route path="/plant/material-receipts" component={PlantMaterialReceipts} />
-            <Route path="/plant/material-issues" component={PlantMaterialIssues} />
-            <Route path="/plant/material-returns" component={PlantMaterialReturns} />
-            <Route path="/plant/dispatches" component={PlantDispatches} />
-            <Route path="/plant/equipment-usage" component={PlantEquipmentUsage} />
-            <Route path="/plant/generator-logs" component={PlantGeneratorLogs} />
-            <Route path="/plant/ldo-logs" component={PlantLdoLogs} />
-            <Route path="/plant/stock" component={PlantStock} />
-            <Route path="/plant/variance-report" component={PlantVarianceReport} />
-            <Route path="/plant/audit-report" component={PlantAuditReport} />
-            <Route path="/plant/diesel-procurement" component={PlantDieselProcurementReport} />
-            <Route path="/plant/bitumen-stock" component={PlantBitumenStock} />
-            <Route path="/plant/ldo-flow-meter" component={PlantLdoFlowMeter} />
-            <Route path="/plant/ldo-backfill" component={PlantLdoBackfill} />
-            <Route path="/plant/stock-reassign" component={PlantStockReassign} />
-            <Route path="/plant/shift-log-manpower-review" component={PlantShiftLogManpowerReview} />
-            <Route path="/plant/shift-log" component={PlantShiftLog} />
-            <Route path="/plant/shift-log/:date" component={PlantShiftLog} />
-            <Route path="/plant/daily-reports" component={PlantDailyReports} />
-            <Route path="/plant/daily-report" component={PlantDailyReport} />
-            <Route path="/plant/daily-report/:date" component={PlantDailyReport} />
-            <Route path="/plant/heating-sessions" component={PlantHeatingSessions} />
-            <Route path="/plant/heating-sessions/:date" component={PlantHeatingSessions} />
-            <Route path="/plant/heating-trends" component={PlantHeatingTrends} />
-            <Route path="/plant/purchase-indents" component={PurchaseIndents} />
-            <Route path="/plant/diesel-requirements" component={DieselRequirements} />
-            <Route path="/plant/vendor-bills" component={VendorBills} />
-            <Route path="/plant/rate-cards" component={RateCards} />
-            <Route path="/plant/data-sync" component={DataSync} />
-            <Route path="/plant/:id" component={PlantDetails} />
-            <Route path="/admin/settings" component={AdminSettings} />
-            <Route path="/admin/users" component={UserManagement} />
-            <Route path="/admin/devices" component={DeviceApproval} />
-            <Route path="/admin/reports" component={AdminReports} />
-            <Route path="/admin/mix-estimates" component={MixEstimates} />
-            <Route path="/admin/mix-impact" component={MixImpact} />
-            <Route path="/admin/mix-comparison" component={MixComparativeReport} />
-            <Route path="/admin/scenario-comparison" component={ScenarioComparison} />
-            <Route path="/admin/concrete-estimates" component={ConcreteEstimates} />
+            <Route path="/plant/new" component={gated(PlantNew, "admin_settings")} />
+            <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_stock")} />
+            <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_stock")} />
+            <Route path="/plant/material-returns" component={gated(PlantMaterialReturns, "plant_stock")} />
+            <Route path="/plant/dispatches" component={gated(PlantDispatches, "plant_production")} />
+            <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
+            <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
+            <Route path="/plant/ldo-logs" component={gated(PlantLdoLogs, "plant_stock")} />
+            <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
+            <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_stock")} />
+            <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_stock")} />
+            <Route path="/plant/diesel-procurement" component={gated(PlantDieselProcurementReport, "plant_stock")} />
+            <Route path="/plant/bitumen-stock" component={gated(PlantBitumenStock, "plant_stock")} />
+            <Route path="/plant/ldo-flow-meter" component={gated(PlantLdoFlowMeter, "plant_stock")} />
+            <Route path="/plant/ldo-backfill" component={gated(PlantLdoBackfill, "plant_stock")} />
+            <Route path="/plant/stock-reassign" component={gated(PlantStockReassign, "plant_stock")} />
+            <Route path="/plant/shift-log-manpower-review" component={gated(PlantShiftLogManpowerReview, "plant_shift_logs")} />
+            <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
+            <Route path="/plant/shift-log/:date" component={gated(PlantShiftLog, "plant_shift_logs")} />
+            <Route path="/plant/daily-reports" component={gated(PlantDailyReports, "plant_daily_reports")} />
+            <Route path="/plant/daily-report" component={gated(PlantDailyReport, "plant_daily_reports")} />
+            <Route path="/plant/daily-report/:date" component={gated(PlantDailyReport, "plant_daily_reports")} />
+            <Route path="/plant/heating-sessions" component={gated(PlantHeatingSessions, "plant_heating")} />
+            <Route path="/plant/heating-sessions/:date" component={gated(PlantHeatingSessions, "plant_heating")} />
+            <Route path="/plant/heating-trends" component={gated(PlantHeatingTrends, "plant_heating")} />
+            <Route path="/plant/purchase-indents" component={gated(PurchaseIndents, "site_procurement")} />
+            <Route path="/plant/diesel-requirements" component={gated(DieselRequirements, "site_diesel")} />
+            <Route path="/plant/vendor-bills" component={gated(VendorBills, "vendor_bills")} />
+            <Route path="/plant/rate-cards" component={gated(RateCards, "admin_settings")} />
+            <Route path="/plant/data-sync" component={gated(DataSync, "admin_settings")} />
+            <Route path="/plant/:id" component={gated(PlantDetails, "admin_settings")} />
+            <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
+            <Route path="/admin/users" component={gated(UserManagement, "user_management")} />
+            <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
+            <Route path="/admin/reports" component={gated(AdminReports, "reports")} />
+            <Route path="/admin/mix-estimates" component={gated(MixEstimates, "reports")} />
+            <Route path="/admin/mix-impact" component={gated(MixImpact, "reports")} />
+            <Route path="/admin/mix-comparison" component={gated(MixComparativeReport, "reports")} />
+            <Route path="/admin/scenario-comparison" component={gated(ScenarioComparison, "reports")} />
+            <Route path="/admin/concrete-estimates" component={gated(ConcreteEstimates, "reports")} />
             <Route component={NotFound} />
           </Switch>
         </div>

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2 } from "lucide-react";
@@ -8,9 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PinAuth } from "@/components/PinAuth";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
-import { useAccess } from "@/lib/access-context";
+import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +19,9 @@ export default function DprDetails() {
   const [, setLocation] = useLocation();
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
-  const { access, canEdit, canDelete } = useAccess();
+  const { sectionCan, isAdmin, user } = useAuth();
+  const canEdit = sectionCan("site_dprs", "edit");
+  const canDelete = isAdmin;
   const { toast } = useToast();
 
   const { data: equipmentList = [] } = useQuery<EquipmentMasterType[]>({
@@ -31,26 +31,10 @@ export default function DprDetails() {
       return res.json();
     },
   });
-  
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [targetRole, setTargetRole] = useState<"manager" | "admin">("manager");
-  const [pendingAction, setPendingAction] = useState<"edit" | "delete" | null>(null);
-  const [authenticatedPin, setAuthenticatedPin] = useState<string | null>(() => {
-    return sessionStorage.getItem(`auth_pin_${id}`);
-  });
-  
-  const getRoleLabel = (role?: string) => {
-    switch(role) {
-      case "engineer": return "Site Engineer (View Only)";
-      case "manager": return "Project Manager (Can Edit)";
-      case "admin": return "Admin (Full Control)";
-      default: return "Unknown";
-    }
-  };
 
   const cloneMutation = useMutation({
-    mutationFn: async ({ role, pin }: { role: string; pin: string }) => {
-      const response = await apiRequest("POST", `/api/dprs/${id}/clone`, { editedBy: role, pin });
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/dprs/${id}/clone`, {});
       return response.json();
     },
     onSuccess: (newDpr) => {
@@ -74,8 +58,8 @@ export default function DprDetails() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (pin: string) => {
-      await apiRequest("DELETE", `/api/dprs/${id}`, { pin });
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/dprs/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
@@ -98,40 +82,13 @@ export default function DprDetails() {
   });
 
   const handleEditClick = () => {
-    if (canEdit && authenticatedPin) {
-      cloneMutation.mutate({ role: access, pin: authenticatedPin });
-    } else {
-      setPendingAction("edit");
-      setTargetRole("manager");
-      setShowPinModal(true);
-    }
+    cloneMutation.mutate();
   };
 
   const handleDeleteClick = () => {
-    if (canDelete && authenticatedPin) {
-      if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
-        deleteMutation.mutate(authenticatedPin);
-      }
-    } else {
-      setPendingAction("delete");
-      setTargetRole("admin");
-      setShowPinModal(true);
+    if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
+      deleteMutation.mutate();
     }
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinModal(false);
-    setAuthenticatedPin(pin);
-    sessionStorage.setItem(`auth_pin_${id}`, pin);
-    
-    if (pendingAction === "delete" && role === "admin") {
-      if (confirm("Are you sure you want to delete this report? This cannot be undone.")) {
-        deleteMutation.mutate(pin);
-      }
-    } else if (pendingAction === "edit") {
-      cloneMutation.mutate({ role, pin });
-    }
-    setPendingAction(null);
   };
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8" /></div>;
@@ -178,17 +135,6 @@ export default function DprDetails() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
-      {showPinModal && (
-        <PinAuth
-          targetRole={targetRole}
-          onSuccess={handlePinSuccess}
-          onClose={() => {
-            setShowPinModal(false);
-            setPendingAction(null);
-          }}
-        />
-      )}
-
       {/* Header Actions */}
       <div className="flex items-center justify-between print:hidden flex-col md:flex-row gap-4">
         <div className="flex items-center gap-4">
@@ -199,9 +145,11 @@ export default function DprDetails() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold font-display">Report Details</h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              Current Access: {getRoleLabel(access)}
-            </p>
+            {user?.fullName && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {isAdmin ? "Admin" : user.fullName}
+              </p>
+            )}
             <div className="mt-2">
               <LockBadge
                 record={dpr}
@@ -212,30 +160,34 @@ export default function DprDetails() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          <LockAwareEditButton
-            record={dpr}
-            resourceType="dpr"
-            resourceId={dpr.id}
-            variant="secondary"
-            className="gap-2"
-            onClick={handleEditClick}
-            pending={cloneMutation.isPending}
-            data-testid="button-edit-dpr"
-          >
-            <Edit className="w-4 h-4" />
-            {cloneMutation.isPending ? "Cloning..." : "Edit Report"}
-          </LockAwareEditButton>
-          <Button 
-            variant="destructive" 
-            size="sm" 
-            className="gap-2"
-            onClick={handleDeleteClick}
-            disabled={deleteMutation.isPending}
-            data-testid="button-delete-dpr"
-          >
-            <Trash2 className="w-4 h-4" />
-            {deleteMutation.isPending ? "Deleting..." : "Delete Report"}
-          </Button>
+          {canEdit && (
+            <LockAwareEditButton
+              record={dpr}
+              resourceType="dpr"
+              resourceId={dpr.id}
+              variant="secondary"
+              className="gap-2"
+              onClick={handleEditClick}
+              pending={cloneMutation.isPending}
+              data-testid="button-edit-dpr"
+            >
+              <Edit className="w-4 h-4" />
+              {cloneMutation.isPending ? "Cloning..." : "Edit Report"}
+            </LockAwareEditButton>
+          )}
+          {canDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-2"
+              onClick={handleDeleteClick}
+              disabled={deleteMutation.isPending}
+              data-testid="button-delete-dpr"
+            >
+              <Trash2 className="w-4 h-4" />
+              {deleteMutation.isPending ? "Deleting..." : "Delete Report"}
+            </Button>
+          )}
           <Button variant="outline" onClick={() => window.print()} className="gap-2" data-testid="button-print">
             <Printer className="w-4 h-4" /> Print
           </Button>

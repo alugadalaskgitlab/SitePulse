@@ -16,7 +16,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
@@ -29,6 +29,11 @@ const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter
 
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
+  const { sectionCan, isAdmin: isAdminUser } = useAuth();
+  const canCreate = sectionCan("plant_stock", "create");
+  const canEdit = sectionCan("plant_stock", "edit");
+  const canDelete = isAdminUser;
+  const canExport = sectionCan("plant_stock", "view_reports");
   const { appendOrigin, getPlantBackLink } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
@@ -76,10 +81,6 @@ export default function PlantLdoFlowMeter() {
   const setReconPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, reconPartyId: v }));
   const setReconMixTemplateId = (v: string) => setPersistedFilters((f) => ({ ...f, reconMixTemplateId: v }));
   const setReconSite = (v: string) => setPersistedFilters((f) => ({ ...f, reconSite: v }));
-
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print" | "dip-delete" | "dip-edit"; readingId?: number } | null>(null);
 
   const [ldoCorrTank1L, setLdoCorrTank1L] = useState("");
   const [ldoCorrTank2L, setLdoCorrTank2L] = useState("");
@@ -788,53 +789,41 @@ export default function PlantLdoFlowMeter() {
     }
   }
 
-  function handlePinAction(type: string, readingId?: number) {
-    setPendingAction({ type: type as any, readingId });
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
+  function handleEdit(readingId: number) {
+    const reading = readings?.find(r => r.id === readingId);
+    if (reading) {
+      setEditingReading(reading);
+      setReadingDate(reading.date);
+      setReadingTime(reading.time || "");
+      setTankNumber(String(reading.tankNumber));
+      setMeterReading(String(reading.meterReading));
+      setReadingType(reading.readingType);
+      setQuantityLiters(reading.quantityLiters ? String(reading.quantityLiters) : "");
+      setNotes(reading.notes || "");
+      setDialogOpen(true);
+    }
   }
 
-  function handlePinSuccess(_role: string, _pin: string) {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
+  function handleDelete(readingId: number) {
+    deleteMutation.mutate(readingId);
+  }
 
-    if (pendingAction.type === "delete" && pendingAction.readingId) {
-      deleteMutation.mutate(pendingAction.readingId);
-    } else if (pendingAction.type === "edit" && pendingAction.readingId) {
-      const reading = readings?.find(r => r.id === pendingAction.readingId);
-      if (reading) {
-        setEditingReading(reading);
-        setReadingDate(reading.date);
-        setReadingTime(reading.time || "");
-        setTankNumber(String(reading.tankNumber));
-        setMeterReading(String(reading.meterReading));
-        setReadingType(reading.readingType);
-        setQuantityLiters(reading.quantityLiters ? String(reading.quantityLiters) : "");
-        setNotes(reading.notes || "");
-        setDialogOpen(true);
-      }
-    } else if (pendingAction.type === "dip-delete" && pendingAction.readingId) {
-      dipDeleteMutation.mutate(pendingAction.readingId);
-    } else if (pendingAction.type === "dip-edit" && pendingAction.readingId) {
-      const reading = dipReadings?.find(r => r.id === pendingAction.readingId);
-      if (reading) {
-        setDipEditingReading(reading);
-        setDipDate(reading.date);
-        setDipTime(reading.time || "");
-        setDipTankNumber(String(reading.tankNumber));
-        setDipDepthCm(String(reading.depthCm));
-        setDipReadingType(reading.readingType);
-        setDipNotes(reading.notes || "");
-        setDipDialogOpen(true);
-      }
-    } else if (pendingAction.type === "export-excel") {
-      exportExcel();
-    } else if (pendingAction.type === "export-pdf") {
-      exportPdf();
-    } else if (pendingAction.type === "print") {
-      printData();
+  function handleDipEdit(readingId: number) {
+    const reading = dipReadings?.find(r => r.id === readingId);
+    if (reading) {
+      setDipEditingReading(reading);
+      setDipDate(reading.date);
+      setDipTime(reading.time || "");
+      setDipTankNumber(String(reading.tankNumber));
+      setDipDepthCm(String(reading.depthCm));
+      setDipReadingType(reading.readingType);
+      setDipNotes(reading.notes || "");
+      setDipDialogOpen(true);
     }
-    setPendingAction(null);
+  }
+
+  function handleDipDelete(readingId: number) {
+    dipDeleteMutation.mutate(readingId);
   }
 
   function exportExcel() {
@@ -933,16 +922,6 @@ export default function PlantLdoFlowMeter() {
           </CardContent>
         </Card>
       </div>
-    );
-  }
-
-  if (showPinAuth) {
-    return (
-      <PinAuth
-        targetRole={pinAuthTarget}
-        onSuccess={handlePinSuccess}
-        onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-      />
     );
   }
 
@@ -1789,12 +1768,12 @@ export default function PlantLdoFlowMeter() {
                         {isAdmin && (
                           <td className="p-2 text-center">
                             <div className="flex gap-1 justify-center">
-                              <Button size="icon" variant="ghost" onClick={() => handlePinAction("dip-edit", r.id)} data-testid={`button-dip-edit-${r.id}`}>
+                              <Button size="icon" variant="ghost" onClick={() => handleDipEdit(r.id)} data-testid={`button-dip-edit-${r.id}`}>
                                 <Pencil className="w-4 h-4" />
                               </Button>
                               {dipDeleteConfirmId === r.id ? (
                                 <>
-                                  <Button size="sm" variant="destructive" onClick={() => handlePinAction("dip-delete", r.id)} data-testid={`button-dip-confirm-delete-${r.id}`}>
+                                  <Button size="sm" variant="destructive" onClick={() => handleDipDelete(r.id)} data-testid={`button-dip-confirm-delete-${r.id}`}>
                                     Confirm
                                   </Button>
                                   <Button size="sm" variant="outline" onClick={() => setDipDeleteConfirmId(null)}>
@@ -1824,13 +1803,13 @@ export default function PlantLdoFlowMeter() {
             <CardTitle className="text-sm font-medium">All Flow Readings</CardTitle>
             {isAdmin && (
               <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={() => handlePinAction("export-excel")} data-testid="button-export-excel">
+                <Button variant="outline" size="sm" onClick={() => exportExcel()} data-testid="button-export-excel">
                   <Download className="w-4 h-4 mr-1" /> Excel
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => handlePinAction("export-pdf")} data-testid="button-export-pdf">
+                <Button variant="outline" size="sm" onClick={() => exportPdf()} data-testid="button-export-pdf">
                   <Download className="w-4 h-4 mr-1" /> PDF
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => handlePinAction("print")} data-testid="button-print">
+                <Button variant="outline" size="sm" onClick={() => printData()} data-testid="button-print">
                   <Printer className="w-4 h-4 mr-1" /> Print
                 </Button>
               </div>
@@ -1905,12 +1884,12 @@ export default function PlantLdoFlowMeter() {
                       {isAdmin && (
                         <td className="p-2 text-center">
                           <div className="flex gap-1 justify-center">
-                            <Button size="icon" variant="ghost" onClick={() => handlePinAction("edit", r.id)} data-testid={`button-edit-${r.id}`}>
+                            <Button size="icon" variant="ghost" onClick={() => handleEdit(r.id)} data-testid={`button-edit-${r.id}`}>
                               <Pencil className="w-4 h-4" />
                             </Button>
                             {deleteConfirmId === r.id ? (
                               <>
-                                <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
+                                <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)} data-testid={`button-confirm-delete-${r.id}`}>
                                   Confirm
                                 </Button>
                                 <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>

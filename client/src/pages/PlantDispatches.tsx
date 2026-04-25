@@ -20,7 +20,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType } from "@shared/schema";
@@ -28,6 +28,10 @@ import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterT
 export default function PlantDispatches() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
+  const { sectionCan } = useAuth();
+  const canCreate = sectionCan("plant_production", "create");
+  const canEdit = sectionCan("plant_production", "edit");
+  const canExport = sectionCan("plant_production", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
@@ -64,11 +68,7 @@ export default function PlantDispatches() {
   const setFilterVehicle = (v: string) => setPersistedFilters((f) => ({ ...f, filterVehicle: v }));
   const setFilterOwner = (v: string) => setPersistedFilters((f) => ({ ...f, filterOwner: v }));
   
-  // PIN auth state for per-action authentication
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; dispatchId?: number } | null>(null);
-  const [authenticatedRole, setAuthenticatedRole] = useState<string>("manager");
+  const authenticatedRole = "manager";
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -407,62 +407,11 @@ export default function PlantDispatches() {
     }
   };
 
-  // Per-action PIN authentication handlers
-  const requestPinAuth = (action: typeof pendingAction) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    setAuthenticatedRole(role);
-    if (!pendingAction) return;
-
-    switch (pendingAction.type) {
-      case "edit":
-        if (pendingAction.dispatchId) {
-          const dispatch = dispatches?.find(d => d.id === pendingAction.dispatchId);
-          if (dispatch) openEditDialog(dispatch);
-        }
-        break;
-      case "delete":
-        if (pendingAction.dispatchId) {
-          setDeleteConfirmId(pendingAction.dispatchId);
-        }
-        break;
-      case "export-excel":
-        exportToExcel();
-        break;
-      case "export-pdf":
-        exportToPDF();
-        break;
-      case "print":
-        handlePrint();
-        break;
-    }
-    setPendingAction(null);
-  };
-
-  const handleEditClick = (dispatch: TruckDispatch) => {
-    requestPinAuth({ type: "edit", dispatchId: dispatch.id });
-  };
-
-  const handleDeleteClick = (dispatchId: number) => {
-    requestPinAuth({ type: "delete", dispatchId });
-  };
-
-  const handleExportExcelClick = () => {
-    requestPinAuth({ type: "export-excel" });
-  };
-
-  const handleExportPdfClick = () => {
-    requestPinAuth({ type: "export-pdf" });
-  };
-
-  const handlePrintClick = () => {
-    requestPinAuth({ type: "print" });
-  };
+  const handleEditClick = (dispatch: TruckDispatch) => openEditDialog(dispatch);
+  const handleDeleteClick = (dispatchId: number) => setDeleteConfirmId(dispatchId);
+  const handleExportExcelClick = () => exportToExcel();
+  const handleExportPdfClick = () => exportToPDF();
+  const handlePrintClick = () => handlePrint();
 
   const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
   const uniqueVehicles = Array.from(new Set(dispatches?.map(d => d.truckNumber) || [])).sort();
@@ -760,17 +709,6 @@ export default function PlantDispatches() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAuthTarget}
-          onSuccess={handlePinSuccess}
-          onClose={() => {
-            setShowPinAuth(false);
-            setPendingAction(null);
-          }}
-        />
-      )}
-
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href={backLink}>
@@ -784,11 +722,13 @@ export default function PlantDispatches() {
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" data-testid="button-add-dispatch">
-              <Plus className="w-4 h-4" /> New Dispatch
-            </Button>
-          </DialogTrigger>
+          {canCreate && (
+            <DialogTrigger asChild>
+              <Button className="gap-2" data-testid="button-add-dispatch">
+                <Plus className="w-4 h-4" /> New Dispatch
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingDispatch ? "Edit Dispatch" : "Record Production Dispatch"}</DialogTitle>
@@ -1072,17 +1012,19 @@ export default function PlantDispatches() {
       </div>
 
       {/* Export/Print Actions */}
-      <div className="flex flex-wrap items-center gap-2 p-4 rounded-lg bg-muted/50">
-        <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredDispatches.length} data-testid="button-export-excel">
-          <Download className="w-4 h-4" /> Export Excel
-        </Button>
-        <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredDispatches.length} data-testid="button-export-pdf">
-          <Download className="w-4 h-4" /> Export PDF
-        </Button>
-        <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
-          <Printer className="w-4 h-4" /> Print
-        </Button>
-      </div>
+      {canExport && (
+        <div className="flex flex-wrap items-center gap-2 p-4 rounded-lg bg-muted/50">
+          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredDispatches.length} data-testid="button-export-excel">
+            <Download className="w-4 h-4" /> Export Excel
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredDispatches.length} data-testid="button-export-pdf">
+            <Download className="w-4 h-4" /> Export PDF
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+            <Printer className="w-4 h-4" /> Print
+          </Button>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <Card>
@@ -1351,24 +1293,26 @@ export default function PlantDispatches() {
                                 </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-1 ml-4">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleEditClick(dispatch)}
-                                data-testid={`button-edit-dispatch-${dispatch.id}`}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDeleteClick(dispatch.id)}
-                                data-testid={`button-delete-dispatch-${dispatch.id}`}
-                              >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </div>
+                            {canEdit && (
+                              <div className="flex items-center gap-1 ml-4">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleEditClick(dispatch)}
+                                  data-testid={`button-edit-dispatch-${dispatch.id}`}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteClick(dispatch.id)}
+                                  data-testid={`button-delete-dispatch-${dispatch.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

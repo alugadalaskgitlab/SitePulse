@@ -14,20 +14,18 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { GeneratorLog } from "@shared/schema";
 
 export default function PlantGeneratorLogs() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
+  const { sectionCan } = useAuth();
+  const canCreate = sectionCan("plant_equipment", "create");
+  const canExport = sectionCan("plant_equipment", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
-  
-  // PIN auth state for per-action authentication
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" } | null>(null);
   
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [generatorName, setGeneratorName] = useState("600 KVA");
@@ -93,42 +91,9 @@ export default function PlantGeneratorLogs() {
 
   const calculatedHoursDisplay = calculateHours();
 
-  // Per-action PIN authentication handlers
-  const requestPinAuth = (action: typeof pendingAction) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
-
-    switch (pendingAction.type) {
-      case "export-excel":
-        exportToExcel();
-        break;
-      case "export-pdf":
-        exportToPDF();
-        break;
-      case "print":
-        handlePrint();
-        break;
-    }
-    setPendingAction(null);
-  };
-
-  const handleExportExcelClick = () => {
-    requestPinAuth({ type: "export-excel" });
-  };
-
-  const handleExportPdfClick = () => {
-    requestPinAuth({ type: "export-pdf" });
-  };
-
-  const handlePrintClick = () => {
-    requestPinAuth({ type: "print" });
-  };
+  const handleExportExcelClick = () => exportToExcel();
+  const handleExportPdfClick = () => exportToPDF();
+  const handlePrintClick = () => handlePrint();
 
   // Build filename with timestamp
   const buildFilename = (extension: string) => {
@@ -366,11 +331,13 @@ export default function PlantGeneratorLogs() {
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" data-testid="button-add-generator-log">
-              <Plus className="w-4 h-4" /> New Entry
-            </Button>
-          </DialogTrigger>
+          {canCreate && (
+            <DialogTrigger asChild>
+              <Button className="gap-2" data-testid="button-add-generator-log">
+                <Plus className="w-4 h-4" /> New Entry
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Record Generator Log</DialogTitle>
@@ -437,29 +404,22 @@ export default function PlantGeneratorLogs() {
         </Dialog>
       </div>
 
-      {/* PinAuth Modal */}
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAuthTarget}
-          onSuccess={handlePinSuccess}
-          onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-        />
-      )}
-
       {/* Export/Print Actions */}
-      <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
-        <div className="flex items-center gap-2 ml-auto flex-wrap">
-          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!logs?.length} data-testid="button-export-excel">
-            <Download className="w-4 h-4" /> Export Excel
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!logs?.length} data-testid="button-export-pdf">
-            <Download className="w-4 h-4" /> Export PDF
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
-            <Printer className="w-4 h-4" /> Print
-          </Button>
+      {canExport && (
+        <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!logs?.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!logs?.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <Card>
         <CardHeader>

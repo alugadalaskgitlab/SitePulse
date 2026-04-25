@@ -16,7 +16,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 
@@ -30,6 +30,9 @@ type StockBalanceAsOf = {
 
 export default function PlantStock() {
   const { toast } = useToast();
+  const { sectionCan, isAdmin } = useAuth();
+  const canExport = sectionCan("plant_stock", "view_reports");
+  const canReconcile = isAdmin;
   const { getPlantBackLink, appendPlantContext } = useOrigin();
   const queryClient = useQueryClient();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
@@ -64,10 +67,6 @@ export default function PlantStock() {
   const setSelectedTransactionType = (v: string) => setPersistedFilters((f) => ({ ...f, selectedTransactionType: v }));
   const setIssuedToFilter = (v: string) => setPersistedFilters((f) => ({ ...f, issuedToFilter: v }));
 
-  // PIN auth state for per-action authentication
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "export-excel" | "export-pdf" | "print" | "reconcile" } | null>(null);
 
   // Reconciliation mutation to backfill missing ledger entries
   const reconcileMutation = useMutation({
@@ -881,49 +880,10 @@ export default function PlantStock() {
     setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 30000);
   };
 
-  // Per-action PIN authentication handlers
-  const requestPinAuth = (action: typeof pendingAction) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = (role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
-
-    switch (pendingAction.type) {
-      case "export-excel":
-        exportToExcel();
-        break;
-      case "export-pdf":
-        exportToPDF();
-        break;
-      case "print":
-        handlePrint();
-        break;
-      case "reconcile":
-        reconcileMutation.mutate();
-        break;
-    }
-    setPendingAction(null);
-  };
-
-  const handleExportExcelClick = () => {
-    requestPinAuth({ type: "export-excel" });
-  };
-
-  const handleExportPdfClick = () => {
-    requestPinAuth({ type: "export-pdf" });
-  };
-
-  const handlePrintClick = () => {
-    requestPinAuth({ type: "print" });
-  };
-
-  const handleReconcileClick = () => {
-    requestPinAuth({ type: "reconcile" });
-  };
+  const handleExportExcelClick = () => exportToExcel();
+  const handleExportPdfClick = () => exportToPDF();
+  const handlePrintClick = () => handlePrint();
+  const handleReconcileClick = () => reconcileMutation.mutate();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -946,30 +906,38 @@ export default function PlantStock() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button 
-            size="sm" 
-            variant="default" 
-            className="gap-1" 
-            onClick={handleReconcileClick} 
-            disabled={reconcileMutation.isPending}
-            data-testid="button-reconcile-data"
-          >
-            {reconcileMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            Reconcile Data
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!stockSummary.length} data-testid="button-export-excel">
-            <Download className="w-4 h-4" /> Export Excel
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!stockSummary.length} data-testid="button-export-pdf">
-            <Download className="w-4 h-4" /> Export PDF
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
-            <Printer className="w-4 h-4" /> Print
-          </Button>
+          {canReconcile && (
+            <Button 
+              size="sm" 
+              variant="default" 
+              className="gap-1" 
+              onClick={handleReconcileClick} 
+              disabled={reconcileMutation.isPending}
+              data-testid="button-reconcile-data"
+            >
+              {reconcileMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Reconcile Data
+            </Button>
+          )}
+          {canExport && (
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!stockSummary.length} data-testid="button-export-excel">
+              <Download className="w-4 h-4" /> Export Excel
+            </Button>
+          )}
+          {canExport && (
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!stockSummary.length} data-testid="button-export-pdf">
+              <Download className="w-4 h-4" /> Export PDF
+            </Button>
+          )}
+          {canExport && (
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
+              <Printer className="w-4 h-4" /> Print
+            </Button>
+          )}
           <Link href={appendPlantContext("/plant/stock-reassign", { defaultTab: "stock" })}>
             <Button size="sm" variant="outline" className="gap-1 border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-stock-reassign">
               <ArrowRightLeft className="w-4 h-4" /> Reassign Ledger
@@ -1403,16 +1371,6 @@ export default function PlantStock() {
         </TabsContent>
       </Tabs>
 
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAuthTarget}
-          onSuccess={handlePinSuccess}
-          onClose={() => {
-            setShowPinAuth(false);
-            setPendingAction(null);
-          }}
-        />
-      )}
     </div>
   );
 }

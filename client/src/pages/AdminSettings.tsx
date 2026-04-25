@@ -10,7 +10,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { PinAuth } from "@/components/PinAuth";
 import {
   type Site,
   type Party,
@@ -20,8 +19,9 @@ import { DEFAULT_BITUMEN_DENSITY_KG_PER_L } from "@shared/bitumen-dip-chart";
 
 export default function AdminSettings() {
   const { toast } = useToast();
-  const [showPinAuth, setShowPinAuth] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  // Page-level access is enforced by <RequireAuth section="admin_settings"> in
+  // App.tsx. Reaching this component implies the user can view the section.
+  const authenticated = true;
   const [authenticatedPin, setAuthenticatedPin] = useState("");
   
   // Admin PIN change state
@@ -235,20 +235,6 @@ export default function AdminSettings() {
     });
   };
 
-  const handlePinAuthSuccess = (role: "manager" | "admin", pin: string) => {
-    if (role === "admin") {
-      setAuthenticated(true);
-      setShowPinAuth(false);
-      setAuthenticatedPin(pin);
-    } else {
-      toast({
-        title: "Access Denied",
-        description: "Admin PIN required to access settings.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleChangeAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -296,16 +282,6 @@ export default function AdminSettings() {
 
     changeManagerPinMutation.mutate({ currentPin: authenticatedPin, newPin: newManagerPin });
   };
-
-  if (showPinAuth && !authenticated) {
-    return (
-      <PinAuth
-        targetRole="admin"
-        onSuccess={handlePinAuthSuccess}
-        onClose={() => window.history.back()}
-      />
-    );
-  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">

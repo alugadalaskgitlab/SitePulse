@@ -9,20 +9,21 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Download, Upload, Loader2, CheckCircle, AlertCircle, FileJson } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 
 type SyncMode = "menu" | "export" | "import";
 
 export default function DataSync() {
   const { toast } = useToast();
+  const { sectionCan } = useAuth();
+  const canExport = sectionCan("admin_settings", "view_reports");
+  const canImport = sectionCan("admin_settings", "edit");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<SyncMode>("menu");
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"export" | "import" | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importData, setImportData] = useState<Record<string, any> | null>(null);
   const [importFileName, setImportFileName] = useState("");
@@ -54,68 +55,50 @@ export default function DataSync() {
     }
   };
 
-  const handleExportClick = () => {
+  const handleExportClick = async () => {
     if (selectedTables.length === 0) {
       toast({ title: "Select at least one table to export", variant: "destructive" });
       return;
     }
-    setPendingAction("export");
-    setShowPinAuth(true);
+    setIsProcessing(true);
+    try {
+      const response = await apiRequest("POST", "/api/admin/export-data", {
+        tables: selectedTables,
+      });
+      const data = await response.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sitelog-export-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export downloaded successfully" });
+    } catch (err: any) {
+      toast({ title: "Export failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleImportClick = () => {
+  const handleImportClick = async () => {
     if (!importData) {
       toast({ title: "Upload a file first", variant: "destructive" });
       return;
     }
-    setPendingAction("import");
-    setShowPinAuth(true);
-  };
-
-  const handlePinSuccess = async (_role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-
-    if (pendingAction === "export") {
-      setIsProcessing(true);
-      try {
-        const response = await apiRequest("POST", "/api/admin/export-data", {
-          tables: selectedTables,
-          pin,
-        });
-        const data = await response.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `sitelog-export-${new Date().toISOString().split("T")[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast({ title: "Export downloaded successfully" });
-      } catch (err: any) {
-        toast({ title: "Export failed", description: err.message, variant: "destructive" });
-      } finally {
-        setIsProcessing(false);
-      }
+    setIsProcessing(true);
+    try {
+      const response = await apiRequest("POST", "/api/admin/import-data", {
+        data: importData,
+      });
+      const result = await response.json();
+      setResults(result);
+      toast({ title: "Import completed" });
+    } catch (err: any) {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
     }
-
-    if (pendingAction === "import") {
-      setIsProcessing(true);
-      try {
-        const response = await apiRequest("POST", "/api/admin/import-data", {
-          data: importData,
-          pin,
-        });
-        const result = await response.json();
-        setResults(result);
-        toast({ title: "Import completed" });
-      } catch (err: any) {
-        toast({ title: "Import failed", description: err.message, variant: "destructive" });
-      } finally {
-        setIsProcessing(false);
-      }
-    }
-
-    setPendingAction(null);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,25 +137,29 @@ export default function DataSync() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="hover-elevate cursor-pointer" onClick={() => setMode("export")} data-testid="card-export">
-            <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                <Download className="w-8 h-8 text-emerald-600" />
-              </div>
-              <h2 className="text-xl font-bold">Export Data</h2>
-              <p className="text-muted-foreground">Download selected tables as a JSON file. Use this to back up your data or transfer it to another environment.</p>
-            </CardContent>
-          </Card>
+          {canExport && (
+            <Card className="hover-elevate cursor-pointer" onClick={() => setMode("export")} data-testid="card-export">
+              <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <Download className="w-8 h-8 text-emerald-600" />
+                </div>
+                <h2 className="text-xl font-bold">Export Data</h2>
+                <p className="text-muted-foreground">Download selected tables as a JSON file. Use this to back up your data or transfer it to another environment.</p>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="hover-elevate cursor-pointer" onClick={() => setMode("import")} data-testid="card-import">
-            <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <Upload className="w-8 h-8 text-blue-600" />
-              </div>
-              <h2 className="text-xl font-bold">Import Data</h2>
-              <p className="text-muted-foreground">Upload a previously exported JSON file to update records. Existing records will be updated, new ones added.</p>
-            </CardContent>
-          </Card>
+          {canImport && (
+            <Card className="hover-elevate cursor-pointer" onClick={() => setMode("import")} data-testid="card-import">
+              <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Upload className="w-8 h-8 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-bold">Import Data</h2>
+                <p className="text-muted-foreground">Upload a previously exported JSON file to update records. Existing records will be updated, new ones added.</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     );
@@ -236,14 +223,6 @@ export default function DataSync() {
             DESELECT ALL
           </Button>
         </div>
-
-        {showPinAuth && (
-          <PinAuth
-            onSuccess={handlePinSuccess}
-            onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-            targetRole="admin"
-          />
-        )}
       </div>
     );
   }
@@ -361,14 +340,6 @@ export default function DataSync() {
             </Button>
           </CardContent>
         </Card>
-      )}
-
-      {showPinAuth && (
-        <PinAuth
-          onSuccess={handlePinSuccess}
-          onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-          targetRole="admin"
-        />
       )}
     </div>
   );

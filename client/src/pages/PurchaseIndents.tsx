@@ -12,7 +12,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry, PlantMaterial } from "@shared/schema";
@@ -326,6 +326,11 @@ function StatusSteps({ status }: { status: string }) {
 
 export default function PurchaseIndents() {
   const { toast } = useToast();
+  const { sectionCan, isAdmin } = useAuth();
+  const canCreate = sectionCan("site_procurement", "create");
+  const canEdit = sectionCan("site_procurement", "edit");
+  const canDelete = isAdmin;
+  const canForceClose = isAdmin;
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
@@ -348,12 +353,9 @@ export default function PurchaseIndents() {
   const [editIndentId, setEditIndentId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAction, setPinAction] = useState<"approve" | "reject" | "cancel_item" | "force_close" | "edit" | "delete" | null>(null);
   const [approvalRemarks, setApprovalRemarks] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [approvedQtys, setApprovedQtys] = useState<Record<number, number>>({});
-  const [savedPin, setSavedPin] = useState("");
 
   const [purchaseUpdates, setPurchaseUpdates] = useState<Record<number, PurchaseUpdateData>>({});
 
@@ -498,8 +500,8 @@ export default function PurchaseIndents() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) =>
-      apiRequest("DELETE", `/api/purchase-indents/${id}`, { pin }),
+    mutationFn: ({ id }: { id: number }) =>
+      apiRequest("DELETE", `/api/purchase-indents/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
       toast({ title: "Indent deleted successfully" });
@@ -587,24 +589,23 @@ export default function PurchaseIndents() {
     });
   };
 
-  const handleCancelItem = (pin: string) => {
+  const handleCancelItem = () => {
     if (!cancelItemId || !cancelReason.trim()) {
       toast({ title: "Please enter a cancellation reason", variant: "destructive" });
       return;
     }
     cancelItemMutation.mutate({
       itemId: cancelItemId,
-      data: { pin, reason: cancelReason.toUpperCase() },
+      data: { reason: cancelReason.toUpperCase() },
     });
   };
 
-  const handleForceClose = (pin: string) => {
+  const handleForceClose = () => {
     if (!forceCloseReason.trim()) {
       toast({ title: "Please enter a reason for force closing", variant: "destructive" });
       return;
     }
     forceCloseMutation.mutate({
-      pin,
       reason: forceCloseReason.toUpperCase(),
     });
   };
@@ -663,7 +664,7 @@ export default function PurchaseIndents() {
     };
 
     if (editIndentId) {
-      editMutation.mutate({ id: editIndentId, data: { ...payload, pin: savedPin } });
+      editMutation.mutate({ id: editIndentId, data: payload });
     } else {
       createMutation.mutate(payload);
     }
@@ -690,56 +691,51 @@ export default function PurchaseIndents() {
     }
   };
 
-  const handlePinSuccess = (_role: "manager" | "admin", pin: string) => {
-    setShowPinAuth(false);
-    setSavedPin(pin);
-    if (pinAction === "approve") {
-      const approvedItems = Object.entries(approvedQtys).map(([itemId, qty]) => ({
-        itemId: Number(itemId),
-        approvedQty: qty,
-      }));
-      approveMutation.mutate({
-        pin,
-        approvedItems,
-        remarks: approvalRemarks.toUpperCase() || null,
-      });
-    } else if (pinAction === "reject") {
-      if (!rejectionReason.trim()) {
-        toast({ title: "Please enter a rejection reason", variant: "destructive" });
-        return;
-      }
-      rejectMutation.mutate({
-        pin,
-        reason: rejectionReason.toUpperCase(),
-      });
-    } else if (pinAction === "cancel_item") {
-      handleCancelItem(pin);
-    } else if (pinAction === "force_close") {
-      handleForceClose(pin);
-    } else if (pinAction === "edit") {
-      if (selectedIndentId && selectedIndent) {
-        setEditIndentId(selectedIndentId);
-        setFormDate(selectedIndent.date);
-        setFormProposedBy(selectedIndent.proposedBy);
-        setFormRaisedBy(selectedIndent.raisedBy);
-        setFormRemarks(selectedIndent.remarks || "");
-        setFormItems(selectedIndent.items.map(item => ({
-          description: item.description,
-          qty: item.qty,
-          uom: item.uom,
-          purpose: item.purpose,
-          priority: item.priority,
-          materialId: item.materialId || null,
-          estRate: item.estRate || null,
-          estAmount: (item as any).estAmount || null,
-        })));
-        setSavedPin(pin);
-        setView("form");
-      }
-    } else if (pinAction === "delete") {
-      if (selectedIndentId) {
-        deleteMutation.mutate({ id: selectedIndentId, pin });
-      }
+  const handleApprove = () => {
+    const approvedItems = Object.entries(approvedQtys).map(([itemId, qty]) => ({
+      itemId: Number(itemId),
+      approvedQty: qty,
+    }));
+    approveMutation.mutate({
+      approvedItems,
+      remarks: approvalRemarks.toUpperCase() || null,
+    });
+  };
+
+  const handleReject = () => {
+    if (!rejectionReason.trim()) {
+      toast({ title: "Please enter a rejection reason", variant: "destructive" });
+      return;
+    }
+    rejectMutation.mutate({
+      reason: rejectionReason.toUpperCase(),
+    });
+  };
+
+  const handleEditIndent = () => {
+    if (selectedIndentId && selectedIndent) {
+      setEditIndentId(selectedIndentId);
+      setFormDate(selectedIndent.date);
+      setFormProposedBy(selectedIndent.proposedBy);
+      setFormRaisedBy(selectedIndent.raisedBy);
+      setFormRemarks(selectedIndent.remarks || "");
+      setFormItems(selectedIndent.items.map(item => ({
+        description: item.description,
+        qty: item.qty,
+        uom: item.uom,
+        purpose: item.purpose,
+        priority: item.priority,
+        materialId: item.materialId || null,
+        estRate: item.estRate || null,
+        estAmount: (item as any).estAmount || null,
+      })));
+      setView("form");
+    }
+  };
+
+  const handleDeleteIndent = () => {
+    if (selectedIndentId) {
+      deleteMutation.mutate({ id: selectedIndentId });
     }
   };
 
@@ -819,14 +815,6 @@ export default function PurchaseIndents() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
-      {showPinAuth && (
-        <PinAuth
-          targetRole={pinAction === "force_close" || pinAction === "delete" ? "admin" : (pinAction === "edit" && selectedIndent && selectedIndent.status !== "pending") ? "admin" : "any"}
-          onSuccess={handlePinSuccess}
-          onClose={() => { setShowPinAuth(false); setPinAction(null); }}
-        />
-      )}
-
       {showCancelConfirm && (
         <Card className="border-red-200 dark:border-red-800">
           <CardContent className="p-4 space-y-3">
@@ -854,14 +842,13 @@ export default function PurchaseIndents() {
                 variant="outline"
                 className="text-red-600 border-red-300"
                 disabled={!cancelReason.trim() || cancelItemMutation.isPending}
-                onClick={() => { setPinAction("cancel_item"); setShowPinAuth(true); }}
+                onClick={handleCancelItem}
                 data-testid="button-confirm-cancel"
               >
                 {cancelItemMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}
                 CONFIRM CANCEL
               </Button>
             </div>
-            <p className="text-xs text-center text-muted-foreground italic">PIN REQUIRED (MANAGER/ADMIN)</p>
           </CardContent>
         </Card>
       )}
@@ -892,14 +879,13 @@ export default function PurchaseIndents() {
               <Button
                 className="bg-amber-600 text-white"
                 disabled={!forceCloseReason.trim() || forceCloseMutation.isPending}
-                onClick={() => { setPinAction("force_close"); setShowPinAuth(true); }}
+                onClick={handleForceClose}
                 data-testid="button-confirm-force-close"
               >
                 {forceCloseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Lock className="w-4 h-4 mr-1" />}
                 FORCE CLOSE
               </Button>
             </div>
-            <p className="text-xs text-center text-muted-foreground italic">ADMIN PIN REQUIRED</p>
           </CardContent>
         </Card>
       )}
@@ -920,14 +906,13 @@ export default function PurchaseIndents() {
                 variant="outline"
                 className="text-red-600 border-red-300"
                 disabled={deleteMutation.isPending}
-                onClick={() => { setPinAction("delete"); setShowPinAuth(true); }}
+                onClick={handleDeleteIndent}
                 data-testid="button-confirm-delete"
               >
                 {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
                 DELETE PERMANENTLY
               </Button>
             </div>
-            <p className="text-xs text-center text-muted-foreground italic">ADMIN PIN REQUIRED</p>
           </CardContent>
         </Card>
       )}
@@ -950,9 +935,11 @@ export default function PurchaseIndents() {
             <Button variant="outline" onClick={() => setView("report")} data-testid="button-report">
               <BarChart3 className="w-4 h-4 mr-1" /> REPORT
             </Button>
-            <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-indent">
-              <Plus className="w-4 h-4 mr-1" /> RAISE INDENT
-            </Button>
+            {canCreate && (
+              <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-indent">
+                <Plus className="w-4 h-4 mr-1" /> RAISE INDENT
+              </Button>
+            )}
           </div>
         )}
         {view !== "list" && (
@@ -1337,7 +1324,7 @@ export default function PurchaseIndents() {
                   <CardTitle className="text-base uppercase" data-testid="text-detail-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
                     <LockBadge record={selectedIndent} resourceType="purchase_indent" resourceId={selectedIndent.id} />
-                    {selectedIndent.status !== "completed" && (
+                    {selectedIndent.status !== "completed" && canEdit && (
                       <LockAwareEditButton
                         record={selectedIndent}
                         resourceType="purchase_indent"
@@ -1345,21 +1332,23 @@ export default function PurchaseIndents() {
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300"
-                        onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                        onClick={handleEditIndent}
                         data-testid="button-edit-indent"
                       >
                         <Pencil className="w-3 h-3 mr-1" /> EDIT
                       </LockAwareEditButton>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 border-red-300"
-                      onClick={() => setShowDeleteConfirm(true)}
-                      data-testid="button-delete-indent"
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-300"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        data-testid="button-delete-indent"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                      </Button>
+                    )}
                     {getStatusBadge(selectedIndent.status)}
                   </div>
                 </CardHeader>
@@ -1527,27 +1516,30 @@ export default function PurchaseIndents() {
                     </div>
                   </CardContent>
                   <div className="flex justify-between items-center p-4 border-t flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      className="text-red-600 border-red-300"
-                      onClick={() => { setPinAction("reject"); setShowPinAuth(true); }}
-                      disabled={rejectMutation.isPending}
-                      data-testid="button-reject"
-                    >
-                      {rejectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <X className="w-4 h-4 mr-1" />}
-                      REJECT
-                    </Button>
-                    <Button
-                      className="bg-emerald-600 text-white"
-                      onClick={() => { setPinAction("approve"); setShowPinAuth(true); }}
-                      disabled={approveMutation.isPending}
-                      data-testid="button-approve"
-                    >
-                      {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Check className="w-4 h-4 mr-1" />}
-                      APPROVE INDENT
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="outline"
+                        className="text-red-600 border-red-300"
+                        onClick={handleReject}
+                        disabled={rejectMutation.isPending}
+                        data-testid="button-reject"
+                      >
+                        {rejectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <X className="w-4 h-4 mr-1" />}
+                        REJECT
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        className="bg-emerald-600 text-white"
+                        onClick={handleApprove}
+                        disabled={approveMutation.isPending}
+                        data-testid="button-approve"
+                      >
+                        {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Check className="w-4 h-4 mr-1" />}
+                        APPROVE INDENT
+                      </Button>
+                    )}
                   </div>
-                  <p className="text-xs text-center text-muted-foreground pb-3 italic">PIN REQUIRED TO APPROVE OR REJECT</p>
                 </Card>
               ) : (
                 <Card>
@@ -1653,7 +1645,7 @@ export default function PurchaseIndents() {
                   <CardTitle className="text-base uppercase" data-testid="text-purchase-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
                     <LockBadge record={selectedIndent} resourceType="purchase_indent" resourceId={selectedIndent.id} />
-                    {selectedIndent.status !== "completed" && (
+                    {selectedIndent.status !== "completed" && canEdit && (
                       <LockAwareEditButton
                         record={selectedIndent}
                         resourceType="purchase_indent"
@@ -1661,21 +1653,23 @@ export default function PurchaseIndents() {
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300"
-                        onClick={() => { setPinAction("edit"); setShowPinAuth(true); }}
+                        onClick={handleEditIndent}
                         data-testid="button-edit-indent-purchase"
                       >
                         <Pencil className="w-3 h-3 mr-1" /> EDIT
                       </LockAwareEditButton>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 border-red-300"
-                      onClick={() => setShowDeleteConfirm(true)}
-                      data-testid="button-delete-indent-purchase"
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-300"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        data-testid="button-delete-indent-purchase"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" /> DELETE
+                      </Button>
+                    )}
                     {getStatusBadge(selectedIndent.status)}
                   </div>
                 </CardHeader>

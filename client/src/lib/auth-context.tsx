@@ -35,6 +35,7 @@ type AuthContextType = {
   permissions: PermissionMatrix;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   // Permission helpers — admin always returns true.
   sectionCan: (section: SectionKey, action: Action) => boolean;
   sectionVisible: (section: SectionKey) => boolean;
@@ -132,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       permissions: perms,
       isLoading: meQuery.isLoading,
       isAuthenticated: !!u,
+      isAdmin: !!u?.isAdmin,
       sectionCan,
       sectionVisible,
       refresh: async () => {
@@ -163,63 +165,3 @@ export function useAuth(): AuthContextType {
   return ctx;
 }
 
-// =============================================================
-// Backward-compat shim: existing pages call useAccess() expecting
-// the old role-based interface. We expose the same shape derived
-// from the new permission matrix so we don't have to rewrite every
-// page in this task.
-// =============================================================
-
-export type LegacyAccessLevel = "engineer" | "manager" | "admin";
-
-type LegacyAccessContextType = {
-  access: LegacyAccessLevel;
-  setAccess: (level: LegacyAccessLevel) => void;
-  canEdit: boolean;
-  canDelete: boolean;
-  canViewReports: boolean;
-  canExport: boolean;
-  isAdmin: boolean;
-  requestAdminAccess: (pin: string) => boolean;
-};
-
-export function useAccess(): LegacyAccessContextType {
-  const { user, permissions } = useAuth();
-  const isAdmin = !!user?.isAdmin;
-
-  const anyEdit = !!user && (
-    isAdmin ||
-    Object.values(permissions).some((p) => p.edit)
-  );
-  const anyDelete = !!user && (
-    isAdmin ||
-    Object.values(permissions).some((p) => p.delete)
-  );
-  const anyReports = !!user && (
-    isAdmin ||
-    Object.values(permissions).some((p) => p.view_reports)
-  );
-  const anyExport = !!user && (
-    isAdmin ||
-    Object.values(permissions).some((p) => p.export)
-  );
-
-  const access: LegacyAccessLevel = isAdmin
-    ? "admin"
-    : anyEdit
-    ? "manager"
-    : "engineer";
-
-  return {
-    access,
-    setAccess: () => {
-      // No-op in the new auth model. Kept so legacy callers don't crash.
-    },
-    canEdit: anyEdit,
-    canDelete: anyDelete,
-    canViewReports: anyReports,
-    canExport: anyExport,
-    isAdmin,
-    requestAdminAccess: () => false,
-  };
-}

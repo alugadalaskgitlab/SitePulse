@@ -12,7 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar, Download, Printer, ChevronDown, ChevronRight, FileSpreadsheet, Truck, Calculator } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, parseISO, eachDayOfInterval, isWithinInterval, startOfDay, endOfDay } from "date-fns";
-import { PinAuth } from "@/components/PinAuth";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import type { DprWithDetails } from "@shared/schema";
@@ -62,8 +61,8 @@ interface DateGroupedData {
 export default function AdminReports() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [showPinAuth, setShowPinAuth] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  // Page-level access enforced via <RequireAuth section="reports"> in App.tsx.
+  const authenticated = true;
   const [activeTab, setActiveTab] = useState("reports");
   const printRef = useRef<HTMLDivElement>(null);
   
@@ -80,19 +79,6 @@ export default function AdminReports() {
     queryKey: ["/api/dprs/with-details"],
     enabled: authenticated,
   });
-
-  const handlePinAuthSuccess = (role: "manager" | "admin") => {
-    if (role === "admin") {
-      setAuthenticated(true);
-      setShowPinAuth(false);
-    } else {
-      toast({
-        title: "Access Denied",
-        description: "Admin PIN required to access reports.",
-        variant: "destructive",
-      });
-    }
-  };
 
   const uniqueSites = useMemo(() => {
     const sites = new Set<string>();
@@ -455,16 +441,6 @@ export default function AdminReports() {
   const handlePrint = () => {
     window.print();
   };
-
-  if (showPinAuth && !authenticated) {
-    return (
-      <PinAuth
-        targetRole="admin"
-        onSuccess={handlePinAuthSuccess}
-        onClose={() => window.history.back()}
-      />
-    );
-  }
 
   const getActiveFiltersText = () => {
     const filters: string[] = [];

@@ -17,27 +17,28 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialIssue } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
 
 export default function PlantMaterialIssues() {
   const { toast } = useToast();
+  const { sectionCan, isAdmin } = useAuth();
+  const canCreate = sectionCan("plant_stock", "create");
+  const canEdit = sectionCan("plant_stock", "edit");
+  const canDelete = isAdmin;
+  const canExport = sectionCan("plant_stock", "view_reports");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIssue, setEditingIssue] = useState<MaterialIssue | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  
+
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterPartyId, setFilterPartyId] = useState("all");
   const [filterMaterialId, setFilterMaterialId] = useState("all");
-  
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; issueId?: number } | null>(null);
   
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
@@ -237,35 +238,13 @@ export default function PlantMaterialIssues() {
     return Object.values(totalsMap);
   }, [filteredIssues, materials]);
 
-  const handlePinSuccess = () => {
-    setShowPinAuth(false);
-    if (pendingAction) {
-      switch (pendingAction.type) {
-        case "edit":
-          const issueToEdit = issues?.find(r => r.id === pendingAction.issueId);
-          if (issueToEdit) openEditDialog(issueToEdit);
-          break;
-        case "delete":
-          if (pendingAction.issueId) setDeleteConfirmId(pendingAction.issueId);
-          break;
-        case "export-excel":
-          exportToExcel();
-          break;
-        case "export-pdf":
-          exportToPDF();
-          break;
-        case "print":
-          handlePrint();
-          break;
-      }
-      setPendingAction(null);
-    }
+  const handleEditClick = (issueId: number) => {
+    const issueToEdit = issues?.find(r => r.id === issueId);
+    if (issueToEdit) openEditDialog(issueToEdit);
   };
 
-  const requireAuth = (action: { type: "edit" | "delete" | "export-excel" | "export-pdf" | "print"; issueId?: number }) => {
-    setPendingAction(action);
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
+  const handleDeleteClick = (issueId: number) => {
+    setDeleteConfirmId(issueId);
   };
 
   const exportToExcel = () => {
@@ -408,21 +387,27 @@ export default function PlantMaterialIssues() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "export-excel" })} data-testid="button-export-excel">
-            <Download className="w-4 h-4 mr-1" /> Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "export-pdf" })} data-testid="button-export-pdf">
-            <Download className="w-4 h-4 mr-1" /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => requireAuth({ type: "print" })} data-testid="button-print">
-            <Printer className="w-4 h-4 mr-1" /> Print
-          </Button>
-          <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { resetForm(); setEditingIssue(null); } setDialogOpen(open); }}>
-            <DialogTrigger asChild>
-              <Button className="gap-1" data-testid="button-add-issue">
-                <Plus className="w-4 h-4" /> New Issue
+          {canExport && (
+            <>
+              <Button variant="outline" size="sm" onClick={exportToExcel} data-testid="button-export-excel">
+                <Download className="w-4 h-4 mr-1" /> Excel
               </Button>
-            </DialogTrigger>
+              <Button variant="outline" size="sm" onClick={exportToPDF} data-testid="button-export-pdf">
+                <Download className="w-4 h-4 mr-1" /> PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={handlePrint} data-testid="button-print">
+                <Printer className="w-4 h-4 mr-1" /> Print
+              </Button>
+            </>
+          )}
+          <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { resetForm(); setEditingIssue(null); } setDialogOpen(open); }}>
+            {canCreate && (
+              <DialogTrigger asChild>
+                <Button className="gap-1" data-testid="button-add-issue">
+                  <Plus className="w-4 h-4" /> New Issue
+                </Button>
+              </DialogTrigger>
+            )}
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingIssue ? "Edit Material Issue" : "Record Material Issue"}</DialogTitle>
@@ -646,12 +631,16 @@ export default function PlantMaterialIssues() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "edit", issueId: issue.id })} data-testid={`button-edit-${issue.id}`}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => requireAuth({ type: "delete", issueId: issue.id })} data-testid={`button-delete-${issue.id}`}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" onClick={() => handleEditClick(issue.id)} data-testid={`button-edit-${issue.id}`}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(issue.id)} data-testid={`button-delete-${issue.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -674,16 +663,6 @@ export default function PlantMaterialIssues() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {showPinAuth && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <PinAuth
-            targetRole={pinAuthTarget}
-            onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-            onSuccess={handlePinSuccess}
-          />
-        </div>
-      )}
     </div>
   );
 }

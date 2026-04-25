@@ -15,7 +15,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
@@ -31,6 +31,11 @@ import {
 
 export default function PlantBitumenStock() {
   const { toast } = useToast();
+  const { sectionCan, isAdmin: isAdminUser } = useAuth();
+  const canCreate = sectionCan("plant_stock", "create");
+  const canEdit = sectionCan("plant_stock", "edit");
+  const canDelete = isAdminUser;
+  const canExport = sectionCan("plant_stock", "view_reports");
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
@@ -53,9 +58,6 @@ export default function PlantBitumenStock() {
   const [reconMixTemplateId, setReconMixTemplateId] = useState("all");
   const [reconSite, setReconSite] = useState("all");
 
-  const [showPinAuth, setShowPinAuth] = useState(false);
-  const [pinAuthTarget, setPinAuthTarget] = useState<"admin" | "manager">("admin");
-  const [pendingAction, setPendingAction] = useState<{ type: "delete" | "edit" | "export-excel" | "export-pdf" | "print"; readingId?: number } | null>(null);
 
   const [corrTank1MT, setCorrTank1MT] = useState("");
   const [corrTank2MT, setCorrTank2MT] = useState("");
@@ -521,38 +523,22 @@ export default function PlantBitumenStock() {
     }
   }
 
-  function handlePinAction(type: string, readingId?: number) {
-    setPendingAction({ type: type as any, readingId });
-    setPinAuthTarget("admin");
-    setShowPinAuth(true);
+  function handleEdit(readingId: number) {
+    const reading = readings?.find(r => r.id === readingId);
+    if (reading) {
+      setEditingReading(reading);
+      setReadingDate(reading.date);
+      setReadingTime(reading.time || "");
+      setTankNumber(String(reading.tankNumber));
+      setDepthCm(String(reading.depthCm));
+      setReadingType(reading.readingType);
+      setNotes(reading.notes || "");
+      setDialogOpen(true);
+    }
   }
 
-  function handlePinSuccess(_role: string, _pin: string) {
-    setShowPinAuth(false);
-    if (!pendingAction) return;
-
-    if (pendingAction.type === "delete" && pendingAction.readingId) {
-      deleteMutation.mutate(pendingAction.readingId);
-    } else if (pendingAction.type === "edit" && pendingAction.readingId) {
-      const reading = readings?.find(r => r.id === pendingAction.readingId);
-      if (reading) {
-        setEditingReading(reading);
-        setReadingDate(reading.date);
-        setReadingTime(reading.time || "");
-        setTankNumber(String(reading.tankNumber));
-        setDepthCm(String(reading.depthCm));
-        setReadingType(reading.readingType);
-        setNotes(reading.notes || "");
-        setDialogOpen(true);
-      }
-    } else if (pendingAction.type === "export-excel") {
-      exportExcel();
-    } else if (pendingAction.type === "export-pdf") {
-      exportPdf();
-    } else if (pendingAction.type === "print") {
-      printData();
-    }
-    setPendingAction(null);
+  function handleDelete(readingId: number) {
+    deleteMutation.mutate(readingId);
   }
 
   function exportExcel() {
@@ -695,16 +681,6 @@ export default function PlantBitumenStock() {
           </CardContent>
         </Card>
       </div>
-    );
-  }
-
-  if (showPinAuth) {
-    return (
-      <PinAuth
-        targetRole={pinAuthTarget}
-        onSuccess={handlePinSuccess}
-        onClose={() => { setShowPinAuth(false); setPendingAction(null); }}
-      />
     );
   }
 
@@ -1297,13 +1273,13 @@ export default function PlantBitumenStock() {
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-medium">All Dip Readings</CardTitle>
             {isAdmin && <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => handlePinAction("export-excel")} data-testid="button-export-excel">
+              <Button variant="outline" size="sm" onClick={exportExcel} data-testid="button-export-excel" style={{ display: canExport ? undefined : "none" }}>
                 <Download className="w-4 h-4 mr-1" /> Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePinAction("export-pdf")} data-testid="button-export-pdf">
+              <Button variant="outline" size="sm" onClick={exportPdf} data-testid="button-export-pdf" style={{ display: canExport ? undefined : "none" }}>
                 <Download className="w-4 h-4 mr-1" /> PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePinAction("print")} data-testid="button-print">
+              <Button variant="outline" size="sm" onClick={printData} data-testid="button-print" style={{ display: canExport ? undefined : "none" }}>
                 <Printer className="w-4 h-4 mr-1" /> Print
               </Button>
             </div>}
@@ -1365,7 +1341,7 @@ export default function PlantBitumenStock() {
                       {isAdmin && <td className="p-2 text-center">
                         {deleteConfirmId === r.id ? (
                           <div className="flex gap-1 justify-center">
-                            <Button size="sm" variant="destructive" onClick={() => handlePinAction("delete", r.id)} data-testid={`button-confirm-delete-${r.id}`}>
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)} data-testid={`button-confirm-delete-${r.id}`}>
                               Confirm
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => setDeleteConfirmId(null)}>
@@ -1374,12 +1350,16 @@ export default function PlantBitumenStock() {
                           </div>
                         ) : (
                           <div className="flex gap-1 justify-center">
-                            <Button size="icon" variant="ghost" onClick={() => handlePinAction("edit", r.id)} data-testid={`button-edit-${r.id}`}>
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {canEdit && (
+                              <Button size="icon" variant="ghost" onClick={() => handleEdit(r.id)} data-testid={`button-edit-${r.id}`}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button size="icon" variant="ghost" onClick={() => setDeleteConfirmId(r.id)} data-testid={`button-delete-${r.id}`}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         )}
                       </td>}

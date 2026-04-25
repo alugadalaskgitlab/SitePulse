@@ -10,6 +10,23 @@ export default function Home() {
   const { user, sectionVisible, logout } = useAuth();
   const canManageUsers = sectionVisible("user_management");
   const canApproveDevices = sectionVisible("device_approval");
+  const canViewReports = sectionVisible("reports");
+  const canViewSettings = sectionVisible("admin_settings");
+  // Site landing — visible if any site/admin-site section is reachable.
+  const canSeeSite =
+    sectionVisible("site_dprs") ||
+    sectionVisible("site_materials") ||
+    sectionVisible("site_procurement") ||
+    sectionVisible("site_diesel");
+  // Plant landing — visible if any plant section is reachable.
+  const canSeePlant =
+    sectionVisible("plant_stock") ||
+    sectionVisible("plant_production") ||
+    sectionVisible("plant_equipment") ||
+    sectionVisible("plant_shift_logs") ||
+    sectionVisible("plant_daily_reports") ||
+    sectionVisible("plant_heating") ||
+    sectionVisible("vendor_bills");
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center mb-12">
@@ -23,35 +40,39 @@ export default function Home() {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
-        <Link href="/site">
-          <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-primary/50" data-testid="card-site-report">
-            <CardContent className="p-8 flex flex-col items-center text-center">
-              <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                <HardHat className="w-6 h-6 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">Site Report</h2>
-              <p className="text-muted-foreground text-sm">
-                Create and manage daily progress reports for construction sites
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        {canSeeSite && (
+          <Link href="/site">
+            <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-primary/50" data-testid="card-site-report">
+              <CardContent className="p-8 flex flex-col items-center text-center">
+                <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                  <HardHat className="w-6 h-6 text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Site Report</h2>
+                <p className="text-muted-foreground text-sm">
+                  Create and manage daily progress reports for construction sites
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
 
-        <Link href="/plant/dashboard?origin=portal">
-          <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-purple-500/50" data-testid="card-plant-report">
-            <CardContent className="p-8 flex flex-col items-center text-center">
-              <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />
-              <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mb-3">
-                <Factory className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">Plant Report</h2>
-              <p className="text-muted-foreground text-sm">
-                Hot-mix plant operations and material tracking
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        {canSeePlant && (
+          <Link href="/plant/dashboard?origin=portal">
+            <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-purple-500/50" data-testid="card-plant-report">
+              <CardContent className="p-8 flex flex-col items-center text-center">
+                <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />
+                <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mb-3">
+                  <Factory className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Plant Report</h2>
+                <p className="text-muted-foreground text-sm">
+                  Hot-mix plant operations and material tracking
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
       </div>
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -61,18 +82,22 @@ export default function Home() {
             Estimate Manager
           </Button>
         </Link>
-        <Link href="/admin/reports">
-          <Button variant="ghost" className="gap-2 text-muted-foreground" data-testid="button-admin-reports">
-            <BarChart3 className="w-4 h-4" />
-            Admin Reports
-          </Button>
-        </Link>
-        <Link href="/admin/settings">
-          <Button variant="ghost" className="gap-2" data-testid="button-admin-settings">
-            <Settings className="w-4 h-4" />
-            Settings
-          </Button>
-        </Link>
+        {canViewReports && (
+          <Link href="/admin/reports">
+            <Button variant="ghost" className="gap-2 text-muted-foreground" data-testid="button-admin-reports">
+              <BarChart3 className="w-4 h-4" />
+              Admin Reports
+            </Button>
+          </Link>
+        )}
+        {canViewSettings && (
+          <Link href="/admin/settings">
+            <Button variant="ghost" className="gap-2" data-testid="button-admin-settings">
+              <Settings className="w-4 h-4" />
+              Settings
+            </Button>
+          </Link>
+        )}
         {canManageUsers && (
           <Link href="/admin/users">
             <Button variant="ghost" className="gap-2" data-testid="button-user-management">

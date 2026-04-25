@@ -10,7 +10,7 @@ import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Spark
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useOrigin } from "@/hooks/use-origin";
-import { PinAuth } from "@/components/PinAuth";
+import { useAuth } from "@/lib/auth-context";
 import { LABOUR_CATEGORIES, LABOUR_GENDERS, ALL_PLANTS_SENTINEL } from "@shared/schema";
 
 type ReviewRow = {
@@ -560,7 +560,7 @@ export default function PlantShiftLogManpowerReview() {
   // "operations" tab), so back navigation lands on /plant/dashboard?tab=operations.
   // getPlantBackLink also forwards `role` from the current URL when present.
   const backLink = getPlantBackLink({ defaultTab: "operations" });
-  const [adminPin, setAdminPin] = useState<string | null>(null);
+  const { isAdmin } = useAuth();
 
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
@@ -607,12 +607,12 @@ export default function PlantShiftLogManpowerReview() {
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
-    enabled: adminPin !== null,
+    enabled: isAdmin,
   });
 
   const { data: plantNames } = useQuery<string[]>({
     queryKey: ["/api/plant-module/shift-logs/plants"],
-    enabled: adminPin !== null,
+    enabled: isAdmin,
   });
 
   type RecentMerge = {
@@ -660,16 +660,16 @@ export default function PlantShiftLogManpowerReview() {
   const [revertingAliasActivityId, setRevertingAliasActivityId] = useState<number | null>(null);
 
   const fetchRecentMerges = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     setLoadingRecent(true);
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/recent-merges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin }),
+        body: JSON.stringify({}),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       const body = await res.json();
       // Backwards-compatible: older builds returned a bare array of merges.
@@ -706,15 +706,15 @@ export default function PlantShiftLogManpowerReview() {
   }, [recentMerges, recentDupActivity]);
 
   const fetchLearnedAliases = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/learned-aliases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin }),
+        body: JSON.stringify({}),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       setLearnedAliases((await res.json()) as LearnedAliases);
     } catch (err) {
@@ -723,15 +723,15 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchCustomAliases = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/custom-aliases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin }),
+        body: JSON.stringify({}),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       setCustomAliases((await res.json()) as CustomAlias[]);
     } catch (err) {
@@ -740,7 +740,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitNewAlias = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -757,9 +757,9 @@ export default function PlantShiftLogManpowerReview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), tokenA: a, tokenB: b, kind: "alias" }),
+        body: JSON.stringify({ actor: actor.trim(), tokenA: a, tokenB: b, kind: "alias" }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       const result = (await res.json()) as { added: boolean; alias: CustomAlias | null };
       toast({
@@ -779,7 +779,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const deleteCustomAlias = async (id: number) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -790,9 +790,9 @@ export default function PlantShiftLogManpowerReview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), id }),
+        body: JSON.stringify({ actor: actor.trim(), id }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       toast({ title: "Removed" });
       await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
@@ -814,7 +814,7 @@ export default function PlantShiftLogManpowerReview() {
   // Each successful revert itself appends a new audit row so the feed
   // continues to be a complete history of every state change.
   const revertAliasActivity = async (a: AliasActivity) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -837,9 +837,9 @@ export default function PlantShiftLogManpowerReview() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ pin: adminPin, actor: actor.trim(), id: match.id }),
+          body: JSON.stringify({ actor: actor.trim(), id: match.id }),
         });
-        if (res.status === 401) { setAdminPin(null); return; }
+        if (res.status === 401) { window.location.assign("/login"); return; }
         if (!res.ok) throw new Error(await res.text());
         toast({
           title: "Reverted",
@@ -851,11 +851,11 @@ export default function PlantShiftLogManpowerReview() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            pin: adminPin, actor: actor.trim(),
+            actor: actor.trim(),
             tokenA: a.tokenA, tokenB: a.tokenB, kind: a.kind,
           }),
         });
-        if (res.status === 401) { setAdminPin(null); return; }
+        if (res.status === 401) { window.location.assign("/login"); return; }
         if (!res.ok) throw new Error(await res.text());
         const result = (await res.json()) as { added: boolean };
         toast({
@@ -874,7 +874,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const suppressLearnedFullPair = async (a: string, b: string) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -889,10 +889,10 @@ export default function PlantShiftLogManpowerReview() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          pin: adminPin, actor: actor.trim(), tokenA: a, tokenB: b, kind: "suppress_learned_pair",
+          actor: actor.trim(), tokenA: a, tokenB: b, kind: "suppress_learned_pair",
         }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       const result = (await res.json()) as { added: boolean };
       toast({
@@ -908,7 +908,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const suppressLearnedTokenPair = async (a: string, b: string) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -921,10 +921,10 @@ export default function PlantShiftLogManpowerReview() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          pin: adminPin, actor: actor.trim(), tokenA: a, tokenB: b, kind: "suppress_learned",
+          actor: actor.trim(), tokenA: a, tokenB: b, kind: "suppress_learned",
         }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       const result = (await res.json()) as { added: boolean };
       toast({
@@ -940,15 +940,15 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchDismissedPairs = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/dismissed-pairs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, plantName: dismissalsScopeKey }),
+        body: JSON.stringify({ plantName: dismissalsScopeKey }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       setDismissedPairs((await res.json()) as DismissedPair[]);
     } catch (err) {
@@ -957,27 +957,27 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   useEffect(() => {
-    if (adminPin !== null) {
+    if (isAdmin) {
       fetchRecentMerges();
       fetchLearnedAliases();
       fetchCustomAliases();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminPin]);
+  }, [isAdmin]);
 
   // Refetch dismissed pairs whenever the plant scope changes (or on unlock).
   // Also wipe any in-flight bulk-restore selection so a stale checkbox state
   // from the previous plant can't leak into the new scope.
   useEffect(() => {
-    if (adminPin !== null) {
+    if (isAdmin) {
       fetchDismissedPairs();
     }
     setSelectedDismissedIds({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminPin, dismissalsScopeKey]);
+  }, [isAdmin, dismissalsScopeKey]);
 
   const undoMerge = async (m: RecentMerge) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -997,7 +997,7 @@ export default function PlantShiftLogManpowerReview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), batchId: m.id }),
+        body: JSON.stringify({ actor: actor.trim(), batchId: m.id }),
       });
       if (!res.ok) throw new Error(await res.text());
       const result = (await res.json()) as { restored: number };
@@ -1015,7 +1015,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchRows = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     setLoading(true);
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/review-list", {
@@ -1023,15 +1023,15 @@ export default function PlantShiftLogManpowerReview() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          pin: adminPin,
+
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
           plantName: plantFilter || undefined,
         }),
       });
       if (res.status === 401) {
-        setAdminPin(null);
-        toast({ title: "Admin PIN required", variant: "destructive" });
+        toast({ title: "Admin access required", variant: "destructive" });
+        window.location.assign("/login");
         return;
       }
       if (!res.ok) throw new Error(await res.text());
@@ -1059,7 +1059,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitOne = async (row: ReviewRow) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     const e = edits[row.name];
     if (!e?.contractor || !e?.category || !e?.gender) {
       toast({ title: "Fill contractor, category and gender", variant: "destructive" });
@@ -1076,7 +1076,7 @@ export default function PlantShiftLogManpowerReview() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          pin: adminPin,
+
           actor: actor.trim(),
           name: row.name,
           contractorName: e.contractor.trim(),
@@ -1101,7 +1101,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitMerge = async () => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     const fromNames = Object.keys(selected).filter(n => selected[n]);
     if (fromNames.length < 2) {
       toast({ title: "Pick at least two name groups to merge", variant: "destructive" });
@@ -1145,7 +1145,7 @@ export default function PlantShiftLogManpowerReview() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          pin: adminPin,
+
           actor: actor.trim(),
           fromNames,
           toName: target,
@@ -1206,7 +1206,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const dismissCluster = async (c: Cluster) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1226,9 +1226,9 @@ export default function PlantShiftLogManpowerReview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), pairs, plantName: dismissalsScopeKey }),
+        body: JSON.stringify({ actor: actor.trim(), pairs, plantName: dismissalsScopeKey }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       const result = (await res.json()) as { added: number };
       toast({
@@ -1259,7 +1259,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const bulkRestoreDismissed = async (opts: { ids?: number[]; olderThanDays?: number; description: string }) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1275,14 +1275,14 @@ export default function PlantShiftLogManpowerReview() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          pin: adminPin,
+
           actor: actor.trim(),
           plantName: dismissalsScopeKey,
           ids: opts.ids,
           olderThanDays: opts.olderThanDays,
         }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       const result = (await res.json()) as { removed: number };
       toast({
@@ -1301,7 +1301,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const restoreDismissedPair = async (p: DismissedPair) => {
-    if (adminPin === null) return;
+    if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1312,9 +1312,9 @@ export default function PlantShiftLogManpowerReview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: adminPin, actor: actor.trim(), id: p.id }),
+        body: JSON.stringify({ actor: actor.trim(), id: p.id }),
       });
-      if (res.status === 401) { setAdminPin(null); return; }
+      if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
       toast({
         title: "Dismissal removed",
@@ -1417,13 +1417,16 @@ export default function PlantShiftLogManpowerReview() {
     return { workers: rows.length, items: rows.reduce((a, r) => a + r.count, 0) };
   }, [rows]);
 
-  if (adminPin === null) {
+  if (!isAdmin) {
     return (
-      <PinAuth
-        targetRole="admin"
-        onSuccess={(_role, pin) => setAdminPin(pin)}
-        onClose={() => { window.history.back(); }}
-      />
+      <div className="max-w-2xl mx-auto p-8 text-center space-y-3">
+        <ShieldAlert className="w-10 h-10 mx-auto text-muted-foreground" />
+        <h2 className="text-xl font-semibold">Admin access required</h2>
+        <p className="text-sm text-muted-foreground">You don't have permission to view this page.</p>
+        <Link href={backLink}>
+          <Button variant="outline" data-testid="button-back-no-access">Go back</Button>
+        </Link>
+      </div>
     );
   }
 
@@ -1437,9 +1440,6 @@ export default function PlantShiftLogManpowerReview() {
         </Link>
         <Users className="w-6 h-6 text-amber-700 dark:text-amber-500" />
         <h1 className="text-2xl font-bold flex-1">Review UNKNOWN-tagged Shift-Log Workers</h1>
-        <Button variant="ghost" size="sm" onClick={() => setAdminPin(null)} data-testid="button-lock">
-          Lock
-        </Button>
       </div>
 
       <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 p-3 text-sm flex items-start gap-2">
