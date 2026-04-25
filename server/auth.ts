@@ -676,6 +676,27 @@ export function getClientIp(req: Request): string | undefined {
 // are a no-op so intentional "edit without delete" splits set by an admin
 // after the migration are never overwritten.
 const SPLIT_PERMS_FLAG = "perm_v278_split_done";
+// Task #280 — one-time flag recording that the email-nullable / phone-login
+// schema transition has been applied. No data transformation is needed because
+// all pre-existing rows have a valid email and NULL phone, which is still
+// valid under the new schema. The flag just confirms the migration ran so
+// future restarts skip it immediately.
+const PHONE_LOGIN_MIGRATION_FLAG = "phone_login_v280_done";
+
+export async function migrateEmailPhoneSchema(): Promise<{ skipped: boolean }> {
+  const existing = await db.select().from(appSettings).where(eq(appSettings.key, PHONE_LOGIN_MIGRATION_FLAG));
+  if (existing.length > 0) {
+    console.log("migrateEmailPhoneSchema: already applied, skipping.");
+    return { skipped: true };
+  }
+  // Mark the migration as applied. No row-level changes required — all existing
+  // users have a non-null email and a null phone, which satisfies the new
+  // "at least one of email/phone must be set" constraint without modification.
+  await db.insert(appSettings).values({ key: PHONE_LOGIN_MIGRATION_FLAG, value: new Date().toISOString() });
+  console.log("migrateEmailPhoneSchema: schema transition recorded (email nullable, phone column enabled).");
+  return { skipped: false };
+}
+
 export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number; skipped: boolean }> {
   const existing = await db.select().from(appSettings).where(eq(appSettings.key, SPLIT_PERMS_FLAG));
   if (existing.length > 0) {
