@@ -747,9 +747,32 @@ export async function claimUnlockOrLockedRow(
   resourceType: LockableResourceType,
   resourceId: number,
   authorUserId: number,
+  isAdmin = false,
 ): Promise<boolean> {
   const tableName = LOCKABLE_TABLE_NAMES[resourceType];
   const { pool } = await import("./db");
+
+  // Admin bypass: admins can edit any record regardless of lock status.
+  // Just stamp the author and ensure the row is locked after the save —
+  // no unlock grant is needed or consumed.
+  if (isAdmin) {
+    const result = await pool.query(
+      `UPDATE ${tableName}
+          SET lock_status = 'locked',
+              unlocked_by_user_id = NULL,
+              unlocked_at = NULL,
+              unlock_reason = NULL,
+              author_user_id = COALESCE(author_user_id, $1)
+        WHERE id = $2
+        RETURNING id`,
+      [authorUserId, resourceId],
+    );
+    if (!result.rowCount || result.rowCount === 0) {
+      res.status(404).json({ error: "not_found" });
+      return false;
+    }
+    return true;
+  }
 
   // Single atomic flip: locked-status='unlocked' → 'locked' (and clear the
   // unlock metadata). RETURNING tells us whether the unlock was consumed.

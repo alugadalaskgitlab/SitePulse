@@ -1657,7 +1657,7 @@ export async function registerRoutes(
       // the unlock entry in a single SQL statement. If the data update below
       // fails for any reason, the row stays locked with its prior data — no
       // orphaned-unlocked state can ever exist.
-      if (!(await claimUnlockOrLockedRow(res, "equipment_usage", id, req.authUser!.id))) return;
+      if (!(await claimUnlockOrLockedRow(res, "equipment_usage", id, req.authUser!.id, req.authUser!.isAdmin))) return;
       const updated = await storage.updateEquipmentUsage(id, req.body);
       if (!updated) {
         return res.status(404).json({ message: "Equipment usage not found" });
@@ -3022,7 +3022,7 @@ export async function registerRoutes(
       // (flip 'unlocked' → 'locked') BEFORE the data save. For a brand-new
       // shift log we skip the claim and lock the new row after insert.
       if (existingId) {
-        if (!(await claimUnlockOrLockedRow(res, "plant_shift_log", existingId, req.authUser!.id))) return;
+        if (!(await claimUnlockOrLockedRow(res, "plant_shift_log", existingId, req.authUser!.id, req.authUser!.isAdmin))) return;
       }
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const authorizedRole: "admin" | "manager" | null = "manager";
@@ -4387,7 +4387,7 @@ export async function registerRoutes(
       }
 
       // Atomic claim — flips 'unlocked' → 'locked' before the data change.
-      if (!(await claimUnlockOrLockedRow(res, "purchase_indent", id, req.authUser!.id))) return;
+      if (!(await claimUnlockOrLockedRow(res, "purchase_indent", id, req.authUser!.id, req.authUser!.isAdmin))) return;
 
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
@@ -4603,7 +4603,7 @@ export async function registerRoutes(
       }
 
       // Atomic claim — flips 'unlocked' → 'locked' before the data change.
-      if (!(await claimUnlockOrLockedRow(res, "diesel_requirement", id, req.authUser!.id))) return;
+      if (!(await claimUnlockOrLockedRow(res, "diesel_requirement", id, req.authUser!.id, req.authUser!.isAdmin))) return;
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);
@@ -5103,7 +5103,7 @@ export async function registerRoutes(
       }
 
       // Atomic claim — flips 'unlocked' → 'locked' before the data change.
-      if (!(await claimUnlockOrLockedRow(res, "vendor_bill", id, req.authUser!.id))) return;
+      if (!(await claimUnlockOrLockedRow(res, "vendor_bill", id, req.authUser!.id, req.authUser!.isAdmin))) return;
 
       const bill = await storage.updateVendorBill(id, input);
       if (!bill) {

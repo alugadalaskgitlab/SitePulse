@@ -84,7 +84,10 @@ export function LockBadge(props: LockBadgeProps) {
   const section = LOCKABLE_RESOURCE_SECTION[resourceType];
   const hasEdit = sectionCan(section, "edit");
   const canUnlock = !!user && (user.isAdmin || (user.canUnlockRecords && hasEdit));
-  const showUnlockBtn = canUnlock && !unlocked;
+  // Admins bypass the lock check on save, so there is no need to explicitly
+  // unlock a record first. Only show the Unlock button for non-admin users
+  // who hold canUnlockRecords.
+  const showUnlockBtn = canUnlock && !unlocked && !user?.isAdmin;
 
   const unlockedBy = lookupName(record.unlockedByUserId);
   const unlockedAt = formatWhen(record.unlockedAt);
