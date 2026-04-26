@@ -573,6 +573,7 @@ export interface IStorage {
   createPersonnel(data: InsertPersonnel): Promise<Personnel>;
   updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined>;
   togglePersonnelActive(id: number): Promise<Personnel | undefined>;
+  deletePersonnel(id: number): Promise<boolean>;
 
   // Activity Personnel
   saveActivityPersonnel(progressEntryId: number, personnelIds: number[]): Promise<void>;
@@ -5928,6 +5929,11 @@ export class DatabaseStorage implements IStorage {
     const newStatus = existing.isActive === 1 ? 0 : 1;
     const [result] = await db.update(personnel).set({ isActive: newStatus }).where(eq(personnel.id, id)).returning();
     return result;
+  }
+
+  async deletePersonnel(id: number): Promise<boolean> {
+    const [result] = await db.delete(personnel).where(eq(personnel.id, id)).returning();
+    return !!result;
   }
 
   // Activity Personnel

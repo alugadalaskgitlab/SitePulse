@@ -385,6 +385,17 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/personnel/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const deleted = await storage.deletePersonnel(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Personnel not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete personnel" });
+    }
+  });
+
   // ============================================
   // SITE PURCHASES REPORT
   // ============================================
