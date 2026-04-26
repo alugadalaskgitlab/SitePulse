@@ -660,6 +660,11 @@ export default function PlantLdoMismatch() {
     };
   }, [daySummaries]);
 
+  const mismatchCount = useMemo(
+    () => daySummaries.filter(d => d.hasMismatch).length,
+    [daySummaries],
+  );
+
   const isLoading =
     sessionsQuery.isLoading || shiftLogsQuery.isLoading || ldoReadingsQuery.isLoading;
   const isError =
@@ -991,6 +996,20 @@ export default function PlantLdoMismatch() {
             >
               Apply
             </Button>
+            {!isLoading && !isError && daySummaries.length > 0 && (
+              <Badge
+                className={
+                  mismatchCount > 0
+                    ? "bg-destructive text-destructive-foreground self-end mb-1"
+                    : "bg-green-600 text-white self-end mb-1"
+                }
+                data-testid="badge-mismatch-count"
+              >
+                {mismatchCount > 0
+                  ? `${mismatchCount} of ${daySummaries.length} day${daySummaries.length !== 1 ? "s" : ""} exceed the ±${MISMATCH_THRESHOLD_L} L tolerance`
+                  : `All ${daySummaries.length} day${daySummaries.length !== 1 ? "s" : ""} within ±${MISMATCH_THRESHOLD_L} L tolerance`}
+              </Badge>
+            )}
           </div>
         </CardContent>
       </Card>
