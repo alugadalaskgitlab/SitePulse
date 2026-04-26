@@ -346,6 +346,7 @@ export function HeatingSessionDialog({
     },
     onSuccess: async (saved: BitumenHeatingSession) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
       toast({ title: "Heating session saved" });
@@ -386,6 +387,7 @@ export function HeatingSessionDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
       toast({ title: "Heating session deleted" });
       onOpenChange(false);

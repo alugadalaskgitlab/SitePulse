@@ -155,6 +155,55 @@ export default function PlantHeatingSessions() {
     return map;
   }, [reconciliationRows]);
 
+  // Task #300 — Dryer-source mismatch audit: cross-reference shift logs and
+  // heating sessions so mismatches are flagged inline on session rows.
+  type DryerMismatchRow = {
+    date: string;
+    plantName: string;
+    shiftLogId: number | null;
+    shiftLogValue: "TANK_1" | "TANK_2" | null;
+    conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasMismatch: boolean;
+  };
+  const { data: dryerMismatchRows } = useQuery<DryerMismatchRow[]>({
+    queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches", filterDateFrom, filterDateTo],
+    enabled: !!filterDateFrom && !!filterDateTo,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ dateFrom: filterDateFrom, dateTo: filterDateTo });
+      const res = await fetch(`/api/plant-module/heating-sessions/dryer-source-mismatches?${qs.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+  // A set of session IDs that are in conflict with their date's shift log.
+  const conflictingSessionIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const r of dryerMismatchRows || []) {
+      if (!r.hasMismatch) continue;
+      for (const s of r.conflictingSessions) set.add(s.id);
+    }
+    return set;
+  }, [dryerMismatchRows]);
+  // Per-date list of mismatching rows (one entry per plant) for header badges.
+  const dryerMismatchByDate = useMemo(() => {
+    const map = new Map<string, DryerMismatchRow[]>();
+    for (const r of dryerMismatchRows || []) {
+      if (!r.hasMismatch) continue;
+      const arr = map.get(r.date) || [];
+      arr.push(r);
+      map.set(r.date, arr);
+    }
+    return map;
+  }, [dryerMismatchRows]);
+  // Per-(date||plantName) lookup for individual session tooltip details.
+  const dryerMismatchByKey = useMemo(() => {
+    const map = new Map<string, DryerMismatchRow>();
+    for (const r of dryerMismatchRows || []) {
+      if (r.hasMismatch) map.set(`${r.date}||${r.plantName}`, r);
+    }
+    return map;
+  }, [dryerMismatchRows]);
+
   // Generator master entries (id + name) — sourced from Equipment Master so the
   // names line up with Equipment Usage / reports.
   const { data: generatorMasters } = useQuery<{ id: number | null; name: string }[]>({
@@ -417,6 +466,7 @@ export default function PlantHeatingSessions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
       toast({ title: "Heating session saved" });
@@ -437,6 +487,7 @@ export default function PlantHeatingSessions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
       toast({ title: "Heating session deleted" });
       setDialogOpen(false);
@@ -657,6 +708,30 @@ export default function PlantHeatingSessions() {
                         </Badge>
                       </Link>
                     ))}
+                    {(() => {
+                      const dms = dryerMismatchByDate.get(date);
+                      if (!dms || dms.length === 0) return null;
+                      const totalConflicts = dms.reduce((acc, dm) => acc + dm.conflictingSessions.length, 0);
+                      const tooltip = dms.map(dm => {
+                        const slLabel = dm.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                        const lines = dm.conflictingSessions.map(s => {
+                          const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                          const time = s.startTime ? ` at ${s.startTime}` : "";
+                          return `  Session #${s.id} (${s.sessionType}${time}) says ${hsLabel}`;
+                        });
+                        return [`${dm.plantName} shift log says ${slLabel}:`, ...lines].join("\n");
+                      }).join("\n");
+                      return (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-help"
+                          title={tooltip}
+                          data-testid={`badge-dryer-mismatch-date-${date}`}
+                        >
+                          ⚠ Dryer source conflict ({totalConflicts})
+                        </Badge>
+                      );
+                    })()}
                   </div>
                   {(reconByDate.get(date) || []).map(rec => (
                     <div
@@ -727,6 +802,21 @@ export default function PlantHeatingSessions() {
                                   Dryer: {s.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
                                 </Badge>
                               )}
+                              {conflictingSessionIds.has(s.id) && (() => {
+                                const dm = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
+                                const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-help"
+                                    title={`This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Open and re-save to reconcile.`}
+                                    data-testid={`badge-dryer-mismatch-session-${s.id}`}
+                                  >
+                                    ⚠ Dryer ≠ shift log
+                                  </Badge>
+                                );
+                              })()}
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                               <span>Staff: {s.staffName || "—"}</span>

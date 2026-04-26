@@ -3854,6 +3854,24 @@ export async function registerRoutes(
     }
   });
 
+  // Task #300 — Dryer-source mismatch audit across shift logs and heating
+  // sessions for the same (date, plant). Declared before the /:id route so
+  // Express does not try to parse "dryer-source-mismatches" as an id.
+  app.get("/api/plant-module/heating-sessions/dryer-source-mismatches", async (req, res) => {
+    try {
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      if (!dateFrom || !dateTo) {
+        return res.status(400).json({ message: "dateFrom and dateTo are required" });
+      }
+      const plantName = (req.query.plant as string | undefined) || undefined;
+      const rows = await storage.getDryerSourceMismatches({ dateFrom, dateTo, plantName });
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch dryer source mismatches" });
+    }
+  });
+
   app.get("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
       const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));

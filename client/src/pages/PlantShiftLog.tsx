@@ -189,6 +189,36 @@ export default function PlantShiftLog() {
     },
   });
 
+  // Task #300 — Dryer-source mismatch audit: fetch cross-check data for the
+  // visible date range so we can flag shift log rows where saved heating
+  // sessions have a different dryerFedFrom value.
+  type DryerMismatchRow = {
+    date: string;
+    plantName: string;
+    shiftLogId: number | null;
+    shiftLogValue: "TANK_1" | "TANK_2" | null;
+    conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasMismatch: boolean;
+  };
+  const { data: dryerMismatchRows } = useQuery<DryerMismatchRow[]>({
+    queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches", listDateFrom, listDateTo],
+    enabled: viewMode === "list" && !!listDateFrom && !!listDateTo,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ dateFrom: listDateFrom, dateTo: listDateTo });
+      const res = await fetch(`/api/plant-module/heating-sessions/dryer-source-mismatches?${qs.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+  // Keyed by "date||plantName" for O(1) lookup during row rendering.
+  const dryerMismatchByKey = useMemo(() => {
+    const map = new Map<string, DryerMismatchRow>();
+    for (const r of dryerMismatchRows || []) {
+      if (r.hasMismatch) map.set(`${r.date}||${r.plantName}`, r);
+    }
+    return map;
+  }, [dryerMismatchRows]);
+
   const resetForNew = () => {
     setSavedId(null);
     setIsFinalized(0);
@@ -395,6 +425,7 @@ export default function PlantShiftLog() {
     },
     onSuccess: async (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
@@ -444,6 +475,7 @@ export default function PlantShiftLog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       toast({ title: "Shift log deleted" });
       goBackToList();
     },
@@ -702,6 +734,26 @@ export default function PlantShiftLog() {
                                     Dryer: {r.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
                                   </Badge>
                                 )}
+                                {(() => {
+                                  const mismatch = dryerMismatchByKey.get(`${r.date}||${r.plantName}`);
+                                  if (!mismatch) return null;
+                                  const slLabel = mismatch.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                                  const tooltip = mismatch.conflictingSessions.map(s => {
+                                    const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                                    const time = s.startTime ? ` at ${s.startTime}` : "";
+                                    return `Heating session #${s.id} (${s.sessionType}${time}) says ${hsLabel} — shift log says ${slLabel}`;
+                                  }).join("\n");
+                                  return (
+                                    <Badge
+                                      variant="destructive"
+                                      className="text-[10px] cursor-help"
+                                      title={tooltip}
+                                      data-testid={`badge-dryer-mismatch-${r.id}`}
+                                    >
+                                      ⚠ Dryer mismatch
+                                    </Badge>
+                                  );
+                                })()}
                               </div>
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                                 <span>Operator: {r.operatorName || "—"}</span>

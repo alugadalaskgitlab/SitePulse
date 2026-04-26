@@ -705,6 +705,21 @@ export interface IStorage {
   deleteBitumenHeatingSession(id: number): Promise<boolean>;
   getHeatingTrends(filters: { dateFrom: string; dateTo: string; plantName?: string }): Promise<HeatingTrendsResult>;
   getLatestLdoMeterReading(tank: number, beforeDateTime: string, plantName?: string): Promise<{ value: number; date: string; time: string | null; source: string; sourceId: number } | null>;
+  // Task #300 — Per-(date, plant) dryer-source mismatch between shift logs and
+  // heating sessions. Surfaced in both list views so operators can spot and
+  // fix conflicts on historical records before re-opening them.
+  getDryerSourceMismatches(filters: {
+    dateFrom: string;
+    dateTo: string;
+    plantName?: string;
+  }): Promise<Array<{
+    date: string;
+    plantName: string;
+    shiftLogId: number | null;
+    shiftLogValue: "TANK_1" | "TANK_2" | null;
+    conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasMismatch: boolean;
+  }>>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -11166,6 +11181,110 @@ export class DatabaseStorage implements IStorage {
         reconciliation,
       });
     }
+    out.sort((a, b) => b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName));
+    return out;
+  }
+
+  // Task #300 — Cross-reference shift logs and heating sessions in a date
+  // range for dryerFedFrom conflicts. Returns one entry per (date, plant) that
+  // has at least one record on each side; only entries where the shift log value
+  // disagrees with at least one heating session are flagged hasMismatch=true.
+  async getDryerSourceMismatches(filters: {
+    dateFrom: string;
+    dateTo: string;
+    plantName?: string;
+  }): Promise<Array<{
+    date: string;
+    plantName: string;
+    shiftLogId: number | null;
+    shiftLogValue: "TANK_1" | "TANK_2" | null;
+    conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasMismatch: boolean;
+  }>> {
+    const shiftConds: any[] = [
+      gte(plantShiftLogs.date, filters.dateFrom),
+      lte(plantShiftLogs.date, filters.dateTo),
+    ];
+    if (filters.plantName) shiftConds.push(eq(plantShiftLogs.plantName, filters.plantName));
+    const shiftRows = await db.select({
+      id: plantShiftLogs.id,
+      date: plantShiftLogs.date,
+      plantName: plantShiftLogs.plantName,
+      dryerFedFrom: plantShiftLogs.dryerFedFrom,
+    }).from(plantShiftLogs).where(and(...shiftConds));
+
+    const sessConds: any[] = [
+      gte(bitumenHeatingSessions.date, filters.dateFrom),
+      lte(bitumenHeatingSessions.date, filters.dateTo),
+    ];
+    if (filters.plantName) sessConds.push(eq(bitumenHeatingSessions.plantName, filters.plantName));
+    const sessRows = await db.select({
+      id: bitumenHeatingSessions.id,
+      date: bitumenHeatingSessions.date,
+      plantName: bitumenHeatingSessions.plantName,
+      dryerFedFrom: bitumenHeatingSessions.dryerFedFrom,
+      sessionType: bitumenHeatingSessions.sessionType,
+      startTime: bitumenHeatingSessions.startTime,
+    }).from(bitumenHeatingSessions).where(and(...sessConds));
+
+    // Build per-(date, plant) buckets
+    type Bucket = {
+      shiftLogId: number | null;
+      shiftLogValue: "TANK_1" | "TANK_2" | null;
+      sessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    };
+    const buckets = new Map<string, Bucket>();
+    const keyOf = (date: string, plant: string) => `${date}||${plant}`;
+    const ensure = (date: string, plant: string): Bucket => {
+      const k = keyOf(date, plant);
+      let b = buckets.get(k);
+      if (!b) {
+        b = { shiftLogId: null, shiftLogValue: null, sessions: [] };
+        buckets.set(k, b);
+      }
+      return b;
+    };
+
+    for (const sh of shiftRows) {
+      const b = ensure(sh.date, sh.plantName);
+      b.shiftLogId = sh.id;
+      // Keep null/unknown values as null — defaulting to TANK_2 would generate
+      // spurious mismatches for records that pre-date the dryerFedFrom field.
+      b.shiftLogValue = (sh.dryerFedFrom === "TANK_1" || sh.dryerFedFrom === "TANK_2") ? sh.dryerFedFrom : null;
+    }
+    for (const s of sessRows) {
+      const b = ensure(s.date, s.plantName);
+      // Sessions have notNull+default TANK_2, but guard defensively.
+      const val: "TANK_1" | "TANK_2" = (s.dryerFedFrom === "TANK_1") ? "TANK_1" : "TANK_2";
+      b.sessions.push({ id: s.id, dryerFedFrom: val, sessionType: s.sessionType, startTime: s.startTime });
+    }
+
+    const out: Array<{
+      date: string;
+      plantName: string;
+      shiftLogId: number | null;
+      shiftLogValue: "TANK_1" | "TANK_2" | null;
+      conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+      hasMismatch: boolean;
+    }> = [];
+
+    for (const [k, b] of buckets.entries()) {
+      const [date, plant] = k.split("||");
+      // Only flag when we have a shift log with a known value and at least one
+      // heating session. Skip null shift-log values — they pre-date the field
+      // and can't be meaningfully compared.
+      if (b.shiftLogId == null || b.shiftLogValue == null || b.sessions.length === 0) continue;
+      const conflicting = b.sessions.filter(s => s.dryerFedFrom !== b.shiftLogValue);
+      out.push({
+        date,
+        plantName: plant,
+        shiftLogId: b.shiftLogId,
+        shiftLogValue: b.shiftLogValue,
+        conflictingSessions: conflicting,
+        hasMismatch: conflicting.length > 0,
+      });
+    }
+
     out.sort((a, b) => b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName));
     return out;
   }
