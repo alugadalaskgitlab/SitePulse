@@ -384,7 +384,7 @@ export default function PlantDailyReport() {
               <div className="md:col-span-4 text-xs text-muted-foreground">
                 Tank stock deducted today (dryer meter is routed to{" "}
                 <span className="font-medium" data-testid="text-dryer-fed-from-summary">
-                  {data.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2"}
+                  {data.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : data.ldo.dryerFedFrom === "TANK_2" ? "Tank 2" : "Not set"}
                 </span>
                 )
               </div>
