@@ -674,6 +674,15 @@ function PermissionsDialog({
       },
     }));
   }
+  function setAllForSubGroup(sections: SectionKey[], value: boolean) {
+    setMatrix((prev) => {
+      const next = { ...prev };
+      for (const s of sections) {
+        next[s] = { view: value, create: value, edit: value, delete: value, view_reports: value, export: value };
+      }
+      return next;
+    });
+  }
 
   const otherUsers = users.filter((u) => u.id !== userId && !u.isAdmin);
 
@@ -821,10 +830,20 @@ function PermissionsDialog({
                         sections: ["master_parties", "master_materials", "master_equipment", "master_personnel"] as SectionKey[],
                       },
                     ] as { label: string; sections: SectionKey[]; labelOverrides?: Partial<Record<SectionKey, string>>; rowKeySuffix?: string; note?: string }[]
-                  ).map((sub) => (
+                  ).map((sub) => {
+                    const subGroupAll = sub.sections.length > 0 && sub.sections.every((s) => ACTIONS.every((a) => matrix[s][a]));
+                    return (
                     <div key={sub.label}>
-                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">
-                        {sub.label}
+                      <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">
+                        <span>{sub.label}</span>
+                        <label className="flex items-center gap-1.5 cursor-pointer normal-case font-normal text-xs tracking-normal">
+                          <Checkbox
+                            checked={subGroupAll}
+                            onCheckedChange={(v) => setAllForSubGroup(sub.sections, !!v)}
+                            data-testid={`checkbox-subgroup-${sub.label.toLowerCase()}-all`}
+                          />
+                          Grant all
+                        </label>
                       </div>
                       {sub.sections.length > 0 && (
                         <PermMatrix
@@ -837,7 +856,7 @@ function PermissionsDialog({
                         <p className="text-xs text-muted-foreground mt-2 px-1 italic">{sub.note}</p>
                       )}
                     </div>
-                  ))}
+                  ); })}
                 </div>
               ) : (
                 <PermMatrix sections={g.sections} />
