@@ -1680,6 +1680,15 @@ export default function PlantShiftLogManpowerReview() {
           <CardTitle className="text-base flex items-center gap-2">
             <History className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
             Recent activity (last 30 days)
+            {selectedAliasActivityFeedCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700 px-2 py-0.5 text-[11px] font-medium text-purple-800 dark:text-purple-200"
+                data-testid="badge-alias-selected-count"
+              >
+                <span className="font-semibold">{selectedAliasActivityFeedCount}</span>
+                alias row{selectedAliasActivityFeedCount === 1 ? "" : "s"} selected
+              </span>
+            )}
           </CardTitle>
           <Button
             size="sm"
