@@ -207,8 +207,6 @@ export interface IStorage {
   getPlantSettings(plantName: string): Promise<PlantSettings | null>;
   listPlantSettings(): Promise<PlantSettings[]>;
   upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings>;
-  verifyPin(role: "manager" | "admin", pin: string): Promise<boolean>;
-  
   // Plant Module Phase-1 - Masters
   getParties(): Promise<Party[]>;
   createParty(party: InsertParty): Promise<Party>;
@@ -1730,10 +1728,6 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // Default PINs (used as fallback if not set in database)
-  private readonly DEFAULT_MANAGER_PIN = "1234";
-  private readonly DEFAULT_ADMIN_PIN = "5678";
-
   async getSetting(key: string): Promise<string | null> {
     const setting = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
     return setting.length > 0 ? setting[0].value : null;
@@ -1782,16 +1776,6 @@ export class DatabaseStorage implements IStorage {
       ...patch,
     }).returning();
     return inserted;
-  }
-
-  async verifyPin(role: "manager" | "admin", pin: string): Promise<boolean> {
-    if (role === "manager") {
-      const managerPin = await this.getSetting("manager_pin");
-      return pin === (managerPin || this.DEFAULT_MANAGER_PIN);
-    } else {
-      const adminPin = await this.getSetting("admin_pin");
-      return pin === (adminPin || this.DEFAULT_ADMIN_PIN);
-    }
   }
 
   // ============================================

@@ -651,7 +651,7 @@ export function registerAuthRoutes(app: Express) {
 }
 
 // =================================================================
-// Helpers reused by routes.ts when migrating verifyPin sites.
+// Auth helpers used by routes.ts for session-based access control.
 // =================================================================
 
 export function assertAuthed(req: Request, res: Response): User | null {
