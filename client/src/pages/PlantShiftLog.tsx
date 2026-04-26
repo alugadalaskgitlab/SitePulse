@@ -603,7 +603,7 @@ export default function PlantShiftLog() {
           <CardHeader><CardTitle>Plant Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-              !sorted.length ? <p className="text-sm text-muted-foreground">No shift logs in this date range.</p> :
+              !sorted.length ? <p className="text-sm text-muted-foreground">No plant logs in this date range.</p> :
               <div className="space-y-4">
                 {Object.keys(grouped).map(d => (
                   <div key={d}>
@@ -705,7 +705,7 @@ export default function PlantShiftLog() {
                 data-testid="switch-no-main-plant-ops"
               />
               <Label htmlFor="no-main-plant-ops" className="text-xs cursor-pointer">
-                No main plant operations
+                No Main Plant Operations
               </Label>
             </div>
           </div>
