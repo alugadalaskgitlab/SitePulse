@@ -158,32 +158,21 @@ export default function PlantLdoBackfill() {
   const [autoChain, setAutoChain] = useState(true);
   const [csvText, setCsvText] = useState("");
   const [csvOpen, setCsvOpen] = useState(false);
-  const [pin, setPin] = useState("");
-  const [pinUnlocked, setPinUnlocked] = useState(false);
 
   const [grid, setGrid] = useState<GridRow[]>([]);
 
   const dateRange = useMemo(() => buildDateRange(from, to), [from, to]);
 
   const { data: readings, isLoading, isError, error } = useQuery<LdoFlowReading[]>({
-    queryKey: ["/api/plant-module/ldo-backfill", from, to, plant, pin],
+    queryKey: ["/api/plant-module/ldo-backfill", from, to, plant],
     queryFn: async () => {
-      if (!from || !to || !pin) return [];
+      if (!from || !to) return [];
       const qs = new URLSearchParams({ from, to, plant }).toString();
-      const res = await fetch(`/api/plant-module/ldo-backfill?${qs}`, {
-        credentials: "include",
-        headers: { "X-Admin-Pin": pin },
-      });
-      if (res.status === 401) {
-        setPinUnlocked(false);
-        throw new Error((await res.text()) || "Invalid admin PIN");
-      }
+      const res = await fetch(`/api/plant-module/ldo-backfill?${qs}`, { credentials: "include" });
       if (!res.ok) throw new Error((await res.text()) || "Failed to load");
-      const json = await res.json();
-      setPinUnlocked(true);
-      return json;
+      return res.json();
     },
-    enabled: isAdmin && !!from && !!to && !!pin && pinUnlocked,
+    enabled: isAdmin && !!from && !!to,
   });
 
   useEffect(() => {
@@ -354,7 +343,7 @@ export default function PlantLdoBackfill() {
   // ---------- Save ----------
   const saveMutation = useMutation<BackfillSaveResult, Error, { plant: string; rows: BackfillPayloadRow[] }>({
     mutationFn: async (payload) => {
-      const res = await apiRequest("POST", "/api/plant-module/ldo-backfill", { ...payload, pin });
+      const res = await apiRequest("POST", "/api/plant-module/ldo-backfill", payload);
       return res.json() as Promise<BackfillSaveResult>;
     },
     onSuccess: (result) => {
@@ -407,39 +396,7 @@ export default function PlantLdoBackfill() {
       toast({ title: "Nothing to save", description: "No editable cells were modified" });
       return;
     }
-    if (!pin || !pinUnlocked) {
-      toast({ title: "Admin PIN required", description: "Enter and verify the admin PIN before saving", variant: "destructive" });
-      return;
-    }
     saveMutation.mutate({ plant, rows: payload });
-  };
-
-  const verifyPin = async () => {
-    if (!pin) {
-      toast({ title: "Enter the admin PIN", variant: "destructive" });
-      return;
-    }
-    try {
-      const qs = new URLSearchParams({ from, to, plant }).toString();
-      const res = await fetch(`/api/plant-module/ldo-backfill?${qs}`, {
-        credentials: "include",
-        headers: { "X-Admin-Pin": pin },
-      });
-      if (res.status === 401) {
-        setPinUnlocked(false);
-        toast({ title: "Invalid admin PIN", variant: "destructive" });
-        return;
-      }
-      if (!res.ok) {
-        toast({ title: "Verify failed", description: await res.text(), variant: "destructive" });
-        return;
-      }
-      setPinUnlocked(true);
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-backfill"] });
-      toast({ title: "PIN verified", description: "You can now load and save backfill data" });
-    } catch (err) {
-      toast({ title: "Verify failed", description: errorMessage(err), variant: "destructive" });
-    }
   };
 
   if (!isAdmin) {
@@ -515,36 +472,6 @@ export default function PlantLdoBackfill() {
             </div>
           </div>
 
-          <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/30 flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[180px]">
-              <Label className="text-xs flex items-center gap-1">
-                <Lock className="w-3 h-3" /> Admin PIN
-              </Label>
-              <Input
-                type="password"
-                value={pin}
-                onChange={e => { setPin(e.target.value); setPinUnlocked(false); }}
-                placeholder="Required to load and save"
-                autoComplete="off"
-                data-testid="input-admin-pin"
-              />
-            </div>
-            <Button
-              size="sm"
-              variant={pinUnlocked ? "outline" : "default"}
-              onClick={verifyPin}
-              disabled={!pin}
-              data-testid="button-verify-pin"
-            >
-              {pinUnlocked ? "Re-verify PIN" : "Verify PIN & load"}
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {pinUnlocked
-                ? "PIN verified — you can edit and save."
-                : "Enter the admin PIN, then verify to load existing readings."}
-            </span>
-          </div>
-
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setCsvOpen(o => !o)} data-testid="button-toggle-csv">
               <FileSpreadsheet className="w-4 h-4 mr-1" />
@@ -553,7 +480,7 @@ export default function PlantLdoBackfill() {
             <Button
               size="sm"
               onClick={handleSave}
-              disabled={saveMutation.isPending || errorCount > 0 || grid.length === 0 || !pinUnlocked}
+              disabled={saveMutation.isPending || errorCount > 0 || grid.length === 0}
               data-testid="button-save-backfill"
             >
               {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
@@ -585,7 +512,7 @@ export default function PlantLdoBackfill() {
                 data-testid="textarea-csv"
               />
               <div className="flex gap-2">
-                <Button size="sm" onClick={applyCsv} disabled={!pinUnlocked} data-testid="button-apply-csv">Apply CSV</Button>
+                <Button size="sm" onClick={applyCsv} data-testid="button-apply-csv">Apply CSV</Button>
                 <Button size="sm" variant="ghost" onClick={() => { setCsvText(""); setCsvOpen(false); }}>Cancel</Button>
               </div>
             </div>
@@ -644,7 +571,7 @@ export default function PlantLdoBackfill() {
                                 step="any"
                                 value={cell.value}
                                 onChange={e => updateCell(idx, tankNum, kind, e.target.value)}
-                                disabled={protectedCell || !pinUnlocked}
+                                disabled={protectedCell}
                                 className={`h-8 ${issue ? "border-red-500" : ""}`}
                                 data-testid={`input-${tankKey}-${kind}-${row.date}`}
                               />
@@ -660,7 +587,6 @@ export default function PlantLdoBackfill() {
                           <Select
                             value={row.dryerFedFrom2}
                             onValueChange={v => updateDryerFedFrom2(idx, v as "TANK_1" | "TANK_2")}
-                            disabled={!pinUnlocked}
                           >
                             <SelectTrigger className="h-8 text-xs" data-testid={`select-dryer-source-${row.date}`}>
                               <SelectValue />
@@ -680,7 +606,6 @@ export default function PlantLdoBackfill() {
                             onChange={e => updateRemarks(idx, e.target.value)}
                             placeholder="optional"
                             className="h-8"
-                            disabled={!pinUnlocked}
                             data-testid={`input-remarks-${row.date}`}
                           />
                         </td>

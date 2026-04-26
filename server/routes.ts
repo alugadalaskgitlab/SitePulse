@@ -2652,28 +2652,6 @@ export async function registerRoutes(
   // tank replaces the prior backfill row, never the shift-log/heating row.
   // ============================================
 
-  // PIN-gated (verifyPin("admin", pin)) on top of session admin assertion.
-  // PIN may arrive in body (POST), query string, or X-Admin-Pin header (GET).
-  const ldoBackfillExtractPin = (req: any): string => {
-    const headerPin = req.headers?.["x-admin-pin"];
-    return String(
-      (req.body && req.body.pin) ?? req.query?.pin ?? (Array.isArray(headerPin) ? headerPin[0] : headerPin) ?? ""
-    );
-  };
-  const ldoBackfillVerifyPin = async (req: any, res: any): Promise<boolean> => {
-    const pin = ldoBackfillExtractPin(req);
-    if (!pin) {
-      res.status(401).json({ message: "Admin PIN required" });
-      return false;
-    }
-    const ok = await storage.verifyPin("admin", pin);
-    if (!ok) {
-      res.status(401).json({ message: "Invalid admin PIN" });
-      return false;
-    }
-    return true;
-  };
-
   const ldoBackfillGetSchema = z.object({
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from must be YYYY-MM-DD"),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "to must be YYYY-MM-DD"),
@@ -2694,7 +2672,6 @@ export async function registerRoutes(
   });
 
   const ldoBackfillPostSchema = z.object({
-    pin: z.string().min(1),
     plant: z.string().trim().min(1),
     rows: z.array(ldoBackfillRowSchema).min(1),
   });
@@ -2702,7 +2679,6 @@ export async function registerRoutes(
   app.get("/api/plant-module/ldo-backfill", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      if (!(await ldoBackfillVerifyPin(req, res))) return;
       const parsed = ldoBackfillGetSchema.safeParse(req.query);
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.issues.map(i => i.message).join("; ") });
@@ -2719,7 +2695,6 @@ export async function registerRoutes(
   app.post("/api/plant-module/ldo-backfill", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      if (!(await ldoBackfillVerifyPin(req, res))) return;
       const actor = currentUserName(req);
       const parsed = ldoBackfillPostSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -2826,7 +2801,6 @@ export async function registerRoutes(
   });
 
   const ldoDipBackfillPostSchema = z.object({
-    pin: z.string().min(1),
     plant: z.string().trim().min(1),
     rows: z.array(ldoDipBackfillRowSchema).min(1),
   });
@@ -2834,7 +2808,6 @@ export async function registerRoutes(
   app.get("/api/plant-module/ldo-dip-backfill", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      if (!(await ldoBackfillVerifyPin(req, res))) return;
       const parsed = ldoBackfillGetSchema.safeParse(req.query);
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.issues.map(i => i.message).join("; ") });
@@ -2851,7 +2824,6 @@ export async function registerRoutes(
   app.post("/api/plant-module/ldo-dip-backfill", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      if (!(await ldoBackfillVerifyPin(req, res))) return;
       const actor = currentUserName(req);
       const parsed = ldoDipBackfillPostSchema.safeParse(req.body);
       if (!parsed.success) {
