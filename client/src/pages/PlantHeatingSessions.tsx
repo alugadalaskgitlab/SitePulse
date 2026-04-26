@@ -1012,7 +1012,6 @@ export default function PlantHeatingSessions() {
                     <SelectValue placeholder="Not set" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NONE">Not set</SelectItem>
                     <SelectItem value="TANK_1">Tank 1</SelectItem>
                     <SelectItem value="TANK_2">Tank 2</SelectItem>
                   </SelectContent>
