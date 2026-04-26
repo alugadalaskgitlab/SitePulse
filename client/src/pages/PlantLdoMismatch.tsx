@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronRight,
+  Download,
   Flame,
   GitCompare,
   Loader2,
@@ -21,6 +22,9 @@ import {
   BookOpen,
   Calendar,
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { BitumenHeatingSession, PlantShiftLog, LdoFlowReading } from "@shared/schema";
 import { heatingSessionTypeLabel } from "@shared/schema";
 import { HEATING_TRENDS_MISMATCH_THRESHOLD_L } from "@shared/heating-trends-constants";
@@ -663,6 +667,245 @@ export default function PlantLdoMismatch() {
 
   const isMultiDay = dates.length > 1;
 
+  function handleExport() {
+    const fmtVal = (n: number | null | undefined, digits = 1) =>
+      n == null || isNaN(n as number) ? "" : Number(n).toFixed(digits);
+
+    const summaryRows = daySummaries.map(day => ({
+      Date: day.date,
+      "Sessions (L)": day.sessions.length > 0 ? fmtVal(day.sessionsTotalL) : "",
+      "Shift Meter (L)": day.anyShiftHasMeter ? fmtVal(day.shiftTotalL) : "",
+      "LDO Ledger (L)": day.ledgerRows.length > 0 ? fmtVal(day.ledgerTotalL) : "",
+      "Δ Sessions−Shift (L)":
+        day.deltaSessionsVsShift != null
+          ? (day.deltaSessionsVsShift > 0 ? "+" : "") + fmtVal(day.deltaSessionsVsShift)
+          : "",
+      "Δ Sessions−Ledger (L)":
+        day.deltaSessionsVsLedger != null
+          ? (day.deltaSessionsVsLedger > 0 ? "+" : "") + fmtVal(day.deltaSessionsVsLedger)
+          : "",
+      "Δ Shift−Ledger (L)":
+        day.deltaShiftVsLedger != null
+          ? (day.deltaShiftVsLedger > 0 ? "+" : "") + fmtVal(day.deltaShiftVsLedger)
+          : "",
+      Mismatch: day.hasMismatch ? "YES" : "—",
+    }));
+
+    if (isMultiDay) {
+      summaryRows.push({
+        Date: `Total (${dates.length} days)`,
+        "Sessions (L)": fmtVal(rangeTotals.sessionsTotalL),
+        "Shift Meter (L)": rangeTotals.anyShiftHasMeter ? fmtVal(rangeTotals.shiftTotalL) : "",
+        "LDO Ledger (L)": daySummaries.some(d => d.ledgerRows.length > 0)
+          ? fmtVal(rangeTotals.ledgerTotalL)
+          : "",
+        "Δ Sessions−Shift (L)":
+          rangeTotals.deltaSessionsVsShift != null
+            ? (rangeTotals.deltaSessionsVsShift > 0 ? "+" : "") +
+              fmtVal(rangeTotals.deltaSessionsVsShift)
+            : "",
+        "Δ Sessions−Ledger (L)":
+          rangeTotals.deltaSessionsVsLedger != null
+            ? (rangeTotals.deltaSessionsVsLedger > 0 ? "+" : "") +
+              fmtVal(rangeTotals.deltaSessionsVsLedger)
+            : "",
+        "Δ Shift−Ledger (L)":
+          rangeTotals.deltaShiftVsLedger != null
+            ? (rangeTotals.deltaShiftVsLedger > 0 ? "+" : "") +
+              fmtVal(rangeTotals.deltaShiftVsLedger)
+            : "",
+        Mismatch: "",
+      });
+    }
+
+    const mismatchDays = daySummaries.filter(d => d.hasMismatch);
+    const detailRows: Record<string, string>[] = [];
+    for (const day of mismatchDays) {
+      for (const s of day.sessions) {
+        detailRows.push({
+          Date: day.date,
+          Section: "Heating Session",
+          Source: `Session #${s.id}`,
+          Type: heatingSessionTypeLabel(s.sessionType),
+          "Opening Meter": fmtVal(s.ldoTank1OpeningMeter, 2),
+          "Closing Meter": fmtVal(s.ldoTank1ClosingMeter, 2),
+          "Consumed (L)": fmtVal(s.ldoTank1Consumed, 1),
+          Notes: "",
+        });
+      }
+      for (const sh of day.shiftLogs) {
+        const consumed = shiftConsumed(sh);
+        detailRows.push({
+          Date: day.date,
+          Section: "Shift Log",
+          Source: `Shift ${sh.shiftCode}`,
+          Type: "",
+          "Opening Meter": fmtVal(sh.ldoTank1OpeningMeter, 2),
+          "Closing Meter": fmtVal(sh.ldoTank1ClosingMeter, 2),
+          "Consumed (L)": consumed != null ? fmtVal(consumed, 1) : "",
+          Notes: "",
+        });
+      }
+      for (const r of day.ledgerRows) {
+        detailRows.push({
+          Date: day.date,
+          Section: "LDO Ledger",
+          Source: sourceLabel(r),
+          Type: r.readingType || "",
+          "Opening Meter": "",
+          "Closing Meter": fmtVal(r.meterReading, 2),
+          "Consumed (L)": r.quantityLiters != null ? fmtVal(r.quantityLiters, 1) : "",
+          Notes: r.notes || "",
+        });
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+    if (detailRows.length > 0) {
+      const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+      XLSX.utils.book_append_sheet(wb, wsDetail, "Mismatch Detail");
+    }
+
+    const safePlant = plant.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const dateLabel =
+      isMultiDay
+        ? `${effectiveDateFrom}_to_${effectiveDateTo}`
+        : effectiveDateFrom;
+    const filename = `LDO_Reconciliation_${safePlant}_${dateLabel}.xlsx`;
+
+    const arrBuf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([arrBuf], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleExportPdf() {
+    const fmtVal = (n: number | null | undefined, digits = 1) =>
+      n == null || isNaN(n as number) ? "—" : Number(n).toFixed(digits);
+    const fmtDelta = (d: number | null) => {
+      if (d == null) return "—";
+      return (d > 0 ? "+" : "") + fmtVal(d);
+    };
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const dateLabel = isMultiDay
+      ? `${effectiveDateFrom} → ${effectiveDateTo}`
+      : effectiveDateFrom;
+
+    doc.setFontSize(14);
+    doc.text("LDO Flow Ledger Reconciliation", 14, 14);
+    doc.setFontSize(9);
+    doc.text(`${plant}  ·  Tank 1 (Boiler)  ·  ${dateLabel}`, 14, 21);
+    doc.text(`Mismatch threshold: ±${MISMATCH_THRESHOLD_L} L`, 14, 27);
+
+    const summaryHead = [
+      ["Date", "Sessions (L)", "Shift Meter (L)", "LDO Ledger (L)", "Δ Sess−Shift", "Δ Sess−Ledger", "Δ Shift−Ledger", "Mismatch"],
+    ];
+    const summaryBody = daySummaries.map(day => [
+      day.date,
+      day.sessions.length > 0 ? fmtVal(day.sessionsTotalL) : "—",
+      day.anyShiftHasMeter ? fmtVal(day.shiftTotalL) : "—",
+      day.ledgerRows.length > 0 ? fmtVal(day.ledgerTotalL) : "—",
+      fmtDelta(day.deltaSessionsVsShift),
+      fmtDelta(day.deltaSessionsVsLedger),
+      fmtDelta(day.deltaShiftVsLedger),
+      day.hasMismatch ? "YES" : "—",
+    ]);
+    if (isMultiDay) {
+      summaryBody.push([
+        `Total (${dates.length} days)`,
+        fmtVal(rangeTotals.sessionsTotalL),
+        rangeTotals.anyShiftHasMeter ? fmtVal(rangeTotals.shiftTotalL) : "—",
+        daySummaries.some(d => d.ledgerRows.length > 0)
+          ? fmtVal(rangeTotals.ledgerTotalL)
+          : "—",
+        fmtDelta(rangeTotals.deltaSessionsVsShift),
+        fmtDelta(rangeTotals.deltaSessionsVsLedger),
+        fmtDelta(rangeTotals.deltaShiftVsLedger),
+        "",
+      ]);
+    }
+
+    autoTable(doc, {
+      startY: 32,
+      head: summaryHead,
+      body: summaryBody,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [245, 158, 11] },
+      didParseCell: (data) => {
+        if (data.section === "body") {
+          const val = String(data.cell.raw ?? "");
+          if (val === "YES") {
+            data.cell.styles.textColor = [220, 38, 38];
+            data.cell.styles.fontStyle = "bold";
+          }
+        }
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    const mismatchDays = daySummaries.filter(d => d.hasMismatch);
+    if (mismatchDays.length > 0) {
+      const lastY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY ?? 140;
+      const needNewPage = lastY > 155;
+      if (needNewPage) {
+        doc.addPage();
+      }
+      const headingY = needNewPage ? 10 : lastY + 10;
+      const detailStartY = needNewPage ? 16 : lastY + 16;
+
+      doc.setFontSize(12);
+      doc.text("Mismatch Detail", 14, headingY);
+
+      const detailHead = [["Date", "Section", "Source", "Type", "Opening Meter", "Closing Meter", "Consumed (L)", "Notes"]];
+      const detailBody: string[][] = [];
+      for (const day of mismatchDays) {
+        for (const s of day.sessions) {
+          detailBody.push([day.date, "Heating Session", `Session #${s.id}`, heatingSessionTypeLabel(s.sessionType), fmtVal(s.ldoTank1OpeningMeter, 2), fmtVal(s.ldoTank1ClosingMeter, 2), fmtVal(s.ldoTank1Consumed, 1), ""]);
+        }
+        for (const sh of day.shiftLogs) {
+          const consumed = shiftConsumed(sh);
+          detailBody.push([day.date, "Shift Log", `Shift ${sh.shiftCode}`, "", fmtVal(sh.ldoTank1OpeningMeter, 2), fmtVal(sh.ldoTank1ClosingMeter, 2), consumed != null ? fmtVal(consumed, 1) : "—", ""]);
+        }
+        for (const r of day.ledgerRows) {
+          detailBody.push([day.date, "LDO Ledger", sourceLabel(r), r.readingType || "", "", fmtVal(r.meterReading, 2), r.quantityLiters != null ? fmtVal(r.quantityLiters, 1) : "—", r.notes || ""]);
+        }
+      }
+
+      autoTable(doc, {
+        startY: detailStartY,
+        head: detailHead,
+        body: detailBody,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [220, 38, 38] },
+        margin: { left: 14, right: 14 },
+      });
+    }
+
+    const safePlant = plant.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const fileDateLabel = isMultiDay
+      ? `${effectiveDateFrom}_to_${effectiveDateTo}`
+      : effectiveDateFrom;
+    const filename = `LDO_Reconciliation_${safePlant}_${fileDateLabel}.pdf`;
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   const backLink = appendPlantContext(`/plant/heating-sessions/${routeDate}`, {
     defaultTab: "operations",
   });
@@ -675,7 +918,7 @@ export default function PlantLdoMismatch() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
         </Link>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <GitCompare className="w-6 h-6 text-amber-600" />
             LDO Flow Ledger Reconciliation
@@ -687,6 +930,28 @@ export default function PlantLdoMismatch() {
             · {plant} · Tank 1 (Boiler)
           </p>
         </div>
+        {!isLoading && !isError && daySummaries.length > 0 && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              data-testid="button-export-excel"
+            >
+              <Download className="w-4 h-4 mr-1.5" />
+              Export Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              data-testid="button-export-pdf"
+            >
+              <Download className="w-4 h-4 mr-1.5" />
+              Export PDF
+            </Button>
+          </>
+        )}
       </div>
 
       <Card>
