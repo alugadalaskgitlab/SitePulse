@@ -300,6 +300,21 @@ export default function PlantShiftLog() {
   const t1Lpc = plantSettings?.bitumenTank1LitresPerCm ?? null;
   const t2Lpc = plantSettings?.bitumenTank2LitresPerCm ?? null;
   const density = plantSettings?.bitumenDensityKgPerL ?? null;
+
+  // Task #325 — fetch today's dispatches to compute live L/MT stats in the
+  // LDO Flow Meters card. Only active in edit mode (no new API needed).
+  const { data: todayDispatches } = useQuery<Array<{ loadWeight: number; plantName: string }>>({
+    queryKey: ["/api/plant-module/dispatches", { dateFrom: date, dateTo: date }],
+    enabled: viewMode === "edit" && !!date,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/plant-module/dispatches?dateFrom=${encodeURIComponent(date)}&dateTo=${encodeURIComponent(date)}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Failed to fetch dispatches");
+      return res.json();
+    },
+  });
   const numOrNullSafe = (s: string) => (s.trim() === "" ? null : parseFloat(s));
   const dipHint = (cm: string, lpc: number | null) => {
     if (cm.trim() === "") return null;
@@ -563,6 +578,42 @@ export default function PlantShiftLog() {
     const t2 = (!isNaN(t2Open) && !isNaN(t2Close)) ? Math.max(0, t2Close - t2Open) : null;
     return { t1, t2, total: (t1 || 0) + (t2 || 0) };
   }, [ldoTank1OpeningMeter, ldoTank1ClosingMeter, ldoTank2OpeningMeter, ldoTank2ClosingMeter]);
+
+  // Task #325 — plant run hours derived from header start/stop times.
+  const plantRunHours = useMemo(() => {
+    if (!plantStartTime || !plantStopTime) return null;
+    const [sh, sm] = plantStartTime.split(":").map(Number);
+    const [eh, em] = plantStopTime.split(":").map(Number);
+    if (isNaN(sh) || isNaN(eh)) return null;
+    let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+    if (mins < 0) mins += 24 * 60;
+    return Math.round((mins / 60) * 100) / 100;
+  }, [plantStartTime, plantStopTime]);
+
+  // Total MT dispatched today for this plant.
+  const totalDispatchedMt = useMemo(() => {
+    if (!todayDispatches) return null;
+    const rows = todayDispatches.filter(d => d.plantName === plantName);
+    if (!rows.length) return null;
+    return rows.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
+  }, [todayDispatches, plantName]);
+
+  // Five live stats shown below the LDO meter inputs.
+  const liveStats = useMemo(() => {
+    const boilerL = boilerRunsDuringProduction ? ldoTotal.t1 : null;
+    const dryerL = ldoTotal.t2;
+    const hrs = plantRunHours;
+    const mt = totalDispatchedMt;
+    return {
+      boilerLHr: (boilerL != null && hrs && hrs > 0) ? boilerL / hrs : null,
+      dryerLHr: (dryerL != null && hrs && hrs > 0) ? dryerL / hrs : null,
+      dryerLMt: (dryerL != null && mt && mt > 0) ? dryerL / mt : null,
+      boilerLMt: (boilerL != null && mt && mt > 0) ? boilerL / mt : null,
+      combinedLMt: (mt && mt > 0 && (boilerL != null || dryerL != null))
+        ? ((boilerL ?? 0) + (dryerL ?? 0)) / mt : null,
+      noDispatches: todayDispatches != null && totalDispatchedMt == null,
+    };
+  }, [ldoTotal, plantRunHours, totalDispatchedMt, boilerRunsDuringProduction, todayDispatches]);
 
   if (viewMode === "list") {
     const sorted = (shiftLogs || []).slice()
@@ -889,6 +940,37 @@ export default function PlantShiftLog() {
           <div><Label>Dryer Meter Closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
           <div><Label>Dryer Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
+
+          {/* Task #325 — live LDO efficiency stats strip. Updates as the operator
+              types closing readings, changes plant start/stop times, or when
+              dispatch totals load in the background. */}
+          <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Live LDO Stats</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {([
+                { label: "Boiler L/Hr", value: liveStats.boilerLHr, testId: "text-ldo-stat-boiler-lphr" },
+                { label: "Dryer L/Hr", value: liveStats.dryerLHr, testId: "text-ldo-stat-dryer-lphr" },
+                { label: "Dryer L/MT", value: liveStats.dryerLMt, testId: "text-ldo-stat-dryer-lpmt" },
+                { label: "Boiler L/MT", value: liveStats.boilerLMt, testId: "text-ldo-stat-boiler-lpmt" },
+                { label: "Combined L/MT", value: liveStats.combinedLMt, testId: "text-ldo-stat-combined-lpmt" },
+              ] as const).map(({ label, value, testId }) => (
+                <div key={label} className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">{label}</span>
+                  <span
+                    className={`text-sm font-semibold ${value == null ? "text-muted-foreground" : "text-foreground"}`}
+                    data-testid={testId}
+                  >
+                    {value != null ? value.toFixed(1) : "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {liveStats.noDispatches && (
+              <p className="text-xs text-muted-foreground mt-2" data-testid="text-ldo-stat-no-dispatches">
+                No dispatches logged for {date} — L/MT metrics will appear once production is recorded.
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>}
 
