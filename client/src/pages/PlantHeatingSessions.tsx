@@ -82,6 +82,7 @@ export default function PlantHeatingSessions() {
   const dateParam = params?.date;
   const [filterDateFrom, setFilterDateFrom] = useState(dateParam || defaultFrom);
   const [filterDateTo, setFilterDateTo] = useState(dateParam || today);
+  const [filterDryerSource, setFilterDryerSource] = useState<"all" | "TANK_1" | "TANK_2">("all");
 
   // Task #238 — when navigated from the heating-mismatch drill-in we accept
   // `?openSession=<id>` and auto-open the edit dialog for that session once
@@ -493,13 +494,16 @@ export default function PlantHeatingSessions() {
 
   // Group sessions by date for the list.
   const grouped = useMemo(() => {
-    const list = (sessions || []).slice().sort((a, b) => b.date.localeCompare(a.date) || (a.startTime || "").localeCompare(b.startTime || ""));
+    const list = (sessions || [])
+      .filter(s => filterDryerSource === "all" || s.dryerFedFrom === filterDryerSource)
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date) || (a.startTime || "").localeCompare(b.startTime || ""));
     const out: Record<string, BitumenHeatingSession[]> = {};
     for (const s of list) {
       (out[s.date] = out[s.date] || []).push(s);
     }
     return out;
-  }, [sessions]);
+  }, [sessions, filterDryerSource]);
   const groupedDates = Object.keys(grouped);
 
   // Task #238 — auto-open the requested session once it loads. Guarded by a
@@ -536,6 +540,16 @@ export default function PlantHeatingSessions() {
             <Label className="text-xs whitespace-nowrap">To</Label>
             <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
           </div>
+          <Select value={filterDryerSource} onValueChange={v => setFilterDryerSource(v as "all" | "TANK_1" | "TANK_2")}>
+            <SelectTrigger className="w-36 h-9 text-xs" data-testid="select-dryer-filter">
+              <SelectValue placeholder="Dryer fed from" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tanks</SelectItem>
+              <SelectItem value="TANK_1">Tank 1</SelectItem>
+              <SelectItem value="TANK_2">Tank 2</SelectItem>
+            </SelectContent>
+          </Select>
           <Link href={appendPlantContext("/plant/heating-trends", { defaultTab: "operations" })}>
             <Button variant="outline" data-testid="button-view-trends">View Trends</Button>
           </Link>
@@ -615,7 +629,7 @@ export default function PlantHeatingSessions() {
             ) : null;
           })()}
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-            !sessions?.length ? <p className="text-sm text-muted-foreground">No heating sessions in this date range.</p> :
+            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Tank 1" : "Tank 2"} in this date range.` : "No heating sessions in this date range."}</p> :
             <div className="space-y-4">
               {groupedDates.map(date => (
                 <div key={date}>

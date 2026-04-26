@@ -41,6 +41,7 @@ export default function PlantShiftLog() {
   const [viewMode, setViewMode] = useState<"list" | "edit">(params?.date ? "edit" : "list");
   const [listDateFrom, setListDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [listDateTo, setListDateTo] = useState(today);
+  const [listDryerFilter, setListDryerFilter] = useState<"all" | "TANK_1" | "TANK_2">("all");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const [date, setDate] = useState(dateParam);
@@ -564,9 +565,11 @@ export default function PlantShiftLog() {
   }, [ldoTank1OpeningMeter, ldoTank1ClosingMeter, ldoTank2OpeningMeter, ldoTank2ClosingMeter]);
 
   if (viewMode === "list") {
-    const sorted = (shiftLogs || []).slice().sort(
-      (a, b) => b.date.localeCompare(a.date) || (a.shiftCode || "").localeCompare(b.shiftCode || "")
-    );
+    const sorted = (shiftLogs || []).slice()
+      .filter(r => listDryerFilter === "all" || r.dryerFedFrom === listDryerFilter)
+      .sort(
+        (a, b) => b.date.localeCompare(a.date) || (a.shiftCode || "").localeCompare(b.shiftCode || "")
+      );
     const grouped: Record<string, PlantShiftLogRow[]> = {};
     for (const r of sorted) (grouped[r.date] = grouped[r.date] || []).push(r);
     return (
@@ -590,6 +593,16 @@ export default function PlantShiftLog() {
               <Label className="text-xs whitespace-nowrap">To</Label>
               <Input type="date" value={listDateTo} onChange={e => setListDateTo(e.target.value)} className="w-40" data-testid="input-list-to" />
             </div>
+            <Select value={listDryerFilter} onValueChange={v => setListDryerFilter(v as "all" | "TANK_1" | "TANK_2")}>
+              <SelectTrigger className="w-36 h-9 text-xs" data-testid="select-dryer-filter">
+                <SelectValue placeholder="Dryer fed from" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tanks</SelectItem>
+                <SelectItem value="TANK_1">Tank 1</SelectItem>
+                <SelectItem value="TANK_2">Tank 2</SelectItem>
+              </SelectContent>
+            </Select>
             <Link href={appendPlantContext("/plant/shift-log-manpower-review", { defaultTab: "operations" })}>
               <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-manpower-review">
                 <Users className="w-4 h-4 mr-1" />Review UNKNOWN
@@ -603,7 +616,7 @@ export default function PlantShiftLog() {
           <CardHeader><CardTitle>Plant Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-              !sorted.length ? <p className="text-sm text-muted-foreground">No plant logs in this date range.</p> :
+              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Tank 1" : "Tank 2"} in this date range.` : "No plant logs in this date range."}</p> :
               <div className="space-y-4">
                 {Object.keys(grouped).map(d => (
                   <div key={d}>
