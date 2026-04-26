@@ -94,6 +94,7 @@ export default function PlantLdoFlowMeter() {
   const PLANT_LDO_FILTER_URL_KEYS = [
     "filterDateFrom", "filterDateTo", "filterTank", "filterSource",
     "reconDateFrom", "reconDateTo", "reconPartyId", "reconMixTemplateId", "reconSite",
+    "dipFilterSource",
   ];
   const urlHasLdoFilterParams = (() => {
     if (typeof window === "undefined") return false;
@@ -101,12 +102,13 @@ export default function PlantLdoFlowMeter() {
     return PLANT_LDO_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
   const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
-    "plant-ldo-flow-meter:last-filters:v1",
+    "plant-ldo-flow-meter:last-filters:v2",
     {
       filterDateFrom: "",
       filterDateTo: "",
       filterTank: "all",
       filterSource: "all" as "all" | "hide-backfill" | ReadingSource,
+      dipFilterSource: "all" as "all" | "hide-backfill" | ReadingSource,
       reconDateFrom: "",
       reconDateTo: "",
       reconPartyId: "all",
@@ -115,11 +117,12 @@ export default function PlantLdoFlowMeter() {
     },
     { shouldHydrate: !urlHasLdoFilterParams },
   );
-  const { filterDateFrom, filterDateTo, filterTank, filterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
+  const { filterDateFrom, filterDateTo, filterTank, filterSource, dipFilterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
   const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
   const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
   const setFilterTank = (v: string) => setPersistedFilters((f) => ({ ...f, filterTank: v }));
   const setFilterSource = (v: string) => setPersistedFilters((f) => ({ ...f, filterSource: v as typeof persistedFilters.filterSource }));
+  const setDipFilterSource = (v: string) => setPersistedFilters((f) => ({ ...f, dipFilterSource: v as typeof persistedFilters.dipFilterSource }));
   const setReconDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateFrom: v }));
   const setReconDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateTo: v }));
   const setReconPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, reconPartyId: v }));
@@ -655,6 +658,15 @@ export default function PlantLdoFlowMeter() {
       return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
     });
   }, [dipReadings]);
+
+  const filteredDipReadings = useMemo(() => {
+    if (dipFilterSource === "all") return sortedDipReadings;
+    return sortedDipReadings.filter(r => {
+      const src = classifyReadingSource(r);
+      if (dipFilterSource === "hide-backfill") return src !== "backfill";
+      return src === dipFilterSource;
+    });
+  }, [sortedDipReadings, dipFilterSource]);
 
   const dipCreateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1799,13 +1811,43 @@ export default function PlantLdoFlowMeter() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Dip Reading History</CardTitle>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-sm font-medium">Dip Reading History</CardTitle>
+              <div className="flex gap-2 flex-wrap items-center">
+                <Select value={dipFilterSource} onValueChange={setDipFilterSource}>
+                  <SelectTrigger className="w-48" data-testid="select-dip-filter-source">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="hide-backfill">Hide Backfill rows</SelectItem>
+                    <SelectItem value="shift-log">Only Shift Log</SelectItem>
+                    <SelectItem value="heating-session">Only Heating</SelectItem>
+                    <SelectItem value="manual">Only Manual</SelectItem>
+                    <SelectItem value="backfill">Only Backfill</SelectItem>
+                  </SelectContent>
+                </Select>
+                {dipFilterSource !== "all" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDipFilterSource("all")}
+                    data-testid="button-reset-dip-filter"
+                    aria-label="Reset dip filter"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" /> Reset
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {dipLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
             ) : sortedDipReadings.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground" data-testid="text-no-dip-readings">No LDO dip readings recorded yet</div>
+            ) : filteredDipReadings.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground" data-testid="text-no-dip-readings-filtered">No dip readings match the current filter</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm" data-testid="table-dip-readings">
@@ -1818,12 +1860,23 @@ export default function PlantLdoFlowMeter() {
                       <th className="text-right p-2">Volume (L)</th>
                       <th className="text-right p-2">Weight (kg)</th>
                       <th className="text-left p-2">Type</th>
+                      <th className="text-left p-2">Source</th>
                       <th className="text-left p-2">Notes</th>
                       {isAdmin && <th className="text-center p-2">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedDipReadings.map(r => (
+                    {filteredDipReadings.map(r => {
+                      const dipSrc = classifyReadingSource(r);
+                      const dipSrcClass =
+                        dipSrc === "backfill"
+                          ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 no-default-hover-elevate no-default-active-elevate"
+                          : dipSrc === "shift-log"
+                            ? "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200 no-default-hover-elevate no-default-active-elevate"
+                            : dipSrc === "heating-session"
+                              ? "bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200 no-default-hover-elevate no-default-active-elevate"
+                              : "no-default-hover-elevate no-default-active-elevate";
+                      return (
                       <tr key={r.id} className="border-b" data-testid={`row-dip-${r.id}`}>
                         <td className="p-2">{r.date}</td>
                         <td className="p-2">{r.time || "-"}</td>
@@ -1838,6 +1891,24 @@ export default function PlantLdoFlowMeter() {
                         <td className="p-2">
                           <Badge variant="outline" data-testid={`badge-dip-type-${r.id}`}>
                             {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
+                          </Badge>
+                        </td>
+                        <td className="p-2">
+                          <Badge
+                            variant={dipSrc === "manual" ? "outline" : "secondary"}
+                            className={dipSrcClass}
+                            data-testid={`badge-dip-source-${r.id}`}
+                            title={
+                              dipSrc === "backfill"
+                                ? "Entered via the admin LDO Dip Backfill tool"
+                                : dipSrc === "shift-log"
+                                  ? "Auto-created from a plant shift log"
+                                  : dipSrc === "heating-session"
+                                    ? "Auto-created from a bitumen heating session"
+                                    : "Manually entered on this page"
+                            }
+                          >
+                            {SOURCE_LABELS[dipSrc]}
                           </Badge>
                         </td>
                         <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
@@ -1865,7 +1936,8 @@ export default function PlantLdoFlowMeter() {
                           </td>
                         )}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
