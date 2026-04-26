@@ -50,7 +50,7 @@ function emptyForm(date: string) {
     dgClosingDiesel: "",
     generatorLogId: null as number | null,
     linkSelection: "" as string,
-    dryerFedFrom: null as "TANK_1" | "TANK_2" | null,
+    dryerFedFrom: "TANK_2" as "TANK_1" | "TANK_2" | null,
     remarks: "",
     isFinalized: 0,
     autoFilledOpening: false,
@@ -344,10 +344,15 @@ export default function PlantHeatingSessions() {
     )
       .then(r => r.ok ? r.json() : null)
       .then((log: any) => {
-        if (!log || ctrl.signal.aborted) return;
-        const src = log.dryerFedFrom;
-        if (src !== "TANK_1" && src !== "TANK_2") return;
+        if (ctrl.signal.aborted) return;
+        // Use shift-log value when valid, otherwise fall back to TANK_2
+        // so new sessions always have an explicit tank value.
+        const src: "TANK_1" | "TANK_2" =
+          (log?.dryerFedFrom === "TANK_1" || log?.dryerFedFrom === "TANK_2")
+            ? log.dryerFedFrom
+            : "TANK_2";
         setForm(prev => {
+          // Don't overwrite a manual operator pick.
           if (prev.dryerFedFrom !== null && prev.dryerFedFrom !== autoFilledDryerRef.current) return prev;
           autoFilledDryerRef.current = src;
           return { ...prev, dryerFedFrom: src };
@@ -997,17 +1002,17 @@ export default function PlantHeatingSessions() {
               <div>
                 <Label>Dryer fed from</Label>
                 <Select
-                  value={form.dryerFedFrom ?? ""}
+                  value={form.dryerFedFrom ?? "NONE"}
                   onValueChange={v => {
                     autoFilledDryerRef.current = null;
-                    setField("dryerFedFrom", v === "" ? null : v as "TANK_1" | "TANK_2");
+                    setField("dryerFedFrom", v === "NONE" ? null : v as "TANK_1" | "TANK_2");
                   }}
                 >
                   <SelectTrigger data-testid="select-dryer-fed-from">
                     <SelectValue placeholder="Not set" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Not set</SelectItem>
+                    <SelectItem value="NONE">Not set</SelectItem>
                     <SelectItem value="TANK_1">Tank 1</SelectItem>
                     <SelectItem value="TANK_2">Tank 2</SelectItem>
                   </SelectContent>
