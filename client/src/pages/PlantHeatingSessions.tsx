@@ -929,23 +929,34 @@ export default function PlantHeatingSessions() {
                                 let tooltipText = "";
                                 if (isShiftLogConflict) {
                                   const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
-                                  badgeLabel = "⚠ Dryer ≠ shift log";
-                                  tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Open and re-save to reconcile.`;
+                                  badgeLabel = "⚠ Dryer mismatch";
+                                  tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Click to open the shift log.`;
                                   if (isIntraConflict) tooltipText += " Also conflicts with other sessions on this date.";
                                 } else if (isIntraConflict) {
                                   badgeLabel = "⚠ Dryer ≠ other session";
                                   tooltipText = `Heating sessions on ${s.date} at ${s.plantName} disagree with each other on dryer source — this session says ${hsLabel}. Open and re-save to reconcile.`;
                                 }
-                                return (
+                                const badge = (
                                   <Badge
                                     variant="outline"
-                                    className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-help"
+                                    className={`text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 ${isShiftLogConflict && dm?.shiftLogId ? "cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950" : "cursor-help"}`}
                                     title={tooltipText}
                                     data-testid={`badge-dryer-mismatch-session-${s.id}`}
                                   >
                                     {badgeLabel}
                                   </Badge>
                                 );
+                                if (isShiftLogConflict && dm?.shiftLogId) {
+                                  return (
+                                    <Link
+                                      key={`dryer-mismatch-link-${s.id}`}
+                                      href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}`, { defaultTab: "operations" })}
+                                    >
+                                      {badge}
+                                    </Link>
+                                  );
+                                }
+                                return badge;
                               })()}
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
