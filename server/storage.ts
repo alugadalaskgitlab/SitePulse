@@ -5412,6 +5412,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.quantityLiters !== undefined) cleanUpdates.quantityLiters = updates.quantityLiters;
     if (updates.notes !== undefined) cleanUpdates.notes = updates.notes?.toUpperCase();
     if (updates.plantName !== undefined) cleanUpdates.plantName = updates.plantName;
+    if (updates.dryerFedFrom !== undefined) cleanUpdates.dryerFedFrom = updates.dryerFedFrom ?? null;
     
     const [result] = await db.update(ldoFlowReadings)
       .set(cleanUpdates)
@@ -5451,7 +5452,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertLdoFlowReadingsBackfill(
-    rows: Array<{ date: string; plant: string; tank: number; opening: number | null; closing: number | null; remarks: string | null }>,
+    rows: Array<{ date: string; plant: string; tank: number; opening: number | null; closing: number | null; remarks: string | null; dryerFedFrom?: "TANK_1" | "TANK_2" }>,
     actor: string,
   ): Promise<{ inserted: number; deleted: number; skipped: number; conflicts: Array<{ date: string; plant: string; tank: number; reason: string }> }> {
     let inserted = 0, deleted = 0, skipped = 0;
@@ -5517,6 +5518,7 @@ export class DatabaseStorage implements IStorage {
               readingType: rt,
               notes: noteBits.join(" ").toUpperCase(),
               plantName: plant,
+              ...(tank === 2 && row.dryerFedFrom ? { dryerFedFrom: row.dryerFedFrom } : {}),
             } satisfies InsertLdoFlowReading);
             inserted++;
           }

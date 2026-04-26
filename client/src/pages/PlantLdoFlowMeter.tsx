@@ -140,6 +140,7 @@ export default function PlantLdoFlowMeter() {
   const [readingTime, setReadingTime] = useState(format(new Date(), "HH:mm"));
   const [quantityLiters, setQuantityLiters] = useState("");
   const [notes, setNotes] = useState("");
+  const [dryerFedFrom, setDryerFedFrom] = useState("TANK_2");
 
   const [dipDialogOpen, setDipDialogOpen] = useState(false);
   const [dipEditingReading, setDipEditingReading] = useState<LdoDipReading | null>(null);
@@ -771,6 +772,7 @@ export default function PlantLdoFlowMeter() {
     setReadingTime(format(new Date(), "HH:mm"));
     setQuantityLiters("");
     setNotes("");
+    setDryerFedFrom("TANK_2");
   }
 
   function handleTankClick(tankNum: number) {
@@ -782,6 +784,7 @@ export default function PlantLdoFlowMeter() {
     setReadingTime(format(new Date(), "HH:mm"));
     setQuantityLiters("");
     setNotes("");
+    setDryerFedFrom("TANK_2");
     setDialogOpen(true);
   }
 
@@ -832,6 +835,7 @@ export default function PlantLdoFlowMeter() {
       quantityLiters: readingType === "receipt" ? parseFloat(quantityLiters) : null,
       notes: notes || null,
       plantName: urlPlant,
+      dryerFedFrom: (parseInt(tankNumber) === 2 && (readingType === "opening" || readingType === "closing")) ? dryerFedFrom : null,
     };
 
     if (editingReading) {
@@ -852,6 +856,7 @@ export default function PlantLdoFlowMeter() {
       setReadingType(reading.readingType);
       setQuantityLiters(reading.quantityLiters ? String(reading.quantityLiters) : "");
       setNotes(reading.notes || "");
+      setDryerFedFrom(reading.dryerFedFrom || "TANK_2");
       setDialogOpen(true);
     }
   }
@@ -2065,6 +2070,24 @@ export default function PlantLdoFlowMeter() {
                 </SelectContent>
               </Select>
             </div>
+
+            {tankNumber === "2" && (readingType === "opening" || readingType === "closing") && (
+              <div>
+                <Label>Dryer fed from</Label>
+                <Select value={dryerFedFrom} onValueChange={setDryerFedFrom}>
+                  <SelectTrigger data-testid="select-dryer-fed-from">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TANK_2">Tank 2 — Dryer Tank (default)</SelectItem>
+                    <SelectItem value="TANK_1">Tank 1 — Boiler Tank</SelectItem>
+                  </SelectContent>
+                </Select>
+                {dryerFedFrom === "TANK_1" && (
+                  <p className="text-xs text-amber-600 mt-1">Consumption will be debited from Tank-1 stock.</p>
+                )}
+              </div>
+            )}
 
             {readingType !== "stock" && (
               <div>

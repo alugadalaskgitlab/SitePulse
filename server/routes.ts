@@ -2572,10 +2572,17 @@ export async function registerRoutes(
     }
   });
 
+  const ldoFlowReadingCreateSchema = insertLdoFlowReadingSchema.extend({
+    dryerFedFrom: z.enum(["TANK_1", "TANK_2"]).nullable().optional(),
+  });
+  type LdoFlowReadingCreate = Omit<z.infer<typeof ldoFlowReadingCreateSchema>, "dryerFedFrom"> & {
+    dryerFedFrom?: string | null;
+  };
+
   app.post("/api/plant-module/ldo-flow-readings", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_stock")) return;
-      const parsed = insertLdoFlowReadingSchema.parse(req.body);
+      const parsed: LdoFlowReadingCreate = ldoFlowReadingCreateSchema.parse(req.body);
       const reading = await storage.createLdoFlowReading(parsed);
       sendPushToAll("LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
@@ -2584,10 +2591,18 @@ export async function registerRoutes(
     }
   });
 
+  const ldoFlowReadingPatchSchema = insertLdoFlowReadingSchema.partial().extend({
+    dryerFedFrom: z.enum(["TANK_1", "TANK_2"]).nullable().optional(),
+  });
+  type LdoFlowReadingPatch = Omit<z.infer<typeof ldoFlowReadingPatchSchema>, "dryerFedFrom"> & {
+    dryerFedFrom?: string | null;
+  };
+
   app.patch("/api/plant-module/ldo-flow-readings/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const result = await storage.updateLdoFlowReading(id, req.body);
+      const parsed: LdoFlowReadingPatch = ldoFlowReadingPatchSchema.parse(req.body);
+      const result = await storage.updateLdoFlowReading(id, parsed);
       if (!result) return res.status(404).json({ message: "Reading not found" });
       sendPushToAll("LDO Flow Updated", `LDO flow reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
       res.json(result);
@@ -2654,6 +2669,7 @@ export async function registerRoutes(
     opening: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
     closing: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
     remarks: z.union([z.string(), z.null()]).optional().transform(v => (v && v.trim()) ? v.trim() : null),
+    dryerFedFrom: z.enum(["TANK_1", "TANK_2"]).optional(),
   });
 
   const ldoBackfillPostSchema = z.object({

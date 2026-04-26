@@ -42,6 +42,7 @@ interface GridRow {
   date: string;
   tank1: TankCells;
   tank2: TankCells;
+  dryerFedFrom2: "TANK_1" | "TANK_2";
   remarks: string;
 }
 
@@ -52,6 +53,7 @@ interface BackfillPayloadRow {
   opening: number | null;
   closing: number | null;
   remarks: string;
+  dryerFedFrom?: "TANK_1" | "TANK_2";
 }
 
 interface BackfillConflict {
@@ -118,10 +120,13 @@ function buildGridFromReadings(dates: string[], readings: LdoFlowReading[]): Gri
         notes: r.notes,
       };
     };
+    const tank2Readings = dayRows.filter(r => r.tankNumber === 2 && (r.readingType === "opening" || r.readingType === "closing"));
+    const dryerFedFrom2: "TANK_1" | "TANK_2" = tank2Readings.some(r => r.dryerFedFrom === "TANK_1") ? "TANK_1" : "TANK_2";
     return {
       date,
       tank1: { opening: pickLatest(1, "opening"), closing: pickLatest(1, "closing") },
       tank2: { opening: pickLatest(2, "opening"), closing: pickLatest(2, "closing") },
+      dryerFedFrom2,
       remarks: "",
     };
   });
@@ -228,6 +233,14 @@ export default function PlantLdoBackfill() {
     setGrid(prev => {
       const next = prev.slice();
       next[rowIdx] = { ...next[rowIdx], remarks };
+      return next;
+    });
+  };
+
+  const updateDryerFedFrom2 = (rowIdx: number, value: "TANK_1" | "TANK_2") => {
+    setGrid(prev => {
+      const next = prev.slice();
+      next[rowIdx] = { ...next[rowIdx], dryerFedFrom2: value };
       return next;
     });
   };
@@ -386,6 +399,7 @@ export default function PlantLdoBackfill() {
           opening: openProtected ? null : opening,
           closing: closeProtected ? null : closing,
           remarks: row.remarks || "",
+          ...(tank === 2 ? { dryerFedFrom: row.dryerFedFrom2 } : {}),
         });
       }
     }
@@ -603,6 +617,7 @@ export default function PlantLdoBackfill() {
                     <th className="text-left p-2">T1 Closing</th>
                     <th className="text-left p-2">T2 Opening<br /><span className="text-[10px] normal-case text-muted-foreground">{TANK_LABELS[2]}</span></th>
                     <th className="text-left p-2">T2 Closing</th>
+                    <th className="text-left p-2 min-w-[130px]">Dryer fed from<br /><span className="text-[10px] normal-case text-muted-foreground">T2 source tank</span></th>
                     <th className="text-left p-2 min-w-[180px]">Remarks</th>
                     <th className="text-left p-2">Notes</th>
                   </tr>
@@ -641,6 +656,24 @@ export default function PlantLdoBackfill() {
                             </td>
                           );
                         })}
+                        <td className="p-2 align-top">
+                          <Select
+                            value={row.dryerFedFrom2}
+                            onValueChange={v => updateDryerFedFrom2(idx, v as "TANK_1" | "TANK_2")}
+                            disabled={!pinUnlocked}
+                          >
+                            <SelectTrigger className="h-8 text-xs" data-testid={`select-dryer-source-${row.date}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="TANK_2">Tank 2 (default)</SelectItem>
+                              <SelectItem value="TANK_1">Tank 1 (Boiler)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {row.dryerFedFrom2 === "TANK_1" && (
+                            <p className="text-[10px] text-amber-600 mt-1">Debits Tank-1</p>
+                          )}
+                        </td>
                         <td className="p-2">
                           <Input
                             value={row.remarks}
