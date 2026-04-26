@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ToastAction } from "@/components/ui/toast";
 import { Save, Loader2, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -122,6 +124,7 @@ export function HeatingSessionDialog({
   open, onOpenChange, date, plantName, session, onSaved, onDeleted,
 }: HeatingSessionDialogProps) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [form, setForm] = useState<FormState>(() =>
     session ? sessionToForm(session) : emptyForm(date, plantName)
   );
@@ -355,6 +358,8 @@ export function HeatingSessionDialog({
       // Cross-check: warn if the shift log for the same date+plant has a
       // different dryerFedFrom (non-blocking — stock routing is unchanged).
       // Fire-and-forget so dialog close is not delayed.
+      const navigateToShiftLog = (d: string, plant: string) =>
+        setLocation(`/plant/shift-log/${encodeURIComponent(d)}?plant=${encodeURIComponent(plant)}`);
       fetch(
         `/api/plant-module/shift-logs/by-date/${encodeURIComponent(saved.date)}?plant=${encodeURIComponent(saved.plantName)}`,
         { credentials: "include" }
@@ -366,8 +371,16 @@ export function HeatingSessionDialog({
             const slLabel = sl.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
             toast({
               title: "Dryer-source mismatch",
-              description: `This heating session says dryer fed from ${hsLabel}, but the shift log for ${saved.date} says ${slLabel}. Please check and correct one of them.`,
+              description: `This heating session says dryer fed from ${hsLabel}, but the shift log for ${saved.date} says ${slLabel}.`,
               variant: "destructive",
+              action: (
+                <ToastAction
+                  altText="Fix shift log"
+                  onClick={() => navigateToShiftLog(saved.date, saved.plantName)}
+                >
+                  Fix shift log
+                </ToastAction>
+              ),
             });
           }
         });

@@ -14,6 +14,7 @@ import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ToastAction } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
@@ -152,7 +153,11 @@ export default function PlantShiftLog() {
   };
 
   const [isFinalized, setIsFinalized] = useState(0);
-  const [plantName, setPlantName] = useState("Main Plant");
+  const [plantName, setPlantName] = useState(() => {
+    if (typeof window === "undefined") return "Main Plant";
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("plant") || "Main Plant";
+  });
   const [savedId, setSavedId] = useState<number | null>(null);
   const [autoFillT1Source, setAutoFillT1Source] = useState<string>("");
   const [autoFillT1ClosingSource, setAutoFillT1ClosingSource] = useState<string>("");
@@ -441,20 +446,33 @@ export default function PlantShiftLog() {
       // Cross-check: warn if any heating session for the same date+plant has a
       // different dryerFedFrom (non-blocking — stock routing is unchanged).
       // Fire-and-forget so list navigation is not delayed.
+      const navigateToHeatingSessions = (d: string, plant: string, sessionId?: number) => {
+        const params = new URLSearchParams({ plant });
+        if (sessionId != null) params.set("openSession", String(sessionId));
+        setLocation(`/plant/heating-sessions/${encodeURIComponent(d)}?${params.toString()}`);
+      };
       fetch(
         `/api/plant-module/heating-sessions?date=${encodeURIComponent(date)}&plant=${encodeURIComponent(plantName)}`,
         { credentials: "include" }
       ).then(hsRes => {
         if (!hsRes.ok) return;
-        return hsRes.json().then((sessions: Array<{ dryerFedFrom?: string }>) => {
+        return hsRes.json().then((sessions: Array<{ id?: number; dryerFedFrom?: string }>) => {
           const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== dryerFedFrom);
           if (mismatch) {
             const slLabel = dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
             const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
             toast({
               title: "Dryer-source mismatch",
-              description: `This shift log says dryer fed from ${slLabel}, but a heating session for ${date} says ${hsLabel}. Please check and correct one of them.`,
+              description: `This shift log says dryer fed from ${slLabel}, but a heating session for ${date} says ${hsLabel}.`,
               variant: "destructive",
+              action: (
+                <ToastAction
+                  altText="Fix heating session"
+                  onClick={() => navigateToHeatingSessions(date, plantName, mismatch.id)}
+                >
+                  Fix heating session
+                </ToastAction>
+              ),
             });
           }
         });
