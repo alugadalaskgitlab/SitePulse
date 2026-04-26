@@ -715,8 +715,9 @@ export async function backfillPlantSubPermissions(): Promise<{ inserted: number;
         FROM user_permissions
         WHERE section_key = 'plant_stock'
         ON CONFLICT (user_id, section_key) DO NOTHING
+        RETURNING id
       `);
-      totalInserted += Number((result as any).rowCount ?? 0);
+      totalInserted += result.rows.length;
     }
     await tx.insert(appSettings).values({ key: PLANT_SUB_PERMS_FLAG, value: new Date().toISOString() });
   });
