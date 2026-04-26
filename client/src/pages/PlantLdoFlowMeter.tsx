@@ -92,7 +92,7 @@ export default function PlantLdoFlowMeter() {
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
   const PLANT_LDO_FILTER_URL_KEYS = [
-    "filterDateFrom", "filterDateTo", "filterTank", "filterSource",
+    "filterDateFrom", "filterDateTo", "filterTank", "filterSource", "filterDryerSrc",
     "reconDateFrom", "reconDateTo", "reconPartyId", "reconMixTemplateId", "reconSite",
     "dipFilterSource",
   ];
@@ -108,6 +108,7 @@ export default function PlantLdoFlowMeter() {
       filterDateTo: "",
       filterTank: "all",
       filterSource: "all" as "all" | "hide-backfill" | ReadingSource,
+      filterDryerSrc: "all" as "all" | "T1" | "T2",
       dipFilterSource: "all" as "all" | "hide-backfill" | ReadingSource,
       reconDateFrom: "",
       reconDateTo: "",
@@ -117,11 +118,12 @@ export default function PlantLdoFlowMeter() {
     },
     { shouldHydrate: !urlHasLdoFilterParams },
   );
-  const { filterDateFrom, filterDateTo, filterTank, filterSource, dipFilterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
+  const { filterDateFrom, filterDateTo, filterTank, filterSource, filterDryerSrc, dipFilterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
   const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
   const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
   const setFilterTank = (v: string) => setPersistedFilters((f) => ({ ...f, filterTank: v }));
   const setFilterSource = (v: string) => setPersistedFilters((f) => ({ ...f, filterSource: v as typeof persistedFilters.filterSource }));
+  const setFilterDryerSrc = (v: string) => setPersistedFilters((f) => ({ ...f, filterDryerSrc: v as typeof persistedFilters.filterDryerSrc }));
   const setDipFilterSource = (v: string) => setPersistedFilters((f) => ({ ...f, dipFilterSource: v as typeof persistedFilters.dipFilterSource }));
   const setReconDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateFrom: v }));
   const setReconDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, reconDateTo: v }));
@@ -293,9 +295,16 @@ export default function PlantLdoFlowMeter() {
           return false;
         }
       }
+      if (filterDryerSrc !== "all") {
+        if (filterDryerSrc === "T1") {
+          if (r.tankNumber !== 2 || r.dryerFedFrom !== "TANK_1") return false;
+        } else if (filterDryerSrc === "T2") {
+          if (r.tankNumber !== 2 || r.dryerFedFrom === "TANK_1") return false;
+        }
+      }
       return true;
     });
-  }, [readings, filterDateFrom, filterDateTo, filterTank, filterSource]);
+  }, [readings, filterDateFrom, filterDateTo, filterTank, filterSource, filterDryerSrc]);
 
   const latestTank1 = useMemo(() => {
     if (!readings) return null;
@@ -2001,7 +2010,17 @@ export default function PlantLdoFlowMeter() {
                 <SelectItem value="backfill">Only Backfill</SelectItem>
               </SelectContent>
             </Select>
-            {(filterDateFrom || filterDateTo || filterTank !== "all" || filterSource !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
+            <Select value={filterDryerSrc} onValueChange={setFilterDryerSrc}>
+              <SelectTrigger className="w-40" data-testid="select-filter-dryer-src">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dryer Src</SelectItem>
+                <SelectItem value="T1">← T1 only</SelectItem>
+                <SelectItem value="T2">T2 only</SelectItem>
+              </SelectContent>
+            </Select>
+            {(filterDateFrom || filterDateTo || filterTank !== "all" || filterSource !== "all" || filterDryerSrc !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
