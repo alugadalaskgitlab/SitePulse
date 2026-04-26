@@ -777,6 +777,8 @@ export const ldoDipReadings = pgTable("ldo_dip_readings", {
   readingType: text("reading_type").notNull(),
   notes: text("notes"),
   plantName: text("plant_name").default("Main Plant"),
+  sourceShiftLogId: integer("source_shift_log_id").references(() => plantShiftLogs.id, { onDelete: "set null" }),
+  sourceHeatingSessionId: integer("source_heating_session_id").references(() => bitumenHeatingSessions.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
