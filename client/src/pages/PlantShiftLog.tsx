@@ -304,8 +304,8 @@ export default function PlantShiftLog() {
   // Task #325 — fetch today's dispatches to compute live L/MT stats in the
   // LDO Flow Meters card. Only active in edit mode (no new API needed).
   const { data: todayDispatches } = useQuery<Array<{ loadWeight: number; plantName: string }>>({
-    queryKey: ["/api/plant-module/dispatches", { dateFrom: date, dateTo: date }],
-    enabled: viewMode === "edit" && !!date,
+    queryKey: ["/api/plant-module/dispatches", { dateFrom: date, dateTo: date, plant: plantName }],
+    enabled: viewMode === "edit" && !!date && !!plantName,
     queryFn: async () => {
       const res = await fetch(
         `/api/plant-module/dispatches?dateFrom=${encodeURIComponent(date)}&dateTo=${encodeURIComponent(date)}`,
