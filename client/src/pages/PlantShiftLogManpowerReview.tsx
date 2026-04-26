@@ -662,6 +662,10 @@ export default function PlantShiftLogManpowerReview() {
   const [revertingAliasActivityId, setRevertingAliasActivityId] = useState<number | null>(null);
   const [selectedAliasActivityIds, setSelectedAliasActivityIds] = useState<Record<number, boolean>>({});
   const [bulkRevertingAlias, setBulkRevertingAlias] = useState(false);
+  const [aliasFilterActionType, setAliasFilterActionType] = useState<"all" | "add" | "remove" | "mute" | "unmute">("all");
+  const [aliasFilterActor, setAliasFilterActor] = useState("");
+  const [aliasFilterDateFrom, setAliasFilterDateFrom] = useState("");
+  const [aliasFilterDateTo, setAliasFilterDateTo] = useState("");
 
   const fetchRecentMerges = async () => {
     if (!isAdmin) return;
@@ -687,6 +691,10 @@ export default function PlantShiftLogManpowerReview() {
         setRecentAliasActivity((body.aliasActivity || []) as AliasActivity[]);
       }
       setSelectedAliasActivityIds({});
+      setAliasFilterActionType("all");
+      setAliasFilterActor("");
+      setAliasFilterDateFrom("");
+      setAliasFilterDateTo("");
     } catch (err) {
       toast({ title: "Failed to load recent activity", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -887,12 +895,13 @@ export default function PlantShiftLogManpowerReview() {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
     }
+    const filteredIds = new Set(filteredAliasActivity.map(a => a.id));
     const ids = Object.entries(selectedAliasActivityIds)
-      .filter(([, v]) => v)
+      .filter(([k, v]) => v && filteredIds.has(Number(k)))
       .map(([k]) => Number(k))
       .filter(n => Number.isFinite(n) && n > 0);
     if (ids.length === 0) return;
-    const activities = (recentAliasActivity || []).filter(a => ids.includes(a.id));
+    const activities = filteredAliasActivity.filter(a => ids.includes(a.id));
     if (activities.length === 0) return;
     const ok = window.confirm(
       `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}?\n\nThis will undo every checked add/remove in one step. Continue?`
@@ -1419,9 +1428,46 @@ export default function PlantShiftLogManpowerReview() {
   );
 
   const selectedAliasActivityCount = useMemo(
-    () => Object.values(selectedAliasActivityIds).filter(Boolean).length,
-    [selectedAliasActivityIds],
+    () => {
+      const filteredIds = new Set((recentAliasActivity || []).filter(a => {
+        const isMute = a.kind !== "alias";
+        const actionLabel = isMute ? (a.action === "add" ? "mute" : "unmute") : a.action;
+        if (aliasFilterActionType !== "all" && actionLabel !== aliasFilterActionType) return false;
+        if (aliasFilterActor.trim().length > 0 && !a.actor.toLowerCase().includes(aliasFilterActor.trim().toLowerCase())) return false;
+        if (aliasFilterDateFrom && new Date(a.createdAt) < new Date(aliasFilterDateFrom)) return false;
+        if (aliasFilterDateTo) { const to = new Date(aliasFilterDateTo); to.setHours(23, 59, 59, 999); if (new Date(a.createdAt) > to) return false; }
+        return true;
+      }).map(a => a.id));
+      return Object.entries(selectedAliasActivityIds).filter(([k, v]) => v && filteredIds.has(Number(k))).length;
+    },
+    [selectedAliasActivityIds, recentAliasActivity, aliasFilterActionType, aliasFilterActor, aliasFilterDateFrom, aliasFilterDateTo],
   );
+
+  const filteredAliasActivity = useMemo(() => {
+    const all = recentAliasActivity || [];
+    return all.filter(a => {
+      const isMute = a.kind !== "alias";
+      const actionLabel = isMute
+        ? (a.action === "add" ? "mute" : "unmute")
+        : a.action;
+      if (aliasFilterActionType !== "all" && actionLabel !== aliasFilterActionType) return false;
+      if (aliasFilterActor.trim().length > 0) {
+        if (!a.actor.toLowerCase().includes(aliasFilterActor.trim().toLowerCase())) return false;
+      }
+      if (aliasFilterDateFrom) {
+        const from = new Date(aliasFilterDateFrom);
+        if (new Date(a.createdAt) < from) return false;
+      }
+      if (aliasFilterDateTo) {
+        const to = new Date(aliasFilterDateTo);
+        to.setHours(23, 59, 59, 999);
+        if (new Date(a.createdAt) > to) return false;
+      }
+      return true;
+    });
+  }, [recentAliasActivity, aliasFilterActionType, aliasFilterActor, aliasFilterDateFrom, aliasFilterDateTo]);
+
+  const hasAliasFilters = aliasFilterActionType !== "all" || aliasFilterActor.trim().length > 0 || aliasFilterDateFrom !== "" || aliasFilterDateTo !== "";
 
   // Export the currently filtered dismissed-pairs list to a CSV that opens
   // cleanly in Excel / Google Sheets. Columns mirror the on-screen list:
@@ -1838,7 +1884,9 @@ export default function PlantShiftLogManpowerReview() {
             <div data-testid="section-recent-alias-changes">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="text-sm font-semibold">
-                  Recent alias changes ({(recentAliasActivity || []).length})
+                  Recent alias changes ({hasAliasFilters
+                    ? `${filteredAliasActivity.length} of ${(recentAliasActivity || []).length}`
+                    : (recentAliasActivity || []).length})
                 </div>
                 <div className="flex items-center gap-1.5">
                   {(recentAliasActivity || []).length > 0 && (
@@ -1849,17 +1897,19 @@ export default function PlantShiftLogManpowerReview() {
                         className="h-6 px-2 text-[11px]"
                         disabled={loadingRecent || bulkRevertingAlias}
                         onClick={() => {
-                          const all = recentAliasActivity || [];
-                          const allSelected = all.length > 0 && all.every(a => selectedAliasActivityIds[a.id]);
-                          const next: Record<number, boolean> = {};
-                          if (!allSelected) {
-                            for (const a of all) next[a.id] = true;
+                          const filtered = filteredAliasActivity;
+                          const allSelected = filtered.length > 0 && filtered.every(a => selectedAliasActivityIds[a.id]);
+                          const next: Record<number, boolean> = { ...selectedAliasActivityIds };
+                          if (allSelected) {
+                            for (const a of filtered) delete next[a.id];
+                          } else {
+                            for (const a of filtered) next[a.id] = true;
                           }
                           setSelectedAliasActivityIds(next);
                         }}
                         data-testid="button-alias-activity-toggle-all"
                       >
-                        {(recentAliasActivity || []).every(a => selectedAliasActivityIds[a.id])
+                        {filteredAliasActivity.length > 0 && filteredAliasActivity.every(a => selectedAliasActivityIds[a.id])
                           ? "Unselect all"
                           : "Select all"}
                       </Button>
@@ -1894,6 +1944,74 @@ export default function PlantShiftLogManpowerReview() {
                 Last 30 days of add / remove / mute / unmute actions in the alias dictionary.
                 Check rows and hit Revert selected to undo many changes in one step.
               </div>
+              {(recentAliasActivity || []).length > 0 && (
+                <div className="flex flex-wrap items-end gap-2 mb-2 p-2 bg-purple-50 dark:bg-purple-950/30 rounded border border-purple-200 dark:border-purple-800" data-testid="alias-activity-filters">
+                  <div className="flex flex-col gap-0.5 min-w-[120px]">
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Action type</label>
+                    <Select
+                      value={aliasFilterActionType}
+                      onValueChange={v => setAliasFilterActionType(v as typeof aliasFilterActionType)}
+                    >
+                      <SelectTrigger className="h-7 text-xs" data-testid="select-alias-filter-action-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All types</SelectItem>
+                        <SelectItem value="add">Add (custom alias)</SelectItem>
+                        <SelectItem value="remove">Remove (custom alias)</SelectItem>
+                        <SelectItem value="mute">Mute (learned)</SelectItem>
+                        <SelectItem value="unmute">Unmute (learned)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-0.5 min-w-[130px]">
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Actor</label>
+                    <Input
+                      className="h-7 text-xs"
+                      placeholder="Search by name…"
+                      value={aliasFilterActor}
+                      onChange={e => setAliasFilterActor(e.target.value)}
+                      data-testid="input-alias-filter-actor"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">From</label>
+                    <input
+                      type="date"
+                      className="h-7 text-xs rounded border border-input bg-background px-2 py-0.5"
+                      value={aliasFilterDateFrom}
+                      onChange={e => setAliasFilterDateFrom(e.target.value)}
+                      data-testid="input-alias-filter-date-from"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">To</label>
+                    <input
+                      type="date"
+                      className="h-7 text-xs rounded border border-input bg-background px-2 py-0.5"
+                      value={aliasFilterDateTo}
+                      onChange={e => setAliasFilterDateTo(e.target.value)}
+                      data-testid="input-alias-filter-date-to"
+                    />
+                  </div>
+                  {hasAliasFilters && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs self-end"
+                      onClick={() => {
+                        setAliasFilterActionType("all");
+                        setAliasFilterActor("");
+                        setAliasFilterDateFrom("");
+                        setAliasFilterDateTo("");
+                      }}
+                      data-testid="button-alias-filter-clear"
+                    >
+                      <X className="w-3 h-3 mr-1" />Clear filters
+                    </Button>
+                  )}
+                </div>
+              )}
               {recentAliasActivity === null ? (
                 <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-loading">
                   Loading…
@@ -1902,9 +2020,13 @@ export default function PlantShiftLogManpowerReview() {
                 <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-empty">
                   No alias add/remove/mute actions in the last 30 days.
                 </div>
+              ) : filteredAliasActivity.length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-no-match">
+                  No entries match the active filters.
+                </div>
               ) : (
                 <div className="space-y-1 max-h-64 overflow-auto" data-testid="list-recent-alias-changes">
-                  {recentAliasActivity.map(a => {
+                  {filteredAliasActivity.map(a => {
                     const when = new Date(a.createdAt);
                     const isAdd = a.action === "add";
                     // Map (action, kind) to a human label and badge tone. Mute
