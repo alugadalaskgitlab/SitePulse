@@ -349,7 +349,7 @@ export async function registerRoutes(
 
   app.post("/api/personnel", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreate(req, res, "master_personnel")) return;
       const parsed = insertPersonnelSchema.parse(req.body);
       const person = await storage.createPersonnel(parsed);
       res.status(201).json(person);
@@ -361,7 +361,7 @@ export async function registerRoutes(
 
   app.patch("/api/personnel/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_personnel")) return;
       const parsed = insertPersonnelSchema.partial().parse(req.body);
       const updated = await storage.updatePersonnel(Number(req.params.id), parsed);
       if (!updated) return res.status(404).json({ message: "Personnel not found" });
@@ -374,7 +374,7 @@ export async function registerRoutes(
 
   app.patch("/api/personnel/:id/toggle-active", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_personnel")) return;
       const updated = await storage.togglePersonnelActive(Number(req.params.id));
       if (!updated) return res.status(404).json({ message: "Personnel not found" });
       res.json(updated);
@@ -910,7 +910,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/parties", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreate(req, res, "master_parties")) return;
       const party = await storage.createParty(req.body);
       res.status(201).json(party);
     } catch (err) {
@@ -920,7 +920,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/parties/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_parties")) return;
       const party = await storage.updateParty(Number(req.params.id), req.body);
       if (!party) return res.status(404).json({ message: "Party not found" });
       res.json(party);
@@ -952,7 +952,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/materials", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreate(req, res, "master_materials")) return;
       const material = await storage.createPlantMaterial(req.body);
       res.status(201).json(material);
     } catch (err) {
@@ -962,7 +962,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/materials/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_materials")) return;
       const material = await storage.updatePlantMaterial(Number(req.params.id), req.body);
       if (!material) return res.status(404).json({ message: "Material not found" });
       res.json(material);
@@ -994,7 +994,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/mix-types", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreate(req, res, "master_materials")) return;
       const result = await storage.createMixType(req.body);
       res.status(201).json(result);
     } catch (err) {
@@ -1004,7 +1004,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/mix-types/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_materials")) return;
       const result = await storage.updateMixType(Number(req.params.id), req.body);
       if (!result) return res.status(404).json({ message: "Mix type not found" });
       res.json(result);
@@ -1055,7 +1055,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/mix-templates", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreate(req, res, "master_materials")) return;
       const { components, ...template } = req.body;
       const result = await storage.createMixTemplate(template, components);
       res.status(201).json(result);
@@ -1066,7 +1066,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/mix-templates/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_materials")) return;
       const { components, ...template } = req.body;
       const result = await storage.updateMixTemplate(Number(req.params.id), template, components);
       if (!result) return res.status(404).json({ message: "Mix template not found" });
@@ -1100,7 +1100,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/equipment", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreate(req, res, "master_equipment")) return;
       const equipment = await storage.createEquipment(req.body);
       res.status(201).json(equipment);
     } catch (err) {
@@ -1110,7 +1110,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/equipment/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_equipment")) return;
       const equipment = await storage.updateEquipment(Number(req.params.id), req.body);
       if (!equipment) return res.status(404).json({ message: "Equipment not found" });
       res.json(equipment);
@@ -1132,7 +1132,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/equipment/:id/toggle-active", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEdit(req, res, "master_equipment")) return;
       const id = Number(req.params.id);
       const allEquipment = await storage.getEquipmentMaster(true);
       const equip = allEquipment.find(e => e.id === id);
@@ -2533,7 +2533,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/bitumen-dip-readings", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_stock")) return;
+      if (!assertCreate(req, res, "plant_bitumen")) return;
       const parsed = insertBitumenDipReadingSchema.parse(req.body);
       const reading = await storage.createBitumenDipReading(parsed);
       sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/bitumen-stock").catch(() => {});
@@ -2596,7 +2596,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/ldo-flow-readings", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_stock")) return;
+      if (!assertCreate(req, res, "plant_ldo")) return;
       const parsed: LdoFlowReadingCreate = ldoFlowReadingCreateSchema.parse(req.body);
       const reading = await storage.createLdoFlowReading(parsed);
       sendPushToAll("LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
@@ -2763,7 +2763,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/ldo-dip-readings", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_stock")) return;
+      if (!assertCreate(req, res, "plant_ldo")) return;
       const parsed = insertLdoDipReadingSchema.parse(req.body);
       const reading = await storage.createLdoDipReading(parsed);
       sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/ldo-flow-meter").catch(() => {});

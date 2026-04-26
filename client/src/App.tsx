@@ -153,13 +153,13 @@ function AuthedShell() {
             <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
             <Route path="/plant/ldo-logs" component={gated(PlantLdoLogs, "plant_stock")} />
             <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
-            <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_stock")} />
-            <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_stock")} />
-            <Route path="/plant/diesel-procurement" component={gated(PlantDieselProcurementReport, "plant_stock")} />
-            <Route path="/plant/bitumen-stock" component={gated(PlantBitumenStock, "plant_stock")} />
-            <Route path="/plant/ldo-flow-meter" component={gated(PlantLdoFlowMeter, "plant_stock")} />
-            <Route path="/plant/ldo-backfill" component={gated(PlantLdoBackfill, "plant_stock")} />
-            <Route path="/plant/ldo-dip-backfill" component={gated(PlantLdoDipBackfill, "plant_stock")} />
+            <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />
+            <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_audit")} />
+            <Route path="/plant/diesel-procurement" component={gated(PlantDieselProcurementReport, "plant_diesel_proc")} />
+            <Route path="/plant/bitumen-stock" component={gated(PlantBitumenStock, "plant_bitumen")} />
+            <Route path="/plant/ldo-flow-meter" component={gated(PlantLdoFlowMeter, "plant_ldo")} />
+            <Route path="/plant/ldo-backfill" component={gated(PlantLdoBackfill, "admin_settings")} />
+            <Route path="/plant/ldo-dip-backfill" component={gated(PlantLdoDipBackfill, "admin_settings")} />
             <Route path="/plant/stock-reassign" component={gated(PlantStockReassign, "plant_stock")} />
             <Route path="/plant/shift-log-manpower-review" component={gated(PlantShiftLogManpowerReview, "plant_shift_logs")} />
             <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />

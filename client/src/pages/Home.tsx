@@ -22,12 +22,21 @@ export default function Home() {
   const canSeePlant =
     sectionVisible("plant_materials") ||
     sectionVisible("plant_stock") ||
+    sectionVisible("plant_variance") ||
+    sectionVisible("plant_audit") ||
+    sectionVisible("plant_diesel_proc") ||
+    sectionVisible("plant_bitumen") ||
+    sectionVisible("plant_ldo") ||
     sectionVisible("plant_production") ||
     sectionVisible("plant_equipment") ||
     sectionVisible("plant_shift_logs") ||
     sectionVisible("plant_daily_reports") ||
     sectionVisible("plant_heating") ||
-    sectionVisible("vendor_bills");
+    sectionVisible("vendor_bills") ||
+    sectionVisible("master_parties") ||
+    sectionVisible("master_materials") ||
+    sectionVisible("master_equipment") ||
+    sectionVisible("master_personnel");
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center mb-12">
@@ -77,12 +86,14 @@ export default function Home() {
       </div>
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <Link href="/estimator-login">
-          <Button variant="outline" className="gap-2" data-testid="button-estimate-manager">
-            <BarChart3 className="w-4 h-4" />
-            Estimate Manager
-          </Button>
-        </Link>
+        {canViewSettings && (
+          <Link href="/estimator-login">
+            <Button variant="outline" className="gap-2" data-testid="button-estimate-manager">
+              <BarChart3 className="w-4 h-4" />
+              Estimate Manager
+            </Button>
+          </Link>
+        )}
         {canViewSettings && (
           <Link href="/admin/settings">
             <Button variant="ghost" className="gap-2" data-testid="button-admin-settings">

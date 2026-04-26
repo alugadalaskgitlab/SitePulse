@@ -690,7 +690,7 @@ function PermissionsDialog({
     },
     {
       id: "finance",
-      label: "Finance & Reports",
+      label: "Finance",
       sections: ["vendor_bills", "reports"],
     },
     {
@@ -808,7 +808,7 @@ function PermissionsDialog({
                       },
                       {
                         label: "Management",
-                        sections: ["plant_stock"] as SectionKey[],
+                        sections: ["plant_stock", "plant_variance", "plant_audit", "plant_diesel_proc", "plant_bitumen", "plant_ldo"] as SectionKey[],
                       },
                       {
                         label: "Reports",
@@ -818,8 +818,7 @@ function PermissionsDialog({
                       },
                       {
                         label: "Masters",
-                        sections: [] as SectionKey[],
-                        note: "Plant master data (parties, materials, mix templates, equipment, personnel) is controlled by the Admin Settings permission in the Masters tab.",
+                        sections: ["master_parties", "master_materials", "master_equipment", "master_personnel"] as SectionKey[],
                       },
                     ] as { label: string; sections: SectionKey[]; labelOverrides?: Partial<Record<SectionKey, string>>; rowKeySuffix?: string; note?: string }[]
                   ).map((sub) => (

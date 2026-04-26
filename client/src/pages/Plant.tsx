@@ -48,9 +48,21 @@ export default function Plant() {
     sectionVisible("plant_heating") ||
     sectionVisible("site_procurement") ||
     sectionVisible("site_diesel");
-  const stockVisible = sectionVisible("plant_stock");
+  const stockVisible =
+    sectionVisible("plant_stock") ||
+    sectionVisible("plant_variance") ||
+    sectionVisible("plant_audit") ||
+    sectionVisible("plant_diesel_proc") ||
+    sectionVisible("plant_bitumen") ||
+    sectionVisible("plant_ldo") ||
+    sectionVisible("vendor_bills");
   const reportsVisible = sectionVisible("plant_daily_reports") || sectionVisible("plant_heating");
-  const mastersVisible = sectionVisible("admin_settings");
+  const mastersVisible =
+    sectionVisible("admin_settings") ||
+    sectionVisible("master_parties") ||
+    sectionVisible("master_materials") ||
+    sectionVisible("master_equipment") ||
+    sectionVisible("master_personnel");
 
   const visibleTabs = [
     { key: "operations", visible: opsVisible },
@@ -460,6 +472,7 @@ function StockDetailsTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {sectionVisible("plant_stock") && (
       <Link href={appendRoleAndTab("/plant/stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -474,7 +487,9 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
-      
+      )}
+
+      {sectionVisible("plant_variance") && (
       <Link href={appendRoleAndTab("/plant/variance-report")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -489,7 +504,9 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
-      
+      )}
+
+      {sectionVisible("plant_audit") && (
       <Link href={appendRoleAndTab("/plant/audit-report")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -504,7 +521,9 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
-      
+      )}
+
+      {sectionVisible("plant_diesel_proc") && (
       <Link href={appendRoleAndTab("/plant/diesel-procurement")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -519,7 +538,9 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
+      )}
 
+      {sectionVisible("plant_bitumen") && (
       <Link href={appendRoleAndTab("/plant/bitumen-stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -534,7 +555,9 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
+      )}
 
+      {sectionVisible("plant_ldo") && (
       <Link href={appendRoleAndTab("/plant/ldo-flow-meter")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -559,6 +582,7 @@ function StockDetailsTab() {
           </CardContent>
         </Card>
       </Link>
+      )}
       </div>
 
       {/* ── Diesel Physical Stock Correction Card (admin only) ── */}
@@ -790,13 +814,14 @@ function StockDetailsTab() {
 }
 
 function MastersTab() {
+  const { sectionVisible } = useAuth();
   return (
     <div className="space-y-6">
-      <PartyMaster />
-      <MaterialMaster />
-      <MixTemplateMaster />
-      <EquipmentMasterSection />
-      <PersonnelMasterSection />
+      {sectionVisible("master_parties") && <PartyMaster />}
+      {sectionVisible("master_materials") && <MaterialMaster />}
+      {sectionVisible("master_materials") && <MixTemplateMaster />}
+      {sectionVisible("master_equipment") && <EquipmentMasterSection />}
+      {sectionVisible("master_personnel") && <PersonnelMasterSection />}
     </div>
   );
 }
@@ -804,10 +829,10 @@ function MastersTab() {
 function PartyMaster() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("admin_settings", "edit");
-  const canCreate = sectionCan("admin_settings", "create");
+  const canEdit = sectionCan("master_parties", "edit");
+  const canCreate = sectionCan("master_parties", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("admin_settings", "view_reports");
+  const canExport = sectionCan("master_parties", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
@@ -980,10 +1005,10 @@ function PartyMaster() {
 function MaterialMaster() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("admin_settings", "edit");
-  const canCreate = sectionCan("admin_settings", "create");
+  const canEdit = sectionCan("master_materials", "edit");
+  const canCreate = sectionCan("master_materials", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("admin_settings", "view_reports");
+  const canExport = sectionCan("master_materials", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
@@ -1414,10 +1439,10 @@ type MixTemplateComponent = {
 function MixTemplateMaster() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("admin_settings", "edit");
-  const canCreate = sectionCan("admin_settings", "create");
+  const canEdit = sectionCan("master_materials", "edit");
+  const canCreate = sectionCan("master_materials", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("admin_settings", "view_reports");
+  const canExport = sectionCan("master_materials", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
   const [name, setName] = useState("");
@@ -1819,10 +1844,10 @@ function MixTemplateMaster() {
 function EquipmentMasterSection() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("admin_settings", "edit");
-  const canCreate = sectionCan("admin_settings", "create");
+  const canEdit = sectionCan("master_equipment", "edit");
+  const canCreate = sectionCan("master_equipment", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("admin_settings", "view_reports");
+  const canExport = sectionCan("master_equipment", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [name, setName] = useState("");
@@ -2096,8 +2121,8 @@ function EquipmentMasterSection() {
 function PersonnelMasterSection() {
   const { toast } = useToast();
   const { sectionCan } = useAuth();
-  const canEdit = sectionCan("admin_settings", "edit");
-  const canCreate = sectionCan("admin_settings", "create");
+  const canEdit = sectionCan("master_personnel", "edit");
+  const canCreate = sectionCan("master_personnel", "create");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Personnel | null>(null);
   const [name, setName] = useState("");

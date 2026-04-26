@@ -697,6 +697,44 @@ export async function migrateEmailPhoneSchema(): Promise<{ skipped: boolean }> {
   return { skipped: false };
 }
 
+const PLANT_SUB_PERMS_FLAG = "perm_v313_plant_sub_perms_done";
+
+export async function backfillPlantSubPermissions(): Promise<{ inserted: number; skipped: boolean }> {
+  const existing = await db.select().from(appSettings).where(eq(appSettings.key, PLANT_SUB_PERMS_FLAG));
+  if (existing.length > 0) {
+    console.log("backfillPlantSubPermissions: already applied, skipping.");
+    return { inserted: 0, skipped: true };
+  }
+  const plantSubKeys = ["plant_variance", "plant_audit", "plant_diesel_proc", "plant_bitumen", "plant_ldo"];
+  const masterSubKeys = ["master_parties", "master_materials", "master_equipment", "master_personnel"];
+  let totalInserted = 0;
+  await db.transaction(async (tx) => {
+    for (const newKey of plantSubKeys) {
+      const result = await tx.execute(sql`
+        INSERT INTO user_permissions (user_id, section_key, can_view, can_create, can_edit, can_delete, can_view_reports, can_export)
+        SELECT user_id, ${newKey}, can_view, can_create, can_edit, can_delete, can_view_reports, can_export
+        FROM user_permissions
+        WHERE section_key = 'plant_stock'
+        ON CONFLICT (user_id, section_key) DO NOTHING
+      `);
+      totalInserted += Number((result as any).rowCount ?? 0);
+    }
+    for (const newKey of masterSubKeys) {
+      const result = await tx.execute(sql`
+        INSERT INTO user_permissions (user_id, section_key, can_view, can_create, can_edit, can_delete, can_view_reports, can_export)
+        SELECT user_id, ${newKey}, can_view, can_create, can_edit, can_delete, can_view_reports, can_export
+        FROM user_permissions
+        WHERE section_key = 'admin_settings'
+        ON CONFLICT (user_id, section_key) DO NOTHING
+      `);
+      totalInserted += Number((result as any).rowCount ?? 0);
+    }
+    await tx.insert(appSettings).values({ key: PLANT_SUB_PERMS_FLAG, value: new Date().toISOString() });
+  });
+  console.log(`backfillPlantSubPermissions: inserted ${totalInserted} new permission rows.`);
+  return { inserted: totalInserted, skipped: false };
+}
+
 export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number; skipped: boolean }> {
   const existing = await db.select().from(appSettings).where(eq(appSettings.key, SPLIT_PERMS_FLAG));
   if (existing.length > 0) {

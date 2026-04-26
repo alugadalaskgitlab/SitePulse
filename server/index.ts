@@ -4,7 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { initPush } from "./push";
 import { storage } from "./storage";
-import { ensureBootstrapAdmin, backfillSplitPermissions, migrateEmailPhoneSchema } from "./auth";
+import { ensureBootstrapAdmin, backfillSplitPermissions, migrateEmailPhoneSchema, backfillPlantSubPermissions } from "./auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -91,6 +91,12 @@ app.use((req, res, next) => {
     await backfillSplitPermissions();
   } catch (e) {
     console.error("Startup: backfillSplitPermissions failed:", e);
+  }
+
+  try {
+    await backfillPlantSubPermissions();
+  } catch (e) {
+    console.error("Startup: backfillPlantSubPermissions failed:", e);
   }
 
   try {

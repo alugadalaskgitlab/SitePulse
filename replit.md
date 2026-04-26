@@ -43,19 +43,19 @@ Every PATCH on master-data endpoints calls `assertEdit(req, res, "admin_settings
 | --- | --- |
 | `PATCH /api/sites/:id` | `assertEdit … "admin_settings"` |
 | `DELETE /api/sites/:id` | `assertAdmin` |
-| `PATCH /api/personnel/:id` | `assertEdit … "admin_settings"` |
-| `PATCH /api/personnel/:id/toggle-active` | `assertEdit … "admin_settings"` |
-| `PATCH /api/plant-module/parties/:id` | `assertEdit … "admin_settings"` |
+| `PATCH /api/personnel/:id` | `assertEdit … "master_personnel"` |
+| `PATCH /api/personnel/:id/toggle-active` | `assertEdit … "master_personnel"` |
+| `PATCH /api/plant-module/parties/:id` | `assertEdit … "master_parties"` |
 | `DELETE /api/plant-module/parties/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/materials/:id` | `assertEdit … "admin_settings"` |
+| `PATCH /api/plant-module/materials/:id` | `assertEdit … "master_materials"` |
 | `DELETE /api/plant-module/materials/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/mix-types/:id` | `assertEdit … "admin_settings"` |
+| `PATCH /api/plant-module/mix-types/:id` | `assertEdit … "master_materials"` |
 | `DELETE /api/plant-module/mix-types/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/mix-templates/:id` | `assertEdit … "admin_settings"` |
+| `PATCH /api/plant-module/mix-templates/:id` | `assertEdit … "master_materials"` |
 | `DELETE /api/plant-module/mix-templates/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/equipment/:id` | `assertEdit … "admin_settings"` |
+| `PATCH /api/plant-module/equipment/:id` | `assertEdit … "master_equipment"` |
 | `DELETE /api/plant-module/equipment/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/equipment/:id/toggle-active` | `assertEdit … "admin_settings"` |
+| `PATCH /api/plant-module/equipment/:id/toggle-active` | `assertEdit … "master_equipment"` |
 | `DELETE /api/vendor-aliases/:id` | `assertAdmin` |
 | `DELETE /api/vendor-rate-cards/:id` | `assertAdmin` |
 
@@ -75,19 +75,19 @@ Every PATCH on master-data endpoints calls `assertEdit(req, res, "admin_settings
 | `/api/plant-module/material-returns` | `plant_materials` |
 | `/api/plant-module/opening-stocks` | `plant_stock` |
 | `/api/plant-module/ldo-logs` | `plant_stock` |
-| `/api/plant-module/bitumen-dip-readings` | `plant_stock` |
-| `/api/plant-module/ldo-flow-readings` | `plant_stock` |
-| `/api/plant-module/ldo-dip-readings` | `plant_stock` |
+| `/api/plant-module/bitumen-dip-readings` | `plant_bitumen` |
+| `/api/plant-module/ldo-flow-readings` | `plant_ldo` |
+| `/api/plant-module/ldo-dip-readings` | `plant_ldo` |
 | `/api/plant-module/dispatches` | `plant_production` |
 | `/api/vendor-bills` | `vendor_bills` |
 | `/api/sites`, `/api/sites/seed` | `admin_settings` |
-| `/api/personnel` | `admin_settings` |
+| `/api/personnel` | `master_personnel` |
 | `/api/plant` (plant report create) | `admin_settings` |
-| `/api/plant-module/parties` | `admin_settings` |
-| `/api/plant-module/materials` | `admin_settings` |
-| `/api/plant-module/mix-types` | `admin_settings` |
-| `/api/plant-module/mix-templates` | `admin_settings` |
-| `/api/plant-module/equipment` | `admin_settings` |
+| `/api/plant-module/parties` | `master_parties` |
+| `/api/plant-module/materials` | `master_materials` |
+| `/api/plant-module/mix-types` | `master_materials` |
+| `/api/plant-module/mix-templates` | `master_materials` |
+| `/api/plant-module/equipment` | `master_equipment` |
 | `/api/vendor-aliases` | `admin_settings` |
 | `/api/vendor-rate-cards`, `/api/vendor-rate-cards/bulk-upsert` | `admin_settings` |
 
