@@ -595,12 +595,12 @@ export default function PlantShiftLog() {
                 <Users className="w-4 h-4 mr-1" />Review UNKNOWN
               </Button>
             </Link>
-            <Button onClick={openNew} data-testid="button-new-shift-log"><Plus className="w-4 h-4 mr-1" />New Shift Log</Button>
+            <Button onClick={openNew} data-testid="button-new-shift-log"><Plus className="w-4 h-4 mr-1" />New Log</Button>
           </div>
         </div>
 
         <Card>
-          <CardHeader><CardTitle>Shift Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Plant Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
               !sorted.length ? <p className="text-sm text-muted-foreground">No shift logs in this date range.</p> :
@@ -676,7 +676,7 @@ export default function PlantShiftLog() {
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={goBackToList} data-testid="button-back-to-list"><ChevronLeft className="w-5 h-5" /></Button>
           <div>
-            <h1 className="text-2xl font-bold">Plant Shift Log</h1>
+            <h1 className="text-2xl font-bold">Plant Log</h1>
             <p className="text-sm text-muted-foreground">Operator daily log – plant start/stop, idle events, manpower, fuel meters</p>
           </div>
         </div>
