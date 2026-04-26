@@ -1,13 +1,17 @@
-import { useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useRoute } from "wouter";
+import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertTriangle,
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   Flame,
   GitCompare,
   Loader2,
@@ -15,6 +19,7 @@ import {
   ArrowRight,
   GaugeCircle,
   BookOpen,
+  Calendar,
 } from "lucide-react";
 import type { BitumenHeatingSession, PlantShiftLog, LdoFlowReading } from "@shared/schema";
 import { heatingSessionTypeLabel } from "@shared/schema";
@@ -47,132 +52,625 @@ function sourceLabel(r: LdoFlowReading): string {
   return "Manual";
 }
 
-export default function PlantLdoMismatch() {
-  const { appendPlantContext, getPlantBackLink } = useOrigin();
-  const [, params] = useRoute("/plant/ldo-mismatch/:date");
-  const date = params?.date || "";
+function getDatesInRange(from: string, to: string): string[] {
+  if (!from || !to) return from ? [from] : [];
+  const parseParts = (s: string) => s.split("-").map(Number) as [number, number, number];
+  const [fy, fm, fd] = parseParts(from);
+  const [ty, tm, td] = parseParts(to);
+  const startMs = Date.UTC(fy, fm - 1, fd);
+  const endMs = Date.UTC(ty, tm - 1, td);
+  if (isNaN(startMs) || isNaN(endMs) || startMs > endMs) return from ? [from] : [];
+  const result: string[] = [];
+  const DAY_MS = 86_400_000;
+  for (let ms = startMs; ms <= endMs; ms += DAY_MS) {
+    const d = new Date(ms);
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    result.push(`${yyyy}-${mm}-${dd}`);
+  }
+  return result;
+}
 
-  const search = typeof window !== "undefined" ? window.location.search : "";
-  const sp = new URLSearchParams(search);
-  const plant = sp.get("plant") || "Main Plant";
+function deltaClass(d: number | null): string {
+  if (d == null) return "text-muted-foreground";
+  return Math.abs(d) > MISMATCH_THRESHOLD_L ? "text-destructive font-semibold" : "text-green-600";
+}
 
-  const heatSessionsBackLink = appendPlantContext(`/plant/heating-sessions/${date}`, {
+interface DaySummary {
+  date: string;
+  sessions: BitumenHeatingSession[];
+  shiftLogs: PlantShiftLog[];
+  ledgerRows: LdoFlowReading[];
+  sessionsTotalL: number;
+  shiftTotalL: number;
+  anyShiftHasMeter: boolean;
+  ledgerTotalL: number;
+  deltaSessionsVsShift: number | null;
+  deltaSessionsVsLedger: number | null;
+  deltaShiftVsLedger: number | null;
+  hasMismatch: boolean;
+}
+
+function buildDaySummaries(
+  dates: string[],
+  allSessions: BitumenHeatingSession[],
+  allShiftLogs: PlantShiftLog[],
+  allLedgerRows: LdoFlowReading[],
+  plant: string,
+): DaySummary[] {
+  return dates.map(date => {
+    const sessions = allSessions.filter(
+      s => s.plantName === plant && s.date === date,
+    );
+    const shiftLogs = allShiftLogs.filter(
+      sh => sh.plantName === plant && sh.date === date,
+    );
+    const ledgerRows = allLedgerRows.filter(
+      r =>
+        r.date === date &&
+        (r.sourceHeatingSessionId != null || r.sourceShiftLogId != null),
+    );
+
+    const sessionsTotalL = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
+    const shiftTotalL = shiftLogs.reduce((s, sh) => {
+      const c = shiftConsumed(sh);
+      return s + (c == null ? 0 : c);
+    }, 0);
+    const anyShiftHasMeter = shiftLogs.some(sh => shiftConsumed(sh) != null);
+    const ledgerTotalL = ledgerRows.reduce((s, r) => {
+      const c = ldoLedgerConsumed(r);
+      return s + (c == null ? 0 : c);
+    }, 0);
+
+    const deltaSessionsVsShift =
+      sessions.length > 0 || anyShiftHasMeter
+        ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
+        : null;
+    const deltaSessionsVsLedger =
+      sessions.length > 0 || ledgerRows.length > 0
+        ? Math.round((sessionsTotalL - ledgerTotalL) * 10) / 10
+        : null;
+    const deltaShiftVsLedger =
+      anyShiftHasMeter || ledgerRows.length > 0
+        ? Math.round((shiftTotalL - ledgerTotalL) * 10) / 10
+        : null;
+
+    const hasMismatch = [deltaSessionsVsShift, deltaSessionsVsLedger, deltaShiftVsLedger].some(
+      d => d != null && Math.abs(d) > MISMATCH_THRESHOLD_L,
+    );
+
+    return {
+      date,
+      sessions,
+      shiftLogs,
+      ledgerRows,
+      sessionsTotalL,
+      shiftTotalL,
+      anyShiftHasMeter,
+      ledgerTotalL,
+      deltaSessionsVsShift,
+      deltaSessionsVsLedger,
+      deltaShiftVsLedger,
+      hasMismatch,
+    };
+  });
+}
+
+function DeltaCell({ d }: { d: number | null }) {
+  if (d == null) return <span className="text-muted-foreground">—</span>;
+  const over = Math.abs(d) > MISMATCH_THRESHOLD_L;
+  return (
+    <span className={over ? "text-destructive font-semibold" : "text-green-600"}>
+      {d > 0 ? "+" : ""}
+      {fmt(d)} L
+    </span>
+  );
+}
+
+interface DayDetailProps {
+  day: DaySummary;
+  plant: string;
+  appendPlantContext: (path: string, opts?: { defaultTab?: string }) => string;
+  ldoFlowMeterLink: string;
+}
+
+function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink }: DayDetailProps) {
+  const { date, sessions, shiftLogs, ledgerRows } = day;
+
+  const heatSessionsLink = appendPlantContext(`/plant/heating-sessions/${date}`, {
     defaultTab: "operations",
   });
-  const dashboardBackLink = getPlantBackLink({ defaultTab: "operations" });
   const shiftLogLink = appendPlantContext(`/plant/shift-log/${date}`, {
     defaultTab: "operations",
   });
+  const editSessionLink = (sessionId: number) =>
+    appendPlantContext(`/plant/heating-sessions/${date}?openSession=${sessionId}`, {
+      defaultTab: "operations",
+    });
+
+  return (
+    <div className="space-y-4 mt-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Flame className="w-4 h-4 text-orange-600" />
+              Heating sessions on {date}
+            </CardTitle>
+            <Link href={heatSessionsLink}>
+              <Button variant="outline" size="sm" data-testid={`button-open-sessions-${date}`}>
+                Open sessions list
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {sessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid={`text-no-sessions-${date}`}>
+              No heating sessions logged for this date.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="py-2 pr-3">Type</th>
+                  <th className="py-2 pr-3">Start</th>
+                  <th className="py-2 pr-3">End</th>
+                  <th className="py-2 pr-3 text-right">Opening meter</th>
+                  <th className="py-2 pr-3 text-right">Closing meter</th>
+                  <th className="py-2 pr-3 text-right">Consumed (L)</th>
+                  <th className="py-2 pr-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map(s => (
+                  <tr
+                    key={s.id}
+                    className="border-b hover:bg-muted/30"
+                    data-testid={`row-session-${s.id}`}
+                  >
+                    <td className="py-2 pr-3">
+                      <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"}>
+                        {heatingSessionTypeLabel(s.sessionType)}
+                      </Badge>
+                    </td>
+                    <td className="py-2 pr-3">{s.startTime || "—"}</td>
+                    <td className="py-2 pr-3">{s.endTime || "—"}</td>
+                    <td className="py-2 pr-3 text-right" data-testid={`cell-session-open-${s.id}`}>
+                      {fmt(s.ldoTank1OpeningMeter, 2)}
+                    </td>
+                    <td className="py-2 pr-3 text-right" data-testid={`cell-session-close-${s.id}`}>
+                      {fmt(s.ldoTank1ClosingMeter, 2)}
+                    </td>
+                    <td
+                      className="py-2 pr-3 text-right font-medium"
+                      data-testid={`cell-session-consumed-${s.id}`}
+                    >
+                      {fmt(s.ldoTank1Consumed, 1)}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      <Link href={editSessionLink(s.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`link-edit-session-${s.id}`}
+                        >
+                          <Pencil className="w-4 h-4 mr-1" /> Edit
+                        </Button>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className="py-2 pr-3" colSpan={5}>
+                    Sessions total
+                  </td>
+                  <td className="py-2 pr-3 text-right" data-testid={`text-sessions-total-row-${date}`}>
+                    {fmt(day.sessionsTotalL, 1)}
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <GaugeCircle className="w-4 h-4 text-sky-600" />
+              Shift log meter on {date}
+            </CardTitle>
+            <Link href={shiftLogLink}>
+              <Button variant="outline" size="sm" data-testid={`button-open-shift-log-${date}`}>
+                Open shift log
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {shiftLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid={`text-no-shift-logs-${date}`}>
+              No shift log entered for this date.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="py-2 pr-3">Shift</th>
+                  <th className="py-2 pr-3 text-right">Opening meter</th>
+                  <th className="py-2 pr-3 text-right">Closing meter</th>
+                  <th className="py-2 pr-3 text-right">Consumed (L)</th>
+                  <th className="py-2 pr-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {shiftLogs.map(sh => {
+                  const consumed = shiftConsumed(sh);
+                  return (
+                    <tr
+                      key={sh.id}
+                      className="border-b hover:bg-muted/30"
+                      data-testid={`row-shift-${sh.id}`}
+                    >
+                      <td className="py-2 pr-3">
+                        <Badge variant="outline">{sh.shiftCode}</Badge>
+                      </td>
+                      <td
+                        className="py-2 pr-3 text-right"
+                        data-testid={`cell-shift-open-${sh.id}`}
+                      >
+                        {fmt(sh.ldoTank1OpeningMeter, 2)}
+                      </td>
+                      <td
+                        className="py-2 pr-3 text-right"
+                        data-testid={`cell-shift-close-${sh.id}`}
+                      >
+                        {fmt(sh.ldoTank1ClosingMeter, 2)}
+                      </td>
+                      <td
+                        className="py-2 pr-3 text-right font-medium"
+                        data-testid={`cell-shift-consumed-${sh.id}`}
+                      >
+                        {consumed == null ? "—" : fmt(consumed, 1)}
+                      </td>
+                      <td className="py-2 pr-3 text-right">
+                        <Link href={shiftLogLink}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`link-edit-shift-${sh.id}`}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" /> Edit
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className="font-semibold">
+                  <td className="py-2 pr-3" colSpan={3}>
+                    Shift-meter total
+                  </td>
+                  <td
+                    className="py-2 pr-3 text-right"
+                    data-testid={`text-shift-total-row-${date}`}
+                  >
+                    {day.anyShiftHasMeter ? fmt(day.shiftTotalL, 1) : "—"}
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BookOpen className="w-4 h-4 text-violet-600" />
+              LDO Flow Ledger rows on {date} (Tank 1 · auto-tagged)
+            </CardTitle>
+            <Link href={ldoFlowMeterLink}>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-open-ldo-flow-meter-${date}`}
+              >
+                Open LDO Flow Meter
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {ledgerRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid={`text-no-ledger-rows-${date}`}>
+              No auto-tagged ledger rows for this date. If heating sessions or shift logs exist,
+              they may not have generated flow-meter entries yet — check the LDO Flow Meter page.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="py-2 pr-3">Source</th>
+                  <th className="py-2 pr-3">Type</th>
+                  <th className="py-2 pr-3">Time</th>
+                  <th className="py-2 pr-3 text-right">Meter reading</th>
+                  <th className="py-2 pr-3 text-right">Quantity (L)</th>
+                  <th className="py-2 pr-3">Notes</th>
+                  <th className="py-2 pr-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {ledgerRows.map(r => (
+                  <tr
+                    key={r.id}
+                    className="border-b hover:bg-muted/30"
+                    data-testid={`row-ledger-${r.id}`}
+                  >
+                    <td className="py-2 pr-3">
+                      <Badge
+                        variant={r.sourceHeatingSessionId != null ? "secondary" : "outline"}
+                      >
+                        {sourceLabel(r)}
+                      </Badge>
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-muted-foreground">{r.readingType}</td>
+                    <td className="py-2 pr-3">{r.time || "—"}</td>
+                    <td
+                      className="py-2 pr-3 text-right"
+                      data-testid={`cell-ledger-meter-${r.id}`}
+                    >
+                      {fmt(r.meterReading, 2)}
+                    </td>
+                    <td
+                      className="py-2 pr-3 text-right font-medium"
+                      data-testid={`cell-ledger-qty-${r.id}`}
+                    >
+                      {r.quantityLiters != null ? fmt(r.quantityLiters, 1) : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-muted-foreground max-w-[180px] truncate">
+                      {r.notes || "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {r.sourceHeatingSessionId != null ? (
+                        <Link href={editSessionLink(r.sourceHeatingSessionId)}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`link-edit-ledger-session-${r.id}`}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" /> Edit session
+                          </Button>
+                        </Link>
+                      ) : r.sourceShiftLogId != null ? (
+                        <Link href={shiftLogLink}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`link-edit-ledger-shift-${r.id}`}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" /> Edit shift log
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Link href={ldoFlowMeterLink}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`link-edit-ledger-${r.id}`}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" /> Edit
+                          </Button>
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className="py-2 pr-3" colSpan={4}>
+                    Ledger total
+                  </td>
+                  <td
+                    className="py-2 pr-3 text-right"
+                    data-testid={`text-ledger-total-row-${date}`}
+                  >
+                    {fmt(day.ledgerTotalL, 1)}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function PlantLdoMismatch() {
+  const { appendPlantContext, getPlantBackLink } = useOrigin();
+  const [, params] = useRoute("/plant/ldo-mismatch/:date");
+  const routeDate = params?.date || "";
+  const [, setLocation] = useLocation();
+
+  const searchString = useSearch();
+  const sp = new URLSearchParams(searchString);
+  const plant = sp.get("plant") || "Main Plant";
+
+  const initialFrom = sp.get("dateFrom") || routeDate;
+  const initialTo = sp.get("dateTo") || routeDate;
+
+  const [dateFrom, setDateFrom] = useState(initialFrom);
+  const [dateTo, setDateTo] = useState(initialTo);
+
+  useEffect(() => {
+    const urlFrom = sp.get("dateFrom") || routeDate;
+    const urlTo = sp.get("dateTo") || routeDate;
+    setDateFrom(urlFrom);
+    setDateTo(urlTo);
+  }, [searchString, routeDate]);
+
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(
+    () => new Set(routeDate ? [routeDate] : []),
+  );
+
+  function toggleDate(d: string) {
+    setExpandedDates(prev => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
+      return next;
+    });
+  }
+
+  function applyRange() {
+    const newSp = new URLSearchParams(searchString);
+    newSp.set("dateFrom", dateFrom);
+    newSp.set("dateTo", dateTo);
+    const path = `/plant/ldo-mismatch/${dateFrom}?${newSp.toString()}`;
+    setLocation(path);
+    setExpandedDates(new Set());
+  }
+
+  const effectiveDateFrom = sp.get("dateFrom") || routeDate;
+  const effectiveDateTo = sp.get("dateTo") || routeDate;
+
+  const dashboardBackLink = getPlantBackLink({ defaultTab: "operations" });
   const ldoFlowMeterLink = appendPlantContext(
     `/plant/ldo-flow-meter?plant=${encodeURIComponent(plant)}`,
     { defaultTab: "stock" },
   );
 
+  const rangeEnabled = !!(effectiveDateFrom && effectiveDateTo);
+
   const sessionsQuery = useQuery<BitumenHeatingSession[]>({
-    queryKey: ["/api/plant-module/heating-sessions", date, plant],
-    enabled: !!date,
+    queryKey: [
+      "/api/plant-module/heating-sessions",
+      { dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, plant },
+    ],
+    enabled: rangeEnabled,
     queryFn: async () => {
       const qs = new URLSearchParams();
-      qs.set("date", date);
+      qs.set("dateFrom", effectiveDateFrom);
+      qs.set("dateTo", effectiveDateTo);
       qs.set("plant", plant);
-      const res = await fetch(
-        `/api/plant-module/heating-sessions?${qs.toString()}`,
-        { credentials: "include" },
-      );
+      const res = await fetch(`/api/plant-module/heating-sessions?${qs.toString()}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
   });
 
   const shiftLogsQuery = useQuery<PlantShiftLog[]>({
-    queryKey: ["/api/plant-module/shift-logs", date],
-    enabled: !!date,
+    queryKey: [
+      "/api/plant-module/shift-logs",
+      { dateFrom: effectiveDateFrom, dateTo: effectiveDateTo },
+    ],
+    enabled: rangeEnabled,
     queryFn: async () => {
       const qs = new URLSearchParams();
-      qs.set("dateFrom", date);
-      qs.set("dateTo", date);
-      const res = await fetch(
-        `/api/plant-module/shift-logs?${qs.toString()}`,
-        { credentials: "include" },
-      );
+      qs.set("dateFrom", effectiveDateFrom);
+      qs.set("dateTo", effectiveDateTo);
+      const res = await fetch(`/api/plant-module/shift-logs?${qs.toString()}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
   });
 
   const ldoReadingsQuery = useQuery<LdoFlowReading[]>({
-    queryKey: ["/api/plant-module/ldo-flow-readings", { dateFrom: date, dateTo: date, plantName: plant, tankNumber: 1 }],
-    enabled: !!date,
+    queryKey: [
+      "/api/plant-module/ldo-flow-readings",
+      { dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, plantName: plant, tankNumber: 1 },
+    ],
+    enabled: rangeEnabled,
     queryFn: async () => {
       const qs = new URLSearchParams();
-      qs.set("dateFrom", date);
-      qs.set("dateTo", date);
+      qs.set("dateFrom", effectiveDateFrom);
+      qs.set("dateTo", effectiveDateTo);
       qs.set("plantName", plant);
       qs.set("tankNumber", "1");
-      const res = await fetch(
-        `/api/plant-module/ldo-flow-readings?${qs.toString()}`,
-        { credentials: "include" },
-      );
+      const res = await fetch(`/api/plant-module/ldo-flow-readings?${qs.toString()}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
   });
 
-  const sessions = useMemo(
-    () => (sessionsQuery.data || []).filter(s => s.plantName === plant),
-    [sessionsQuery.data, plant],
+  const dates = useMemo(
+    () => getDatesInRange(effectiveDateFrom, effectiveDateTo),
+    [effectiveDateFrom, effectiveDateTo],
   );
-  const shiftLogs = useMemo(
-    () => (shiftLogsQuery.data || []).filter(sh => sh.plantName === plant),
-    [shiftLogsQuery.data, plant],
+
+  const daySummaries = useMemo(
+    () =>
+      buildDaySummaries(
+        dates,
+        sessionsQuery.data || [],
+        shiftLogsQuery.data || [],
+        ldoReadingsQuery.data || [],
+        plant,
+      ),
+    [dates, sessionsQuery.data, shiftLogsQuery.data, ldoReadingsQuery.data, plant],
   );
-  const ldoLedgerRows = useMemo(() => {
-    const all = ldoReadingsQuery.data || [];
-    return all.filter(r => r.sourceHeatingSessionId != null || r.sourceShiftLogId != null);
-  }, [ldoReadingsQuery.data]);
 
-  const sessionsTotalL = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
-  const shiftTotalL = shiftLogs.reduce((s, sh) => {
-    const c = shiftConsumed(sh);
-    return s + (c == null ? 0 : c);
-  }, 0);
-  const anyShiftHasMeter = shiftLogs.some(sh => shiftConsumed(sh) != null);
-  const ledgerTotalL = ldoLedgerRows.reduce((s, r) => {
-    const c = ldoLedgerConsumed(r);
-    return s + (c == null ? 0 : c);
-  }, 0);
-
-  const deltaSessionsVsShift =
-    sessions.length > 0 || anyShiftHasMeter
-      ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
-      : null;
-  const deltaSessionsVsLedger =
-    sessions.length > 0 || ldoLedgerRows.length > 0
-      ? Math.round((sessionsTotalL - ledgerTotalL) * 10) / 10
-      : null;
-  const deltaShiftVsLedger =
-    anyShiftHasMeter || ldoLedgerRows.length > 0
-      ? Math.round((shiftTotalL - ledgerTotalL) * 10) / 10
-      : null;
+  const rangeTotals = useMemo(() => {
+    const sessionsTotalL = daySummaries.reduce((s, d) => s + d.sessionsTotalL, 0);
+    const shiftTotalL = daySummaries.reduce((s, d) => s + d.shiftTotalL, 0);
+    const ledgerTotalL = daySummaries.reduce((s, d) => s + d.ledgerTotalL, 0);
+    const anyShiftHasMeter = daySummaries.some(d => d.anyShiftHasMeter);
+    const anySession = daySummaries.some(d => d.sessions.length > 0);
+    const anyLedger = daySummaries.some(d => d.ledgerRows.length > 0);
+    const deltaSessionsVsShift =
+      anySession || anyShiftHasMeter
+        ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
+        : null;
+    const deltaSessionsVsLedger =
+      anySession || anyLedger
+        ? Math.round((sessionsTotalL - ledgerTotalL) * 10) / 10
+        : null;
+    const deltaShiftVsLedger =
+      anyShiftHasMeter || anyLedger
+        ? Math.round((shiftTotalL - ledgerTotalL) * 10) / 10
+        : null;
+    return {
+      sessionsTotalL,
+      shiftTotalL,
+      ledgerTotalL,
+      anyShiftHasMeter,
+      deltaSessionsVsShift,
+      deltaSessionsVsLedger,
+      deltaShiftVsLedger,
+    };
+  }, [daySummaries]);
 
   const isLoading =
     sessionsQuery.isLoading || shiftLogsQuery.isLoading || ldoReadingsQuery.isLoading;
   const isError =
     sessionsQuery.isError || shiftLogsQuery.isError || ldoReadingsQuery.isError;
 
-  const editSessionLink = (sessionId: number) =>
-    appendPlantContext(
-      `/plant/heating-sessions/${date}?openSession=${sessionId}`,
-      { defaultTab: "operations" },
-    );
+  const isMultiDay = dates.length > 1;
 
-  const deltaClass = (d: number | null) =>
-    d == null ? "" : Math.abs(d) > MISMATCH_THRESHOLD_L ? "text-destructive" : "text-green-600";
+  const backLink = appendPlantContext(`/plant/heating-sessions/${routeDate}`, {
+    defaultTab: "operations",
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href={heatSessionsBackLink}>
+        <Link href={backLink}>
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -183,12 +681,56 @@ export default function PlantLdoMismatch() {
             LDO Flow Ledger Reconciliation
           </h1>
           <p className="text-sm text-muted-foreground">
-            {date || "—"} · {plant} · Tank 1 (Boiler)
+            {isMultiDay
+              ? `${effectiveDateFrom} → ${effectiveDateTo}`
+              : effectiveDateFrom || "—"}{" "}
+            · {plant} · Tank 1 (Boiler)
           </p>
         </div>
       </div>
 
-      {!date ? (
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-end gap-4 flex-wrap">
+            <Calendar className="w-5 h-5 text-muted-foreground mb-1 hidden sm:block" />
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="input-date-from" className="text-xs">
+                From
+              </Label>
+              <Input
+                id="input-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="w-40"
+                data-testid="input-date-from"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="input-date-to" className="text-xs">
+                To
+              </Label>
+              <Input
+                id="input-date-to"
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="w-40"
+                data-testid="input-date-to"
+              />
+            </div>
+            <Button
+              onClick={applyRange}
+              disabled={!dateFrom || !dateTo || dateFrom > dateTo}
+              data-testid="button-apply-range"
+            >
+              Apply
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {!effectiveDateFrom ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
             No date in the URL.{" "}
@@ -207,7 +749,7 @@ export default function PlantLdoMismatch() {
           <CardContent className="p-6 text-sm text-destructive space-y-2">
             <div className="flex items-center gap-2 font-semibold">
               <AlertTriangle className="w-4 h-4" />
-              Couldn't load reconciliation data for this date.
+              Couldn't load reconciliation data for this date range.
             </div>
             {sessionsQuery.isError && (
               <div data-testid="text-error-sessions">
@@ -217,8 +759,7 @@ export default function PlantLdoMismatch() {
             )}
             {shiftLogsQuery.isError && (
               <div data-testid="text-error-shift-logs">
-                Shift logs:{" "}
-                {(shiftLogsQuery.error as Error)?.message || "Unknown error"}
+                Shift logs: {(shiftLogsQuery.error as Error)?.message || "Unknown error"}
               </div>
             )}
             {ldoReadingsQuery.isError && (
@@ -238,10 +779,12 @@ export default function PlantLdoMismatch() {
                   <Flame className="w-3 h-3" /> Heating sessions total
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-sessions-total">
-                  {fmt(sessionsTotalL)} L
+                  {fmt(rangeTotals.sessionsTotalL)} L
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {sessions.length} session{sessions.length === 1 ? "" : "s"}
+                  {daySummaries.reduce((s, d) => s + d.sessions.length, 0)} session
+                  {daySummaries.reduce((s, d) => s + d.sessions.length, 0) === 1 ? "" : "s"}
+                  {isMultiDay && ` across ${dates.length} days`}
                 </div>
               </CardContent>
             </Card>
@@ -251,11 +794,14 @@ export default function PlantLdoMismatch() {
                   <GaugeCircle className="w-3 h-3" /> Shift-meter total
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-shift-total">
-                  {anyShiftHasMeter ? `${fmt(shiftTotalL)} L` : "—"}
+                  {rangeTotals.anyShiftHasMeter ? `${fmt(rangeTotals.shiftTotalL)} L` : "—"}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {shiftLogs.length} shift log{shiftLogs.length === 1 ? "" : "s"}
-                  {shiftLogs.length > 0 && !anyShiftHasMeter && " · no meter readings"}
+                  {daySummaries.reduce((s, d) => s + d.shiftLogs.length, 0)} shift log
+                  {daySummaries.reduce((s, d) => s + d.shiftLogs.length, 0) === 1 ? "" : "s"}
+                  {!rangeTotals.anyShiftHasMeter &&
+                    daySummaries.some(d => d.shiftLogs.length > 0) &&
+                    " · no meter readings"}
                 </div>
               </CardContent>
             </Card>
@@ -265,10 +811,13 @@ export default function PlantLdoMismatch() {
                   <BookOpen className="w-3 h-3" /> LDO Flow ledger total
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-ledger-total">
-                  {ldoLedgerRows.length > 0 ? `${fmt(ledgerTotalL)} L` : "—"}
+                  {daySummaries.some(d => d.ledgerRows.length > 0)
+                    ? `${fmt(rangeTotals.ledgerTotalL)} L`
+                    : "—"}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {ldoLedgerRows.length} ledger row{ldoLedgerRows.length === 1 ? "" : "s"}
+                  {daySummaries.reduce((s, d) => s + d.ledgerRows.length, 0)} ledger row
+                  {daySummaries.reduce((s, d) => s + d.ledgerRows.length, 0) === 1 ? "" : "s"}
                 </div>
               </CardContent>
             </Card>
@@ -278,19 +827,19 @@ export default function PlantLdoMismatch() {
             {[
               {
                 label: "Sessions vs Shift",
-                delta: deltaSessionsVsShift,
+                delta: rangeTotals.deltaSessionsVsShift,
                 description: "Δ (sessions − shift meter)",
                 testId: "kpi-delta-sessions-shift",
               },
               {
                 label: "Sessions vs Ledger",
-                delta: deltaSessionsVsLedger,
+                delta: rangeTotals.deltaSessionsVsLedger,
                 description: "Δ (sessions − LDO ledger rows)",
                 testId: "kpi-delta-sessions-ledger",
               },
               {
                 label: "Shift vs Ledger",
-                delta: deltaShiftVsLedger,
+                delta: rangeTotals.deltaShiftVsLedger,
                 description: "Δ (shift meter − LDO ledger rows)",
                 testId: "kpi-delta-shift-ledger",
               },
@@ -298,7 +847,9 @@ export default function PlantLdoMismatch() {
               <Card
                 key={label}
                 className={
-                  delta != null && Math.abs(delta) > MISMATCH_THRESHOLD_L ? "border-destructive" : ""
+                  delta != null && Math.abs(delta) > MISMATCH_THRESHOLD_L
+                    ? "border-destructive"
+                    : ""
                 }
               >
                 <CardContent className="p-4">
@@ -309,9 +860,7 @@ export default function PlantLdoMismatch() {
                     className={`text-2xl font-bold ${deltaClass(delta)}`}
                     data-testid={testId}
                   >
-                    {delta == null
-                      ? "—"
-                      : `${delta > 0 ? "+" : ""}${fmt(delta)} L`}
+                    {delta == null ? "—" : `${delta > 0 ? "+" : ""}${fmt(delta)} L`}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {label} · Tolerance: ±{MISMATCH_THRESHOLD_L} L
@@ -323,320 +872,120 @@ export default function PlantLdoMismatch() {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-orange-600" />
-                  Heating sessions on {date}
-                </CardTitle>
-                <Link href={heatSessionsBackLink}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="button-open-sessions-list"
-                  >
-                    Open sessions list
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </div>
+              <CardTitle className="flex items-center gap-2">
+                <GitCompare className="w-5 h-5 text-amber-600" />
+                {isMultiDay
+                  ? `Day-by-day summary (${effectiveDateFrom} → ${effectiveDateTo})`
+                  : `Reconciliation detail for ${effectiveDateFrom}`}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
-              {sessions.length === 0 ? (
-                <p className="text-sm text-muted-foreground" data-testid="text-no-sessions">
-                  No heating sessions logged for this date.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left border-b">
-                      <th className="py-2 pr-3">Type</th>
-                      <th className="py-2 pr-3">Start</th>
-                      <th className="py-2 pr-3">End</th>
-                      <th className="py-2 pr-3 text-right">Opening meter</th>
-                      <th className="py-2 pr-3 text-right">Closing meter</th>
-                      <th className="py-2 pr-3 text-right">Consumed (L)</th>
-                      <th className="py-2 pr-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessions.map(s => (
-                      <tr
-                        key={s.id}
-                        className="border-b hover:bg-muted/30"
-                        data-testid={`row-session-${s.id}`}
-                      >
-                        <td className="py-2 pr-3">
-                          <Badge
-                            variant={
-                              s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"
-                            }
-                          >
-                            {heatingSessionTypeLabel(s.sessionType)}
-                          </Badge>
-                        </td>
-                        <td className="py-2 pr-3">{s.startTime || "—"}</td>
-                        <td className="py-2 pr-3">{s.endTime || "—"}</td>
-                        <td className="py-2 pr-3 text-right" data-testid={`cell-session-open-${s.id}`}>
-                          {fmt(s.ldoTank1OpeningMeter, 2)}
-                        </td>
-                        <td className="py-2 pr-3 text-right" data-testid={`cell-session-close-${s.id}`}>
-                          {fmt(s.ldoTank1ClosingMeter, 2)}
-                        </td>
-                        <td
-                          className="py-2 pr-3 text-right font-medium"
-                          data-testid={`cell-session-consumed-${s.id}`}
-                        >
-                          {fmt(s.ldoTank1Consumed, 1)}
-                        </td>
-                        <td className="py-2 pr-3 text-right">
-                          <Link href={editSessionLink(s.id)}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`link-edit-session-${s.id}`}
-                            >
-                              <Pencil className="w-4 h-4 mr-1" /> Edit
-                            </Button>
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="font-semibold">
-                      <td className="py-2 pr-3" colSpan={5}>
-                        Sessions total
-                      </td>
-                      <td className="py-2 pr-3 text-right" data-testid="text-sessions-total-row">
-                        {fmt(sessionsTotalL, 1)}
-                      </td>
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="flex items-center gap-2">
-                  <GaugeCircle className="w-5 h-5 text-sky-600" />
-                  Shift log meter on {date}
-                </CardTitle>
-                <Link href={shiftLogLink}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="button-open-shift-log"
-                  >
-                    Open shift log
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              {shiftLogs.length === 0 ? (
-                <p className="text-sm text-muted-foreground" data-testid="text-no-shift-logs">
-                  No shift log entered for this date.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left border-b">
-                      <th className="py-2 pr-3">Shift</th>
-                      <th className="py-2 pr-3 text-right">Opening meter</th>
-                      <th className="py-2 pr-3 text-right">Closing meter</th>
-                      <th className="py-2 pr-3 text-right">Consumed (L)</th>
-                      <th className="py-2 pr-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shiftLogs.map(sh => {
-                      const consumed = shiftConsumed(sh);
-                      return (
+            <CardContent className="overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b bg-muted/40">
+                    <th className="py-2 px-4">Date</th>
+                    <th className="py-2 px-3 text-right">Sessions (L)</th>
+                    <th className="py-2 px-3 text-right">Shift (L)</th>
+                    <th className="py-2 px-3 text-right">Ledger (L)</th>
+                    <th className="py-2 px-3 text-right">Δ Sess−Shift</th>
+                    <th className="py-2 px-3 text-right">Δ Sess−Ledger</th>
+                    <th className="py-2 px-3 text-right">Δ Shift−Ledger</th>
+                    <th className="py-2 px-3 text-right" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {daySummaries.map(day => {
+                    const isExpanded = expandedDates.has(day.date);
+                    return (
+                      <Fragment key={day.date}>
                         <tr
-                          key={sh.id}
-                          className="border-b hover:bg-muted/30"
-                          data-testid={`row-shift-${sh.id}`}
+                          className={`border-b cursor-pointer hover:bg-muted/30 transition-colors ${
+                            day.hasMismatch ? "bg-destructive/5" : ""
+                          }`}
+                          onClick={() => toggleDate(day.date)}
+                          data-testid={`row-day-summary-${day.date}`}
                         >
-                          <td className="py-2 pr-3">
-                            <Badge variant="outline">{sh.shiftCode}</Badge>
+                          <td className="py-2 px-4 font-medium flex items-center gap-1">
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            )}
+                            {day.date}
+                            {day.hasMismatch && (
+                              <AlertTriangle className="w-3.5 h-3.5 text-destructive ml-1" />
+                            )}
                           </td>
-                          <td
-                            className="py-2 pr-3 text-right"
-                            data-testid={`cell-shift-open-${sh.id}`}
-                          >
-                            {fmt(sh.ldoTank1OpeningMeter, 2)}
+                          <td className="py-2 px-3 text-right">
+                            {day.sessions.length > 0 ? fmt(day.sessionsTotalL) : "—"}
                           </td>
-                          <td
-                            className="py-2 pr-3 text-right"
-                            data-testid={`cell-shift-close-${sh.id}`}
-                          >
-                            {fmt(sh.ldoTank1ClosingMeter, 2)}
+                          <td className="py-2 px-3 text-right">
+                            {day.anyShiftHasMeter ? fmt(day.shiftTotalL) : "—"}
                           </td>
-                          <td
-                            className="py-2 pr-3 text-right font-medium"
-                            data-testid={`cell-shift-consumed-${sh.id}`}
-                          >
-                            {consumed == null ? "—" : fmt(consumed, 1)}
+                          <td className="py-2 px-3 text-right">
+                            {day.ledgerRows.length > 0 ? fmt(day.ledgerTotalL) : "—"}
                           </td>
-                          <td className="py-2 pr-3 text-right">
-                            <Link href={shiftLogLink}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                data-testid={`link-edit-shift-${sh.id}`}
-                              >
-                                <Pencil className="w-4 h-4 mr-1" /> Edit
-                              </Button>
-                            </Link>
+                          <td className="py-2 px-3 text-right">
+                            <DeltaCell d={day.deltaSessionsVsShift} />
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <DeltaCell d={day.deltaSessionsVsLedger} />
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <DeltaCell d={day.deltaShiftVsLedger} />
+                          </td>
+                          <td className="py-2 px-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                            {isExpanded ? "Collapse" : "Expand"}
                           </td>
                         </tr>
-                      );
-                    })}
-                    <tr className="font-semibold">
-                      <td className="py-2 pr-3" colSpan={3}>
-                        Shift-meter total
+                        {isExpanded && (
+                          <tr
+                            key={`${day.date}-detail`}
+                            data-testid={`row-day-detail-${day.date}`}
+                          >
+                            <td colSpan={8} className="px-4 pb-4 bg-muted/20">
+                              <DayDetail
+                                day={day}
+                                plant={plant}
+                                appendPlantContext={appendPlantContext}
+                                ldoFlowMeterLink={ldoFlowMeterLink}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                {isMultiDay && (
+                  <tfoot>
+                    <tr className="border-t bg-muted/40 font-semibold">
+                      <td className="py-2 px-4">Total ({dates.length} days)</td>
+                      <td className="py-2 px-3 text-right" data-testid="text-range-sessions-total">
+                        {fmt(rangeTotals.sessionsTotalL)}
                       </td>
-                      <td
-                        className="py-2 pr-3 text-right"
-                        data-testid="text-shift-total-row"
-                      >
-                        {anyShiftHasMeter ? fmt(shiftTotalL, 1) : "—"}
+                      <td className="py-2 px-3 text-right" data-testid="text-range-shift-total">
+                        {rangeTotals.anyShiftHasMeter ? fmt(rangeTotals.shiftTotalL) : "—"}
+                      </td>
+                      <td className="py-2 px-3 text-right" data-testid="text-range-ledger-total">
+                        {daySummaries.some(d => d.ledgerRows.length > 0)
+                          ? fmt(rangeTotals.ledgerTotalL)
+                          : "—"}
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <DeltaCell d={rangeTotals.deltaSessionsVsShift} />
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <DeltaCell d={rangeTotals.deltaSessionsVsLedger} />
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <DeltaCell d={rangeTotals.deltaShiftVsLedger} />
                       </td>
                       <td />
                     </tr>
-                  </tbody>
-                </table>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-violet-600" />
-                  LDO Flow Ledger rows on {date} (Tank 1 · auto-tagged)
-                </CardTitle>
-                <Link href={ldoFlowMeterLink}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="button-open-ldo-flow-meter"
-                  >
-                    Open LDO Flow Meter
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              {ldoLedgerRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground" data-testid="text-no-ledger-rows">
-                  No auto-tagged ledger rows for this date. If heating sessions or shift logs
-                  exist, they may not have generated flow-meter entries yet — check the LDO
-                  Flow Meter page.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left border-b">
-                      <th className="py-2 pr-3">Source</th>
-                      <th className="py-2 pr-3">Type</th>
-                      <th className="py-2 pr-3">Time</th>
-                      <th className="py-2 pr-3 text-right">Meter reading</th>
-                      <th className="py-2 pr-3 text-right">Quantity (L)</th>
-                      <th className="py-2 pr-3">Notes</th>
-                      <th className="py-2 pr-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ldoLedgerRows.map(r => (
-                      <tr
-                        key={r.id}
-                        className="border-b hover:bg-muted/30"
-                        data-testid={`row-ledger-${r.id}`}
-                      >
-                        <td className="py-2 pr-3">
-                          <Badge
-                            variant={
-                              r.sourceHeatingSessionId != null ? "secondary" : "outline"
-                            }
-                          >
-                            {sourceLabel(r)}
-                          </Badge>
-                        </td>
-                        <td className="py-2 pr-3 text-xs text-muted-foreground">
-                          {r.readingType}
-                        </td>
-                        <td className="py-2 pr-3">{r.time || "—"}</td>
-                        <td
-                          className="py-2 pr-3 text-right"
-                          data-testid={`cell-ledger-meter-${r.id}`}
-                        >
-                          {fmt(r.meterReading, 2)}
-                        </td>
-                        <td
-                          className="py-2 pr-3 text-right font-medium"
-                          data-testid={`cell-ledger-qty-${r.id}`}
-                        >
-                          {r.quantityLiters != null ? fmt(r.quantityLiters, 1) : "—"}
-                        </td>
-                        <td className="py-2 pr-3 text-xs text-muted-foreground max-w-[180px] truncate">
-                          {r.notes || "—"}
-                        </td>
-                        <td className="py-2 pr-3 text-right">
-                          {r.sourceHeatingSessionId != null ? (
-                            <Link href={editSessionLink(r.sourceHeatingSessionId)}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                data-testid={`link-edit-ledger-session-${r.id}`}
-                              >
-                                <Pencil className="w-4 h-4 mr-1" /> Edit session
-                              </Button>
-                            </Link>
-                          ) : r.sourceShiftLogId != null ? (
-                            <Link href={shiftLogLink}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                data-testid={`link-edit-ledger-shift-${r.id}`}
-                              >
-                                <Pencil className="w-4 h-4 mr-1" /> Edit shift log
-                              </Button>
-                            </Link>
-                          ) : (
-                            <Link href={ldoFlowMeterLink}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                data-testid={`link-edit-ledger-${r.id}`}
-                              >
-                                <Pencil className="w-4 h-4 mr-1" /> Edit
-                              </Button>
-                            </Link>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="font-semibold">
-                      <td className="py-2 pr-3" colSpan={4}>
-                        Ledger total
-                      </td>
-                      <td
-                        className="py-2 pr-3 text-right"
-                        data-testid="text-ledger-total-row"
-                      >
-                        {fmt(ledgerTotalL, 1)}
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                  </tbody>
-                </table>
-              )}
+                  </tfoot>
+                )}
+              </table>
             </CardContent>
           </Card>
         </>
