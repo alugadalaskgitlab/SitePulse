@@ -58,7 +58,6 @@ export default function Plant() {
     sectionVisible("vendor_bills");
   const reportsVisible = sectionVisible("plant_daily_reports") || sectionVisible("plant_heating");
   const mastersVisible =
-    sectionVisible("admin_settings") ||
     sectionVisible("master_parties") ||
     sectionVisible("master_materials") ||
     sectionVisible("master_equipment") ||
@@ -385,7 +384,7 @@ function ReportsTab() {
 
 function StockDetailsTab() {
   const { appendOrigin } = useOrigin();
-  const { sectionCan, sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible, isAdmin } = useAuth();
   const { toast } = useToast();
 
   const [dieselCorrPhysicalL, setDieselCorrPhysicalL] = useState("");
@@ -756,7 +755,7 @@ function StockDetailsTab() {
       </div>
       </>)}
 
-      {sectionCan("admin_settings", "edit") && (
+      {isAdmin && (
         <>
           <div className="mt-2">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin Tools</h3>
