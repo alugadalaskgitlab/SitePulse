@@ -838,6 +838,10 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   // (on top of the LDO rolled up from heating sessions attributed to this
   // production day). When 0, those inputs are hidden and contribute zero.
   boilerRunsDuringProduction: integer("boiler_runs_during_production").notNull().default(0),
+  // Task #323 — when true, operator is recording a non-production day
+  // (maintenance, inspection, standby). Bitumen Tanks, LDO Flow Meters
+  // and Idle Events sections are hidden; Manpower + Remarks remain.
+  noMainPlantOps: boolean("no_main_plant_ops").notNull().default(false),
   operatorName: text("operator_name"),
   supervisorName: text("supervisor_name"),
   remarks: text("remarks"),

@@ -72,6 +72,7 @@ export default function PlantShiftLog() {
   // most recent heating session's closing meter). When off, those inputs are
   // hidden and contribute zero to the boiler-LDO total in the daily report.
   const [boilerRunsDuringProduction, setBoilerRunsDuringProduction] = useState(false);
+  const [noMainPlantOps, setNoMainPlantOps] = useState(false);
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
@@ -201,6 +202,7 @@ export default function PlantShiftLog() {
     setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
     setDryerFedFrom("TANK_2");
     setBoilerRunsDuringProduction(false);
+    setNoMainPlantOps(false);
     setManpower([]); setIdleEvents([]);
     setAutoFillT1Source(""); setAutoFillT1ClosingSource(""); setAutoFillT2Source("");
     autoFilledT1ValueRef.current = null;
@@ -260,6 +262,7 @@ export default function PlantShiftLog() {
     setBoilerRunsDuringProduction(
       !!existing.boilerRunsDuringProduction || legacyHasT1Reading,
     );
+    setNoMainPlantOps(!!existing.noMainPlantOps);
     // Loading a saved record — clear any auto-fill hint state from prior new-log session.
     setAutoFillT1Source("");
     setAutoFillT1ClosingSource("");
@@ -348,6 +351,7 @@ export default function PlantShiftLog() {
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
         dryerFedFrom,
         boilerRunsDuringProduction: boilerRunsDuringProduction ? 1 : 0,
+        noMainPlantOps,
         manpower: manpower
           .filter(m => m.name?.trim())
           .map(m => ({
@@ -573,8 +577,8 @@ export default function PlantShiftLog() {
               <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">Plant Shift Logs</h1>
-              <p className="text-sm text-muted-foreground">Daily plant runs — pick a date to open or start a new shift log</p>
+              <h1 className="text-2xl font-bold">Plant Logs</h1>
+              <p className="text-sm text-muted-foreground">Daily plant runs — pick a date to open or start a new log</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -690,7 +694,22 @@ export default function PlantShiftLog() {
       {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
 
       <Card>
-        <CardHeader><CardTitle>Header</CardTitle></CardHeader>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <CardTitle>Header</CardTitle>
+            <div className="flex items-center gap-2 rounded border border-dashed border-orange-300 bg-orange-50/40 dark:bg-orange-950/20 px-3 py-2">
+              <Switch
+                id="no-main-plant-ops"
+                checked={noMainPlantOps}
+                onCheckedChange={setNoMainPlantOps}
+                data-testid="switch-no-main-plant-ops"
+              />
+              <Label htmlFor="no-main-plant-ops" className="text-xs cursor-pointer">
+                No main plant operations
+              </Label>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-date" /></div>
           <div><Label>Shift</Label>
@@ -724,7 +743,7 @@ export default function PlantShiftLog() {
         </CardContent>
       </Card>
 
-      <Card>
+      {!noMainPlantOps && <Card>
         <CardHeader>
           <CardTitle>Bitumen Tanks (Theoretical)</CardTitle>
           {/* Task #253 — dip readings (cm) are the single source of truth.
@@ -769,9 +788,9 @@ export default function PlantShiftLog() {
             )}
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
-      <Card>
+      {!noMainPlantOps && <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
@@ -858,7 +877,7 @@ export default function PlantShiftLog() {
           <div><Label>Dryer Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader>
@@ -988,7 +1007,7 @@ export default function PlantShiftLog() {
         </CardContent>
       </Card>
 
-      <Card>
+      {!noMainPlantOps && <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Idle Events ({idleEvents.length})</CardTitle>
@@ -1032,7 +1051,7 @@ export default function PlantShiftLog() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* Manpower modal */}
       <Dialog open={mpDialogOpen} onOpenChange={setMpDialogOpen}>

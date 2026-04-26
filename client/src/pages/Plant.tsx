@@ -267,7 +267,7 @@ function OperationsTab() {
               <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Today's Shift Log</h3>
+              <h3 className="font-semibold text-lg">Plant Log</h3>
               <p className="text-sm text-muted-foreground">Open or create today's plant shift log – plant times, dips, manpower, idle</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
