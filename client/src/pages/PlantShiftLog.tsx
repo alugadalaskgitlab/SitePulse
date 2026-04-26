@@ -387,6 +387,27 @@ export default function PlantShiftLog() {
         await apiRequest("POST", `/api/plant-module/shift-logs/${data.id}/finalize`, { finalizedBy: "operator" });
       } catch { /* save already succeeded */ }
       goBackToList();
+      // Cross-check: warn if any heating session for the same date+plant has a
+      // different dryerFedFrom (non-blocking — stock routing is unchanged).
+      // Fire-and-forget so list navigation is not delayed.
+      fetch(
+        `/api/plant-module/heating-sessions?date=${encodeURIComponent(date)}&plant=${encodeURIComponent(plantName)}`,
+        { credentials: "include" }
+      ).then(hsRes => {
+        if (!hsRes.ok) return;
+        return hsRes.json().then((sessions: Array<{ dryerFedFrom?: string }>) => {
+          const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== dryerFedFrom);
+          if (mismatch) {
+            const slLabel = dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            toast({
+              title: "Dryer-source mismatch",
+              description: `This shift log says dryer fed from ${slLabel}, but a heating session for ${date} says ${hsLabel}. Please check and correct one of them.`,
+              variant: "destructive",
+            });
+          }
+        });
+      }).catch(() => { /* non-fatal */ });
     },
     onError: (err: any) => {
       toast({ title: "Save failed", description: err.message, variant: "destructive" });

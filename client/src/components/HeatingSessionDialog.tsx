@@ -344,13 +344,33 @@ export function HeatingSessionDialog({
       }
       return saved;
     },
-    onSuccess: () => {
+    onSuccess: async (saved: BitumenHeatingSession) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
       toast({ title: "Heating session saved" });
       onOpenChange(false);
       onSaved?.();
+      // Cross-check: warn if the shift log for the same date+plant has a
+      // different dryerFedFrom (non-blocking — stock routing is unchanged).
+      // Fire-and-forget so dialog close is not delayed.
+      fetch(
+        `/api/plant-module/shift-logs/by-date/${encodeURIComponent(saved.date)}?plant=${encodeURIComponent(saved.plantName)}`,
+        { credentials: "include" }
+      ).then(slRes => {
+        if (!slRes.ok) return;
+        return slRes.json().then((sl: any) => {
+          if (sl.dryerFedFrom && sl.dryerFedFrom !== saved.dryerFedFrom) {
+            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            const slLabel = sl.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            toast({
+              title: "Dryer-source mismatch",
+              description: `This heating session says dryer fed from ${hsLabel}, but the shift log for ${saved.date} says ${slLabel}. Please check and correct one of them.`,
+              variant: "destructive",
+            });
+          }
+        });
+      }).catch(() => { /* non-fatal */ });
     },
     onError: (err: any) => {
       toast({ title: "Save failed", description: err.message, variant: "destructive" });
