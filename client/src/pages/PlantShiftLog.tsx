@@ -248,10 +248,19 @@ export default function PlantShiftLog() {
     autoFilledT2ValueRef.current = null;
   };
 
-  const openEditForDate = (d: string, plant: string) => {
+  const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
     setDate(d);
     setPlantName(plant || "Main Plant");
     resetForNew();
+    if (row) {
+      if (row.shiftCode) setShiftCode(row.shiftCode);
+      if (row.plantStartTime) setPlantStartTime(row.plantStartTime);
+      if (row.plantStopTime) setPlantStopTime(row.plantStopTime);
+      if (row.weather) setWeather(row.weather);
+      if (row.ambientTemp != null) setAmbientTemp(String(row.ambientTemp));
+      if (row.operatorName) setOperatorName(row.operatorName);
+      if (row.supervisorName) setSupervisorName(row.supervisorName);
+    }
     setViewMode("edit");
   };
   const openNew = () => {
@@ -845,7 +854,7 @@ export default function PlantShiftLog() {
                                   <FileText className="w-4 h-4 mr-1" />Report
                                 </Button>
                               </Link>
-                              <Button variant="outline" size="sm" onClick={() => openEditForDate(r.date, r.plantName)} data-testid={`button-open-${r.id}`}>
+                              <Button variant="outline" size="sm" onClick={() => openEditForDate(r.date, r.plantName, r)} data-testid={`button-open-${r.id}`}>
                                 <FolderOpen className="w-4 h-4 mr-1" />Open
                               </Button>
                             </div>
