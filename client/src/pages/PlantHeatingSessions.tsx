@@ -560,14 +560,18 @@ export default function PlantHeatingSessions() {
                       <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{date}</div>
                       <span className="text-[10px] text-muted-foreground">(no sessions logged)</span>
                       {(reconByDate.get(date) || []).map(rec => (
-                        <Badge
+                        <Link
                           key={rec.plantName}
-                          variant="destructive"
-                          className="text-[10px]"
-                          data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                          href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}
                         >
-                          ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length})
-                        </Badge>
+                          <Badge
+                            variant="destructive"
+                            className="text-[10px] cursor-pointer"
+                            data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                          >
+                            ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length}) →
+                          </Badge>
+                        </Link>
                       ))}
                     </div>
                     {(reconByDate.get(date) || []).map(rec => (
@@ -576,8 +580,15 @@ export default function PlantHeatingSessions() {
                         className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5 mb-2"
                         data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
                       >
-                        <div className="font-semibold text-destructive">
-                          {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="font-semibold text-destructive">
+                            {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                          </div>
+                          <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}>
+                            <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
+                              Review →
+                            </Button>
+                          </Link>
                         </div>
                         <ul className="list-disc list-inside">
                           {rec.reconciliation.mismatches.map(m => {
@@ -611,22 +622,26 @@ export default function PlantHeatingSessions() {
                   <div className="flex items-center gap-2 flex-wrap mb-2">
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{date}</div>
                     {(reconByDate.get(date) || []).map(rec => (
-                      <Badge
+                      <Link
                         key={rec.plantName}
-                        variant="destructive"
-                        className="text-[10px]"
-                        data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
-                        title={rec.reconciliation.mismatches.map(m => {
-                          const sign = m.deltaL > 0 ? "+" : "";
-                          const which =
-                            m.kind === "sessions_vs_shift" ? "sessions vs shift meter"
-                            : m.kind === "sessions_vs_ledger" ? "sessions vs LDO ledger"
-                            : "shift meter vs LDO ledger";
-                          return `${which}: Δ ${sign}${m.deltaL}L`;
-                        }).join(" • ")}
+                        href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}
                       >
-                        ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length})
-                      </Badge>
+                        <Badge
+                          variant="destructive"
+                          className="text-[10px] cursor-pointer"
+                          data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                          title={rec.reconciliation.mismatches.map(m => {
+                            const sign = m.deltaL > 0 ? "+" : "";
+                            const which =
+                              m.kind === "sessions_vs_shift" ? "sessions vs shift meter"
+                              : m.kind === "sessions_vs_ledger" ? "sessions vs LDO ledger"
+                              : "shift meter vs LDO ledger";
+                            return `${which}: Δ ${sign}${m.deltaL}L`;
+                          }).join(" • ")}
+                        >
+                          ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length}) →
+                        </Badge>
+                      </Link>
                     ))}
                   </div>
                   {(reconByDate.get(date) || []).map(rec => (
@@ -635,8 +650,15 @@ export default function PlantHeatingSessions() {
                       className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5 mb-2"
                       data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
                     >
-                      <div className="font-semibold text-destructive">
-                        {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="font-semibold text-destructive">
+                          {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                        </div>
+                        <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}>
+                          <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
+                            Review →
+                          </Button>
+                        </Link>
                       </div>
                       <ul className="list-disc list-inside">
                         {rec.reconciliation.mismatches.map(m => {
