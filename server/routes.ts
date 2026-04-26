@@ -19,6 +19,7 @@ import {
   registerAuthRoutes,
   assertAdmin,
   assertEdit,
+  assertView,
   assertAuthed,
   assertCreate,
   currentUserName,
@@ -1553,6 +1554,7 @@ export async function registerRoutes(
   // Variance Report - dispatches where actual differs from theoretical
   app.get("/api/plant-module/dispatches/variance-report", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_variance")) return;
       const filters = {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -1568,6 +1570,7 @@ export async function registerRoutes(
   // Consumption Audit Log
   app.get("/api/plant-module/consumption-audit-log", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_audit")) return;
       const filters = {
         dispatchId: req.query.dispatchId ? Number(req.query.dispatchId) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,
@@ -2517,6 +2520,7 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/bitumen-dip-readings", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_bitumen")) return;
       const filters = {
         tankNumber: req.query.tankNumber ? parseInt(req.query.tankNumber as string) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,
@@ -2573,6 +2577,7 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/ldo-flow-readings", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_ldo")) return;
       const filters = {
         tankNumber: req.query.tankNumber ? parseInt(req.query.tankNumber as string) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,
@@ -2748,6 +2753,7 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/ldo-dip-readings", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_ldo")) return;
       const filters = {
         tankNumber: req.query.tankNumber ? parseInt(req.query.tankNumber as string) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,

@@ -706,7 +706,6 @@ export async function backfillPlantSubPermissions(): Promise<{ inserted: number;
     return { inserted: 0, skipped: true };
   }
   const plantSubKeys = ["plant_variance", "plant_audit", "plant_diesel_proc", "plant_bitumen", "plant_ldo"];
-  const masterSubKeys = ["master_parties", "master_materials", "master_equipment", "master_personnel"];
   let totalInserted = 0;
   await db.transaction(async (tx) => {
     for (const newKey of plantSubKeys) {
@@ -715,16 +714,6 @@ export async function backfillPlantSubPermissions(): Promise<{ inserted: number;
         SELECT user_id, ${newKey}, can_view, can_create, can_edit, can_delete, can_view_reports, can_export
         FROM user_permissions
         WHERE section_key = 'plant_stock'
-        ON CONFLICT (user_id, section_key) DO NOTHING
-      `);
-      totalInserted += Number((result as any).rowCount ?? 0);
-    }
-    for (const newKey of masterSubKeys) {
-      const result = await tx.execute(sql`
-        INSERT INTO user_permissions (user_id, section_key, can_view, can_create, can_edit, can_delete, can_view_reports, can_export)
-        SELECT user_id, ${newKey}, can_view, can_create, can_edit, can_delete, can_view_reports, can_export
-        FROM user_permissions
-        WHERE section_key = 'admin_settings'
         ON CONFLICT (user_id, section_key) DO NOTHING
       `);
       totalInserted += Number((result as any).rowCount ?? 0);
