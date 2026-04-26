@@ -711,6 +711,8 @@ export interface IStorage {
   // Task #300 — Per-(date, plant) dryer-source mismatch between shift logs and
   // heating sessions. Surfaced in both list views so operators can spot and
   // fix conflicts on historical records before re-opening them.
+  // Task #333 — Also flags intra-day heating-session conflicts (two sessions
+  // on the same date with different dryerFedFrom values).
   getDryerSourceMismatches(filters: {
     dateFrom: string;
     dateTo: string;
@@ -721,6 +723,8 @@ export interface IStorage {
     shiftLogId: number | null;
     shiftLogValue: "TANK_1" | "TANK_2" | null;
     conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    intraSessionConflicts: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasIntraSessionConflict: boolean;
     hasMismatch: boolean;
   }>>;
   // Task #332 — Bulk-align dryerFedFrom on a set of heating sessions in one
@@ -11196,6 +11200,9 @@ export class DatabaseStorage implements IStorage {
   // range for dryerFedFrom conflicts. Returns one entry per (date, plant) that
   // has at least one record on each side; only entries where the shift log value
   // disagrees with at least one heating session are flagged hasMismatch=true.
+  // Task #333 — Also detects intra-day conflicts where heating sessions on the
+  // same date disagree with each other. These are returned in intraSessionConflicts
+  // and are included in hasMismatch even when no shift log is present.
   async getDryerSourceMismatches(filters: {
     dateFrom: string;
     dateTo: string;
@@ -11206,6 +11213,8 @@ export class DatabaseStorage implements IStorage {
     shiftLogId: number | null;
     shiftLogValue: "TANK_1" | "TANK_2" | null;
     conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    intraSessionConflicts: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasIntraSessionConflict: boolean;
     hasMismatch: boolean;
   }>> {
     const shiftConds: any[] = [
@@ -11272,23 +11281,52 @@ export class DatabaseStorage implements IStorage {
       shiftLogId: number | null;
       shiftLogValue: "TANK_1" | "TANK_2" | null;
       conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+      intraSessionConflicts: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+      hasIntraSessionConflict: boolean;
       hasMismatch: boolean;
     }> = [];
 
     for (const [k, b] of buckets.entries()) {
       const [date, plant] = k.split("||");
-      // Only flag when we have a shift log with a known value and at least one
-      // heating session. Skip null shift-log values — they pre-date the field
-      // and can't be meaningfully compared.
-      if (b.shiftLogId == null || b.shiftLogValue == null || b.sessions.length === 0) continue;
-      const conflicting = b.sessions.filter(s => s.dryerFedFrom !== b.shiftLogValue);
+
+      // Shift-log vs sessions: only flag when we have a shift log with a known
+      // value and at least one session. Skip null shift-log values — they
+      // pre-date the field and can't be meaningfully compared.
+      let conflicting: typeof b.sessions = [];
+      const hasShiftLog = b.shiftLogId != null && b.shiftLogValue != null;
+      if (hasShiftLog && b.sessions.length > 0) {
+        conflicting = b.sessions.filter(s => s.dryerFedFrom !== b.shiftLogValue);
+      }
+
+      // Task #333 — Intra-session conflict: two or more sessions on the same
+      // date disagree with each other. When any disagreement is detected ALL
+      // sessions are included in intraSessionConflicts — we cannot determine
+      // which side is "correct" from the data alone, so every session involved
+      // in the day-level disagreement is flagged for the operator to review.
+      let intraConflicts: typeof b.sessions = [];
+      if (b.sessions.length > 1) {
+        const t1Count = b.sessions.filter(s => s.dryerFedFrom === "TANK_1").length;
+        const t2Count = b.sessions.length - t1Count;
+        if (t1Count > 0 && t2Count > 0) {
+          // Both values are present — every session participates in the conflict.
+          intraConflicts = b.sessions.slice();
+        }
+      }
+
+      // Skip buckets with no sessions and no shift log (nothing to report).
+      if (b.sessions.length === 0 && !hasShiftLog) continue;
+      // Skip session-only buckets where sessions all agree (nothing to report).
+      if (!hasShiftLog && intraConflicts.length === 0) continue;
+
       out.push({
         date,
         plantName: plant,
         shiftLogId: b.shiftLogId,
         shiftLogValue: b.shiftLogValue,
         conflictingSessions: conflicting,
-        hasMismatch: conflicting.length > 0,
+        intraSessionConflicts: intraConflicts,
+        hasIntraSessionConflict: intraConflicts.length > 0,
+        hasMismatch: conflicting.length > 0 || intraConflicts.length > 0,
       });
     }
 

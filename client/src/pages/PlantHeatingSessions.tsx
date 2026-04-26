@@ -164,6 +164,8 @@ export default function PlantHeatingSessions() {
     shiftLogId: number | null;
     shiftLogValue: "TANK_1" | "TANK_2" | null;
     conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    intraSessionConflicts: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasIntraSessionConflict: boolean;
     hasMismatch: boolean;
   };
   const { data: dryerMismatchRows } = useQuery<DryerMismatchRow[]>({
@@ -176,8 +178,8 @@ export default function PlantHeatingSessions() {
       return res.json();
     },
   });
-  // A set of session IDs that are in conflict with their date's shift log.
-  const conflictingSessionIds = useMemo(() => {
+  // Set of session IDs that disagree with their date's shift log.
+  const shiftLogConflictIds = useMemo(() => {
     const set = new Set<number>();
     for (const r of dryerMismatchRows || []) {
       if (!r.hasMismatch) continue;
@@ -185,6 +187,21 @@ export default function PlantHeatingSessions() {
     }
     return set;
   }, [dryerMismatchRows]);
+  // Set of session IDs that are in intra-session conflict (sessions on the
+  // same date disagree with each other). A session may appear in both sets.
+  const intraSessionConflictIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const r of dryerMismatchRows || []) {
+      if (!r.hasMismatch) continue;
+      for (const s of (r.intraSessionConflicts || [])) set.add(s.id);
+    }
+    return set;
+  }, [dryerMismatchRows]);
+  // Combined set for backward-compat (any kind of dryer-source conflict).
+  const conflictingSessionIds = useMemo(() => {
+    const set = new Set<number>([...shiftLogConflictIds, ...intraSessionConflictIds]);
+    return set;
+  }, [shiftLogConflictIds, intraSessionConflictIds]);
   // Per-date list of mismatching rows (one entry per plant) for header badges.
   const dryerMismatchByDate = useMemo(() => {
     const map = new Map<string, DryerMismatchRow[]>();
@@ -734,16 +751,36 @@ export default function PlantHeatingSessions() {
                     {(() => {
                       const dms = dryerMismatchByDate.get(date);
                       if (!dms || dms.length === 0) return null;
-                      const totalConflicts = dms.reduce((acc, dm) => acc + dm.conflictingSessions.length, 0);
-                      const allSessionIds = dms.flatMap(dm => dm.conflictingSessions.map(s => s.id));
+                      // Deduplicate session IDs — a session can appear in both
+                      // conflictingSessions (vs shift log) and intraSessionConflicts.
+                      const allSessionIdSet = new Set<number>(
+                        dms.flatMap(dm => [
+                          ...dm.conflictingSessions.map(s => s.id),
+                          ...(dm.intraSessionConflicts || []).map(s => s.id),
+                        ])
+                      );
+                      const totalConflicts = allSessionIdSet.size;
+                      const allSessionIds = Array.from(allSessionIdSet);
                       const tooltip = dms.map(dm => {
-                        const slLabel = dm.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
-                        const lines = dm.conflictingSessions.map(s => {
-                          const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
-                          const time = s.startTime ? ` at ${s.startTime}` : "";
-                          return `  Session #${s.id} (${s.sessionType}${time}) says ${hsLabel}`;
-                        });
-                        return [`${dm.plantName} shift log says ${slLabel}:`, ...lines].join("\n");
+                        const parts: string[] = [];
+                        if (dm.conflictingSessions.length > 0) {
+                          const slLabel = dm.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                          const lines = dm.conflictingSessions.map(s => {
+                            const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                            const time = s.startTime ? ` at ${s.startTime}` : "";
+                            return `  Session #${s.id} (${s.sessionType}${time}) says ${hsLabel}`;
+                          });
+                          parts.push([`${dm.plantName} — vs shift log (shift log says ${slLabel}):`, ...lines].join("\n"));
+                        }
+                        if ((dm.intraSessionConflicts || []).length > 0) {
+                          const lines = (dm.intraSessionConflicts || []).map(s => {
+                            const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                            const time = s.startTime ? ` at ${s.startTime}` : "";
+                            return `  Session #${s.id} (${s.sessionType}${time}) says ${hsLabel}`;
+                          });
+                          parts.push([`${dm.plantName} — sessions disagree with each other:`, ...lines].join("\n"));
+                        }
+                        return parts.join("\n");
                       }).join("\n");
                       return (
                         <div className="flex items-center gap-1 flex-wrap" data-testid={`panel-dryer-conflict-${date}`}>
@@ -849,17 +886,29 @@ export default function PlantHeatingSessions() {
                                 </Badge>
                               )}
                               {conflictingSessionIds.has(s.id) && (() => {
-                                const dm = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
-                                const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
                                 const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                                const isShiftLogConflict = shiftLogConflictIds.has(s.id);
+                                const isIntraConflict = intraSessionConflictIds.has(s.id);
+                                const dm = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
+                                let badgeLabel = "⚠ Dryer conflict";
+                                let tooltipText = "";
+                                if (isShiftLogConflict) {
+                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                                  badgeLabel = "⚠ Dryer ≠ shift log";
+                                  tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Open and re-save to reconcile.`;
+                                  if (isIntraConflict) tooltipText += " Also conflicts with other sessions on this date.";
+                                } else if (isIntraConflict) {
+                                  badgeLabel = "⚠ Dryer ≠ other session";
+                                  tooltipText = `Heating sessions on ${s.date} at ${s.plantName} disagree with each other on dryer source — this session says ${hsLabel}. Open and re-save to reconcile.`;
+                                }
                                 return (
                                   <Badge
                                     variant="outline"
                                     className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-help"
-                                    title={`This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Open and re-save to reconcile.`}
+                                    title={tooltipText}
                                     data-testid={`badge-dryer-mismatch-session-${s.id}`}
                                   >
-                                    ⚠ Dryer ≠ shift log
+                                    {badgeLabel}
                                   </Badge>
                                 );
                               })()}
