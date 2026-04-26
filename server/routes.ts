@@ -22,6 +22,7 @@ import {
   assertView,
   assertAuthed,
   assertCreate,
+  assertView,
   currentUserName,
   claimUnlockOrLockedRow,
   lockNewRow,
@@ -2876,6 +2877,38 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("Failed to save LDO dip backfill", err);
       res.status(500).json({ message: err?.message || "Failed to save LDO dip backfill" });
+    }
+  });
+
+  // ============================================
+  // LDO BOOK-VS-PHYSICAL RECONCILIATION REPORT
+  // Returns per-day rows comparing book stock (meter-based) to physical
+  // stock (dip-stick based) for a given plant and date range.
+  // Accessible to any authenticated user with plant_stock view rights.
+  // ============================================
+
+  app.get("/api/plant-module/ldo-reconciliation", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_stock")) return;
+      const dateFrom = (req.query.dateFrom as string | undefined) || "";
+      const dateTo = (req.query.dateTo as string | undefined) || "";
+      const plant = (req.query.plant as string | undefined) || "Main Plant";
+
+      if (!dateFrom || !dateTo) {
+        return res.status(400).json({ message: "dateFrom and dateTo are required" });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        return res.status(400).json({ message: "dates must be YYYY-MM-DD" });
+      }
+      if (dateFrom > dateTo) {
+        return res.status(400).json({ message: "dateFrom must not be after dateTo" });
+      }
+
+      const rows = await storage.computeLdoReconciliation({ dateFrom, dateTo, plant });
+      res.json(rows);
+    } catch (err: any) {
+      console.error("Failed to compute LDO reconciliation", err);
+      res.status(500).json({ message: err?.message || "Failed to compute LDO reconciliation" });
     }
   });
 

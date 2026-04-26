@@ -5680,6 +5680,212 @@ export class DatabaseStorage implements IStorage {
     return { inserted, deleted, skipped, conflicts };
   }
 
+  // ============================================
+  // LDO BOOK-VS-PHYSICAL RECONCILIATION
+  // ============================================
+
+  async computeLdoReconciliation(params: {
+    dateFrom: string;
+    dateTo: string;
+    plant: string;
+  }): Promise<Array<{
+    date: string;
+    openingDipL: number | null;
+    openingDipMT: number | null;
+    meterConsumptionL: number;
+    receiptsL: number;
+    expectedClosingL: number | null;
+    expectedClosingMT: number | null;
+    actualClosingDipL: number | null;
+    actualClosingDipMT: number | null;
+    varianceL: number | null;
+    varianceMT: number | null;
+    variancePct: number | null;
+    hasOpeningDip: boolean;
+    hasClosingDip: boolean;
+    hasMeterData: boolean;
+    missingOpeningTanks: number[];
+    missingClosingTanks: number[];
+  }>> {
+    const { dateFrom, dateTo, plant } = params;
+
+    // Fetch all dip readings for this plant up to dateTo (include pre-range data for carry-forward)
+    const allDipReadings = await db.select().from(ldoDipReadings)
+      .where(and(
+        eq(ldoDipReadings.plantName, plant),
+        lte(ldoDipReadings.date, dateTo),
+      ))
+      .orderBy(asc(ldoDipReadings.date), asc(ldoDipReadings.time));
+
+    // Fetch flow readings strictly within the date range
+    const flowReadings = await db.select().from(ldoFlowReadings)
+      .where(and(
+        eq(ldoFlowReadings.plantName, plant),
+        gte(ldoFlowReadings.date, dateFrom),
+        lte(ldoFlowReadings.date, dateTo),
+      ))
+      .orderBy(asc(ldoFlowReadings.date), asc(ldoFlowReadings.time));
+
+    // Look up LDO material ID
+    const [ldoMaterial] = await db.select().from(plantMaterials)
+      .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+      .limit(1);
+
+    // Fetch LDO material receipts in the date range
+    let ldoReceiptRows: { date: string; quantity: number; uom: string }[] = [];
+    if (ldoMaterial) {
+      ldoReceiptRows = await db.select({
+        date: materialReceipts.date,
+        quantity: materialReceipts.quantity,
+        uom: materialReceipts.uom,
+      }).from(materialReceipts)
+        .where(and(
+          eq(materialReceipts.materialId, ldoMaterial.id),
+          eq(materialReceipts.plantName, plant),
+          gte(materialReceipts.date, dateFrom),
+          lte(materialReceipts.date, dateTo),
+        ));
+    }
+
+    // Group dip readings per tank (sorted asc by date+time for carry-forward)
+    const dipByTank: Record<number, typeof allDipReadings> = { 1: [], 2: [] };
+    for (const d of allDipReadings) {
+      if (d.tankNumber === 1 || d.tankNumber === 2) dipByTank[d.tankNumber].push(d);
+    }
+
+    // Helper: find the most recent dip for a tank before a given date (carry-forward basis)
+    const getLatestDipBefore = (tank: 1 | 2, beforeDate: string) => {
+      const cands = dipByTank[tank]
+        .filter(d => d.date < beforeDate)
+        .sort((a, b) => {
+          const dc = b.date.localeCompare(a.date);
+          return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+        });
+      return cands[0] || null;
+    };
+
+    // Helper: find a dip reading of a specific readingType on a given date for a tank
+    const getDipOnDate = (tank: 1 | 2, date: string, readingType: string) => {
+      return dipByTank[tank]
+        .filter(d => d.date === date && d.readingType === readingType)
+        .sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0] || null;
+    };
+
+    // Convert receipt quantity to liters
+    const receiptToL = (qty: number, uom: string) => {
+      const u = uom.toLowerCase();
+      if (u === "mt" || u === "ton" || u === "tons" || u === "t") return (qty * 1000) / LDO_DENSITY_KG_PER_LITER;
+      if (u === "kg") return qty / LDO_DENSITY_KG_PER_LITER;
+      return qty; // liters / litres / l
+    };
+
+    // Group receipts by date (total liters)
+    const receiptsByDate: Record<string, number> = {};
+    for (const r of ldoReceiptRows) {
+      receiptsByDate[r.date] = (receiptsByDate[r.date] || 0) + receiptToL(r.quantity, r.uom);
+    }
+
+    // Group flow readings by date
+    const flowByDate: Record<string, typeof flowReadings> = {};
+    for (const r of flowReadings) {
+      if (!flowByDate[r.date]) flowByDate[r.date] = [];
+      flowByDate[r.date].push(r);
+    }
+
+    // Generate all calendar dates from dateFrom to dateTo
+    const dates: string[] = [];
+    const cur = new Date(dateFrom + "T00:00:00Z");
+    const end = new Date(dateTo + "T00:00:00Z");
+    while (cur <= end) {
+      dates.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    const result = [];
+    for (const date of dates) {
+      // Opening dip for each tank:
+      //   1st choice — "opening" type reading on this date
+      //   2nd choice — most recent dip reading before this date (carry-forward)
+      const getOpeningDip = (tank: 1 | 2) =>
+        getDipOnDate(tank, date, "opening") || getLatestDipBefore(tank, date);
+
+      // Actual closing dip — "closing" type reading on this date
+      const getClosingDip = (tank: 1 | 2) => getDipOnDate(tank, date, "closing");
+
+      const t1Opening = getOpeningDip(1);
+      const t2Opening = getOpeningDip(2);
+      const t1Closing = getClosingDip(1);
+      const t2Closing = getClosingDip(2);
+
+      const hasOpeningDip = !!(t1Opening || t2Opening);
+      const hasClosingDip = !!(t1Closing || t2Closing);
+
+      const openingL = (t1Opening?.volumeLiters || 0) + (t2Opening?.volumeLiters || 0);
+
+      // Meter consumption — pair up opening/closing readings per source group
+      const dayFlow = flowByDate[date] || [];
+      type Pair = { openings: typeof flowReadings; closings: typeof flowReadings };
+      const pairs = new Map<string, Pair>();
+      for (const r of dayFlow) {
+        if (r.readingType !== "opening" && r.readingType !== "closing") continue;
+        const key = r.sourceShiftLogId != null
+          ? `S${r.sourceShiftLogId}::${r.tankNumber}`
+          : r.sourceHeatingSessionId != null
+            ? `H${r.sourceHeatingSessionId}::${r.tankNumber}`
+            : `D${r.date}::${r.tankNumber}`;
+        if (!pairs.has(key)) pairs.set(key, { openings: [], closings: [] });
+        if (r.readingType === "opening") pairs.get(key)!.openings.push(r);
+        else pairs.get(key)!.closings.push(r);
+      }
+
+      let consumptionL = 0;
+      pairs.forEach((p) => {
+        if (!p.openings.length || !p.closings.length) return;
+        const openVal = p.openings.sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0].meterReading;
+        const closeVal = p.closings.sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0].meterReading;
+        const diff = closeVal - openVal;
+        if (diff > 0) consumptionL += diff;
+      });
+
+      const receiptsL = receiptsByDate[date] || 0;
+      const expectedClosingL = hasOpeningDip ? openingL - consumptionL + receiptsL : null;
+      const actualClosingL = hasClosingDip
+        ? (t1Closing?.volumeLiters || 0) + (t2Closing?.volumeLiters || 0)
+        : null;
+
+      const varianceL =
+        expectedClosingL != null && actualClosingL != null
+          ? actualClosingL - expectedClosingL
+          : null;
+      const variancePct =
+        varianceL != null && openingL > 0
+          ? Math.round((varianceL / openingL) * 1000) / 10
+          : null;
+
+      result.push({
+        date,
+        openingDipL: hasOpeningDip ? Math.round(openingL) : null,
+        openingDipMT: hasOpeningDip ? Math.round(openingL * LDO_DENSITY_KG_PER_LITER) / 1000 : null,
+        meterConsumptionL: Math.round(consumptionL),
+        receiptsL: Math.round(receiptsL),
+        expectedClosingL: expectedClosingL != null ? Math.round(expectedClosingL) : null,
+        expectedClosingMT: expectedClosingL != null ? Math.round(expectedClosingL * LDO_DENSITY_KG_PER_LITER) / 1000 : null,
+        actualClosingDipL: actualClosingL != null ? Math.round(actualClosingL) : null,
+        actualClosingDipMT: actualClosingL != null ? Math.round(actualClosingL * LDO_DENSITY_KG_PER_LITER) / 1000 : null,
+        varianceL: varianceL != null ? Math.round(varianceL) : null,
+        varianceMT: varianceL != null ? Math.round(varianceL * LDO_DENSITY_KG_PER_LITER) / 1000 : null,
+        variancePct,
+        hasOpeningDip,
+        hasClosingDip,
+        hasMeterData: dayFlow.some(r => r.readingType === "opening" || r.readingType === "closing"),
+        missingOpeningTanks: ([1, 2] as const).filter(t => (t === 1 ? !t1Opening : !t2Opening)),
+        missingClosingTanks: ([1, 2] as const).filter(t => (t === 1 ? !t1Closing : !t2Closing)),
+      });
+    }
+
+    return result;
+  }
+
   // Personnel Master
   async getPersonnel(includeInactive?: boolean): Promise<Personnel[]> {
     if (includeInactive) {

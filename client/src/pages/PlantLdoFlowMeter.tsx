@@ -1025,8 +1025,16 @@ export default function PlantLdoFlowMeter() {
         )}
       </div>
 
-      <div className="text-sm text-muted-foreground">
-        Boiler Meter (heats bitumen) and Dryer Meter (heats aggregates) — both meters draw from the main LDO tank.
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-sm text-muted-foreground">
+          Boiler Meter (heats bitumen) and Dryer Meter (heats aggregates) — both meters draw from the main LDO tank.
+        </div>
+        <Link href={appendOrigin(`/plant/ldo-reconciliation?role=${pageRole}&plant=${encodeURIComponent(urlPlant)}`)}>
+          <Button variant="outline" size="sm" data-testid="link-ldo-reconciliation" className="text-xs gap-1">
+            <BarChart3 className="h-3.5 w-3.5" />
+            Book vs Physical
+          </Button>
+        </Link>
       </div>
 
       {/* Task #255 — Header strip showing the live LDO usable-stock balance
