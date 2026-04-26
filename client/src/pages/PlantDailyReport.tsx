@@ -183,10 +183,13 @@ export default function PlantDailyReport() {
               <div><div className="text-muted-foreground">Operator</div><div className="font-medium">{data.shift?.operatorName || "—"}</div></div>
               <div><div className="text-muted-foreground">Supervisor</div><div className="font-medium">{data.shift?.supervisorName || "—"}</div></div>
               <div><div className="text-muted-foreground">Status</div>
-                {data.shift?.isFinalized ? <Badge className="bg-green-600">Finalized</Badge> : data.shift ? <Badge variant="secondary">Draft</Badge> : <Badge variant="outline">No log</Badge>}
+                <div className="flex flex-wrap items-center gap-1">
+                  {data.shift?.isFinalized ? <Badge className="bg-green-600">Finalized</Badge> : data.shift ? <Badge variant="secondary">Draft</Badge> : <Badge variant="outline">No log</Badge>}
+                  {data.shift?.noMainPlantOps && <Badge variant="destructive" data-testid="badge-no-plant-ops">No Plant Operations</Badge>}
+                </div>
               </div>
-              <div><div className="text-muted-foreground">Plant Start</div><div className="font-medium">{data.shift?.plantStartTime || "—"}</div></div>
-              <div><div className="text-muted-foreground">Plant Stop</div><div className="font-medium">{data.shift?.plantStopTime || "—"}</div></div>
+              <div><div className="text-muted-foreground">{data.shift?.noMainPlantOps ? "Shift Start" : "Plant Start"}</div><div className="font-medium">{data.shift?.plantStartTime || "—"}</div></div>
+              <div><div className="text-muted-foreground">{data.shift?.noMainPlantOps ? "Shift End" : "Plant Stop"}</div><div className="font-medium">{data.shift?.plantStopTime || "—"}</div></div>
               <div><div className="text-muted-foreground">Running Hrs</div><div className="font-medium" data-testid="text-running-hours">{fmt(data.runningHours)}</div></div>
               <div><div className="text-muted-foreground">Productive Hrs</div><div className="font-medium" data-testid="text-productive-hours">{fmt(data.productiveHours)}</div></div>
               <div><div className="text-muted-foreground">Weather</div><div className="font-medium">{data.shift?.weather || "—"}</div></div>
@@ -194,6 +197,7 @@ export default function PlantDailyReport() {
             </CardContent>
           </Card>
 
+          {!data.shift?.noMainPlantOps && (
           <Card>
             <CardHeader><CardTitle>Bitumen Tank Status (from Shift Log)</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -217,6 +221,7 @@ export default function PlantDailyReport() {
               )}
             </CardContent>
           </Card>
+          )}
 
           {data.production.byMix?.length > 0 && (
             <Card>
@@ -354,6 +359,7 @@ export default function PlantDailyReport() {
             </CardContent>
           </Card>
 
+          {!data.shift?.noMainPlantOps && (
           <Card>
             <CardHeader>
               <CardTitle>
@@ -386,8 +392,9 @@ export default function PlantDailyReport() {
               <KV label="Tank 2 stock used (L)" value={fmt(data.ldo.tank2DeductedL ?? null, 1)} />
             </CardContent>
           </Card>
+          )}
 
-          {data.boilerHeating && (
+          {!data.shift?.noMainPlantOps && data.boilerHeating && (
             <Card>
               <CardHeader>
                 <CardTitle>

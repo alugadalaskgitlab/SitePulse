@@ -629,6 +629,20 @@ export default function PlantShiftLog() {
     return { t1, t2, total: (t1 || 0) + (t2 || 0) };
   }, [ldoTank1OpeningMeter, ldoTank1ClosingMeter, ldoTank2OpeningMeter, ldoTank2ClosingMeter]);
 
+  // Filter heating sessions to only those within the shift time window.
+  // Sessions from prior dates (overnight pre-heating) are always included.
+  // Same-date sessions are only shown if they overlap with [plantStartTime, plantStopTime].
+  const filteredHeatingSessionsForShiftLog = useMemo(() => {
+    const all = Array.isArray(heatingSessionsForDate) ? heatingSessionsForDate : [];
+    if (!plantStartTime || !plantStopTime) return all;
+    return all.filter(s => {
+      if (!s.date || s.date < date) return true; // prior-date pre-heating always shown
+      const sStart = s.startTime || "00:00";
+      const sEnd = s.endTime || "23:59";
+      return sStart <= plantStopTime && sEnd >= plantStartTime;
+    });
+  }, [heatingSessionsForDate, date, plantStartTime, plantStopTime]);
+
   // Task #325 — plant run hours derived from header start/stop times.
   const plantRunHours = useMemo(() => {
     if (!plantStartTime || !plantStopTime) return null;
@@ -856,8 +870,8 @@ export default function PlantShiftLog() {
               </SelectContent>
             </Select>
           </div>
-          <div><Label>Plant Start</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
-          <div><Label>Plant Stop</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
+          <div><Label>{noMainPlantOps ? "Shift Start" : "Plant Start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
+          <div><Label>{noMainPlantOps ? "Shift End" : "Plant Stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
           <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
           <div><Label>Supervisor</Label><Input value={supervisorName} onChange={e => setSupervisorName(e.target.value)} data-testid="input-supervisor" /></div>
           <div><Label>Weather</Label>
@@ -1050,7 +1064,7 @@ export default function PlantShiftLog() {
             <CardTitle className="flex items-center gap-2">
               Heating Sessions for this Production
               <Badge variant="secondary" data-testid="badge-heating-session-count">
-                {(heatingSessionsForDate || []).length}
+                {filteredHeatingSessionsForShiftLog.length}
               </Badge>
             </CardTitle>
             <Link href={appendPlantContext(`/plant/heating-sessions/${date}`, { defaultTab: "operations" })}>
@@ -1061,16 +1075,20 @@ export default function PlantShiftLog() {
           </div>
           {/* Task #254 — make the attribution rule visible to operators. */}
           <p className="text-xs text-muted-foreground">
-            Includes every heating session run since the previous production day — overnight pre-heating is rolled into this day's totals.
+            {plantStartTime && plantStopTime
+              ? `Showing sessions within shift window (${plantStartTime}–${plantStopTime}); prior-date pre-heating always included.`
+              : "Includes every heating session run since the previous production day — overnight pre-heating is rolled into this day's totals."}
           </p>
         </CardHeader>
         <CardContent className="space-y-2">
-          {!(heatingSessionsForDate || []).length && (
+          {!filteredHeatingSessionsForShiftLog.length && (
             <p className="text-sm text-muted-foreground">
-              No heating sessions attributed to {date}. Use "Add / Edit Sessions" to log boiler runs — session values (bitumen temps, hot-oil, DG) feed the Plant Daily Report automatically.
+              {(heatingSessionsForDate || []).length > filteredHeatingSessionsForShiftLog.length
+                ? `No heating sessions fall within the shift window (${plantStartTime}–${plantStopTime}) for ${date}.`
+                : `No heating sessions attributed to ${date}. Use "Add / Edit Sessions" to log boiler runs — session values (bitumen temps, hot-oil, DG) feed the Plant Daily Report automatically.`}
             </p>
           )}
-          {(heatingSessionsForDate || []).length > 0 && (
+          {filteredHeatingSessionsForShiftLog.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1085,7 +1103,7 @@ export default function PlantShiftLog() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(heatingSessionsForDate || [])
+                  {filteredHeatingSessionsForShiftLog
                     .slice()
                     .sort((a, b) =>
                       String(a.date || "").localeCompare(String(b.date || ""))
