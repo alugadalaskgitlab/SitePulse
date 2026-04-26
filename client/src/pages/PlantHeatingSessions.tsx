@@ -50,6 +50,7 @@ function emptyForm(date: string) {
     dgClosingDiesel: "",
     generatorLogId: null as number | null,
     linkSelection: "" as string,
+    dryerFedFrom: "TANK_2" as "TANK_1" | "TANK_2",
     remarks: "",
     isFinalized: 0,
     autoFilledOpening: false,
@@ -409,6 +410,7 @@ export default function PlantHeatingSessions() {
       generatorLogId: form.dgMode === "link"
         ? (overrideGeneratorLogId !== undefined ? overrideGeneratorLogId : form.generatorLogId)
         : null,
+      dryerFedFrom: form.dryerFedFrom,
       remarks: form.remarks || null,
       editedBy: "operator",
     };
@@ -451,7 +453,10 @@ export default function PlantHeatingSessions() {
       if (!res.ok) {
         let body: any = {};
         try { body = await res.json(); } catch {}
-        throw new Error(body?.message || res.statusText);
+        const msg = body?.message
+          || (body?.error === "forbidden" ? "You don't have permission to edit heating sessions." : null)
+          || res.statusText;
+        throw new Error(msg);
       }
       const saved: BitumenHeatingSession = await res.json();
       // Auto-finalize so the operator doesn't need a second click.
@@ -534,6 +539,7 @@ export default function PlantHeatingSessions() {
       dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
       generatorLogId: s.generatorLogId,
       linkSelection: s.generatorLogId ? `gl-${s.generatorLogId}` : "",
+      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2") || "TANK_2",
       remarks: s.remarks || "",
       isFinalized: s.isFinalized,
       autoFilledOpening: false,

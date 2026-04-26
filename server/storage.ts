@@ -10354,7 +10354,10 @@ export class DatabaseStorage implements IStorage {
       // Pull totals from the linked generator log so reports attribute DG diesel correctly
       payload.dgHoursRun = linked.hoursRun ?? null;
       payload.dgDieselConsumed = linked.dieselConsumed ?? null;
-    } else {
+    } else if (payload.dgMode !== "inline") {
+      // Only clear computed values for "none" mode (no DG run).
+      // For "inline" mode the values were already computed in the block above
+      // and must not be overwritten here.
       payload.dgDieselConsumed = null;
       payload.dgHoursRun = null;
     }
