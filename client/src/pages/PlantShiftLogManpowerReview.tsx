@@ -941,6 +941,58 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
+  const bulkRevertFromFeed = async () => {
+    if (!isAdmin) return;
+    if (!actor || actor.trim().length < 2) {
+      toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
+      return;
+    }
+    const allIds = new Set((recentAliasActivity || []).map(a => a.id));
+    const ids = Object.entries(selectedAliasActivityIds)
+      .filter(([k, v]) => v && allIds.has(Number(k)))
+      .map(([k]) => Number(k))
+      .filter(n => Number.isFinite(n) && n > 0);
+    if (ids.length === 0) return;
+    const activities = (recentAliasActivity || []).filter(a => ids.includes(a.id));
+    if (activities.length === 0) return;
+    const ok = window.confirm(
+      `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}?\n\nThis will undo every checked add/remove in one step. Continue?`
+    );
+    if (!ok) return;
+    setBulkRevertingAlias(true);
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          actor: actor.trim(),
+          activities: activities.map(a => ({
+            action: a.action,
+            kind: a.kind,
+            tokenA: a.tokenA,
+            tokenB: a.tokenB,
+          })),
+        }),
+      });
+      if (res.status === 401) { window.location.assign("/login"); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { reverted: number; skipped: number };
+      toast({
+        title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
+        description: result.reverted > 0
+          ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
+          : "All selected entries were already undone.",
+      });
+      setSelectedAliasActivityIds({});
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+    } catch (err) {
+      toast({ title: "Bulk revert failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setBulkRevertingAlias(false);
+    }
+  };
+
   const suppressLearnedFullPair = async (a: string, b: string) => {
     if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
@@ -1427,6 +1479,14 @@ export default function PlantShiftLogManpowerReview() {
     [selectedDismissedIds],
   );
 
+  const selectedAliasActivityFeedCount = useMemo(
+    () => {
+      const allIds = new Set((recentAliasActivity || []).map(a => a.id));
+      return Object.entries(selectedAliasActivityIds).filter(([k, v]) => v && allIds.has(Number(k))).length;
+    },
+    [selectedAliasActivityIds, recentAliasActivity],
+  );
+
   const selectedAliasActivityCount = useMemo(
     () => {
       const filteredIds = new Set((recentAliasActivity || []).filter(a => {
@@ -1646,10 +1706,64 @@ export default function PlantShiftLogManpowerReview() {
               No merges, dismissals, restores or alias changes in the last 30 days.
             </div>
           ) : (
-            <div className="overflow-auto border rounded-md">
+            <>
+              {selectedAliasActivityFeedCount > 0 && (
+                <div className="flex items-center gap-2 py-1.5 px-1" data-testid="feed-bulk-revert-bar">
+                  <span className="text-xs text-muted-foreground">
+                    {selectedAliasActivityFeedCount} alias change{selectedAliasActivityFeedCount === 1 ? "" : "s"} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
+                    disabled={bulkRevertingAlias || actor.trim().length < 2}
+                    onClick={bulkRevertFromFeed}
+                    data-testid="button-feed-bulk-revert"
+                  >
+                    {bulkRevertingAlias
+                      ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      : <Undo2 className="w-3.5 h-3.5 mr-1" />}
+                    Revert selected ({selectedAliasActivityFeedCount})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => setSelectedAliasActivityIds({})}
+                    data-testid="button-feed-clear-selection"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
+              <div className="overflow-auto border rounded-md">
               <table className="w-full text-sm">
                 <thead className="bg-muted/60 border-b">
                   <tr>
+                    <th className="p-2 w-8">
+                      {(recentActivityFeed || []).some(e => e.kind === "alias") && (
+                        <input
+                          type="checkbox"
+                          className="cursor-pointer accent-purple-600"
+                          title="Select / deselect all alias rows"
+                          data-testid="checkbox-feed-select-all-alias"
+                          checked={
+                            (recentActivityFeed || []).filter(e => e.kind === "alias").length > 0 &&
+                            (recentActivityFeed || []).filter(e => e.kind === "alias").every(e => selectedAliasActivityIds[e.aliasActivity!.id])
+                          }
+                          onChange={(ev) => {
+                            const next: Record<number, boolean> = { ...selectedAliasActivityIds };
+                            for (const e of (recentActivityFeed || [])) {
+                              if (e.kind === "alias") {
+                                if (ev.target.checked) next[e.aliasActivity!.id] = true;
+                                else delete next[e.aliasActivity!.id];
+                              }
+                            }
+                            setSelectedAliasActivityIds(next);
+                          }}
+                        />
+                      )}
+                    </th>
                     <th className="text-left p-2">When</th>
                     <th className="text-left p-2">By</th>
                     <th className="text-left p-2">Action</th>
@@ -1665,6 +1779,7 @@ export default function PlantShiftLogManpowerReview() {
                       const fromList = m.fromNames.join(", ");
                       return (
                         <tr key={`m-${m.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-merge-${m.id}`}>
+                          <td className="p-2 w-8"></td>
                           <td className="p-2 text-xs whitespace-nowrap">
                             {when.toLocaleDateString()}<br />
                             <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
@@ -1710,6 +1825,20 @@ export default function PlantShiftLogManpowerReview() {
                       const revertLabel = isAdd ? "Remove" : "Re-add";
                       return (
                         <tr key={`aa-${aa.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-alias-${aa.id}`}>
+                          <td className="p-2 w-8">
+                            <input
+                              type="checkbox"
+                              className="cursor-pointer accent-purple-600"
+                              data-testid={`checkbox-feed-alias-${aa.id}`}
+                              checked={!!selectedAliasActivityIds[aa.id]}
+                              onChange={(ev) => {
+                                const next = { ...selectedAliasActivityIds };
+                                if (ev.target.checked) next[aa.id] = true;
+                                else delete next[aa.id];
+                                setSelectedAliasActivityIds(next);
+                              }}
+                            />
+                          </td>
                           <td className="p-2 text-xs whitespace-nowrap">
                             {when.toLocaleDateString()}<br />
                             <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
@@ -1762,6 +1891,7 @@ export default function PlantShiftLogManpowerReview() {
                     const overflow = a.pairs.length - previewPairs.length;
                     return (
                       <tr key={`d-${a.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-dup-${a.id}`}>
+                        <td className="p-2 w-8"></td>
                         <td className="p-2 text-xs whitespace-nowrap">
                           {when.toLocaleDateString()}<br />
                           <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
@@ -1802,6 +1932,7 @@ export default function PlantShiftLogManpowerReview() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
