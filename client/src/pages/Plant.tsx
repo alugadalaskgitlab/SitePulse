@@ -16,7 +16,7 @@ import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Drop
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
-import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
+import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading } from "@shared/schema";
@@ -863,6 +863,13 @@ function PartyMaster() {
       resetForm();
       toast({ title: "Party created successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -1067,6 +1074,13 @@ function MaterialMaster() {
       resetForm();
       toast({ title: "Material created successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -1093,6 +1107,13 @@ function MaterialMaster() {
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().includes('stock') || q.queryKey[0]?.toString().includes('opening') || false });
       resetOpeningStockForm();
       toast({ title: "Opening stock added successfully" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -1513,8 +1534,12 @@ function MixTemplateMaster() {
       setNewMixTypeName("");
       toast({ title: "Mix type created successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to create mix type", variant: "destructive" });
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Failed to create mix type", variant: "destructive" });
+      }
     },
   });
 
@@ -1533,6 +1558,13 @@ function MixTemplateMaster() {
       setDialogOpen(false);
       resetForm();
       toast({ title: "Mix template created successfully" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -1917,6 +1949,13 @@ function EquipmentMasterSection() {
       resetForm();
       toast({ title: "Equipment created successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -2211,6 +2250,13 @@ function PersonnelMasterSection() {
       setDialogOpen(false);
       resetForm();
       toast({ title: "Personnel added" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 

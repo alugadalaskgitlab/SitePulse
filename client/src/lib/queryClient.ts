@@ -70,6 +70,9 @@ export const getQueryFn: <T>(options: {
 export const NO_PERMISSION_DESCRIPTION =
   "You don't have permission to edit/delete this item. Contact an administrator.";
 
+export const NO_CREATE_PERMISSION_DESCRIPTION =
+  "You don't have permission to create this item. Contact an administrator.";
+
 export function isForbiddenError(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith("403");
 }
