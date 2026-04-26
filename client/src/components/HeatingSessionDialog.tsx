@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +13,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HEATING_SESSION_TYPE_LABELS } from "@shared/schema";
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
+import DryerSourceFixDialog, { type DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
 type DgMode = "none" | "inline" | "link";
 
@@ -124,10 +124,13 @@ export function HeatingSessionDialog({
   open, onOpenChange, date, plantName, session, onSaved, onDeleted,
 }: HeatingSessionDialogProps) {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
   const [form, setForm] = useState<FormState>(() =>
     session ? sessionToForm(session) : emptyForm(date, plantName)
   );
+  const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({
+    open: false,
+    target: null,
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -358,8 +361,6 @@ export function HeatingSessionDialog({
       // Cross-check: warn if the shift log for the same date+plant has a
       // different dryerFedFrom (non-blocking — stock routing is unchanged).
       // Fire-and-forget so dialog close is not delayed.
-      const navigateToShiftLog = (d: string, plant: string) =>
-        setLocation(`/plant/shift-log/${encodeURIComponent(d)}?plant=${encodeURIComponent(plant)}`);
       fetch(
         `/api/plant-module/shift-logs/by-date/${encodeURIComponent(saved.date)}?plant=${encodeURIComponent(saved.plantName)}`,
         { credentials: "include" }
@@ -369,6 +370,13 @@ export function HeatingSessionDialog({
           if (sl.dryerFedFrom && sl.dryerFedFrom !== saved.dryerFedFrom) {
             const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
             const slLabel = sl.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            const fixTarget: DryerSourceFixTarget = {
+              mode: "shift-log",
+              recordId: sl.id,
+              date: saved.date,
+              suggestedValue: saved.dryerFedFrom,
+              currentValue: sl.dryerFedFrom,
+            };
             toast({
               title: "Dryer-source mismatch",
               description: `This heating session says dryer fed from ${hsLabel}, but the shift log for ${saved.date} says ${slLabel}.`,
@@ -376,7 +384,7 @@ export function HeatingSessionDialog({
               action: (
                 <ToastAction
                   altText="Fix shift log"
-                  onClick={() => navigateToShiftLog(saved.date, saved.plantName)}
+                  onClick={() => setFixDialog({ open: true, target: fixTarget })}
                 >
                   Fix shift log
                 </ToastAction>
@@ -413,6 +421,7 @@ export function HeatingSessionDialog({
   });
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -633,5 +642,12 @@ export function HeatingSessionDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <DryerSourceFixDialog
+      open={fixDialog.open}
+      onOpenChange={(v) => setFixDialog(prev => ({ ...prev, open: v }))}
+      target={fixDialog.target}
+    />
+    </>
   );
 }

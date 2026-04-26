@@ -3068,6 +3068,26 @@ export async function registerRoutes(
     }
   });
 
+  // Task #334 — Inline dryer-source fix from mismatch toast. Patches just the
+  // dryerFedFrom field on a single shift log without a full upsert cycle.
+  app.patch("/api/plant-module/shift-logs/:id/dryer-source", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_shift_logs")) return;
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid shift log ID" });
+      const bodySchema = z.object({ dryerFedFrom: z.enum(["TANK_1", "TANK_2"]) });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const ok = await storage.patchShiftLogDryerSource(id, parsed.data.dryerFedFrom);
+      if (!ok) return res.status(404).json({ message: "Shift log not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to patch shift log dryer source" });
+    }
+  });
+
   // ============================================
   // DAILY PLANT REPORT (management consolidated view)
   // ============================================

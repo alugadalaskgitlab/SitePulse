@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useRoute, useLocation } from "wouter";
+import { Link, useRoute } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,8 @@ import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession, PlantSettings } from "@shared/schema";
 import { dipCmToMt } from "@shared/bitumen-dip-chart";
+import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
+import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
 type ManpowerRow = {
   name: string;
@@ -34,7 +36,6 @@ export default function PlantShiftLog() {
   const { toast } = useToast();
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
-  const [, setLocation] = useLocation();
   const today = format(new Date(), "yyyy-MM-dd");
   const dateParam = params?.date || today;
 
@@ -75,6 +76,7 @@ export default function PlantShiftLog() {
   // hidden and contribute zero to the boiler-LDO total in the daily report.
   const [boilerRunsDuringProduction, setBoilerRunsDuringProduction] = useState(false);
   const [noMainPlantOps, setNoMainPlantOps] = useState(false);
+  const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
@@ -446,11 +448,6 @@ export default function PlantShiftLog() {
       // Cross-check: warn if any heating session for the same date+plant has a
       // different dryerFedFrom (non-blocking — stock routing is unchanged).
       // Fire-and-forget so list navigation is not delayed.
-      const navigateToHeatingSessions = (d: string, plant: string, sessionId?: number) => {
-        const params = new URLSearchParams({ plant });
-        if (sessionId != null) params.set("openSession", String(sessionId));
-        setLocation(`/plant/heating-sessions/${encodeURIComponent(d)}?${params.toString()}`);
-      };
       fetch(
         `/api/plant-module/heating-sessions?date=${encodeURIComponent(date)}&plant=${encodeURIComponent(plantName)}`,
         { credentials: "include" }
@@ -458,9 +455,16 @@ export default function PlantShiftLog() {
         if (!hsRes.ok) return;
         return hsRes.json().then((sessions: Array<{ id?: number; dryerFedFrom?: string }>) => {
           const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== dryerFedFrom);
-          if (mismatch) {
+          if (mismatch && mismatch.id != null) {
             const slLabel = dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
             const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            const fixTarget: DryerSourceFixTarget = {
+              mode: "heating-session",
+              recordId: mismatch.id,
+              date,
+              suggestedValue: dryerFedFrom as "TANK_1" | "TANK_2",
+              currentValue: mismatch.dryerFedFrom as "TANK_1" | "TANK_2",
+            };
             toast({
               title: "Dryer-source mismatch",
               description: `This shift log says dryer fed from ${slLabel}, but a heating session for ${date} says ${hsLabel}.`,
@@ -468,7 +472,7 @@ export default function PlantShiftLog() {
               action: (
                 <ToastAction
                   altText="Fix heating session"
-                  onClick={() => navigateToHeatingSessions(date, plantName, mismatch.id)}
+                  onClick={() => setFixDialog({ open: true, target: fixTarget })}
                 >
                   Fix heating session
                 </ToastAction>
@@ -705,6 +709,7 @@ export default function PlantShiftLog() {
     const grouped: Record<string, PlantShiftLogRow[]> = {};
     for (const r of sorted) (grouped[r.date] = grouped[r.date] || []).push(r);
     return (
+      <>
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -855,10 +860,17 @@ export default function PlantShiftLog() {
           </CardContent>
         </Card>
       </div>
-    );
+      <DryerSourceFixDialog
+        open={fixDialog.open}
+        onOpenChange={(v) => setFixDialog(f => ({ ...f, open: v }))}
+        target={fixDialog.target}
+      />
+    </>
+  );
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -1376,5 +1388,11 @@ export default function PlantShiftLog() {
         )}
       </div>
     </div>
+      <DryerSourceFixDialog
+        open={fixDialog.open}
+        onOpenChange={(v) => setFixDialog(f => ({ ...f, open: v }))}
+        target={fixDialog.target}
+      />
+    </>
   );
 }

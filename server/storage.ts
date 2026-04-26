@@ -730,6 +730,9 @@ export interface IStorage {
   // Task #332 — Bulk-align dryerFedFrom on a set of heating sessions in one
   // operation. Used by the one-click conflict-resolution action panel.
   alignDryerSourceForSessions(sessionIds: number[], targetValue: "TANK_1" | "TANK_2"): Promise<number>;
+  // Task #334 — Inline dryer-source fix from mismatch toast. Updates just the
+  // dryerFedFrom field on a single shift log without a full upsert cycle.
+  patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -11344,6 +11347,17 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(bitumenHeatingSessions.id, sessionIds))
       .returning({ id: bitumenHeatingSessions.id });
     return result.length;
+  }
+
+  // Task #334 — Inline dryer-source fix. Updates just the dryerFedFrom field on
+  // a single shift log so the mismatch toast can correct it without navigation.
+  async patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean> {
+    const result = await db
+      .update(plantShiftLogs)
+      .set({ dryerFedFrom })
+      .where(eq(plantShiftLogs.id, id))
+      .returning({ id: plantShiftLogs.id });
+    return result.length > 0;
   }
 }
 
