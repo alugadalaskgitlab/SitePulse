@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -2182,11 +2183,12 @@ function EquipmentMasterSection() {
 
 function PersonnelMasterSection() {
   const { toast } = useToast();
-  const { sectionCan } = useAuth();
+  const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_personnel", "edit");
   const canCreate = sectionCan("master_personnel", "create");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Personnel | null>(null);
+  const [deletePersonId, setDeletePersonId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("Engineer");
   const [phone, setPhone] = useState("");
@@ -2240,6 +2242,26 @@ function PersonnelMasterSection() {
     onError: (error: any) => {
       if (isForbiddenError(error)) {
         toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/personnel/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
+      setDeletePersonId(null);
+      toast({ title: "Personnel deleted" });
+    },
+    onError: (error: any) => {
+      setDeletePersonId(null);
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else if (error?.status === 404 || error?.message?.includes("404") || error?.message?.toLowerCase().includes("not found")) {
+        queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
+        toast({ title: "Not found", description: "This personnel record no longer exists.", variant: "destructive" });
       } else {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
@@ -2340,12 +2362,45 @@ function PersonnelMasterSection() {
                       </Button>
                     </>
                   )}
+                  {isAdmin && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setDeletePersonId(person.id)}
+                      title="Delete"
+                      data-testid={`button-delete-personnel-${person.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={deletePersonId !== null} onOpenChange={(open) => { if (!open) setDeletePersonId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Personnel</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete this personnel record? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-personnel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              onClick={() => { if (deletePersonId !== null) deleteMutation.mutate(deletePersonId); }}
+              data-testid="button-confirm-delete-personnel"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
