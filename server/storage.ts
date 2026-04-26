@@ -723,6 +723,9 @@ export interface IStorage {
     conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
     hasMismatch: boolean;
   }>>;
+  // Task #332 — Bulk-align dryerFedFrom on a set of heating sessions in one
+  // operation. Used by the one-click conflict-resolution action panel.
+  alignDryerSourceForSessions(sessionIds: number[], targetValue: "TANK_1" | "TANK_2"): Promise<number>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -11291,6 +11294,18 @@ export class DatabaseStorage implements IStorage {
 
     out.sort((a, b) => b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName));
     return out;
+  }
+
+  // Task #332 — Bulk-align dryerFedFrom on a set of heating sessions in one
+  // operation. Returns the number of rows actually updated.
+  async alignDryerSourceForSessions(sessionIds: number[], targetValue: "TANK_1" | "TANK_2"): Promise<number> {
+    if (sessionIds.length === 0) return 0;
+    const result = await db
+      .update(bitumenHeatingSessions)
+      .set({ dryerFedFrom: targetValue })
+      .where(inArray(bitumenHeatingSessions.id, sessionIds))
+      .returning({ id: bitumenHeatingSessions.id });
+    return result.length;
   }
 }
 

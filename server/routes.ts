@@ -3883,6 +3883,27 @@ export async function registerRoutes(
     }
   });
 
+  // Task #332 — One-click dryer-source conflict resolution. Bulk-updates
+  // dryerFedFrom on a set of heating session IDs to the requested target value.
+  app.patch("/api/plant-module/heating-sessions/align-dryer-source", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_heating")) return;
+      const bodySchema = z.object({
+        sessionIds: z.array(z.number().int().positive()).min(1),
+        targetValue: z.enum(["TANK_1", "TANK_2"]),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const { sessionIds, targetValue } = parsed.data;
+      const updatedCount = await storage.alignDryerSourceForSessions(sessionIds, targetValue);
+      res.json({ updatedCount });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to align dryer source" });
+    }
+  });
+
   app.get("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
       const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));

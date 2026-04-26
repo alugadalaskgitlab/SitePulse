@@ -503,6 +503,23 @@ export default function PlantHeatingSessions() {
     },
   });
 
+  // Task #332 — Bulk-align dryerFedFrom on conflicting sessions in one click.
+  const alignMutation = useMutation({
+    mutationFn: async ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) => {
+      const res = await apiRequest("PATCH", "/api/plant-module/heating-sessions/align-dryer-source", { sessionIds, targetValue });
+      return res.json() as Promise<{ updatedCount: number }>;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      const label = variables.targetValue === "TANK_1" ? "Tank 1" : "Tank 2";
+      toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Align failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const openNew = () => {
     setForm(emptyForm(today));
     setDialogOpen(true);
@@ -718,6 +735,7 @@ export default function PlantHeatingSessions() {
                       const dms = dryerMismatchByDate.get(date);
                       if (!dms || dms.length === 0) return null;
                       const totalConflicts = dms.reduce((acc, dm) => acc + dm.conflictingSessions.length, 0);
+                      const allSessionIds = dms.flatMap(dm => dm.conflictingSessions.map(s => s.id));
                       const tooltip = dms.map(dm => {
                         const slLabel = dm.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
                         const lines = dm.conflictingSessions.map(s => {
@@ -728,14 +746,36 @@ export default function PlantHeatingSessions() {
                         return [`${dm.plantName} shift log says ${slLabel}:`, ...lines].join("\n");
                       }).join("\n");
                       return (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-help"
-                          title={tooltip}
-                          data-testid={`badge-dryer-mismatch-date-${date}`}
-                        >
-                          ⚠ Dryer source conflict ({totalConflicts})
-                        </Badge>
+                        <div className="flex items-center gap-1 flex-wrap" data-testid={`panel-dryer-conflict-${date}`}>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-help"
+                            title={tooltip}
+                            data-testid={`badge-dryer-mismatch-date-${date}`}
+                          >
+                            ⚠ Dryer source conflict ({totalConflicts})
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-5 text-[10px] px-1.5 border-orange-400 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
+                            disabled={alignMutation.isPending}
+                            onClick={() => alignMutation.mutate({ sessionIds: allSessionIds, targetValue: "TANK_1" })}
+                            data-testid={`button-align-tank1-${date}`}
+                          >
+                            {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T1"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-5 text-[10px] px-1.5 border-orange-400 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
+                            disabled={alignMutation.isPending}
+                            onClick={() => alignMutation.mutate({ sessionIds: allSessionIds, targetValue: "TANK_2" })}
+                            data-testid={`button-align-tank2-${date}`}
+                          >
+                            {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T2"}
+                          </Button>
+                        </div>
                       );
                     })()}
                   </div>

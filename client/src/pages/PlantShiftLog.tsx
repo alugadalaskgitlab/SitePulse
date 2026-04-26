@@ -503,6 +503,23 @@ export default function PlantShiftLog() {
     },
   });
 
+  // Task #332 — Bulk-align dryerFedFrom on conflicting sessions in one click.
+  const alignMutation = useMutation({
+    mutationFn: async ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) => {
+      const res = await apiRequest("PATCH", "/api/plant-module/heating-sessions/align-dryer-source", { sessionIds, targetValue });
+      return res.json() as Promise<{ updatedCount: number }>;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      const label = variables.targetValue === "TANK_1" ? "Tank 1" : "Tank 2";
+      toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Align failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Task #254 — Reactive query: roll up every heating session attributed to
   // this production day (i.e. all sessions since the prior production day,
   // overnight pre-heat included). Drives both the Boiler Meter auto-prefill
@@ -770,20 +787,43 @@ export default function PlantShiftLog() {
                                   const mismatch = dryerMismatchByKey.get(`${r.date}||${r.plantName}`);
                                   if (!mismatch) return null;
                                   const slLabel = mismatch.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                                  const sessionIds = mismatch.conflictingSessions.map(s => s.id);
                                   const tooltip = mismatch.conflictingSessions.map(s => {
                                     const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
                                     const time = s.startTime ? ` at ${s.startTime}` : "";
                                     return `Heating session #${s.id} (${s.sessionType}${time}) says ${hsLabel} — shift log says ${slLabel}`;
                                   }).join("\n");
                                   return (
-                                    <Badge
-                                      variant="destructive"
-                                      className="text-[10px] cursor-help"
-                                      title={tooltip}
-                                      data-testid={`badge-dryer-mismatch-${r.id}`}
-                                    >
-                                      ⚠ Dryer mismatch
-                                    </Badge>
+                                    <div className="flex items-center gap-1 flex-wrap" data-testid={`panel-dryer-mismatch-${r.id}`}>
+                                      <Badge
+                                        variant="destructive"
+                                        className="text-[10px] cursor-help"
+                                        title={tooltip}
+                                        data-testid={`badge-dryer-mismatch-${r.id}`}
+                                      >
+                                        ⚠ Dryer mismatch ({sessionIds.length})
+                                      </Badge>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                                        disabled={alignMutation.isPending}
+                                        onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_1" })}
+                                        data-testid={`button-align-tank1-${r.id}`}
+                                      >
+                                        {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T1"}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                                        disabled={alignMutation.isPending}
+                                        onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_2" })}
+                                        data-testid={`button-align-tank2-${r.id}`}
+                                      >
+                                        {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T2"}
+                                      </Button>
+                                    </div>
                                   );
                                 })()}
                               </div>
