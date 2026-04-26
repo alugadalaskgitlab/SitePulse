@@ -900,6 +900,7 @@ export default function PlantLdoFlowMeter() {
       Date: r.date,
       Time: r.time || "",
       Tank: TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
+      "Dryer Src": r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← T1" : "",
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
@@ -937,6 +938,7 @@ export default function PlantLdoFlowMeter() {
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "",
       TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
+      r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← T1" : "",
       r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
@@ -944,7 +946,7 @@ export default function PlantLdoFlowMeter() {
       r.notes || "",
     ]);
     autoTable(doc, {
-      head: [["Date", "Time", "Tank", "Meter (L)", "Type", "Receipt Qty (L)", "Source", "Notes"]],
+      head: [["Date", "Time", "Tank", "Dryer Src", "Meter (L)", "Type", "Receipt Qty (L)", "Source", "Notes"]],
       body: tableData,
       startY: 28,
       styles: { fontSize: 9 },
@@ -957,8 +959,8 @@ export default function PlantLdoFlowMeter() {
       <html><head><title>LDO Flow Meter Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
-      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← T1" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -2024,6 +2026,7 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Date</th>
                     <th className="text-left p-2">Time</th>
                     <th className="text-left p-2">Tank</th>
+                    <th className="text-left p-2">Dryer Src</th>
                     <th className="text-right p-2">Meter Reading (L)</th>
                     <th className="text-left p-2">Type</th>
                     <th className="text-right p-2">Qty (L)</th>
@@ -2051,6 +2054,18 @@ export default function PlantLdoFlowMeter() {
                         <Badge variant={r.tankNumber === 1 ? "default" : "secondary"} data-testid={`badge-tank-${r.id}`}>
                           {TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}
                         </Badge>
+                      </td>
+                      <td className="p-2">
+                        {r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-amber-500 text-amber-700 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate"
+                            title="Dryer is fed from Tank 1 stock"
+                            data-testid={`badge-dryer-src-${r.id}`}
+                          >
+                            ← T1
+                          </Badge>
+                        )}
                       </td>
                       <td className="p-2 text-right font-medium">{r.readingType === "stock" ? "-" : r.meterReading.toFixed(3)}</td>
                       <td className="p-2">
