@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X, Undo2, History, Download } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { LABOUR_CATEGORIES, LABOUR_GENDERS, ALL_PLANTS_SENTINEL } from "@shared/schema";
@@ -889,6 +890,38 @@ export default function PlantShiftLogManpowerReview() {
     }
   };
 
+  const undoBulkRevert = async (
+    revertedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }>,
+    actorName: string,
+  ) => {
+    const flipped = revertedActivities.map(a => ({
+      action: (a.action === "add" ? "remove" : "add") as "add" | "remove",
+      kind: a.kind,
+      tokenA: a.tokenA,
+      tokenB: a.tokenB,
+    }));
+    try {
+      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ actor: actorName, activities: flipped }),
+      });
+      if (res.status === 401) { window.location.assign("/login"); return; }
+      if (!res.ok) throw new Error(await res.text());
+      const result = (await res.json()) as { reverted: number; skipped: number };
+      toast({
+        title: result.reverted > 0 ? "Undo complete" : "Nothing to undo",
+        description: result.reverted > 0
+          ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} restored.`
+          : "All entries were already restored.",
+      });
+      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+    } catch (err) {
+      toast({ title: "Undo failed", description: getErrorMessage(err), variant: "destructive" });
+    }
+  };
+
   const bulkRevertAliasActivity = async () => {
     if (!isAdmin) return;
     if (!actor || actor.trim().length < 2) {
@@ -909,28 +942,35 @@ export default function PlantShiftLogManpowerReview() {
     if (!ok) return;
     setBulkRevertingAlias(true);
     try {
+      const payload = activities.map(a => ({
+        action: a.action,
+        kind: a.kind,
+        tokenA: a.tokenA,
+        tokenB: a.tokenB,
+      }));
       const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           actor: actor.trim(),
-          activities: activities.map(a => ({
-            action: a.action,
-            kind: a.kind,
-            tokenA: a.tokenA,
-            tokenB: a.tokenB,
-          })),
+          activities: payload,
         }),
       });
       if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { reverted: number; skipped: number };
+      const result = (await res.json()) as { reverted: number; skipped: number; appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> };
+      const actorSnapshot = actor.trim();
       toast({
         title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
         description: result.reverted > 0
           ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
           : "All selected entries were already undone.",
+        action: result.reverted > 0 ? (
+          <ToastAction altText="Undo bulk revert" onClick={() => undoBulkRevert(result.appliedActivities, actorSnapshot)}>
+            Undo
+          </ToastAction>
+        ) : undefined,
       });
       setSelectedAliasActivityIds({});
       await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
@@ -961,28 +1001,35 @@ export default function PlantShiftLogManpowerReview() {
     if (!ok) return;
     setBulkRevertingAlias(true);
     try {
+      const payload = activities.map(a => ({
+        action: a.action,
+        kind: a.kind,
+        tokenA: a.tokenA,
+        tokenB: a.tokenB,
+      }));
       const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           actor: actor.trim(),
-          activities: activities.map(a => ({
-            action: a.action,
-            kind: a.kind,
-            tokenA: a.tokenA,
-            tokenB: a.tokenB,
-          })),
+          activities: payload,
         }),
       });
       if (res.status === 401) { window.location.assign("/login"); return; }
       if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { reverted: number; skipped: number };
+      const result = (await res.json()) as { reverted: number; skipped: number; appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> };
+      const actorSnapshot = actor.trim();
       toast({
         title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
         description: result.reverted > 0
           ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
           : "All selected entries were already undone.",
+        action: result.reverted > 0 ? (
+          <ToastAction altText="Undo bulk revert" onClick={() => undoBulkRevert(result.appliedActivities, actorSnapshot)}>
+            Undo
+          </ToastAction>
+        ) : undefined,
       });
       setSelectedAliasActivityIds({});
       await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);

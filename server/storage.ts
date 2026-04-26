@@ -504,7 +504,11 @@ export interface IStorage {
       tokenA: string;
       tokenB: string;
     }>;
-  }): Promise<{ reverted: number; skipped: number }>;
+  }): Promise<{
+    reverted: number;
+    skipped: number;
+    appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }>;
+  }>;
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
@@ -8347,11 +8351,16 @@ export class DatabaseStorage implements IStorage {
       tokenA: string;
       tokenB: string;
     }>;
-  }): Promise<{ reverted: number; skipped: number }> {
+  }): Promise<{
+    reverted: number;
+    skipped: number;
+    appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }>;
+  }> {
     const actorTrim = String(input.actor || "").trim();
     if (actorTrim.length < 2) throw new Error("Operator name (actor) is required for audit log");
     let reverted = 0;
     let skipped = 0;
+    const appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> = [];
     for (const a of input.activities) {
       if (a.action === "add") {
         const rows = await db.select().from(plantShiftLogManpowerCustomAliases)
@@ -8375,6 +8384,7 @@ export class DatabaseStorage implements IStorage {
         } catch (auditErr) {
           console.error("shift-log-manpower bulk-revert-alias audit write failed (remove):", auditErr);
         }
+        appliedActivities.push({ action: a.action, kind: a.kind, tokenA: a.tokenA, tokenB: a.tokenB });
         reverted++;
       } else {
         const result = await this.addShiftLogManpowerCustomAlias({
@@ -8396,11 +8406,12 @@ export class DatabaseStorage implements IStorage {
           } catch (auditErr) {
             console.error("shift-log-manpower bulk-revert-alias audit write failed (add):", auditErr);
           }
+          appliedActivities.push({ action: a.action, kind: a.kind, tokenA: result.alias.tokenA, tokenB: result.alias.tokenB });
         }
         reverted++;
       }
     }
-    return { reverted, skipped };
+    return { reverted, skipped, appliedActivities };
   }
 
   async getVendorAliases(): Promise<VendorAlias[]> {
