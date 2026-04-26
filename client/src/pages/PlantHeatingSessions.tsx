@@ -50,7 +50,7 @@ function emptyForm(date: string) {
     dgClosingDiesel: "",
     generatorLogId: null as number | null,
     linkSelection: "" as string,
-    dryerFedFrom: "TANK_2" as "TANK_1" | "TANK_2",
+    dryerFedFrom: null as "TANK_1" | "TANK_2" | null,
     remarks: "",
     isFinalized: 0,
     autoFilledOpening: false,
@@ -328,6 +328,36 @@ export default function PlantHeatingSessions() {
     setForm(prev => ({ ...prev, [k]: v }));
   };
 
+  // Tracks the last dryer-source value auto-filled from the shift log so we
+  // don't overwrite a manual operator selection on date/plant change.
+  const autoFilledDryerRef = useRef<"TANK_1" | "TANK_2" | null>(null);
+
+  // Auto-populate dryerFedFrom from the matching shift log when the dialog
+  // opens for a NEW session. Re-runs when date or plantName change so the
+  // displayed value tracks the operator's selection in real-time.
+  useEffect(() => {
+    if (!dialogOpen || form.id) return;
+    const ctrl = new AbortController();
+    fetch(
+      `/api/plant-module/shift-logs/by-date/${encodeURIComponent(form.date)}?plant=${encodeURIComponent(form.plantName)}`,
+      { credentials: "include", signal: ctrl.signal }
+    )
+      .then(r => r.ok ? r.json() : null)
+      .then((log: any) => {
+        if (!log || ctrl.signal.aborted) return;
+        const src = log.dryerFedFrom;
+        if (src !== "TANK_1" && src !== "TANK_2") return;
+        setForm(prev => {
+          if (prev.dryerFedFrom !== null && prev.dryerFedFrom !== autoFilledDryerRef.current) return prev;
+          autoFilledDryerRef.current = src;
+          return { ...prev, dryerFedFrom: src };
+        });
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, form.id, form.date, form.plantName]);
+
   // Auto-fill Tank-1 opening meter when opening a NEW form. Re-runs when
   // startTime changes so the cutoff matches the actual heating start.
   const autoFilledOpeningRef = useRef<string | null>(null);
@@ -573,7 +603,7 @@ export default function PlantHeatingSessions() {
       dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
       generatorLogId: s.generatorLogId,
       linkSelection: s.generatorLogId ? `gl-${s.generatorLogId}` : "",
-      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2") || "TANK_2",
+      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2" | null) || null,
       remarks: s.remarks || "",
       isFinalized: s.isFinalized,
       autoFilledOpening: false,
@@ -964,7 +994,30 @@ export default function PlantHeatingSessions() {
               <div><Label>Start Time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
               <div><Label>End Time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
               <div><Label>Duration (h)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-duration">{dur ?? "—"}</div></div>
-              <div />
+              <div>
+                <Label>Dryer fed from</Label>
+                <Select
+                  value={form.dryerFedFrom ?? ""}
+                  onValueChange={v => {
+                    autoFilledDryerRef.current = null;
+                    setField("dryerFedFrom", v === "" ? null : v as "TANK_1" | "TANK_2");
+                  }}
+                >
+                  <SelectTrigger data-testid="select-dryer-fed-from">
+                    <SelectValue placeholder="Not set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Not set</SelectItem>
+                    <SelectItem value="TANK_1">Tank 1</SelectItem>
+                    <SelectItem value="TANK_2">Tank 2</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!form.id && form.dryerFedFrom && form.dryerFedFrom === autoFilledDryerRef.current && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-dryer-autofill-hint">
+                    From shift log — change if different
+                  </p>
+                )}
+              </div>
             </div>
 
             <Card>

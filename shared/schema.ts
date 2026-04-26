@@ -1075,8 +1075,9 @@ export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {
   // of this heating session. Heating sessions only record the Boiler meter
   // (Tank-1 stock), so this field is documentation-only here, but kept on
   // the row so downstream stock-balance code paths have a single, consistent
-  // source for the dryer-source choice. Defaults to TANK_2 for legacy rows.
-  dryerFedFrom: text("dryer_fed_from").notNull().default("TANK_2"),
+  // source for the dryer-source choice. Nullable so sessions without an
+  // explicit operator choice can be distinguished from deliberate TANK_2 picks.
+  dryerFedFrom: text("dryer_fed_from"),
   dgMode: text("dg_mode").notNull().default("none"),
   dgGeneratorName: text("dg_generator_name"),
   dgStartTime: text("dg_start_time"),
@@ -1127,9 +1128,10 @@ export const upsertBitumenHeatingSessionSchema = insertBitumenHeatingSessionSche
   editedBy: z.string().optional(),
   sessionType: z.enum(HEATING_SESSION_TYPES),
   dgMode: z.enum(["none", "inline", "link"]),
-  // Task #255 — accept either of the two enum values, default to TANK_2
-  // for back-compat with sessions saved before this column existed.
-  dryerFedFrom: z.enum(DRYER_SOURCE_TANKS).optional().default("TANK_2"),
+  // Task #255 / Task #359 — accept either of the two enum values or null
+  // (no value selected by the operator). Column is now nullable so null is
+  // stored as-is; the list badge only renders for explicit TANK_1/TANK_2 picks.
+  dryerFedFrom: z.enum(DRYER_SOURCE_TANKS).nullable().optional(),
 });
 export type UpsertBitumenHeatingSessionInput = z.infer<typeof upsertBitumenHeatingSessionSchema>;
 

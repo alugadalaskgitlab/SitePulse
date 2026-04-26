@@ -11273,9 +11273,10 @@ export class DatabaseStorage implements IStorage {
     }
     for (const s of sessRows) {
       const b = ensure(s.date, s.plantName);
-      // Sessions have notNull+default TANK_2, but guard defensively.
-      const val: "TANK_1" | "TANK_2" = (s.dryerFedFrom === "TANK_1") ? "TANK_1" : "TANK_2";
-      b.sessions.push({ id: s.id, dryerFedFrom: val, sessionType: s.sessionType, startTime: s.startTime });
+      // Skip sessions with no explicit dryer-source — they were created before
+      // the operator had a UI to set the value and can't be meaningfully compared.
+      if (s.dryerFedFrom !== "TANK_1" && s.dryerFedFrom !== "TANK_2") continue;
+      b.sessions.push({ id: s.id, dryerFedFrom: s.dryerFedFrom, sessionType: s.sessionType, startTime: s.startTime });
     }
 
     const out: Array<{
