@@ -608,7 +608,7 @@ export default function PlantHeatingSessions() {
       dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
       generatorLogId: s.generatorLogId,
       linkSelection: s.generatorLogId ? `gl-${s.generatorLogId}` : "",
-      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2" | null) || "TANK_2",
+      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2" | null) || null,
       remarks: s.remarks || "",
       isFinalized: s.isFinalized,
       autoFilledOpening: false,
@@ -1002,16 +1002,17 @@ export default function PlantHeatingSessions() {
               <div>
                 <Label>Dryer fed from</Label>
                 <Select
-                  value={form.dryerFedFrom ?? "TANK_2"}
+                  value={form.dryerFedFrom ?? "NONE"}
                   onValueChange={v => {
                     autoFilledDryerRef.current = null;
-                    setField("dryerFedFrom", v as "TANK_1" | "TANK_2");
+                    setField("dryerFedFrom", v === "NONE" ? null : v as "TANK_1" | "TANK_2");
                   }}
                 >
                   <SelectTrigger data-testid="select-dryer-fed-from">
-                    <SelectValue />
+                    <SelectValue placeholder="Not set" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="NONE">Not set</SelectItem>
                     <SelectItem value="TANK_1">Tank 1</SelectItem>
                     <SelectItem value="TANK_2">Tank 2</SelectItem>
                   </SelectContent>
