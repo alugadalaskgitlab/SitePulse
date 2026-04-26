@@ -10250,6 +10250,23 @@ export class DatabaseStorage implements IStorage {
     const rows = conds.length
       ? await q.where(and(...conds)).orderBy(desc(bitumenHeatingSessions.date), asc(bitumenHeatingSessions.startTime))
       : await q.orderBy(desc(bitumenHeatingSessions.date), asc(bitumenHeatingSessions.startTime));
+
+    // Resolve dgGeneratorName for "link" sessions that were saved before the
+    // write-back was introduced (i.e. generatorLogId is set but name is missing).
+    const missingIds = [...new Set(
+      rows.filter(r => r.generatorLogId != null && !r.dgGeneratorName)
+          .map(r => r.generatorLogId!)
+    )];
+    if (missingIds.length > 0) {
+      const genLogs = await db.select({ id: generatorLogs.id, generatorName: generatorLogs.generatorName })
+        .from(generatorLogs).where(inArray(generatorLogs.id, missingIds));
+      const nameMap = new Map(genLogs.map(l => [l.id, l.generatorName]));
+      for (const row of rows) {
+        if (row.generatorLogId != null && !row.dgGeneratorName) {
+          (row as any).dgGeneratorName = nameMap.get(row.generatorLogId) ?? null;
+        }
+      }
+    }
     return rows;
   }
 
@@ -10356,9 +10373,11 @@ export class DatabaseStorage implements IStorage {
         err.code = "GEN_LOG_ALREADY_LINKED";
         throw err;
       }
-      // Pull totals from the linked generator log so reports attribute DG diesel correctly
+      // Pull totals and name from the linked generator log so reports and badges
+      // work without a join on every list load.
       payload.dgHoursRun = linked.hoursRun ?? null;
       payload.dgDieselConsumed = linked.dieselConsumed ?? null;
+      payload.dgGeneratorName = linked.generatorName ?? null;
     } else if (payload.dgMode !== "inline") {
       // Only clear computed values for "none" mode (no DG run).
       // For "inline" mode the values were already computed in the block above
