@@ -50,7 +50,7 @@ function emptyForm(date: string) {
     dgClosingDiesel: "",
     generatorLogId: null as number | null,
     linkSelection: "" as string,
-    dryerFedFrom: "TANK_2" as "TANK_1" | "TANK_2" | null,
+    dryerFedFrom: null as "TANK_1" | "TANK_2" | null,
     remarks: "",
     isFinalized: 0,
     autoFilledOpening: false,
@@ -462,7 +462,7 @@ export default function PlantHeatingSessions() {
       generatorLogId: form.dgMode === "link"
         ? (overrideGeneratorLogId !== undefined ? overrideGeneratorLogId : form.generatorLogId)
         : null,
-      dryerFedFrom: form.dryerFedFrom,
+      dryerFedFrom: form.dryerFedFrom ?? "TANK_2",
       remarks: form.remarks || null,
       editedBy: "operator",
     };
@@ -608,7 +608,7 @@ export default function PlantHeatingSessions() {
       dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
       generatorLogId: s.generatorLogId,
       linkSelection: s.generatorLogId ? `gl-${s.generatorLogId}` : "",
-      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2" | null) || null,
+      dryerFedFrom: (s.dryerFedFrom as "TANK_1" | "TANK_2" | null) || "TANK_2",
       remarks: s.remarks || "",
       isFinalized: s.isFinalized,
       autoFilledOpening: false,
@@ -1002,17 +1002,16 @@ export default function PlantHeatingSessions() {
               <div>
                 <Label>Dryer fed from</Label>
                 <Select
-                  value={form.dryerFedFrom ?? "NONE"}
+                  value={form.dryerFedFrom ?? "TANK_2"}
                   onValueChange={v => {
                     autoFilledDryerRef.current = null;
-                    setField("dryerFedFrom", v === "NONE" ? null : v as "TANK_1" | "TANK_2");
+                    setField("dryerFedFrom", v as "TANK_1" | "TANK_2");
                   }}
                 >
                   <SelectTrigger data-testid="select-dryer-fed-from">
-                    <SelectValue placeholder="Not set" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NONE">Not set</SelectItem>
                     <SelectItem value="TANK_1">Tank 1</SelectItem>
                     <SelectItem value="TANK_2">Tank 2</SelectItem>
                   </SelectContent>
