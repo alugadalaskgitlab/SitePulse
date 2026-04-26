@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Droplets, Pencil, Lock, Filter, BarChart3, TrendingDown, TrendingUp, Info, Scale } from "lucide-react";
+import { ChevronLeft, Loader2, Trash2, Download, Printer, Droplets, Pencil, Lock, Filter, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -28,6 +28,22 @@ import {
   getDeadStockVolume,
   getUsableVolume,
 } from "@shared/bitumen-dip-chart";
+
+type ReadingSource = "shift-log" | "heating-session" | "backfill" | "manual";
+
+const SOURCE_LABELS: Record<ReadingSource, string> = {
+  "shift-log": "Shift Log",
+  "heating-session": "Heating",
+  "backfill": "Backfill",
+  "manual": "Manual",
+};
+
+function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeatingSessionId?: number | null; notes?: string | null }): ReadingSource {
+  if (r.notes && r.notes.toUpperCase().startsWith("[BACKFILL")) return "backfill";
+  if (r.sourceShiftLogId != null) return "shift-log";
+  if (r.sourceHeatingSessionId != null) return "heating-session";
+  return "manual";
+}
 
 export default function PlantBitumenStock() {
   const { toast } = useToast();
@@ -73,6 +89,7 @@ export default function PlantBitumenStock() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterTank, setFilterTank] = useState("all");
+  const [filterSource, setFilterSource] = useState<"all" | "hide-backfill" | ReadingSource>("all");
 
   const [reconDateFrom, setReconDateFrom] = useState("");
   const [reconDateTo, setReconDateTo] = useState("");
@@ -184,9 +201,17 @@ export default function PlantBitumenStock() {
       if (filterDateFrom && r.date < filterDateFrom) return false;
       if (filterDateTo && r.date > filterDateTo) return false;
       if (filterTank !== "all" && r.tankNumber !== parseInt(filterTank)) return false;
+      if (filterSource !== "all") {
+        const src = classifyReadingSource(r);
+        if (filterSource === "hide-backfill") {
+          if (src === "backfill") return false;
+        } else if (src !== filterSource) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [readings, filterDateFrom, filterDateTo, filterTank]);
+  }, [readings, filterDateFrom, filterDateTo, filterTank, filterSource]);
 
   const depthNum = parseFloat(depthCm) || 0;
   const computedVolume = getVolumeAtDepth(depthNum);
@@ -573,6 +598,7 @@ export default function PlantBitumenStock() {
       "Weight (MT)": +(r.weightKg / 1000).toFixed(3),
       "Usable (MT)": +(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3),
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
+      Source: SOURCE_LABELS[classifyReadingSource(r)],
       Notes: r.notes || "",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
@@ -593,10 +619,11 @@ export default function PlantBitumenStock() {
       r.volumeLiters.toFixed(3), (r.weightKg / 1000).toFixed(3),
       (getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
+      SOURCE_LABELS[classifyReadingSource(r)],
       r.notes || "",
     ]);
     autoTable(doc, {
-      head: [["Date", "Time", "Tank", "Depth(cm)", "Volume(L)", "Weight(MT)", "Usable(MT)", "Type", "Notes"]],
+      head: [["Date", "Time", "Tank", "Depth(cm)", "Volume(L)", "Weight(MT)", "Usable(MT)", "Type", "Source", "Notes"]],
       body: tableData,
       startY: 28,
       styles: { fontSize: 8 },
@@ -609,8 +636,8 @@ export default function PlantBitumenStock() {
       <html><head><title>Bitumen Dip Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>Bitumen Dip Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
-      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(MT)</th><th>Type</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(MT)</th><th>Type</th><th>Source</th><th>Notes</th></tr>
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -1325,7 +1352,7 @@ export default function PlantBitumenStock() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2 mb-4 flex-wrap">
+          <div className="flex gap-2 mb-4 flex-wrap items-center">
             <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-40" data-testid="input-filter-date-from" />
             <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
             <Select value={filterTank} onValueChange={setFilterTank}>
@@ -1338,6 +1365,29 @@ export default function PlantBitumenStock() {
                 <SelectItem value="2">Tank 2</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={filterSource} onValueChange={v => setFilterSource(v as typeof filterSource)}>
+              <SelectTrigger className="w-48" data-testid="select-filter-source">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="hide-backfill">Hide Backfill rows</SelectItem>
+                <SelectItem value="shift-log">Only Shift Log</SelectItem>
+                <SelectItem value="heating-session">Only Heating</SelectItem>
+                <SelectItem value="manual">Only Manual</SelectItem>
+                <SelectItem value="backfill">Only Backfill</SelectItem>
+              </SelectContent>
+            </Select>
+            {(filterDateFrom || filterDateTo || filterTank !== "all" || filterSource !== "all") && (
+              <button
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterTank("all"); setFilterSource("all"); }}
+                data-testid="button-reset-filters"
+                aria-label="Reset filters to defaults"
+              >
+                <X className="w-3.5 h-3.5" /> Reset filters
+              </button>
+            )}
           </div>
 
           {isLoading ? (
@@ -1357,12 +1407,23 @@ export default function PlantBitumenStock() {
                     <th className="text-right p-2">Weight (MT)</th>
                     <th className="text-right p-2">Usable (MT)</th>
                     <th className="text-left p-2">Type</th>
+                    <th className="text-left p-2">Source</th>
                     <th className="text-left p-2">Notes</th>
                     {isAdmin && <th className="text-center p-2">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReadings.map(r => (
+                  {filteredReadings.map(r => {
+                    const src = classifyReadingSource(r);
+                    const srcClass =
+                      src === "backfill"
+                        ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+                        : src === "shift-log"
+                          ? "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200"
+                          : src === "heating-session"
+                            ? "bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200"
+                            : "";
+                    return (
                     <tr key={r.id} className="border-b" data-testid={`row-reading-${r.id}`}>
                       <td className="p-2">{r.date}</td>
                       <td className="p-2">{r.time || "-"}</td>
@@ -1374,6 +1435,24 @@ export default function PlantBitumenStock() {
                       <td className="p-2">
                         <Badge variant={r.readingType === "opening" ? "default" : r.readingType === "closing" ? "secondary" : r.readingType === "receipt" ? "outline" : "secondary"}>
                           {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        <Badge
+                          variant={src === "manual" ? "outline" : "secondary"}
+                          className={srcClass}
+                          data-testid={`badge-source-${r.id}`}
+                          title={
+                            src === "backfill"
+                              ? "Entered via the admin Bitumen Backfill tool"
+                              : src === "shift-log"
+                                ? "Auto-created from a plant shift log"
+                                : src === "heating-session"
+                                  ? "Auto-created from a bitumen heating session"
+                                  : "Manually entered on this page"
+                          }
+                        >
+                          {SOURCE_LABELS[src]}
                         </Badge>
                       </td>
                       <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
@@ -1403,7 +1482,8 @@ export default function PlantBitumenStock() {
                         )}
                       </td>}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
