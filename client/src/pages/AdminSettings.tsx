@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X, Droplets } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -148,7 +148,11 @@ export default function AdminSettings() {
       toast({ title: "Site Updated", description: "Site has been updated." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -163,7 +167,11 @@ export default function AdminSettings() {
       toast({ title: "Site Deleted", description: "Site has been removed." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 

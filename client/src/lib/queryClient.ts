@@ -67,6 +67,13 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
+export const NO_PERMISSION_DESCRIPTION =
+  "You don't have permission to edit/delete this item. Contact an administrator.";
+
+export function isForbiddenError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("403");
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

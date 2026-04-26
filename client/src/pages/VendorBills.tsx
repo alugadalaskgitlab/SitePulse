@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
@@ -331,6 +331,13 @@ export default function VendorBills() {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-aliases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/vendor-names"] });
       toast({ title: "Alias removed" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 

@@ -15,7 +15,7 @@ import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Drop
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading } from "@shared/schema";
@@ -873,6 +873,13 @@ function PartyMaster() {
       resetForm();
       toast({ title: "Party updated successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const deleteMutation = useMutation({
@@ -881,6 +888,13 @@ function PartyMaster() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
       toast({ title: "Party deleted successfully" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -1062,6 +1076,13 @@ function MaterialMaster() {
       resetForm();
       toast({ title: "Material updated successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const createOpeningStockMutation = useMutation({
@@ -1100,6 +1121,13 @@ function MaterialMaster() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
       toast({ title: "Material deleted successfully" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -1523,6 +1551,13 @@ function MixTemplateMaster() {
       resetForm();
       toast({ title: "Mix template updated successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const deleteMutation = useMutation({
@@ -1533,6 +1568,13 @@ function MixTemplateMaster() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDeleteConfirmId(null);
       toast({ title: "Mix template deleted successfully" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -1884,6 +1926,13 @@ function EquipmentMasterSection() {
       resetForm();
       toast({ title: "Equipment updated successfully" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const deleteMutation = useMutation({
@@ -1892,6 +1941,13 @@ function EquipmentMasterSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
       toast({ title: "Equipment deleted successfully" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -1904,6 +1960,13 @@ function EquipmentMasterSection() {
         return key === "/api/plant-module/equipment";
       }});
       toast({ title: "Equipment status updated" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -2158,6 +2221,13 @@ function PersonnelMasterSection() {
       resetForm();
       toast({ title: "Personnel updated" });
     },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    },
   });
 
   const toggleMutation = useMutation({
@@ -2166,6 +2236,13 @@ function PersonnelMasterSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
       toast({ title: "Status updated" });
+    },
+    onError: (error: any) => {
+      if (isForbiddenError(error)) {
+        toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     },
   });
 
