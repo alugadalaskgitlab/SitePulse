@@ -172,7 +172,7 @@ import {
   type ConcreteEstimateV2,
   type InsertConcreteEstimateV2,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import {
@@ -10246,28 +10246,21 @@ export class DatabaseStorage implements IStorage {
     if (filters.dateFrom) conds.push(gte(bitumenHeatingSessions.date, filters.dateFrom));
     if (filters.dateTo) conds.push(lte(bitumenHeatingSessions.date, filters.dateTo));
     if (filters.plantName) conds.push(eq(bitumenHeatingSessions.plantName, filters.plantName));
-    const q = db.select().from(bitumenHeatingSessions);
+
+    // LEFT JOIN generator_logs to resolve dgGeneratorName for sessions that were
+    // linked before the write-back was introduced. COALESCE prefers the stored value
+    // (fast path for new sessions) and falls back to the joined name (legacy rows).
+    const { dgGeneratorName: _stored, ...restCols } = getTableColumns(bitumenHeatingSessions);
+    const q = db.select({
+      ...restCols,
+      dgGeneratorName: sql<string | null>`COALESCE(${bitumenHeatingSessions.dgGeneratorName}, ${generatorLogs.generatorName})`,
+    }).from(bitumenHeatingSessions)
+      .leftJoin(generatorLogs, eq(bitumenHeatingSessions.generatorLogId, generatorLogs.id));
+
     const rows = conds.length
       ? await q.where(and(...conds)).orderBy(desc(bitumenHeatingSessions.date), asc(bitumenHeatingSessions.startTime))
       : await q.orderBy(desc(bitumenHeatingSessions.date), asc(bitumenHeatingSessions.startTime));
-
-    // Resolve dgGeneratorName for "link" sessions that were saved before the
-    // write-back was introduced (i.e. generatorLogId is set but name is missing).
-    const missingIds = [...new Set(
-      rows.filter(r => r.generatorLogId != null && !r.dgGeneratorName)
-          .map(r => r.generatorLogId!)
-    )];
-    if (missingIds.length > 0) {
-      const genLogs = await db.select({ id: generatorLogs.id, generatorName: generatorLogs.generatorName })
-        .from(generatorLogs).where(inArray(generatorLogs.id, missingIds));
-      const nameMap = new Map(genLogs.map(l => [l.id, l.generatorName]));
-      for (const row of rows) {
-        if (row.generatorLogId != null && !row.dgGeneratorName) {
-          (row as any).dgGeneratorName = nameMap.get(row.generatorLogId) ?? null;
-        }
-      }
-    }
-    return rows;
+    return rows as BitumenHeatingSession[];
   }
 
   async getBitumenHeatingSession(id: number): Promise<BitumenHeatingSession | undefined> {
