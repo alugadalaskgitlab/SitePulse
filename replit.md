@@ -34,8 +34,30 @@ PostgreSQL is the primary database, managed with Drizzle ORM and `drizzle-zod` f
 - **Reporting**: Includes Materials Received and Site Purchases reports.
 - **Data Export/Import**: Admin-only tools for selected table data transfer.
 
-### Permission Gating — `assertCreate` on POST endpoints
+### Permission Gating — `assertCreate` on POST endpoints and `assertEdit`/`assertAdmin` on PATCH/DELETE endpoints
 Every POST create endpoint that maps to a permission-managed section in `shared/permissions.ts` calls `assertCreate(req, res, section)` (from `server/auth-routes.ts`) before any DB write. On failure the helper responds with `403 { error: "forbidden", action: "create", section }`. Admins bypass all checks. Estimator routes (`/api/estimator/*`, `/api/mix-estimates`, `/api/concrete-estimates`, `/api/price-scenarios`), notifications, push subscriptions, admin-only maintenance endpoints, read-only export endpoints, and edit-shape POSTs (`:id/clone`, `:id/finalize`, `:id/notify`) are intentionally excluded.
+
+Every PATCH on master-data endpoints calls `assertEdit(req, res, "admin_settings")` and every DELETE on master-data endpoints calls `assertAdmin(req, res)`. Both helpers return `403` (with `{ error: "forbidden", action, section }` for `assertEdit` and `{ error: "admin_required" }` for `assertAdmin`) for unauthorised callers; admins bypass all checks.
+
+| PATCH/DELETE endpoint | Helper |
+| --- | --- |
+| `PATCH /api/sites/:id` | `assertEdit … "admin_settings"` |
+| `DELETE /api/sites/:id` | `assertAdmin` |
+| `PATCH /api/personnel/:id` | `assertEdit … "admin_settings"` |
+| `PATCH /api/personnel/:id/toggle-active` | `assertEdit … "admin_settings"` |
+| `PATCH /api/plant-module/parties/:id` | `assertEdit … "admin_settings"` |
+| `DELETE /api/plant-module/parties/:id` | `assertAdmin` |
+| `PATCH /api/plant-module/materials/:id` | `assertEdit … "admin_settings"` |
+| `DELETE /api/plant-module/materials/:id` | `assertAdmin` |
+| `PATCH /api/plant-module/mix-types/:id` | `assertEdit … "admin_settings"` |
+| `DELETE /api/plant-module/mix-types/:id` | `assertAdmin` |
+| `PATCH /api/plant-module/mix-templates/:id` | `assertEdit … "admin_settings"` |
+| `DELETE /api/plant-module/mix-templates/:id` | `assertAdmin` |
+| `PATCH /api/plant-module/equipment/:id` | `assertEdit … "admin_settings"` |
+| `DELETE /api/plant-module/equipment/:id` | `assertAdmin` |
+| `PATCH /api/plant-module/equipment/:id/toggle-active` | `assertEdit … "admin_settings"` |
+| `DELETE /api/vendor-aliases/:id` | `assertAdmin` |
+| `DELETE /api/vendor-rate-cards/:id` | `assertAdmin` |
 
 | POST endpoint | Section |
 | --- | --- |

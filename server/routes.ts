@@ -301,6 +301,7 @@ export async function registerRoutes(
 
   app.patch("/api/sites/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
       const site = await storage.updateSite(id, req.body);
       if (!site) return res.status(404).json({ message: "Site not found" });
@@ -312,6 +313,7 @@ export async function registerRoutes(
 
   app.delete("/api/sites/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteSite(id);
       if (!deleted) return res.status(404).json({ message: "Site not found" });
@@ -359,6 +361,7 @@ export async function registerRoutes(
 
   app.patch("/api/personnel/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const parsed = insertPersonnelSchema.partial().parse(req.body);
       const updated = await storage.updatePersonnel(Number(req.params.id), parsed);
       if (!updated) return res.status(404).json({ message: "Personnel not found" });
@@ -371,6 +374,7 @@ export async function registerRoutes(
 
   app.patch("/api/personnel/:id/toggle-active", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const updated = await storage.togglePersonnelActive(Number(req.params.id));
       if (!updated) return res.status(404).json({ message: "Personnel not found" });
       res.json(updated);
@@ -916,6 +920,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/parties/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const party = await storage.updateParty(Number(req.params.id), req.body);
       if (!party) return res.status(404).json({ message: "Party not found" });
       res.json(party);
@@ -926,6 +931,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/parties/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteParty(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Party not found" });
       res.status(204).send();
@@ -956,6 +962,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/materials/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const material = await storage.updatePlantMaterial(Number(req.params.id), req.body);
       if (!material) return res.status(404).json({ message: "Material not found" });
       res.json(material);
@@ -966,6 +973,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/materials/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deletePlantMaterial(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Material not found" });
       res.status(204).send();
@@ -996,6 +1004,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/mix-types/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const result = await storage.updateMixType(Number(req.params.id), req.body);
       if (!result) return res.status(404).json({ message: "Mix type not found" });
       res.json(result);
@@ -1006,6 +1015,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/mix-types/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMixType(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Mix type not found" });
       res.status(204).send();
@@ -1056,6 +1066,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/mix-templates/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const { components, ...template } = req.body;
       const result = await storage.updateMixTemplate(Number(req.params.id), template, components);
       if (!result) return res.status(404).json({ message: "Mix template not found" });
@@ -1067,6 +1078,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/mix-templates/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMixTemplate(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Mix template not found" });
       res.status(204).send();
@@ -1098,6 +1110,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/equipment/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const equipment = await storage.updateEquipment(Number(req.params.id), req.body);
       if (!equipment) return res.status(404).json({ message: "Equipment not found" });
       res.json(equipment);
@@ -1108,6 +1121,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/equipment/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteEquipment(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Equipment not found" });
       res.status(204).send();
@@ -1118,6 +1132,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/equipment/:id/toggle-active", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = Number(req.params.id);
       const allEquipment = await storage.getEquipmentMaster(true);
       const equip = allEquipment.find(e => e.id === id);
@@ -4909,6 +4924,7 @@ export async function registerRoutes(
 
   app.delete("/api/vendor-aliases/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       const deleted = await storage.deleteVendorAlias(id);
       if (!deleted) {
@@ -5548,6 +5564,7 @@ export async function registerRoutes(
 
   app.delete("/api/vendor-rate-cards/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       const deleted = await storage.deleteVendorRateCard(id);
       if (!deleted) return res.status(404).json({ message: "Rate card not found" });
