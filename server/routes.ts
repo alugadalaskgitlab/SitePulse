@@ -2536,7 +2536,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_stock")) return;
       const parsed = insertBitumenDipReadingSchema.parse(req.body);
       const reading = await storage.createBitumenDipReading(parsed);
-      sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.dipDepth}cm`, "/plant/bitumen-stock").catch(() => {});
+      sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/bitumen-stock").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create bitumen dip reading" });
@@ -2766,7 +2766,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_stock")) return;
       const parsed = insertLdoDipReadingSchema.parse(req.body);
       const reading = await storage.createLdoDipReading(parsed);
-      sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.dipDepth}cm`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create LDO dip reading" });
