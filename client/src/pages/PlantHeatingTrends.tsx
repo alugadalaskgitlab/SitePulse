@@ -444,25 +444,43 @@ export default function PlantHeatingTrends() {
                           {r.mismatchL == null ? (
                             <span className="text-muted-foreground">—</span>
                           ) : r.mismatchFlag ? (
-                            <Link
-                              href={appendPlantContext(
-                                `/plant/heating-mismatch/${r.date}?plant=${encodeURIComponent(plant)}`,
-                                { defaultTab: "reports" },
-                              )}
-                              data-testid={`link-mismatch-${r.date}`}
-                            >
-                              <Badge
-                                variant="destructive"
-                                className="gap-1 cursor-pointer hover-elevate"
-                                title={r.total.count === 0
-                                  ? `No heating sessions logged but shift-meter shows ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — click to drill into this date`
-                                  : `Sessions ${r.total.ldoT1L.toFixed(1)} L vs shift-meter ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL > 0 ? "+" : ""}${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — click to drill into this date`}
-                                data-testid={`badge-mismatch-${r.date}`}
+                            <div className="flex flex-col items-end gap-1">
+                              <Link
+                                href={appendPlantContext(
+                                  `/plant/heating-mismatch/${r.date}?plant=${encodeURIComponent(plant)}`,
+                                  { defaultTab: "reports" },
+                                )}
+                                data-testid={`link-mismatch-${r.date}`}
                               >
-                                <AlertTriangle className="w-3 h-3" />
-                                {r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}
-                              </Badge>
-                            </Link>
+                                <Badge
+                                  variant="destructive"
+                                  className="gap-1 cursor-pointer hover-elevate"
+                                  title={r.total.count === 0
+                                    ? `No heating sessions logged but shift-meter shows ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — click to drill into this date`
+                                    : `Sessions ${r.total.ldoT1L.toFixed(1)} L vs shift-meter ${(r.shiftMeterT1L ?? 0).toFixed(1)} L (Δ ${r.mismatchL > 0 ? "+" : ""}${r.mismatchL.toFixed(1)} L > ±${mismatchThreshold} L) — click to drill into this date`}
+                                  data-testid={`badge-mismatch-${r.date}`}
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  {r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}
+                                </Badge>
+                              </Link>
+                              <Link
+                                href={appendPlantContext(
+                                  `/plant/ldo-mismatch/${r.date}?plant=${encodeURIComponent(plant)}`,
+                                  { defaultTab: "reports" },
+                                )}
+                                data-testid={`link-ldo-ledger-${r.date}`}
+                              >
+                                <Badge
+                                  variant="outline"
+                                  className="gap-1 cursor-pointer hover-elevate text-xs"
+                                  title={`Review LDO ledger for ${r.date}`}
+                                  data-testid={`badge-ldo-ledger-${r.date}`}
+                                >
+                                  LDO Ledger
+                                </Badge>
+                              </Link>
+                            </div>
                           ) : (
                             <span className="text-muted-foreground">{r.mismatchL > 0 ? "+" : ""}{fmt(r.mismatchL, 1)}</span>
                           )}
