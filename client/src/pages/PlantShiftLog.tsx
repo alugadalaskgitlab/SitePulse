@@ -434,6 +434,10 @@ export default function PlantShiftLog() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          if (window.location.pathname !== "/login") window.location.assign("/login");
+          throw new Error("Session expired. Please log in again.");
+        }
         if (res.status === 403) {
           const body = await res.json().catch(() => ({}));
           if (body.code === "FINALIZED_LOCKED") {
