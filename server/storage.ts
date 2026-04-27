@@ -10136,8 +10136,16 @@ export class DatabaseStorage implements IStorage {
       : ldoConsumedT1;
     const reconciliationT1ShiftL = t1PrimarySource === "sessions" ? ldoConsumedT1 : null;
     const effectiveTotalL = (effectiveT1L || 0) + (ldoConsumedT2 || 0);
-    const effectiveLPerHour = (runningHours && runningHours > 0 && effectiveTotalL > 0)
-      ? Math.round((effectiveTotalL / runningHours) * 100) / 100 : null;
+    // When the plant log has no start/stop times (runningHours is null) but the
+    // primary source is heating sessions, fall back to the total session hours so
+    // that L / Hour (combined) can still be computed from measured session data.
+    const hoursForLPerHour = (runningHours && runningHours > 0)
+      ? runningHours
+      : (t1PrimarySource === "sessions" && boilerHeating && boilerHeating.totalHours > 0
+          ? boilerHeating.totalHours
+          : null);
+    const effectiveLPerHour = (hoursForLPerHour && hoursForLPerHour > 0 && effectiveTotalL > 0)
+      ? Math.round((effectiveTotalL / hoursForLPerHour) * 100) / 100 : null;
     const effectiveLPerMT = (totalProductionMT > 0 && effectiveTotalL > 0)
       ? Math.round((effectiveTotalL / totalProductionMT) * 1000) / 1000 : null;
     const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveT1L || 0) > 0)
