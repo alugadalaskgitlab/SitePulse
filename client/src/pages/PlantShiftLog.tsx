@@ -903,7 +903,14 @@ export default function PlantShiftLog() {
         </div>
       </div>
 
-      {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
+      {isLoading && (
+        <Card data-testid="loading-shift-log-form">
+          <CardContent className="flex items-center justify-center gap-3 py-10 text-muted-foreground">
+            <Loader2 className="w-7 h-7 animate-spin" />
+            <span className="text-sm">Loading saved data…</span>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -954,6 +961,8 @@ export default function PlantShiftLog() {
           <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
         </CardContent>
       </Card>
+
+      {!isLoading && <>
 
       {!noMainPlantOps && <Card>
         <CardHeader>
@@ -1400,6 +1409,7 @@ export default function PlantShiftLog() {
           </Button>
         )}
       </div>
+      </>}
     </div>
       <DryerSourceFixDialog
         open={fixDialog.open}
