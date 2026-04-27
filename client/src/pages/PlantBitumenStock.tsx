@@ -56,7 +56,7 @@ export default function PlantBitumenStock() {
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
   const urlRole = sp.get("role");
-  const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
+  const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : isAdminUser ? "admin" : "manager";
   const isAdmin = pageRole === "admin";
   const urlPlant = sp.get("plant") || "Main Plant";
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
