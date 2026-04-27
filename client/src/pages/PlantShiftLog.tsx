@@ -427,15 +427,24 @@ export default function PlantShiftLog() {
         editedBy,
       };
       if (extra?.pin) payload.pin = extra.pin;
-      const res = await apiRequest("POST", "/api/plant-module/shift-logs", payload);
-      if (res.status === 403) {
-        const body = await res.json();
-        if (body.code === "FINALIZED_LOCKED") {
-          const e = new Error(body.message) as Error & { locked?: boolean };
-          e.locked = true;
-          throw e;
+      const res = await fetch("/api/plant-module/shift-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        if (res.status === 403) {
+          const body = await res.json().catch(() => ({}));
+          if (body.code === "FINALIZED_LOCKED") {
+            const e = new Error(body.message || "This shift log is finalized and cannot be edited.") as Error & { locked?: boolean };
+            e.locked = true;
+            throw e;
+          }
+          throw new Error(body.message || "Forbidden");
         }
-        throw new Error(body.message || "Forbidden");
+        const text = (await res.text().catch(() => "")) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
       }
       return res.json();
     },
