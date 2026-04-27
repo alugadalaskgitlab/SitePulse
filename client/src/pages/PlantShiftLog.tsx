@@ -692,18 +692,20 @@ export default function PlantShiftLog() {
     return rows.reduce((sum, d) => sum + (d.loadWeight || 0), 0);
   }, [todayDispatches, plantName]);
 
-  // Five live stats shown below the LDO meter inputs.
+  // Six live stats shown below the LDO meter inputs.
   const liveStats = useMemo(() => {
     const boilerL = boilerRunsDuringProduction ? ldoTotal.t1 : null;
     const dryerL = ldoTotal.t2;
     const hrs = plantRunHours;
     const mt = totalDispatchedMt;
+    const hasAny = boilerL != null || dryerL != null;
     return {
       boilerLHr: (boilerL != null && hrs && hrs > 0) ? boilerL / hrs : null,
       dryerLHr: (dryerL != null && hrs && hrs > 0) ? dryerL / hrs : null,
+      combinedLHr: (hasAny && hrs && hrs > 0) ? ((boilerL ?? 0) + (dryerL ?? 0)) / hrs : null,
       dryerLMt: (dryerL != null && mt && mt > 0) ? dryerL / mt : null,
       boilerLMt: (boilerL != null && mt && mt > 0) ? boilerL / mt : null,
-      combinedLMt: (mt && mt > 0 && (boilerL != null || dryerL != null))
+      combinedLMt: (mt && mt > 0 && hasAny)
         ? ((boilerL ?? 0) + (dryerL ?? 0)) / mt : null,
       noDispatches: todayDispatches != null && totalDispatchedMt == null,
     };
@@ -782,6 +784,7 @@ export default function PlantShiftLog() {
                           return Math.round((mins / 60) * 100) / 100;
                         })();
                         const ldoLPerHr = (ldo1 != null && dur && dur > 0) ? (ldo1 / dur).toFixed(2) : null;
+                        const ldoLPerHrDryer = (ldo2 != null && dur && dur > 0) ? (ldo2 / dur).toFixed(2) : null;
                         return (
                           <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover-elevate" data-testid={`row-shift-log-${r.id}`}>
                             <div className="flex-1">
@@ -844,7 +847,7 @@ export default function PlantShiftLog() {
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
                                 <span>Operator: {r.operatorName || "—"}</span>
                                 <span>Boiler Meter: {ldo1?.toFixed(1) ?? "—"} L{ldoLPerHr && <span className="ml-1">({ldoLPerHr} L/Hr)</span>}</span>
-                                <span>Dryer Meter: {ldo2?.toFixed(1) ?? "—"} L</span>
+                                <span>Dryer Meter: {ldo2?.toFixed(1) ?? "—"} L{ldoLPerHrDryer && <span className="ml-1">({ldoLPerHrDryer} L/Hr)</span>}</span>
                                 <span>Weather: {r.weather || "—"}</span>
                               </div>
                             </div>
@@ -1086,17 +1089,18 @@ export default function PlantShiftLog() {
           <div><Label>Dryer Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
 
-          {/* Task #325 — live LDO efficiency stats strip. Updates as the operator
-              types closing readings, changes plant start/stop times, or when
-              dispatch totals load in the background. */}
+          {/* Task #325/#372 — live LDO efficiency stats strip. Updates as the
+              operator types closing readings, changes plant start/stop times,
+              or when dispatch totals load in the background. */}
           <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
             <p className="text-xs font-medium text-muted-foreground mb-2">Live LDO Stats</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
               {([
                 { label: "Boiler L/Hr", value: liveStats.boilerLHr, testId: "text-ldo-stat-boiler-lphr" },
                 { label: "Dryer L/Hr", value: liveStats.dryerLHr, testId: "text-ldo-stat-dryer-lphr" },
-                { label: "Dryer L/MT", value: liveStats.dryerLMt, testId: "text-ldo-stat-dryer-lpmt" },
+                { label: "Combined L/Hr", value: liveStats.combinedLHr, testId: "text-ldo-stat-combined-lphr" },
                 { label: "Boiler L/MT", value: liveStats.boilerLMt, testId: "text-ldo-stat-boiler-lpmt" },
+                { label: "Dryer L/MT", value: liveStats.dryerLMt, testId: "text-ldo-stat-dryer-lpmt" },
                 { label: "Combined L/MT", value: liveStats.combinedLMt, testId: "text-ldo-stat-combined-lpmt" },
               ] as const).map(({ label, value, testId }) => (
                 <div key={label} className="flex flex-col gap-0.5">
