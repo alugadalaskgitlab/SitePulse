@@ -304,7 +304,12 @@ export default function DieselRequirements() {
       updated[index].manualQty = true;
     }
 
-    if ((field === "estHours" || field === "norm") && !updated[index].manualQty) {
+    // Clearing estHours resets the manual override so auto-calc re-engages
+    // on the next estHours/norm entry.
+    if (field === "estHours" && !value) {
+      updated[index].manualQty = false;
+      updated[index].plannedQty = "";
+    } else if ((field === "estHours" || field === "norm") && !updated[index].manualQty) {
       updated[index].plannedQty = calcPlannedQty(updated[index]);
     }
 
