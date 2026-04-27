@@ -3018,21 +3018,16 @@ export async function registerRoutes(
       } else {
         if (!assertCreate(req, res, "plant_shift_logs")) return;
       }
-      // For an update of an existing shift log, atomically claim the unlock
-      // (flip 'unlocked' → 'locked') BEFORE the data save. For a brand-new
-      // shift log we skip the claim and lock the new row after insert.
-      if (existingId) {
-        if (!(await claimUnlockOrLockedRow(res, "plant_shift_log", existingId, req.authUser!.id, req.authUser!.isAdmin))) return;
-      }
+      // Shift logs are inherently multi-edit records (opening readings at shift
+      // start, closing readings at shift end). The row-lock system is intentionally
+      // NOT applied here — locking after the first save would prevent operators
+      // from entering closing values later in the day. The isFinalized /
+      // FINALIZED_LOCKED gate inside upsertPlantShiftLog (with authorizedRole
+      // bypass) is the correct re-edit guard for shift logs.
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
-        // For a brand-new shift log, lock the freshly inserted row. For an
-        // existing one, the atomic claim above already left it locked.
-        if (!existingId) {
-          await lockNewRow("plant_shift_log", saved.id, req.authUser!.id);
-        }
         sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
         res.status(201).json(saved);
       } catch (e: any) {
