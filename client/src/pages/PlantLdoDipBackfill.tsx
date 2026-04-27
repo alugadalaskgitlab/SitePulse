@@ -244,7 +244,7 @@ export default function PlantLdoDipBackfill() {
   const errorCount = validation.filter(v => v.severity === "error").length;
   const warnCount = validation.filter(v => v.severity === "warn").length;
 
-  const isProtected = (_c: CellValue): boolean => false;
+  const isProtected = (c: CellValue): boolean => c.source === "manual";
 
   const errorMessage = (err: unknown): string => {
     if (err instanceof Error) return err.message;
@@ -403,9 +403,10 @@ export default function PlantLdoDipBackfill() {
         <CardHeader>
           <CardTitle className="text-lg">LDO Dip-Stick Backfill</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter or correct historical Tank-1 / Tank-2 dip-stick depth (cm) for past dates so
-            book-vs-physical LDO stock reconciliation is complete for the same range as the meter backfill.
-            Volume and weight are auto-computed from the dip chart. All rows are editable by admins.
+            Enter historical Tank-1 / Tank-2 dip-stick depth (cm) for past dates so book-vs-physical LDO
+            stock reconciliation is complete for the same range as the meter backfill. Volume and weight
+            are auto-computed from the dip chart. Existing operator-entered manual rows are protected and
+            cannot be overwritten here.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -275,7 +275,8 @@ export default function PlantLdoBackfill() {
   const errorCount = validation.filter(v => v.severity === "error").length;
   const warnCount = validation.filter(v => v.severity === "warn").length;
 
-  const isProtected = (_c: CellValue): boolean => false;
+  const isProtected = (c: CellValue): boolean =>
+    c.source === "shift-log" || c.source === "heating-session" || c.source === "manual";
 
   const errorMessage = (err: unknown): string => {
     if (err instanceof Error) return err.message;
@@ -437,9 +438,9 @@ export default function PlantLdoBackfill() {
         <CardHeader>
           <CardTitle className="text-lg">LDO Meter Backfill</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter or correct historical Tank-1 / Tank-2 opening &amp; closing flow-meter readings so older
-            Daily Plant Reports show accurate LDO consumption, stocks and reconciliation.
-            All rows are editable by admins — existing shift-log / heating-session rows can be corrected here.
+            Enter historical Tank-1 / Tank-2 opening &amp; closing flow-meter readings so older Daily Plant
+            Reports show accurate LDO consumption, stocks and reconciliation. Existing shift-log /
+            heating-session rows are protected and cannot be overwritten here.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
