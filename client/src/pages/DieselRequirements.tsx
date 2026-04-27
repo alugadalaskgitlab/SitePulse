@@ -27,6 +27,7 @@ interface FormItem {
   norm: string;
   normType: "hourly" | "distance";
   plannedQty: string;
+  manualQty?: boolean;
 }
 
 interface ApprovalItem {
@@ -101,7 +102,7 @@ export default function DieselRequirements() {
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
   const [formItems, setFormItems] = useState<FormItem[]>([
-    { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", plannedQty: "" },
+    { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
   ]);
 
   const [editId, setEditId] = useState<number | null>(null);
@@ -260,11 +261,11 @@ export default function DieselRequirements() {
     setFormDate(format(new Date(), "yyyy-MM-dd"));
     setFormRaisedBy("");
     setFormRemarks("");
-    setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "" }]);
+    setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
   };
 
   const addFormRow = () => {
-    setFormItems([...formItems, { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "" }]);
+    setFormItems([...formItems, { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
   };
 
   const removeFormRow = (index: number) => {
@@ -295,10 +296,15 @@ export default function DieselRequirements() {
         updated[index].normType = newNormType;
         updated[index].estHours = "";
         updated[index].plannedQty = "";
+        updated[index].manualQty = false;
       }
     }
 
-    if (field === "estHours" || field === "norm") {
+    if (field === "plannedQty") {
+      updated[index].manualQty = true;
+    }
+
+    if ((field === "estHours" || field === "norm") && !updated[index].manualQty) {
       updated[index].plannedQty = calcPlannedQty(updated[index]);
     }
 
@@ -388,6 +394,7 @@ export default function DieselRequirements() {
       norm: item.norm != null ? String(item.norm) : "",
       normType: ((item as any).normType || "hourly") as "hourly" | "distance",
       plannedQty: String(item.plannedQty),
+      manualQty: false,
     })));
     setView("form");
   };
@@ -746,8 +753,17 @@ export default function DieselRequirements() {
                         <p>{normVal > 0 ? `${item.norm} ${isDistance ? "L/km" : "L/hr"}` : "—"}</p>
                         {mileageHint && <p className="text-[10px] text-blue-600 font-medium">({mileageHint})</p>}
                       </td>
-                      <td className="p-2 text-right font-bold bg-amber-50 dark:bg-amber-900/10" data-testid={`text-planned-qty-${i}`}>
-                        {item.plannedQty || 0}
+                      <td className="p-2 bg-amber-50 dark:bg-amber-900/10">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={item.plannedQty}
+                          onChange={(e) => updateFormItem(i, "plannedQty", e.target.value)}
+                          className="text-right font-bold w-full"
+                          placeholder="0"
+                          data-testid={`input-planned-qty-${i}`}
+                        />
                       </td>
                       <td className="p-2">
                         <Button
