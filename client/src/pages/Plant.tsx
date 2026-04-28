@@ -94,32 +94,32 @@ export default function Plant() {
           </div>
         </div>
         {isAdmin && (
-          <a
-            href={primaryPlantName
-              ? `/api/admin/operator-manual.pdf?plant=${encodeURIComponent(primaryPlantName)}`
-              : '/api/admin/operator-manual.pdf'}
-            download="plant-operator-guide.pdf"
-            data-testid="link-operator-manual"
-          >
-            <Button variant="outline" size="sm" className="gap-2">
-              <Download className="w-4 h-4" />
-              Operator Guide (PDF)
-            </Button>
-          </a>
-        )}
-        {isAdmin && (
-          <a
-            href={primaryPlantName
-              ? `/api/admin/admin-guide.pdf?plant=${encodeURIComponent(primaryPlantName)}`
-              : '/api/admin/admin-guide.pdf'}
-            download="plant-admin-guide.pdf"
-            data-testid="link-admin-guide"
-          >
-            <Button variant="outline" size="sm" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Admin Guide (PDF)
-            </Button>
-          </a>
+          <div className="flex gap-2">
+            <a
+              href={primaryPlantName
+                ? `/api/admin/operator-manual.pdf?plant=${encodeURIComponent(primaryPlantName)}`
+                : '/api/admin/operator-manual.pdf'}
+              download="plant-operator-guide.pdf"
+              data-testid="link-operator-manual"
+            >
+              <Button variant="outline" size="sm" className="gap-2">
+                <Download className="w-4 h-4" />
+                Operator Guide (PDF)
+              </Button>
+            </a>
+            <a
+              href={primaryPlantName
+                ? `/api/admin/admin-guide.pdf?plant=${encodeURIComponent(primaryPlantName)}`
+                : '/api/admin/admin-guide.pdf'}
+              download="plant-admin-guide.pdf"
+              data-testid="link-admin-guide"
+            >
+              <Button variant="outline" size="sm" className="gap-2">
+                <FileText className="w-4 h-4" />
+                Admin Guide (PDF)
+              </Button>
+            </a>
+          </div>
         )}
       </div>
 
