@@ -3513,7 +3513,51 @@ export class DatabaseStorage implements IStorage {
     // ── PART B: Legacy dispatches — delta/reversal; no bulk delete ───────────────
     // Pre-existing aggregate and borrow ledger rows are left untouched.
     // We insert a small adjustment entry (+/−) for each material whose qty changed,
-    // so the net sum matches the new proportions without disturbing unrelated rows.
+    // split correctly between owner and HLC using the same shortageWarning fractions
+    // recorded at dispatch time, so the net per-party sum is correct even for
+    // dispatches that originally had a borrow split.
+    //
+    // Strategy:
+    //   ownerFraction = shortageWarning.available / shortageWarning.required (or 1 if no borrow)
+    //   owner_delta   = totalDelta × ownerFraction  → against dispatch.partyId
+    //   hlc_delta     = totalDelta × hlcFraction    → against hlcPartyId (if non-zero)
+    const insertLegacyDeltaEntry = async (
+      partyId: number | null,
+      partyLabel: string,
+      date: string,
+      materialId: number,
+      delta: number,
+      refId: number,
+    ) => {
+      if (Math.abs(delta) < 0.0001) return;
+      if (delta > 0) {
+        await db.insert(stockLedger).values({
+          date,
+          partyId,
+          materialId,
+          transactionType: 'dispatch',
+          quantityOut: delta,
+          balanceAfter: 0,
+          uom: 'Ton',
+          notes: `Aggregate dispatch (${partyLabel}) [rebuild delta]`,
+          referenceId: refId,
+        });
+      } else {
+        await db.insert(stockLedger).values({
+          date,
+          partyId,
+          materialId,
+          transactionType: 'adjustment',
+          quantityIn: -delta,
+          balanceAfter: 0,
+          uom: 'Ton',
+          notes: `Aggregate dispatch reversal (${partyLabel}) [rebuild delta]`,
+          referenceId: refId,
+        });
+      }
+      ledgerRowsCreated++;
+    };
+
     for (const dispatch of sortByDateTime(legacyDispatches)) {
       try {
         let oldAggregates: Record<string, number> = {};
@@ -3529,37 +3573,33 @@ export class DatabaseStorage implements IStorage {
         for (const comp of components) {
           const newQty = +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9);
           const oldQty = +(oldAggregates[String(comp.materialId)] ?? 0);
-          const delta = +(newQty - oldQty).toFixed(9);
+          const totalDelta = +(newQty - oldQty).toFixed(9);
           newAggregates[comp.materialId] = newQty;
 
-          if (Math.abs(delta) < 0.0001) continue;
+          if (Math.abs(totalDelta) < 0.0001) continue;
 
-          if (delta > 0) {
-            await db.insert(stockLedger).values({
-              date: dispatch.date,
-              partyId: dispatch.partyId,
-              materialId: comp.materialId,
-              transactionType: 'dispatch',
-              quantityOut: delta,
-              balanceAfter: 0,
-              uom: 'Ton',
-              notes: `Aggregate dispatch (${partyName}) [rebuild delta]`,
-              referenceId: dispatch.id,
-            });
-          } else {
-            await db.insert(stockLedger).values({
-              date: dispatch.date,
-              partyId: dispatch.partyId,
-              materialId: comp.materialId,
-              transactionType: 'adjustment',
-              quantityIn: -delta,
-              balanceAfter: 0,
-              uom: 'Ton',
-              notes: `Aggregate dispatch reversal (${partyName}) [rebuild delta]`,
-              referenceId: dispatch.id,
-            });
+          // Extract owner fraction from shortageWarning (same ratio used at dispatch time)
+          let ownerFraction = 1;
+          if (dispatch.shortageWarning && dispatch.partyId !== hlcPartyId) {
+            try {
+              const sw: { materialId: number; required: number; available: number }[] =
+                JSON.parse(dispatch.shortageWarning as string) ?? [];
+              const s = sw.find(x => x.materialId === comp.materialId);
+              if (s && s.required > 0) {
+                ownerFraction = Math.min(1, Math.max(0, s.available / s.required));
+              }
+            } catch { /* ignore */ }
           }
-          ledgerRowsCreated++;
+
+          const ownerDelta = +(totalDelta * ownerFraction).toFixed(9);
+          const hlcDelta   = +(totalDelta - ownerDelta).toFixed(9);
+
+          await insertLegacyDeltaEntry(dispatch.partyId, partyName, dispatch.date, comp.materialId, ownerDelta, dispatch.id);
+
+          if (Math.abs(hlcDelta) >= 0.0001 && hlcPartyId !== null) {
+            const hlcLabel = partyNameMap.get(hlcPartyId) ?? "HLC";
+            await insertLegacyDeltaEntry(hlcPartyId, hlcLabel, dispatch.date, comp.materialId, hlcDelta, dispatch.id);
+          }
         }
 
         await db.update(truckDispatches)

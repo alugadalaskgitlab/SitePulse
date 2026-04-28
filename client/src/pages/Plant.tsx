@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
@@ -1517,6 +1517,7 @@ function MixTemplateMaster() {
   const [rebuildFromDate, setRebuildFromDate] = useState("");
   const [rebuildFromTime, setRebuildFromTime] = useState("00:00");
   const [rebuildResult, setRebuildResult] = useState<{ fromDateTime: string; dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] } | null>(null);
+  const [postSaveAlertTemplate, setPostSaveAlertTemplate] = useState<{ id: number; name: string } | null>(null);
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
@@ -1591,11 +1592,14 @@ function MixTemplateMaster() {
       notes?: string;
       components?: { materialId: number; percent: number; uom: string }[];
     }}) => apiRequest("PATCH", `/api/plant-module/mix-templates/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      const savedId = variables.id;
+      const savedName = name;
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDialogOpen(false);
       resetForm();
+      setPostSaveAlertTemplate({ id: savedId, name: savedName });
       toast({ title: "Mix template updated successfully" });
     },
     onError: (error: any) => {
@@ -1979,6 +1983,41 @@ function MixTemplateMaster() {
       </Dialog>
 
       <CardContent>
+        {postSaveAlertTemplate && (
+          <div className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                Proportions updated for <strong>{postSaveAlertTemplate.name}</strong>. Rebuild the stock ledger to recompute historical dispatch entries.
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-xs h-7 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/40"
+                onClick={() => {
+                  const tpl = templates?.find(t => t.id === postSaveAlertTemplate.id);
+                  if (tpl) openRebuildDialog(tpl);
+                  setPostSaveAlertTemplate(null);
+                }}
+                data-testid="button-post-save-rebuild"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Rebuild Ledger
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="w-7 h-7 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
+                onClick={() => setPostSaveAlertTemplate(null)}
+                data-testid="button-post-save-dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
         {isLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="w-6 h-6 animate-spin" />

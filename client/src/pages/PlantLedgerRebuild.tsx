@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Link } from "wouter";
 import { ChevronLeft, RotateCcw, Loader2, ShieldAlert, AlertTriangle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -40,6 +41,7 @@ export default function PlantLedgerRebuild() {
   const [fromDate, setFromDate] = useState(initDate);
   const [fromTime, setFromTime] = useState(initTime);
   const [result, setResult] = useState<RebuildResult | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const { data: templates } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
@@ -60,6 +62,11 @@ export default function PlantLedgerRebuild() {
 
   const handleRebuild = () => {
     if (!templateId || !fromDate) return;
+    setShowConfirm(true);
+  };
+
+  const confirmRebuild = () => {
+    setShowConfirm(false);
     const fromDateTime = `${fromDate}T${fromTime || "00:00"}`;
     rebuildMutation.mutate({ tid: Number(templateId), fromDateTime });
   };
@@ -252,6 +259,45 @@ export default function PlantLedgerRebuild() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              Confirm Ledger Rebuild
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>You are about to rebuild the aggregate stock ledger for:</p>
+                <div className="rounded-md bg-muted p-3 space-y-1">
+                  <p className="font-medium text-foreground">
+                    {templates?.find(t => t.id === Number(templateId))?.name ?? `Template #${templateId}`}
+                  </p>
+                  <p className="text-muted-foreground">
+                    All dispatches from <strong className="text-foreground">{fromDate}</strong> at{" "}
+                    <strong className="text-foreground">{fromTime || "00:00"}</strong> onward will be rebuilt.
+                  </p>
+                </div>
+                <p className="text-amber-700 dark:text-amber-400">
+                  Existing aggregate ledger rows for these dispatches will be deleted and recreated using the current component proportions. This cannot be undone.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-confirm-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={confirmRebuild}
+              data-testid="button-confirm-rebuild"
+            >
+              <RotateCcw className="w-4 h-4 mr-1" />
+              Rebuild Ledger
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
