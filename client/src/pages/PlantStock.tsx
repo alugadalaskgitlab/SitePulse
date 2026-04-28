@@ -168,6 +168,7 @@ export default function PlantStock() {
         case 'receipt': return 2;
         case 'adjustment': return 3;
         case 'return': return 4;
+        case 'transfer': return 4;
         case 'direct_purchase': return 5;
         case 'equipment_usage': return 6;
         case 'dpr_equipment_usage': return 6;
@@ -396,6 +397,11 @@ export default function PlantStock() {
       else if (entry.transactionType === "return") {
         summaryMap[key].received += getConvertedQty(Math.abs(entry.quantityIn || 0));
       }
+      // Transfers: quantityIn = stock arriving (add to received), quantityOut = stock leaving (add to consumed)
+      else if (entry.transactionType === "transfer") {
+        if ((entry.quantityIn || 0) > 0) summaryMap[key].received += getConvertedQty(entry.quantityIn);
+        if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
+      }
       // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
       else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
         summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
@@ -483,6 +489,11 @@ export default function PlantStock() {
       // Returns: material returned from site reduces net issues (adds back to receipts side)
       if (entry.transactionType === "return") {
         summaryMap[key].totalReceipts += getConvertedQty(Math.abs(entry.quantityIn || 0));
+      }
+      // Transfers: quantityIn = stock arriving (add to receipts), quantityOut = stock leaving (add to issues)
+      if (entry.transactionType === "transfer") {
+        if ((entry.quantityIn || 0) > 0) summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
+        if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Issues: dispatch, issue, equipment_usage, dpr_equipment_usage
       if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
@@ -587,7 +598,7 @@ export default function PlantStock() {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
+          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -689,6 +700,8 @@ export default function PlantStock() {
           case 'issue': return 'Issue';
           case 'opening': return 'Opening';
           case 'adjustment': return 'Adjustment';
+          case 'return': return 'Return';
+          case 'transfer': return 'Transfer';
           case 'equipment_usage': return 'Equip. Usage';
           case 'dpr_equipment_usage': return 'DPR Equip. Usage';
           case 'direct_purchase': return 'Direct Site Purchase';
@@ -1018,6 +1031,7 @@ export default function PlantStock() {
                   <SelectItem value="issue">Issue</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
                   <SelectItem value="return">Return</SelectItem>
+                  <SelectItem value="transfer">Transfer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
