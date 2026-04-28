@@ -19,7 +19,7 @@ import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading } from "@shared/schema";
+import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
@@ -31,6 +31,12 @@ export default function Plant() {
 
   const [activeTab, setActiveTab] = useState(tabParam || "operations");
   const { sectionVisible, isAdmin } = useAuth();
+
+  const { data: allPlantSettings } = useQuery<PlantSettings[]>({
+    queryKey: ['/api/plant-module/plant-settings'],
+    enabled: isAdmin,
+  });
+  const primaryPlantName = allPlantSettings?.[0]?.plantName;
 
   const { getBackLink } = useOrigin();
   const backLink = getBackLink("/");
@@ -89,7 +95,9 @@ export default function Plant() {
         </div>
         {isAdmin && (
           <a
-            href="/api/admin/operator-manual.pdf"
+            href={primaryPlantName
+              ? `/api/admin/operator-manual.pdf?plant=${encodeURIComponent(primaryPlantName)}`
+              : '/api/admin/operator-manual.pdf'}
             download="plant-operator-guide.pdf"
             data-testid="link-operator-manual"
           >
