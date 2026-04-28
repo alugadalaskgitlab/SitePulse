@@ -523,7 +523,7 @@ export async function registerRoutes(
 
   app.post("/api/push/subscribe", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
+      const user = req.authUser;
       // Only allow subscribe if the admin has enabled notifications for this user.
       if (!user?.notificationsEnabled && !user?.isAdmin) {
         return res.status(403).json({ message: "notifications_disabled", detail: "Push notifications are not enabled for your account. Ask an admin to enable them." });
