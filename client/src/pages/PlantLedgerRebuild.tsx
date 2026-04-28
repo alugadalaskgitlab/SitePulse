@@ -27,9 +27,18 @@ export default function PlantLedgerRebuild() {
   const { isAdmin } = useAuth();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
+  const nowLocal = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return {
+      date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+      time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    };
+  };
   const [templateId, setTemplateId] = useState<string>("");
-  const [fromDate, setFromDate] = useState("");
-  const [fromTime, setFromTime] = useState("00:00");
+  const { date: initDate, time: initTime } = nowLocal();
+  const [fromDate, setFromDate] = useState(initDate);
+  const [fromTime, setFromTime] = useState(initTime);
   const [result, setResult] = useState<RebuildResult | null>(null);
 
   const { data: templates } = useQuery<MixTemplate[]>({
@@ -56,10 +65,11 @@ export default function PlantLedgerRebuild() {
   };
 
   const handleReset = () => {
+    const { date, time } = nowLocal();
     setResult(null);
     setTemplateId("");
-    setFromDate("");
-    setFromTime("00:00");
+    setFromDate(date);
+    setFromTime(time);
   };
 
   if (!isAdmin) {

@@ -1503,12 +1503,20 @@ function MixTemplateMaster() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [newMixTypeDialogOpen, setNewMixTypeDialogOpen] = useState(false);
   const [newMixTypeName, setNewMixTypeName] = useState("");
+  const nowLocal = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return {
+      date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+      time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    };
+  };
   const [rebuildDialogOpen, setRebuildDialogOpen] = useState(false);
   const [rebuildTemplateId, setRebuildTemplateId] = useState<number | null>(null);
   const [rebuildTemplateName, setRebuildTemplateName] = useState("");
   const [rebuildFromDate, setRebuildFromDate] = useState("");
   const [rebuildFromTime, setRebuildFromTime] = useState("00:00");
-  const [rebuildResult, setRebuildResult] = useState<{ dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] } | null>(null);
+  const [rebuildResult, setRebuildResult] = useState<{ fromDateTime: string; dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] } | null>(null);
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
@@ -1629,10 +1637,11 @@ function MixTemplateMaster() {
   });
 
   const openRebuildDialog = (template: MixTemplate) => {
+    const { date, time } = nowLocal();
     setRebuildTemplateId(template.id);
     setRebuildTemplateName(template.name);
-    setRebuildFromDate("");
-    setRebuildFromTime("00:00");
+    setRebuildFromDate(date);
+    setRebuildFromTime(time);
     setRebuildResult(null);
     setRebuildDialogOpen(true);
   };
@@ -1863,6 +1872,7 @@ function MixTemplateMaster() {
             <div className="space-y-4">
               <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-4 space-y-2">
                 <p className="font-semibold text-green-800 dark:text-green-300">Rebuild complete for <span className="font-bold">{rebuildTemplateName}</span></p>
+                <p className="text-xs text-green-600 dark:text-green-500">Cutoff: {rebuildResult.fromDateTime.replace("T", " at ")}</p>
                 <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
                   <p>Dispatches processed: <strong>{rebuildResult.dispatches}</strong></p>
                   <p>Ledger rows deleted: <strong>{rebuildResult.ledgerRowsDeleted}</strong></p>

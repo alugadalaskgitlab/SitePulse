@@ -3361,7 +3361,7 @@ export class DatabaseStorage implements IStorage {
     const { templateId, fromDateTime } = opts;
     const errors: string[] = [];
 
-    // 1. Get current components for this template
+    // 1. Get current aggregate components for this template
     const components = await db.select().from(mixTemplateComponents)
       .where(eq(mixTemplateComponents.templateId, templateId));
     const aggMaterialIds = components.map(c => c.materialId);
@@ -3369,9 +3369,9 @@ export class DatabaseStorage implements IStorage {
       return { fromDateTime, dispatches: 0, ledgerRowsDeleted: 0, ledgerRowsCreated: 0, errors: ['No aggregate components defined for this template'] };
     }
 
-    // 2. Parse fromDateTime — format "YYYY-MM-DDTHH:MM" or ISO string
-    const fromDate = fromDateTime.substring(0, 10);    // YYYY-MM-DD
-    const fromTime = fromDateTime.substring(11, 16);   // HH:MM
+    // 2. Parse fromDateTime — format "YYYY-MM-DDTHH:MM"
+    const fromDate = fromDateTime.substring(0, 10);
+    const fromTime = fromDateTime.substring(11, 16) || '00:00';
 
     // 3. Find all dispatches for this template at or after the cutoff
     const allTemplateDispatches = await db.select().from(truckDispatches)
@@ -3379,10 +3379,7 @@ export class DatabaseStorage implements IStorage {
 
     const affectedDispatches = allTemplateDispatches.filter(d => {
       if (d.date > fromDate) return true;
-      if (d.date === fromDate) {
-        const dTime = d.time || '00:00';
-        return dTime >= fromTime;
-      }
+      if (d.date === fromDate) return (d.time || '00:00') >= fromTime;
       return false;
     });
 
@@ -3390,113 +3387,194 @@ export class DatabaseStorage implements IStorage {
       return { fromDateTime, dispatches: 0, ledgerRowsDeleted: 0, ledgerRowsCreated: 0, errors: [] };
     }
 
-    // 4. Get HLC party for borrow-entry identification
+    // 4. Look up HLC party for borrow-split recreation
     const [hlcParty] = await db.select().from(parties)
       .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
       .limit(1);
     const hlcPartyId = hlcParty?.id ?? null;
+    const hlcPartyName = hlcParty?.name ?? 'HLC';
+
+    const allParties = await db.select().from(parties);
+    const partyNameMap = new Map(allParties.map(p => [p.id, p.name]));
 
     const dispatchIds = affectedDispatches.map(d => d.id);
-    const affectedDates = [...new Set(affectedDispatches.map(d => d.date))];
-    const affectedPartyIds = [...new Set(
-      affectedDispatches.map(d => d.partyId).filter((id): id is number => id != null)
-    )];
 
-    // 5. Delete existing aggregate dispatch ledger entries
-    let ledgerRowsDeleted = 0;
-
-    // a. Precise deletion for entries with referenceId linking to these dispatches
-    const deleteByRef = await db.delete(stockLedger)
+    // 5. Split dispatches into two categories:
+    //    "linked"  — have precise referenceId rows (created after the createDispatch backfill fix)
+    //    "legacy"  — no referenceId on their aggregate entries (pre-fix rows)
+    //
+    // Legacy rows use a delta/adjustment approach to avoid the mid-day cutoff
+    // ambiguity: we never bulk-delete unlinked rows (which could hit pre-cutoff
+    // dispatches on the same date), and HLC borrow entries that belong to legacy
+    // dispatches are left intact — only the delta adjustment is inserted.
+    const linkedCheck = await db
+      .select({ referenceId: stockLedger.referenceId })
+      .from(stockLedger)
       .where(
         and(
           inArray(stockLedger.referenceId, dispatchIds),
           eq(stockLedger.transactionType, 'dispatch'),
           inArray(stockLedger.materialId, aggMaterialIds)
         )
-      )
-      .returning({ id: stockLedger.id });
-    ledgerRowsDeleted += deleteByRef.length;
+      );
+    const linkedDispatchIds = new Set(
+      linkedCheck.map(e => e.referenceId).filter((id): id is number => id != null)
+    );
+    const linkedDispatches = affectedDispatches.filter(d => linkedDispatchIds.has(d.id));
+    const legacyDispatches = affectedDispatches.filter(d => !linkedDispatchIds.has(d.id));
 
-    // b. Legacy entries (no referenceId) — owner party
-    if (affectedDates.length > 0 && affectedPartyIds.length > 0) {
-      const deleteLegacy = await db.delete(stockLedger)
-        .where(
-          and(
-            eq(stockLedger.transactionType, 'dispatch'),
-            inArray(stockLedger.date, affectedDates),
-            inArray(stockLedger.materialId, aggMaterialIds),
-            inArray(stockLedger.partyId, affectedPartyIds),
-            isNull(stockLedger.referenceId),
-            sql`${stockLedger.notes} LIKE '%Aggregate dispatch%'`
-          )
-        )
-        .returning({ id: stockLedger.id });
-      ledgerRowsDeleted += deleteLegacy.length;
-    }
-
-    // c. Legacy entries — HLC borrow rows (no referenceId)
-    if (hlcPartyId && affectedDates.length > 0) {
-      const deleteHlc = await db.delete(stockLedger)
-        .where(
-          and(
-            eq(stockLedger.transactionType, 'dispatch'),
-            inArray(stockLedger.date, affectedDates),
-            inArray(stockLedger.materialId, aggMaterialIds),
-            eq(stockLedger.partyId, hlcPartyId),
-            isNull(stockLedger.referenceId),
-            sql`${stockLedger.notes} LIKE '%Borrowed from HLC%'`
-          )
-        )
-        .returning({ id: stockLedger.id });
-      ledgerRowsDeleted += deleteHlc.length;
-    }
-
-    // 6. Re-create aggregate dispatch ledger entries with current proportions
+    let ledgerRowsDeleted = 0;
     let ledgerRowsCreated = 0;
 
-    const allParties = await db.select().from(parties);
-    const partyNameMap = new Map(allParties.map(p => [p.id, p.name]));
+    // Helper: proportional owner/HLC split based on shortageWarning recorded at dispatch time
+    const computeSplit = (dispatch: typeof truckDispatches.$inferSelect, matId: number, totalQty: number) => {
+      if (!dispatch.shortageWarning || dispatch.partyId === hlcPartyId) {
+        return { ownerQty: totalQty, hlcQty: 0 };
+      }
+      let shortages: { materialId: number; required: number; available: number }[] = [];
+      try { shortages = JSON.parse(dispatch.shortageWarning as string) ?? []; } catch { /* ignore */ }
+      const s = shortages.find(x => x.materialId === matId);
+      if (!s || s.required <= 0) return { ownerQty: totalQty, hlcQty: 0 };
+      const ownerFraction = Math.min(1, Math.max(0, s.available / s.required));
+      const ownerQty = +(totalQty * ownerFraction).toFixed(9);
+      return { ownerQty, hlcQty: +(totalQty - ownerQty).toFixed(9) };
+    };
 
-    const sortedDispatches = [...affectedDispatches].sort((a, b) => {
-      const dc = a.date.localeCompare(b.date);
-      if (dc !== 0) return dc;
-      return (a.time || '00:00').localeCompare(b.time || '00:00');
-    });
+    const sortByDateTime = (list: typeof affectedDispatches) =>
+      [...list].sort((a, b) => {
+        const dc = a.date.localeCompare(b.date);
+        return dc !== 0 ? dc : (a.time || '00:00').localeCompare(b.time || '00:00');
+      });
 
-    for (const dispatch of sortedDispatches) {
+    // ── PART A: Linked dispatches — delete and recreate precisely ────────────────
+    if (linkedDispatches.length > 0) {
+      const linkedIds = linkedDispatches.map(d => d.id);
+      const deleted = await db.delete(stockLedger)
+        .where(
+          and(
+            inArray(stockLedger.referenceId, linkedIds),
+            eq(stockLedger.transactionType, 'dispatch'),
+            inArray(stockLedger.materialId, aggMaterialIds)
+          )
+        )
+        .returning({ id: stockLedger.id });
+      ledgerRowsDeleted += deleted.length;
+
+      for (const dispatch of sortByDateTime(linkedDispatches)) {
+        try {
+          const partyName = partyNameMap.get(dispatch.partyId ?? -1) ?? `Party #${dispatch.partyId}`;
+          const newAggregates: Record<number, number> = {};
+
+          for (const comp of components) {
+            const totalQty = +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9);
+            if (totalQty <= 0) continue;
+            const { ownerQty, hlcQty } = computeSplit(dispatch, comp.materialId, totalQty);
+
+            if (ownerQty > 0) {
+              await db.insert(stockLedger).values({
+                date: dispatch.date,
+                partyId: dispatch.partyId,
+                materialId: comp.materialId,
+                transactionType: 'dispatch',
+                quantityOut: ownerQty,
+                balanceAfter: 0,
+                uom: 'Ton',
+                notes: `Aggregate dispatch (${partyName})`,
+                referenceId: dispatch.id,
+              });
+              ledgerRowsCreated++;
+            }
+            if (hlcQty > 0 && hlcPartyId) {
+              await db.insert(stockLedger).values({
+                date: dispatch.date,
+                partyId: hlcPartyId,
+                materialId: comp.materialId,
+                transactionType: 'dispatch',
+                quantityOut: hlcQty,
+                balanceAfter: 0,
+                uom: 'Ton',
+                notes: `Aggregate dispatch (Borrowed from ${hlcPartyName})`,
+                referenceId: dispatch.id,
+              });
+              ledgerRowsCreated++;
+            }
+            newAggregates[comp.materialId] = totalQty;
+          }
+
+          await db.update(truckDispatches)
+            .set({ theoreticalAggregates: JSON.stringify(newAggregates) })
+            .where(eq(truckDispatches.id, dispatch.id));
+        } catch (err) {
+          errors.push(`Dispatch #${dispatch.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
+    // ── PART B: Legacy dispatches — delta/reversal; no bulk delete ───────────────
+    // Pre-existing aggregate and borrow ledger rows are left untouched.
+    // We insert a small adjustment entry (+/−) for each material whose qty changed,
+    // so the net sum matches the new proportions without disturbing unrelated rows.
+    for (const dispatch of sortByDateTime(legacyDispatches)) {
       try {
-        const partyName = partyNameMap.get(dispatch.partyId ?? -1) || `Party #${dispatch.partyId}`;
+        let oldAggregates: Record<string, number> = {};
+        try {
+          if (dispatch.theoreticalAggregates) {
+            oldAggregates = JSON.parse(dispatch.theoreticalAggregates as string) ?? {};
+          }
+        } catch { /* ignore */ }
+
+        const partyName = partyNameMap.get(dispatch.partyId ?? -1) ?? `Party #${dispatch.partyId}`;
         const newAggregates: Record<number, number> = {};
 
         for (const comp of components) {
-          const qty = +(dispatch.loadWeight * (comp as any).percent / 100).toFixed(9);
-          if (qty <= 0) continue;
-          const uom = 'Ton';
-          await db.insert(stockLedger).values({
-            date: dispatch.date,
-            partyId: dispatch.partyId,
-            materialId: comp.materialId,
-            transactionType: 'dispatch',
-            quantityOut: qty,
-            balanceAfter: 0,
-            uom,
-            notes: `Aggregate dispatch (${partyName})`,
-            referenceId: dispatch.id,
-          });
+          const newQty = +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9);
+          const oldQty = +(oldAggregates[String(comp.materialId)] ?? 0);
+          const delta = +(newQty - oldQty).toFixed(9);
+          newAggregates[comp.materialId] = newQty;
+
+          if (Math.abs(delta) < 0.0001) continue;
+
+          if (delta > 0) {
+            await db.insert(stockLedger).values({
+              date: dispatch.date,
+              partyId: dispatch.partyId,
+              materialId: comp.materialId,
+              transactionType: 'dispatch',
+              quantityOut: delta,
+              balanceAfter: 0,
+              uom: 'Ton',
+              notes: `Aggregate dispatch (${partyName}) [rebuild delta]`,
+              referenceId: dispatch.id,
+            });
+          } else {
+            await db.insert(stockLedger).values({
+              date: dispatch.date,
+              partyId: dispatch.partyId,
+              materialId: comp.materialId,
+              transactionType: 'adjustment',
+              quantityIn: -delta,
+              balanceAfter: 0,
+              uom: 'Ton',
+              notes: `Aggregate dispatch reversal (${partyName}) [rebuild delta]`,
+              referenceId: dispatch.id,
+            });
+          }
           ledgerRowsCreated++;
-          newAggregates[comp.materialId] = qty;
         }
 
-        // Update theoreticalAggregates on the dispatch record
         await db.update(truckDispatches)
           .set({ theoreticalAggregates: JSON.stringify(newAggregates) })
           .where(eq(truckDispatches.id, dispatch.id));
       } catch (err) {
-        errors.push(`Dispatch #${dispatch.id}: ${err instanceof Error ? err.message : String(err)}`);
+        errors.push(`Legacy dispatch #${dispatch.id}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
-    // 7. Recompute running balance_after for all affected materials
+    // 7. Re-sync all dispatch theoretical values (bitumen %, LDO, variance) via
+    //    the canonical recalculation method so nothing diverges from the main flow.
+    await this.recalculateAllDispatchConsumption();
+
+    // 8. Recompute running balanceAfter for every affected material
     for (const matId of aggMaterialIds) {
       try {
         await this.recomputeBalanceAfterForMaterial(matId);
@@ -3505,7 +3583,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // 8. Reconcile stock_balances table to match ledger totals
+    // 9. Reconcile stock_balances table to match ledger totals
     await this.reconcileStockBalancesFromLedger();
 
     return {

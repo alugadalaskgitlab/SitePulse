@@ -1097,11 +1097,14 @@ export async function registerRoutes(
     try {
       if (!assertAdmin(req, res)) return;
       const templateId = Number(req.params.id);
-      const { fromDateTime } = req.body;
-      if (!fromDateTime || typeof fromDateTime !== "string") {
-        return res.status(400).json({ message: "fromDateTime is required (ISO datetime string)" });
+      const bodySchema = z.object({
+        fromDateTime: z.string().min(10, "fromDateTime must be a valid datetime string (YYYY-MM-DDTHH:MM)"),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid request body" });
       }
-      const result = await storage.rebuildDispatchLedgerForTemplate({ templateId, fromDateTime });
+      const result = await storage.rebuildDispatchLedgerForTemplate({ templateId, fromDateTime: parsed.data.fromDateTime });
       res.json(result);
     } catch (err) {
       console.error("Error rebuilding dispatch ledger:", err);
