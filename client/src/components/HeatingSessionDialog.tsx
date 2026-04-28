@@ -132,6 +132,8 @@ export function HeatingSessionDialog({
     open: false,
     target: null,
   });
+  const [newGenDialogOpen, setNewGenDialogOpen] = useState(false);
+  const [newGenNameInput, setNewGenNameInput] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -523,8 +525,8 @@ export function HeatingSessionDialog({
                         value={form.dgGeneratorName || undefined}
                         onValueChange={v => {
                           if (v === "__new__") {
-                            const name = window.prompt("Enter new generator name (e.g. '125 KVA GENERATOR')")?.trim();
-                            if (name) setField("dgGeneratorName", name);
+                            setNewGenNameInput("");
+                            setNewGenDialogOpen(true);
                           } else {
                             setField("dgGeneratorName", v);
                           }
@@ -670,6 +672,45 @@ export function HeatingSessionDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <Dialog open={newGenDialogOpen} onOpenChange={setNewGenDialogOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add New Generator</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 py-1">
+          <Label htmlFor="hsd-new-gen-name">Generator Name</Label>
+          <Input
+            id="hsd-new-gen-name"
+            placeholder="e.g. 125 KVA GENERATOR"
+            value={newGenNameInput}
+            onChange={e => setNewGenNameInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                const name = newGenNameInput.trim();
+                if (name) { setField("dgGeneratorName", name); setNewGenDialogOpen(false); }
+              }
+            }}
+            data-testid="input-new-gen-name"
+            autoFocus
+          />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={() => setNewGenDialogOpen(false)} data-testid="button-new-gen-cancel">Cancel</Button>
+          <Button
+            size="sm"
+            disabled={!newGenNameInput.trim()}
+            onClick={() => {
+              const name = newGenNameInput.trim();
+              if (name) { setField("dgGeneratorName", name); setNewGenDialogOpen(false); }
+            }}
+            data-testid="button-new-gen-confirm"
+          >
+            Add
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
