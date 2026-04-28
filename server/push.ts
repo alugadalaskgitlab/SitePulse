@@ -45,8 +45,8 @@ export async function sendPushToAll(title: string, body: string, url?: string) {
 }
 
 // Targeted push. The `audience` filter relies on the server-assigned
-// `role` column on push_subscriptions (set from the PIN used at subscribe
-// time), so it cannot be spoofed by clients.
+// `role` column on push_subscriptions (derived from the authenticated
+// session at subscribe time, not client input), so it cannot be spoofed.
 //   audience='all'      -> every active subscription
 //   audience='managers' -> only subscriptions with role='manager' or 'admin'
 // If audience='managers' but no manager/admin device has subscribed, the
