@@ -3455,13 +3455,30 @@ export class DatabaseStorage implements IStorage {
     if (linkedDispatches.length > 0) {
       const linkedIds = linkedDispatches.map(d => d.id);
 
-      // Delete ALL aggregate dispatch rows for these dispatches — no materialId
-      // filter — so rows for materials removed from the template are also purged.
+      // Build the union of current and historical aggregate materialIds so we can
+      // use an explicit filter on the delete.  We derive historical IDs from each
+      // dispatch's theoreticalAggregates JSON — this avoids accidentally deleting
+      // non-aggregate dispatch ledger rows (bitumen, LDO) that may also carry the
+      // same referenceId since createTruckDispatchWithStockDeduction backfills it.
+      const safeDeleteMatIds = new Set<number>(aggMaterialIds);
+      for (const d of linkedDispatches) {
+        try {
+          if (d.theoreticalAggregates) {
+            const oldAgg: Record<string, number> =
+              JSON.parse(d.theoreticalAggregates as string) ?? {};
+            Object.keys(oldAgg).map(Number).filter(n => !isNaN(n))
+              .forEach(id => safeDeleteMatIds.add(id));
+          }
+        } catch { /* ignore */ }
+      }
+      const safeDeleteMatIdsArr = [...safeDeleteMatIds];
+
       const deleted = await db.delete(stockLedger)
         .where(
           and(
             inArray(stockLedger.referenceId, linkedIds),
-            eq(stockLedger.transactionType, 'dispatch')
+            eq(stockLedger.transactionType, 'dispatch'),
+            inArray(stockLedger.materialId, safeDeleteMatIdsArr)
           )
         )
         .returning({ id: stockLedger.id, materialId: stockLedger.materialId });
