@@ -178,7 +178,14 @@ export default function PlantMaterialReceipts() {
     }
     
     const selectedMaterial = materials?.find(m => m.id === parseInt(materialId));
-    const isTankMaterial = selectedMaterial && (selectedMaterial.category === "Bitumen" || selectedMaterial.category === "LDO" || (selectedMaterial.name || "").toUpperCase() === "LDO");
+    const isTankMaterial = selectedMaterial && (
+      selectedMaterial.category === "Bitumen" ||
+      selectedMaterial.category === "LDO" ||
+      (selectedMaterial.name || "").toUpperCase() === "LDO" ||
+      selectedMaterial.category === "Utility" ||
+      (selectedMaterial.name || "").toUpperCase() === "DIESEL" ||
+      (selectedMaterial.name || "").toUpperCase() === "HSD"
+    );
     
     if (editingReceipt) {
       const updateData = {
@@ -563,7 +570,12 @@ export default function PlantMaterialReceipts() {
               {(() => {
                 const selectedMat = materials?.find(m => m.id === parseInt(materialId));
                 const isLdo = selectedMat && (selectedMat.category === "LDO" || (selectedMat.name || "").toUpperCase() === "LDO");
-                const showTank = selectedMat && (selectedMat.category === "Bitumen" || isLdo);
+                const isDiesel = selectedMat && (
+                  selectedMat.category === "Utility" ||
+                  (selectedMat.name || "").toUpperCase() === "DIESEL" ||
+                  (selectedMat.name || "").toUpperCase() === "HSD"
+                );
+                const showTank = selectedMat && (selectedMat.category === "Bitumen" || isLdo || isDiesel);
                 if (!showTank) return null;
                 return (
                   <div>
