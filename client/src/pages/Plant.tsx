@@ -1599,7 +1599,7 @@ function MixTemplateMaster() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDialogOpen(false);
       resetForm();
-      setPostSaveAlertTemplate({ id: savedId, name: savedName });
+      if (isAdmin) setPostSaveAlertTemplate({ id: savedId, name: savedName });
       toast({ title: "Mix template updated successfully" });
     },
     onError: (error: any) => {
@@ -1983,7 +1983,7 @@ function MixTemplateMaster() {
       </Dialog>
 
       <CardContent>
-        {postSaveAlertTemplate && (
+        {postSaveAlertTemplate && isAdmin && (
           <div className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 flex items-start gap-3">
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">

@@ -3425,8 +3425,8 @@ export class DatabaseStorage implements IStorage {
     const linkedDispatchIds = new Set(
       linkedCheck.map(e => e.referenceId).filter((id): id is number => id != null)
     );
-    const linkedDispatches = affectedDispatches.filter(d => linkedDispatchIds.has(d.id));
-    const legacyDispatches = affectedDispatches.filter(d => !linkedDispatchIds.has(d.id));
+    let linkedDispatches = affectedDispatches.filter(d => linkedDispatchIds.has(d.id));
+    let legacyDispatches  = affectedDispatches.filter(d => !linkedDispatchIds.has(d.id));
 
     let ledgerRowsDeleted = 0;
     let ledgerRowsCreated = 0;
@@ -3450,6 +3450,54 @@ export class DatabaseStorage implements IStorage {
         const dc = a.date.localeCompare(b.date);
         return dc !== 0 ? dc : (a.time || '00:00').localeCompare(b.time || '00:00');
       });
+
+    // 5.5. Backfill referenceId for legacy dispatches so PART A can delete+recreate
+    //      them precisely.  Finds each dispatch's existing stock_ledger rows by
+    //      quantity match (±0.001 to absorb real-column float imprecision); only
+    //      updates when there is exactly one candidate (safe from collision).
+    if (legacyDispatches.length > 0) {
+      for (const dispatch of legacyDispatches) {
+        if (!dispatch.theoreticalAggregates) continue;
+        let oldAgg: Record<string, number> = {};
+        try { oldAgg = JSON.parse(dispatch.theoreticalAggregates as string) ?? {}; } catch { continue; }
+
+        for (const [matIdStr, totalQty] of Object.entries(oldAgg)) {
+          const matId = Number(matIdStr);
+          if (isNaN(matId) || totalQty <= 0) continue;
+          const { ownerQty, hlcQty } = computeSplit(dispatch, matId, totalQty);
+
+          if (ownerQty > 0.0001 && dispatch.partyId !== null) {
+            const candidates = await db.select({ id: stockLedger.id }).from(stockLedger).where(and(
+              eq(stockLedger.date, dispatch.date), eq(stockLedger.partyId, dispatch.partyId),
+              eq(stockLedger.materialId, matId), eq(stockLedger.transactionType, 'dispatch'),
+              isNull(stockLedger.referenceId),
+              gte(stockLedger.quantityOut, ownerQty - 0.001), lte(stockLedger.quantityOut, ownerQty + 0.001)
+            ));
+            if (candidates.length === 1)
+              await db.update(stockLedger).set({ referenceId: dispatch.id }).where(eq(stockLedger.id, candidates[0].id));
+          }
+          if (hlcQty > 0.0001 && hlcPartyId !== null) {
+            const candidates = await db.select({ id: stockLedger.id }).from(stockLedger).where(and(
+              eq(stockLedger.date, dispatch.date), eq(stockLedger.partyId, hlcPartyId),
+              eq(stockLedger.materialId, matId), eq(stockLedger.transactionType, 'dispatch'),
+              isNull(stockLedger.referenceId),
+              gte(stockLedger.quantityOut, hlcQty - 0.001), lte(stockLedger.quantityOut, hlcQty + 0.001)
+            ));
+            if (candidates.length === 1)
+              await db.update(stockLedger).set({ referenceId: dispatch.id }).where(eq(stockLedger.id, candidates[0].id));
+          }
+        }
+      }
+
+      // Re-classify after backfill
+      const afterBackfill = await db.select({ referenceId: stockLedger.referenceId }).from(stockLedger)
+        .where(and(inArray(stockLedger.referenceId, dispatchIds), eq(stockLedger.transactionType, 'dispatch')));
+      const updatedLinkedIds = new Set(
+        afterBackfill.map(e => e.referenceId).filter((id): id is number => id != null)
+      );
+      linkedDispatches = affectedDispatches.filter(d => updatedLinkedIds.has(d.id));
+      legacyDispatches  = affectedDispatches.filter(d => !updatedLinkedIds.has(d.id));
+    }
 
     // ── PART A: Linked dispatches — delete and recreate precisely ────────────────
     if (linkedDispatches.length > 0) {
@@ -3536,17 +3584,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // ── PART B: Legacy dispatches — delta/reversal; no bulk delete ───────────────
-    // Pre-existing aggregate and borrow ledger rows are left untouched.
-    // We insert a small adjustment entry (+/−) for each material whose qty changed,
-    // split correctly between owner and HLC using the same shortageWarning fractions
-    // recorded at dispatch time, so the net per-party sum is correct even for
-    // dispatches that originally had a borrow split.
-    //
-    // Strategy:
-    //   ownerFraction = shortageWarning.available / shortageWarning.required (or 1 if no borrow)
-    //   owner_delta   = totalDelta × ownerFraction  → against dispatch.partyId
-    //   hlc_delta     = totalDelta × hlcFraction    → against hlcPartyId (if non-zero)
+    // ── PART B: Remaining unmatched dispatches — delta fallback ──────────────────
+    // For dispatches where backfill couldn't assign a unique referenceId (e.g. two
+    // dispatches with the same loadWeight on the same day), insert proportional
+    // delta entries (owner + HLC split) rather than replacing unidentifiable rows.
     const insertLegacyDeltaEntry = async (
       partyId: number | null,
       partyLabel: string,
