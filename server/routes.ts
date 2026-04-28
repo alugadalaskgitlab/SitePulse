@@ -521,36 +521,29 @@ export async function registerRoutes(
     res.json({ publicKey: key });
   });
 
-  app.post("/api/push/subscribe", async (req, res) => {
+  app.post("/api/push/subscribe", requireAuth, async (req, res) => {
     try {
-      const { subscription, pin } = req.body;
-      if (!subscription || !pin) {
-        return res.status(400).json({ message: "Subscription and PIN required" });
+      const user = (req as any).user;
+      // Only allow subscribe if the admin has enabled notifications for this user.
+      if (!user?.notificationsEnabled && !user?.isAdmin) {
+        return res.status(403).json({ message: "notifications_disabled", detail: "Push notifications are not enabled for your account. Ask an admin to enable them." });
+      }
+      const { subscription } = req.body;
+      if (!subscription) {
+        return res.status(400).json({ message: "Subscription data required" });
       }
       if (!subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
         return res.status(400).json({ message: "Invalid subscription data — missing endpoint or keys" });
       }
-      const managerPin = await storage.getSetting("manager_pin");
-      const adminPin = await storage.getSetting("admin_pin");
-      if (!managerPin && !adminPin) {
-        return res.status(500).json({ message: "No PINs configured in settings" });
-      }
-      const isAdminPin = !!(adminPin && pin === adminPin);
-      const isManagerPin = !!(managerPin && pin === managerPin);
-      if (!isAdminPin && !isManagerPin) {
-        return res.status(403).json({ message: "Invalid PIN" });
-      }
-      // Role is derived server-side from the PIN that authenticated, not
-      // from anything the client can spoof. Stored alongside each push
-      // subscription so future audience-targeted notifications can route
-      // by role.
-      const role = isAdminPin ? "admin" : "manager";
+      // Role is derived from the authenticated session — cannot be spoofed.
+      const role = user?.isAdmin ? "admin" : "manager";
       const sub = await storage.createPushSubscription({
         endpoint: subscription.endpoint,
         p256dh: subscription.keys.p256dh,
         auth: subscription.keys.auth,
         label: req.body.label || null,
         role,
+        userId: user?.id ?? null,
       });
       sendTestPush(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth).catch(() => {});
       res.status(201).json(sub);

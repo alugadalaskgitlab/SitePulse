@@ -19,77 +19,22 @@ PostgreSQL is the primary database, managed with Drizzle ORM and `drizzle-zod` f
 
 ### Core Features
 - **Daily Progress Reports (DPRs)**: Comprehensive logging of daily activities, equipment, labor, materials, and water tanker tracking, with versioning.
-- **Plant Module**: Features detailed operations (shift logs, heating sessions), management (stock, variance, audit), reports (daily plant reports, heating trends), and master data. Includes contractor-aware manpower tracking, automated LDO meter readings, and bulk PDF export for daily reports. Admins can also enter historical Tank-1 / Tank-2 LDO flow-meter readings via the **LDO Meter Backfill** tool at `/plant/ldo-backfill` (date-range + plant filters, editable grid, optional auto-chain, CSV paste). The tool is gated by the admin role (`assertAdmin`); rows are written into `ldo_flow_readings` tagged with a `[BACKFILL by <actor>]` marker in `notes` so re-saves are idempotent and existing shift-log / heating-session rows are never overwritten. The **LDO Book-vs-Physical Reconciliation Report** at `/plant/ldo-reconciliation` shows a per-day table comparing meter-based book stock against dip-stick physical stock for any plant/date-range. Each row shows: opening dip stock (L + MT), meter consumption (L), receipts (L), expected closing stock (L + MT), actual closing dip (L + MT), and variance (L, MT, %) with row-level highlighting when variance exceeds a configurable threshold. The backend `computeLdoReconciliation` method in `storage.ts` does all the computation: opening dip = "opening" type on day D or most-recent carry-forward; closing dip = "closing" type on day D; consumption is grouped by shift-log/heating-session source pairs (identical to `computeTankStock`). The page is accessible to any authenticated plant_stock user and linked from the LDO Flow Meter page via a "Book vs Physical" button.
-- **Boiler/Heating Management**: Tracks heating sessions and provides trend analysis. The Heating Trends report (`/plant/heating-trends`) charts the daily-average hot-oil **supply vs return** temperatures and the per-session **Δ (supply − return)** — a shrinking Δ over time is an early indicator of heat-exchanger fouling. Δ is computed only on sessions where both supply and return readings exist (never by differencing independently averaged daily means), and the same supply/return/Δ figures are emitted in the heating-trends Excel export. Variance numbers (hot-oil temps, LDO L/Hr, sessions-vs-shift mismatch) are displayed for reference only — there are no admin-tunable thresholds, no row highlighting, and no push/inbox alerts driven by them. Heating sessions are surfaced inline inside the Plant Shift Log edit view, and inline-DG runs tagged with `generator_logs.source_heating_session_id` are badged on the heating-sessions list and the Plant Daily Report generator table so the link is always visible. The "Link Existing Generator Log" DG mode now draws from a unified candidates endpoint (`/api/plant-module/generator-candidates`) that merges `generator_logs` rows with DG entries from `equipment_usage` (for equipment_master rows typed `generator`); selecting an equipment_usage candidate materializes a mirror `generator_logs` row (`/api/plant-module/generator-logs/from-equipment-usage`) before linking. Inline-DG entries from the heating session also auto-create a mirrored `equipment_usage` row tagged with `equipment_usage.source_heating_session_id`, so a single inline entry feeds both the generator log ledger and the equipment usage / fuel-stock reports without operator double-entry. The mirrored row is updated on every save and deleted when the session switches to link/none mode or is deleted.
+- **Plant Module**: Features detailed operations (shift logs, heating sessions), management (stock, variance, audit), reports (daily plant reports, heating trends), and master data. Includes contractor-aware manpower tracking, automated LDO meter readings, and bulk PDF export for daily reports. It also includes an LDO Meter Backfill tool and an LDO Book-vs-Physical Reconciliation Report.
+- **Boiler/Heating Management**: Tracks heating sessions and provides trend analysis, including monitoring hot-oil supply vs. return temperatures. Inline Diesel Generator (DG) runs are integrated with heating sessions and equipment usage.
 - **Plant Production Module**: Manages material receipts, mix templates, truck dispatches with owner-first stock routing and borrowing logic, and detailed equipment usage including fuel stock tracking. Includes a stock ledger reassignment tool.
 - **Procurement & Finance Module**: Handles Purchase Indents, Daily Diesel Requirements with approval workflows, and Vendor Bills with duplicate billing detection and rate card integration, supporting equipment, material, transport, and labor categories.
 - **Rate Calculators**:
     - **Bituminous Mix Rate Calculator**: Interactive tool for calculating rates for bituminous road layers, supporting multiple mix types, configurable equipment modes, scenario analysis, and estimation saving.
-    - **Concrete Rate Analysis Calculator (v1 & v2)**:
-        - **v1**: BOQ-based analysis for civil structures covering project info, mix design, materials, equipment, formwork, curing, overheads, BBS, wastage, and profitability. Features multi-location blending and a redesigned reporting tab.
-        - **v2**: Location-centric rebuild with detailed dimensions, aggregate sourcing, rebar design, and cost parameters, providing a rate analysis sheet and updated EstimatorHub.
+    - **Concrete Rate Analysis Calculator (v1 & v2)**: Provides BOQ-based analysis for civil structures with detailed cost parameters, material blending, and rebar design.
 - **QTO & BOQ Tab**: Provides structure dimensions, volume summary, per-meter rate card, earthwork, ancillary rates, and a BOQ Estimator with Excel import.
 - **Estimator Portal**: A unified portal (`/estimator-hub`) with server-side cookie authentication and role-based access for all rate calculators.
-- **Authentication & Access Control**: Role-Based Access Control (Engineer, Manager, Admin) with PIN authentication for critical actions. Cross-user login on a shared browser preserves the original user's approved-device cookie until the new device is actually approved: when login lands on `device_pending` and the cookie pointed to an approved device for a different user, the server returns a signed `pendingDeviceToken` instead of rotating the cookie. The Login page polls `/api/auth/device-status?token=…` and, on approval, calls `POST /api/auth/claim-device { token }` — the only path that rotates the cookie to the newly-approved device. This prevents the "everyone-locked-out" failure mode where attempting to log in as a new user from an admin's browser would otherwise overwrite the admin's cookie. Device matching in `ensureDeviceForUser` now resolves in this order: (1) reuse the device the cookie already points to if it belongs to this user; (2) **only when the browser cookie is APPROVED for some other user (i.e. this physical browser was already trusted by an admin) AND the request is not a bootstrap auto-approve**, reuse an existing **approved** device for `(userId, userAgent)` and rotate the cookie to it (this lets a returning user whose device was already approved log straight in instead of being trapped in a pending loop); (3) under the same trusted-browser + non-bootstrap guard, reuse a **recently-pending** device (within the last 24h) for `(userId, userAgent)` so repeated retries don't pile up duplicate pending rows; (4) otherwise mint a fresh device. The "browser already trusted" guard is critical security: pending or revoked cookies don't count, otherwise an attacker who knew a password could bypass device approval simply by holding any prior cookie and spoofing the User-Agent of a known-approved browser. Bootstrap recovery (BOOTSTRAP_ADMIN_EMAIL when zero approved devices exist) also skips steps 2/3 to guarantee a fresh approved device row even if a stale pending row already exists. The `preserveExistingCookie` guard in the login handler still suppresses cookie rotation in the cross-user pending case but never fires when step 2 returns an approved device.
+- **Push Notifications**: Per-user push notification control with admin toggles and session-gated subscriptions.
+- **Authentication & Access Control**: Role-Based Access Control (Engineer, Manager, Admin) with PIN authentication for critical actions. Features a robust cross-user login mechanism to preserve device approvals.
 - **Reporting**: Includes Materials Received and Site Purchases reports.
 - **Data Export/Import**: Admin-only tools for selected table data transfer.
 
-### Permission Gating — `assertCreate` on POST endpoints and `assertEdit`/`assertAdmin` on PATCH/DELETE endpoints
-Every POST create endpoint that maps to a permission-managed section in `shared/permissions.ts` calls `assertCreate(req, res, section)` (from `server/auth-routes.ts`) before any DB write. On failure the helper responds with `403 { error: "forbidden", action: "create", section }`. Admins bypass all checks. Estimator routes (`/api/estimator/*`, `/api/mix-estimates`, `/api/concrete-estimates`, `/api/price-scenarios`), notifications, push subscriptions, admin-only maintenance endpoints, read-only export endpoints, and edit-shape POSTs (`:id/clone`, `:id/finalize`, `:id/notify`) are intentionally excluded.
-
-Every PATCH on master-data endpoints calls `assertEdit(req, res, "admin_settings")` and every DELETE on master-data endpoints calls `assertAdmin(req, res)`. Both helpers return `403` (with `{ error: "forbidden", action, section }` for `assertEdit` and `{ error: "admin_required" }` for `assertAdmin`) for unauthorised callers; admins bypass all checks.
-
-| PATCH/DELETE endpoint | Helper |
-| --- | --- |
-| `PATCH /api/sites/:id` | `assertEdit … "admin_settings"` |
-| `DELETE /api/sites/:id` | `assertAdmin` |
-| `PATCH /api/personnel/:id` | `assertEdit … "master_personnel"` |
-| `PATCH /api/personnel/:id/toggle-active` | `assertEdit … "master_personnel"` |
-| `PATCH /api/plant-module/parties/:id` | `assertEdit … "master_parties"` |
-| `DELETE /api/plant-module/parties/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/materials/:id` | `assertEdit … "master_materials"` |
-| `DELETE /api/plant-module/materials/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/mix-types/:id` | `assertEdit … "master_materials"` |
-| `DELETE /api/plant-module/mix-types/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/mix-templates/:id` | `assertEdit … "master_materials"` |
-| `DELETE /api/plant-module/mix-templates/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/equipment/:id` | `assertEdit … "master_equipment"` |
-| `DELETE /api/plant-module/equipment/:id` | `assertAdmin` |
-| `PATCH /api/plant-module/equipment/:id/toggle-active` | `assertEdit … "master_equipment"` |
-| `DELETE /api/vendor-aliases/:id` | `assertAdmin` |
-| `DELETE /api/vendor-rate-cards/:id` | `assertAdmin` |
-
-| POST endpoint | Section |
-| --- | --- |
-| `/api/dprs` | `site_dprs` |
-| `/api/site-material-trips` | `site_materials` |
-| `/api/purchase-indents` | `site_procurement` |
-| `/api/diesel-requirements` | `site_diesel` |
-| `/api/plant-module/shift-logs` (when no existing row) | `plant_shift_logs` |
-| `/api/plant-module/heating-sessions` | `plant_heating` |
-| `/api/plant-module/equipment-usage` | `plant_equipment` |
-| `/api/plant-module/generator-logs` | `plant_equipment` |
-| `/api/plant-module/generator-logs/from-equipment-usage` | `plant_equipment` |
-| `/api/plant-module/material-receipts` | `plant_materials` |
-| `/api/plant-module/material-issues` | `plant_materials` |
-| `/api/plant-module/material-returns` | `plant_materials` |
-| `/api/plant-module/opening-stocks` | `plant_stock` |
-| `/api/plant-module/ldo-logs` | `plant_stock` |
-| `/api/plant-module/bitumen-dip-readings` | `plant_bitumen` |
-| `/api/plant-module/ldo-flow-readings` | `plant_ldo` |
-| `/api/plant-module/ldo-dip-readings` | `plant_ldo` |
-| `/api/plant-module/dispatches` | `plant_production` |
-| `/api/vendor-bills` | `vendor_bills` |
-| `/api/sites`, `/api/sites/seed` | `admin_settings` |
-| `/api/personnel` | `master_personnel` |
-| `/api/plant` (plant report create) | `admin_settings` |
-| `/api/plant-module/parties` | `master_parties` |
-| `/api/plant-module/materials` | `master_materials` |
-| `/api/plant-module/mix-types` | `master_materials` |
-| `/api/plant-module/mix-templates` | `master_materials` |
-| `/api/plant-module/equipment` | `master_equipment` |
-| `/api/vendor-aliases` | `admin_settings` |
-| `/api/vendor-rate-cards`, `/api/vendor-rate-cards/bulk-upsert` | `admin_settings` |
+### Permission Gating
+All POST endpoints mapping to permission-managed sections use `assertCreate` for authorization. PATCH and DELETE operations on master data endpoints are protected by `assertEdit` and `assertAdmin` respectively.
 
 ### Build System
 Development uses `tsx` and Vite; production builds use esbuild for the server and Vite for the client.

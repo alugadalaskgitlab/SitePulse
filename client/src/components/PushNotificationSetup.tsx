@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
-import { Bell, BellOff, Smartphone, Share, Plus, CheckCircle, XCircle, Loader2, Settings } from "lucide-react";
+import { Bell, BellOff, Smartphone, Share, Plus, CheckCircle, XCircle, Loader2, Settings, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -27,15 +25,13 @@ function urlBase64ToUint8Array(base64String: string) {
 export function PushNotificationSetup() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [pin, setPin] = useState("");
-  const [pinVerified, setPinVerified] = useState(false);
-  const [pinError, setPinError] = useState("");
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
+  const [notAllowed, setNotAllowed] = useState(false);
 
   useEffect(() => {
     const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -66,31 +62,9 @@ export function PushNotificationSetup() {
     }
   }
 
-  async function verifyPin() {
-    if (pin.length < 4) {
-      setPinError("Enter a 4-digit PIN");
-      return;
-    }
-    setPinError("");
-    setIsLoading(true);
-    try {
-      const res = await apiRequest("POST", "/api/auth/verify-pin", { pin });
-      const data = await res.json();
-      if (data.valid && (data.role === "manager" || data.role === "admin")) {
-        setPinVerified(true);
-        setPinError("");
-      } else {
-        setPinError("Invalid Manager or Admin PIN");
-      }
-    } catch {
-      setPinError("Failed to verify PIN");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   async function enablePush() {
     setIsLoading(true);
+    setNotAllowed(false);
     try {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
@@ -115,14 +89,22 @@ export function PushNotificationSetup() {
 
       const subJson = subscription.toJSON();
       try {
-        await apiRequest("POST", "/api/push/subscribe", {
+        const res = await apiRequest("POST", "/api/push/subscribe", {
           subscription: {
             endpoint: subJson.endpoint,
             keys: subJson.keys,
           },
-          pin,
           label: isIos ? "iOS Device" : "Device",
         });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          await subscription.unsubscribe();
+          if (body.message === "notifications_disabled") {
+            setNotAllowed(true);
+            return;
+          }
+          throw new Error(body.message || "Failed to register subscription");
+        }
       } catch (serverErr: any) {
         await subscription.unsubscribe();
         throw serverErr;
@@ -159,17 +141,8 @@ export function PushNotificationSetup() {
     }
   }
 
-  function handleDialogChange(isOpen: boolean) {
-    setOpen(isOpen);
-    if (!isOpen) {
-      setPin("");
-      setPinVerified(false);
-      setPinError("");
-    }
-  }
-
   return (
-    <Dialog open={open} onOpenChange={handleDialogChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-xs" data-testid="button-notification-settings">
           <Settings className="w-3 h-3" />
@@ -215,39 +188,15 @@ export function PushNotificationSetup() {
               </div>
             )}
           </div>
-        ) : !pinVerified ? (
-          <div className="space-y-4 py-2">
+        ) : notAllowed ? (
+          <div className="text-center py-6 space-y-3">
+            <ShieldOff className="w-12 h-12 mx-auto text-muted-foreground" />
+            <p className="text-sm font-medium">Notifications not enabled for your account</p>
             <p className="text-sm text-muted-foreground">
-              Enter your Manager or Admin PIN to manage push notification settings.
+              Ask an admin to turn on push notifications for your user account in User Management.
             </p>
-            {isIos && !isStandalone && (
-              <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-2">
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                  Important for iPhone/iPad
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  Push notifications require the app to be added to your Home Screen first. Tap the Share button in Safari, then "Add to Home Screen."
-                </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="push-pin">PIN</Label>
-              <Input
-                id="push-pin"
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="Enter 4-digit PIN"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && verifyPin()}
-                data-testid="input-push-pin"
-              />
-              {pinError && <p className="text-xs text-destructive">{pinError}</p>}
-            </div>
-            <Button onClick={verifyPin} disabled={isLoading || pin.length < 4} className="w-full" data-testid="button-verify-push-pin">
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Verify PIN
+            <Button variant="outline" className="w-full" onClick={() => setNotAllowed(false)} data-testid="button-notallowed-back">
+              Back
             </Button>
           </div>
         ) : (

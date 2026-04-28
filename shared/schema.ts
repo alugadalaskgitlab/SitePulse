@@ -1237,11 +1237,12 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
   label: text("label"),
-  // Deterministic role assigned at subscribe time based on which PIN
-  // the device used to enable notifications: "admin" | "manager".
-  // Used to route targeted alerts (e.g. persistent diesel over-consumer)
-  // to the right audience without trusting client-supplied labels.
+  // Deterministic role assigned at subscribe time from the user's session:
+  // "admin" | "manager". Used to route targeted alerts to the right audience.
   role: text("role"),
+  // FK to the user who subscribed this device. Nullable for legacy anonymous
+  // rows so they continue to be delivered as-is.
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1603,6 +1604,10 @@ export const users = pgTable("users", {
   // Allows unlocking previously-saved records on sections where the user
   // also has edit permission. Audited via record_unlock_log.
   canUnlockRecords: boolean("can_unlock_records").notNull().default(false),
+  // Admin-controlled flag: when true this user's subscribed devices receive
+  // push (and later SMS) notifications. Default off so new users are not
+  // disturbed until the admin opts them in.
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(false),
   // "strict" = 5min idle + tab-close logout. "sticky" = no idle, tab-close
   // logout, 30-day max session age.
   sessionPolicy: text("session_policy").notNull().default("strict"),

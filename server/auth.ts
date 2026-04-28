@@ -237,6 +237,7 @@ export async function createUserRow(input: {
   fullName: string;
   isAdmin?: boolean;
   canUnlockRecords?: boolean;
+  notificationsEnabled?: boolean;
   sessionPolicy?: SessionPolicy;
 }): Promise<User> {
   const passwordHash = await hashPassword(input.password);
@@ -248,6 +249,7 @@ export async function createUserRow(input: {
     isActive: true,
     isAdmin: !!input.isAdmin,
     canUnlockRecords: !!input.canUnlockRecords,
+    notificationsEnabled: !!input.notificationsEnabled,
     sessionPolicy: input.sessionPolicy ?? "strict",
   }).returning();
   return row;
@@ -270,6 +272,7 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   isActive: boolean;
   isAdmin: boolean;
   canUnlockRecords: boolean;
+  notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
 }>): Promise<User | undefined> {
   const update: Record<string, unknown> = {};
@@ -279,6 +282,7 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   if (patch.isActive !== undefined) update.isActive = patch.isActive;
   if (patch.isAdmin !== undefined) update.isAdmin = patch.isAdmin;
   if (patch.canUnlockRecords !== undefined) update.canUnlockRecords = patch.canUnlockRecords;
+  if (patch.notificationsEnabled !== undefined) update.notificationsEnabled = patch.notificationsEnabled;
   if (patch.sessionPolicy !== undefined) update.sessionPolicy = patch.sessionPolicy;
   if (Object.keys(update).length === 0) return getUserById(userId);
   const [row] = await db.update(users).set(update).where(eq(users.id, userId)).returning();

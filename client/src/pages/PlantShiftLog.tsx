@@ -14,6 +14,7 @@ import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { LockBadge } from "@/components/LockBadge";
@@ -509,12 +510,12 @@ export default function PlantShiftLog() {
     },
   });
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!savedId) throw new Error("Nothing to delete");
-      const pin = window.prompt("Enter admin PIN to delete this shift log");
-      if (!pin) throw new Error("Cancelled");
-      const res = await apiRequest("DELETE", `/api/plant-module/shift-logs/${savedId}`, { pin });
+      const res = await apiRequest("DELETE", `/api/plant-module/shift-logs/${savedId}`);
       return res.json();
     },
     onSuccess: () => {
@@ -1397,7 +1398,7 @@ export default function PlantShiftLog() {
 
       <div className="flex flex-wrap gap-2 justify-end">
         {savedId && (
-          <Button variant="outline" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} data-testid="button-delete">
+          <Button variant="outline" onClick={() => setConfirmDelete(true)} disabled={deleteMutation.isPending} data-testid="button-delete">
             <Trash2 className="w-4 h-4 mr-1" />Delete
           </Button>
         )}
@@ -1414,6 +1415,27 @@ export default function PlantShiftLog() {
         onOpenChange={(v) => setFixDialog(f => ({ ...f, open: v }))}
         target={fixDialog.target}
       />
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete shift log?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the shift log and all associated records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setConfirmDelete(false); deleteMutation.mutate(); }}
+              data-testid="button-delete-confirm"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

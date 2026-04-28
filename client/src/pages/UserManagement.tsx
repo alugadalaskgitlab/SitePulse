@@ -57,6 +57,7 @@ type SafeUser = {
   isAdmin: boolean;
   isActive: boolean;
   canUnlockRecords: boolean;
+  notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
   createdAt?: string;
 };
@@ -155,6 +156,7 @@ export default function UserManagement() {
                     <th className="py-2 pr-4">Session</th>
                     <th className="py-2 pr-4">Active</th>
                     <th className="py-2 pr-4">Unlock?</th>
+                    <th className="py-2 pr-4">Notif.</th>
                     <th className="py-2 pr-4">Actions</th>
                   </tr>
                 </thead>
@@ -284,6 +286,14 @@ function UserRow({
         />
       </td>
       <td className="py-2 pr-4">
+        <Switch
+          checked={user.notificationsEnabled}
+          disabled={!canEdit}
+          onCheckedChange={(v) => patch.mutate({ notificationsEnabled: v })}
+          data-testid={`switch-notif-${user.id}`}
+        />
+      </td>
+      <td className="py-2 pr-4">
         <div className="flex gap-2 flex-wrap">
           <Button
             size="sm"
@@ -333,6 +343,7 @@ function CreateUserDialog({
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [canUnlock, setCanUnlock] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [policy, setPolicy] = useState<SessionPolicy>("strict");
 
   const create = useMutation({
@@ -344,6 +355,7 @@ function CreateUserDialog({
         password,
         isAdmin,
         canUnlockRecords: canUnlock,
+        notificationsEnabled,
         sessionPolicy: policy,
       });
       return r.json();
@@ -397,6 +409,10 @@ function CreateUserDialog({
             <Label htmlFor="canUnlock">Can unlock locked records</Label>
             <Switch id="canUnlock" checked={canUnlock} onCheckedChange={setCanUnlock} data-testid="switch-new-unlock" />
           </div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="notifEnabled">Push notifications</Label>
+            <Switch id="notifEnabled" checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} data-testid="switch-new-notif" />
+          </div>
           <div>
             <Label>Session policy</Label>
             <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
@@ -445,6 +461,7 @@ function EditUserDialog({
   const [phone, setPhone] = useState(target?.phone ?? "");
   const [isAdmin, setIsAdmin] = useState(target?.isAdmin ?? false);
   const [canUnlock, setCanUnlock] = useState(target?.canUnlockRecords ?? false);
+  const [notifEnabled, setNotifEnabled] = useState(target?.notificationsEnabled ?? false);
   const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
 
   // Build a partial patch with only changed fields so the server
@@ -470,6 +487,7 @@ function EditUserDialog({
     }
     if (isAdmin !== target.isAdmin) patch.isAdmin = isAdmin;
     if (canUnlock !== target.canUnlockRecords) patch.canUnlockRecords = canUnlock;
+    if (notifEnabled !== target.notificationsEnabled) patch.notificationsEnabled = notifEnabled;
     if (policy !== target.sessionPolicy) patch.sessionPolicy = policy;
     return patch;
   }
@@ -558,6 +576,15 @@ function EditUserDialog({
               checked={canUnlock}
               onCheckedChange={setCanUnlock}
               data-testid="switch-edit-unlock"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="edit-notif">Push notifications</Label>
+            <Switch
+              id="edit-notif"
+              checked={notifEnabled}
+              onCheckedChange={setNotifEnabled}
+              data-testid="switch-edit-notif"
             />
           </div>
           <div>

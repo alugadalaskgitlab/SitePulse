@@ -539,6 +539,7 @@ export interface IStorage {
 
   // Push Subscriptions
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
+  getActivePushSubscriptions(): Promise<PushSubscription[]>;
   createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
   deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
   
@@ -4233,10 +4234,8 @@ export class DatabaseStorage implements IStorage {
       .values(data)
       .onConflictDoUpdate({
         target: pushSubscriptions.endpoint,
-        // Refresh `role` on every re-subscribe so existing rows get the
-        // server-assigned role (derived from PIN) and audience-targeted
-        // alerts can reach them.
-        set: { p256dh: data.p256dh, auth: data.auth, label: data.label, role: data.role },
+        // Refresh on every re-subscribe so role/userId stay current.
+        set: { p256dh: data.p256dh, auth: data.auth, label: data.label, role: data.role, userId: data.userId ?? null },
       })
       .returning();
     return sub;
@@ -4244,6 +4243,25 @@ export class DatabaseStorage implements IStorage {
 
   async deletePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  }
+
+  // Returns subscriptions that should actually receive a push:
+  // — subscriptions linked to a user with notificationsEnabled=true, OR
+  // — legacy anonymous subscriptions (userId IS NULL) kept for back-compat.
+  async getActivePushSubscriptions(): Promise<PushSubscription[]> {
+    const all = await db.select().from(pushSubscriptions);
+    if (all.length === 0) return [];
+    // Collect the distinct userIds that have linked subscriptions.
+    const linkedUserIds = [...new Set(all.filter(s => s.userId != null).map(s => s.userId as number))];
+    let enabledUserIds: Set<number> = new Set();
+    if (linkedUserIds.length > 0) {
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.notificationsEnabled, true), inArray(users.id, linkedUserIds)));
+      enabledUserIds = new Set(rows.map(r => r.id));
+    }
+    return all.filter(s => s.userId == null || enabledUserIds.has(s.userId));
   }
 
   // ============================================

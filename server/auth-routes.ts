@@ -102,6 +102,7 @@ const createUserSchema = z.object({
   fullName: z.string().min(1),
   isAdmin: z.boolean().optional(),
   canUnlockRecords: z.boolean().optional(),
+  notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
 }).superRefine((d, ctx) => {
   const hasEmail = !!d.email && d.email.trim().length > 0;
@@ -118,6 +119,7 @@ const patchUserSchema = z.object({
   isActive: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
   canUnlockRecords: z.boolean().optional(),
+  notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
 });
 

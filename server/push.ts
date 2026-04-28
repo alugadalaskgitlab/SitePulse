@@ -61,7 +61,9 @@ export async function sendPushToAudience(
   if (!pushInitialized) return;
 
   try {
-    let subscriptions = await storage.getAllPushSubscriptions();
+    // Only deliver to subscriptions belonging to notification-enabled users
+    // (or legacy anonymous rows kept for back-compat).
+    let subscriptions = await storage.getActivePushSubscriptions();
     if (subscriptions.length === 0) return;
 
     if (audience === "managers") {

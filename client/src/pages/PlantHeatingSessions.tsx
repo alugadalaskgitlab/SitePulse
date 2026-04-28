@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ChevronLeft, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -534,12 +535,11 @@ export default function PlantHeatingSessions() {
     },
   });
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      // Server still requires an admin PIN for deletes (destructive).
-      const pin = window.prompt("Enter admin PIN to delete this session");
-      if (!pin) throw new Error("Cancelled");
-      const res = await apiRequest("DELETE", `/api/plant-module/heating-sessions/${id}`, { pin });
+      const res = await apiRequest("DELETE", `/api/plant-module/heating-sessions/${id}`);
       return res.json();
     },
     onSuccess: () => {
@@ -1224,7 +1224,7 @@ export default function PlantHeatingSessions() {
 
             <div className="flex flex-wrap gap-2 justify-end">
               {form.id && (
-                <Button variant="outline" onClick={() => deleteMutation.mutate(form.id!)} disabled={deleteMutation.isPending} data-testid="button-delete">
+                <Button variant="outline" onClick={() => setConfirmDeleteId(form.id!)} disabled={deleteMutation.isPending} data-testid="button-delete">
                   <Trash2 className="w-4 h-4 mr-1" />Delete
                 </Button>
               )}
@@ -1237,6 +1237,27 @@ export default function PlantHeatingSessions() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmDeleteId !== null} onOpenChange={(v) => { if (!v) setConfirmDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete heating session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the heating session and any linked generator log. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (confirmDeleteId !== null) { deleteMutation.mutate(confirmDeleteId); setConfirmDeleteId(null); } }}
+              data-testid="button-delete-confirm"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
