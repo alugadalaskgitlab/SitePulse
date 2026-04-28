@@ -991,43 +991,43 @@ export default function PlantShiftLog() {
           )}
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div><Label>Tank 1 Temp °C</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
+          <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
           <div>
-            <Label>Tank 1 Opening Dip (cm)</Label>
+            <Label>Bitumen tank 1 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => setBitumenTank1OpeningDip(e.target.value)} data-testid="input-bitumen-t1-open" />
             {dipHint(bitumenTank1OpeningDip, t1Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip, t1Lpc)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
+              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
           </div>
           <div>
-            <Label>Tank 1 Closing Dip (cm)</Label>
+            <Label>Bitumen tank 1 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
             {dipHint(bitumenTank1ClosingDip, t1Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip, t1Lpc)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
+              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
           </div>
           <div />
-          <div><Label>Tank 2 Temp °C</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
+          <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
           <div>
-            <Label>Tank 2 Opening Dip (cm)</Label>
+            <Label>Bitumen tank 2 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => setBitumenTank2OpeningDip(e.target.value)} data-testid="input-bitumen-t2-open" />
             {dipHint(bitumenTank2OpeningDip, t2Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip, t2Lpc)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
+              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
           </div>
           <div>
-            <Label>Tank 2 Closing Dip (cm)</Label>
+            <Label>Bitumen tank 2 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
             {dipHint(bitumenTank2ClosingDip, t2Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip, t2Lpc)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
+              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
           </div>
         </CardContent>
@@ -1088,20 +1088,20 @@ export default function PlantShiftLog() {
           {boilerRunsDuringProduction ? (
             <>
               <div>
-                <Label>Boiler Meter Opening</Label>
+                <Label>Boiler fuel meter — opening</Label>
                 <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
                   onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
                   data-testid="input-ldo-t1-open" />
                 {autoFillT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
               </div>
               <div>
-                <Label>Boiler Meter Closing</Label>
+                <Label>Boiler fuel meter — closing</Label>
                 <Input type="number" step="0.01" value={ldoTank1ClosingMeter}
                   onChange={e => { setLdoTank1ClosingMeter(e.target.value); setAutoFillT1ClosingSource(""); }}
                   data-testid="input-ldo-t1-close" />
                 {autoFillT1ClosingSource && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
               </div>
-              <div><Label>Boiler Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
+              <div><Label>Boiler fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
               <div />
             </>
           ) : (
@@ -1110,14 +1110,14 @@ export default function PlantShiftLog() {
             </div>
           )}
           <div>
-            <Label>Dryer Meter Opening</Label>
+            <Label>Dryer fuel meter — opening</Label>
             <Input type="number" step="0.01" value={ldoTank2OpeningMeter}
               onChange={e => { setLdoTank2OpeningMeter(e.target.value); setAutoFillT2Source(""); }}
               data-testid="input-ldo-t2-open" />
             {autoFillT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
           </div>
-          <div><Label>Dryer Meter Closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
-          <div><Label>Dryer Consumption (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
+          <div><Label>Dryer fuel meter — closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
+          <div><Label>Dryer fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
 
           {/* Task #325/#372 — live LDO efficiency stats strip. Updates as the

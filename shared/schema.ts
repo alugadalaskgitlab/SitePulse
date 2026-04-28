@@ -1041,8 +1041,8 @@ export const HEATING_SESSION_TYPES = ["NIGHT_PREHEAT", "DAY_MAINTENANCE"] as con
 // NIGHT_PREHEAT / DAY_MAINTENANCE (DB + API contract), but everywhere a label
 // is shown to the user it must come from this map.
 export const HEATING_SESSION_TYPE_LABELS: Record<typeof HEATING_SESSION_TYPES[number], string> = {
-  NIGHT_PREHEAT: "Pre-heating",
-  DAY_MAINTENANCE: "Production heating",
+  NIGHT_PREHEAT: "Night pre-heat (before production)",
+  DAY_MAINTENANCE: "Daytime run (during production)",
 };
 export function heatingSessionTypeLabel(t: string | null | undefined): string {
   if (!t) return "—";

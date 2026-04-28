@@ -732,6 +732,9 @@ export default function PlantHeatingSessions() {
                             </Button>
                           </Link>
                         </div>
+                        <p className="text-muted-foreground italic mb-1">
+                          This usually happens when a heating session was deleted or edited after the shift log was saved, or when a meter reading was entered incorrectly. Open the reconciliation report to see the detail and correct whichever record is wrong.
+                        </p>
                         <ul className="list-disc list-inside">
                           {rec.reconciliation.mismatches.map(m => {
                             const sign = m.deltaL > 0 ? "+" : "";
@@ -869,6 +872,9 @@ export default function PlantHeatingSessions() {
                           </Button>
                         </Link>
                       </div>
+                      <p className="text-muted-foreground italic mb-1">
+                        This usually happens when a heating session was deleted or edited after the shift log was saved, or when a meter reading was entered incorrectly. Open the reconciliation report to see the detail and correct whichever record is wrong.
+                      </p>
                       <ul className="list-disc list-inside">
                         {rec.reconciliation.mismatches.map(m => {
                           const sign = m.deltaL > 0 ? "+" : "";

@@ -43,7 +43,7 @@ function emptyForm(date: string, plantName: string) {
     // recorded for the day's record. Routing of dryer-meter consumption
     // happens on the matching Plant Shift Log.
     dryerFedFrom: "TANK_2" as "TANK_1" | "TANK_2",
-    dgMode: "inline" as DgMode,
+    dgMode: "none" as DgMode,
     dgGeneratorName: "",
     dgStartTime: "",
     dgEndTime: "",
