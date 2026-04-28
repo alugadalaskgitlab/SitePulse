@@ -762,15 +762,15 @@ export default function PlantLdoMismatch() {
       "Sessions (L)": day.sessions.length > 0 ? fmtVal(day.sessionsTotalL) : "",
       "Shift Meter (L)": day.anyShiftHasMeter ? fmtVal(day.shiftTotalL) : "",
       "LDO Ledger (L)": day.ledgerRows.length > 0 ? fmtVal(day.ledgerTotalL) : "",
-      "Δ Sessions−Shift (L)":
+      "Sessions vs Shift Meter (L)":
         day.deltaSessionsVsShift != null
           ? (day.deltaSessionsVsShift > 0 ? "+" : "") + fmtVal(day.deltaSessionsVsShift)
           : "",
-      "Δ Sessions−Ledger (L)":
+      "Sessions vs LDO Ledger (L)":
         day.deltaSessionsVsLedger != null
           ? (day.deltaSessionsVsLedger > 0 ? "+" : "") + fmtVal(day.deltaSessionsVsLedger)
           : "",
-      "Δ Shift−Ledger (L)":
+      "Shift Meter vs LDO Ledger (L)":
         day.deltaShiftVsLedger != null
           ? (day.deltaShiftVsLedger > 0 ? "+" : "") + fmtVal(day.deltaShiftVsLedger)
           : "",
@@ -785,17 +785,17 @@ export default function PlantLdoMismatch() {
         "LDO Ledger (L)": daySummaries.some(d => d.ledgerRows.length > 0)
           ? fmtVal(rangeTotals.ledgerTotalL)
           : "",
-        "Δ Sessions−Shift (L)":
+        "Sessions vs Shift Meter (L)":
           rangeTotals.deltaSessionsVsShift != null
             ? (rangeTotals.deltaSessionsVsShift > 0 ? "+" : "") +
               fmtVal(rangeTotals.deltaSessionsVsShift)
             : "",
-        "Δ Sessions−Ledger (L)":
+        "Sessions vs LDO Ledger (L)":
           rangeTotals.deltaSessionsVsLedger != null
             ? (rangeTotals.deltaSessionsVsLedger > 0 ? "+" : "") +
               fmtVal(rangeTotals.deltaSessionsVsLedger)
             : "",
-        "Δ Shift−Ledger (L)":
+        "Shift Meter vs LDO Ledger (L)":
           rangeTotals.deltaShiftVsLedger != null
             ? (rangeTotals.deltaShiftVsLedger > 0 ? "+" : "") +
               fmtVal(rangeTotals.deltaShiftVsLedger)
@@ -893,7 +893,7 @@ export default function PlantLdoMismatch() {
     doc.text(`Mismatch threshold: ±${MISMATCH_THRESHOLD_L} L`, 14, 27);
 
     const summaryHead = [
-      ["Date", "Sessions (L)", "Shift Meter (L)", "LDO Ledger (L)", "Δ Sess−Shift", "Δ Sess−Ledger", "Δ Shift−Ledger", "Mismatch"],
+      ["Date", "Sessions (L)", "Shift Meter (L)", "LDO Ledger (L)", "Sess vs Shift", "Sess vs Ledger", "Shift vs Ledger", "Mismatch"],
     ];
     const summaryBody = daySummaries.map(day => [
       day.date,
@@ -1191,24 +1191,27 @@ export default function PlantLdoMismatch() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               {
-                label: "Sessions vs Shift",
+                label: "Sessions vs Shift Meter",
                 delta: rangeTotals.deltaSessionsVsShift,
-                description: "Δ (sessions − shift meter)",
+                description: "Heating session meters vs shift log meter",
+                hint: "Gap between what the session meters recorded and what the shift log recorded",
                 testId: "kpi-delta-sessions-shift",
               },
               {
-                label: "Sessions vs Ledger",
+                label: "Sessions vs LDO Ledger",
                 delta: rangeTotals.deltaSessionsVsLedger,
-                description: "Δ (sessions − LDO ledger rows)",
+                description: "Heating session meters vs LDO flow ledger",
+                hint: "Gap between session meter totals and what was logged in the LDO ledger",
                 testId: "kpi-delta-sessions-ledger",
               },
               {
-                label: "Shift vs Ledger",
+                label: "Shift Meter vs LDO Ledger",
                 delta: rangeTotals.deltaShiftVsLedger,
-                description: "Δ (shift meter − LDO ledger rows)",
+                description: "Shift log meter vs LDO flow ledger",
+                hint: "Gap between the shift log meter reading and the LDO ledger entries",
                 testId: "kpi-delta-shift-ledger",
               },
-            ].map(({ label, delta, description, testId }) => (
+            ].map(({ label, delta, description, hint, testId }) => (
               <Card
                 key={label}
                 className={
@@ -1228,7 +1231,10 @@ export default function PlantLdoMismatch() {
                     {delta == null ? "—" : `${delta > 0 ? "+" : ""}${fmt(delta)} L`}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {label} · Tolerance: ±{MISMATCH_THRESHOLD_L} L
+                    {label}
+                  </div>
+                  <div className="text-xs text-muted-foreground italic mt-0.5">
+                    {hint} · Tolerance: ±{MISMATCH_THRESHOLD_L} L
                   </div>
                 </CardContent>
               </Card>

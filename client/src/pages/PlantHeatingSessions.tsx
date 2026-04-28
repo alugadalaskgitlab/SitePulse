@@ -566,7 +566,7 @@ export default function PlantHeatingSessions() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Tank 1" : "Tank 2";
+      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
       toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
     },
     onError: (err: any) => {
@@ -674,8 +674,8 @@ export default function PlantHeatingSessions() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All tanks</SelectItem>
-              <SelectItem value="TANK_1">Tank 1</SelectItem>
-              <SelectItem value="TANK_2">Tank 2</SelectItem>
+              <SelectItem value="TANK_1">Boiler tank</SelectItem>
+              <SelectItem value="TANK_2">Dryer tank</SelectItem>
             </SelectContent>
           </Select>
           <Link href={appendPlantContext("/plant/heating-trends", { defaultTab: "operations" })}>
@@ -724,7 +724,7 @@ export default function PlantHeatingSessions() {
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="font-semibold text-destructive">
-                            {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                            {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
                           </div>
                           <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}>
                             <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
@@ -738,13 +738,13 @@ export default function PlantHeatingSessions() {
                             const fmt = (n: number | null) => n == null ? "—" : n.toFixed(1);
                             const label =
                               m.kind === "sessions_vs_shift"
-                                ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs shift log meter (${fmt(rec.shiftLogT1L)}L)`
+                                ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match shift log meter (${fmt(rec.shiftLogT1L)} L)`
                                 : m.kind === "sessions_vs_ledger"
-                                ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs LDO Flow ledger session rows (${fmt(rec.ledgerSessionsT1L)}L)`
-                                : `Shift log meter (${fmt(rec.shiftLogT1L)}L) vs LDO Flow ledger shift rows (${fmt(rec.ledgerShiftT1L)}L)`;
+                                ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerSessionsT1L)} L)`
+                                : `Shift log meter (${fmt(rec.shiftLogT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerShiftT1L)} L)`;
                             return (
                               <li key={m.kind} data-testid={`text-recon-mismatch-${date}-${m.kind}`}>
-                                {label} — Δ {sign}{m.deltaL}L
+                                {label} — difference: {sign}{m.deltaL} L
                               </li>
                             );
                           })}
@@ -757,7 +757,7 @@ export default function PlantHeatingSessions() {
             ) : null;
           })()}
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Tank 1" : "Tank 2"} in this date range.` : "No heating sessions in this date range."}</p> :
+            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Boiler tank" : "Dryer tank"} in this date range.` : "No heating sessions in this date range."}</p> :
             <div className="space-y-4">
               {groupedDates.map(date => (
                 <div key={date}>
@@ -801,9 +801,9 @@ export default function PlantHeatingSessions() {
                       const tooltip = dms.map(dm => {
                         const parts: string[] = [];
                         if (dm.conflictingSessions.length > 0) {
-                          const slLabel = dm.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                          const slLabel = dm.shiftLogValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
                           const lines = dm.conflictingSessions.map(s => {
-                            const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                            const hsLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
                             const time = s.startTime ? ` at ${s.startTime}` : "";
                             return `  Session #${s.id} (${s.sessionType}${time}) says ${hsLabel}`;
                           });
@@ -811,7 +811,7 @@ export default function PlantHeatingSessions() {
                         }
                         if ((dm.intraSessionConflicts || []).length > 0) {
                           const lines = (dm.intraSessionConflicts || []).map(s => {
-                            const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                            const hsLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
                             const time = s.startTime ? ` at ${s.startTime}` : "";
                             return `  Session #${s.id} (${s.sessionType}${time}) says ${hsLabel}`;
                           });
@@ -861,7 +861,7 @@ export default function PlantHeatingSessions() {
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="font-semibold text-destructive">
-                          {rec.plantName} — Boiler Meter (Tank-1) sources disagree by &gt; {rec.reconciliation.thresholdL}L
+                          {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
                         </div>
                         <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}>
                           <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
@@ -875,13 +875,13 @@ export default function PlantHeatingSessions() {
                           const fmt = (n: number | null) => n == null ? "—" : n.toFixed(1);
                           const label =
                             m.kind === "sessions_vs_shift"
-                              ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs shift log meter (${fmt(rec.shiftLogT1L)}L)`
+                              ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match shift log meter (${fmt(rec.shiftLogT1L)} L)`
                               : m.kind === "sessions_vs_ledger"
-                              ? `Heating sessions (${fmt(rec.sessionsLdoT1L)}L) vs LDO Flow ledger session rows (${fmt(rec.ledgerSessionsT1L)}L)`
-                              : `Shift log meter (${fmt(rec.shiftLogT1L)}L) vs LDO Flow ledger shift rows (${fmt(rec.ledgerShiftT1L)}L)`;
+                              ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerSessionsT1L)} L)`
+                              : `Shift log meter (${fmt(rec.shiftLogT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerShiftT1L)} L)`;
                           return (
                             <li key={m.kind} data-testid={`text-recon-mismatch-${date}-${m.kind}`}>
-                              {label} — Δ {sign}{m.deltaL}L
+                              {label} — difference: {sign}{m.deltaL} L
                             </li>
                           );
                         })}
@@ -923,14 +923,14 @@ export default function PlantHeatingSessions() {
                                 </Badge>
                               )}
                               {conflictingSessionIds.has(s.id) && (() => {
-                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
                                 const isShiftLogConflict = shiftLogConflictIds.has(s.id);
                                 const isIntraConflict = intraSessionConflictIds.has(s.id);
                                 const dm = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
                                 let badgeLabel = "⚠ Dryer conflict";
                                 let tooltipText = "";
                                 if (isShiftLogConflict) {
-                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
                                   badgeLabel = "⚠ Dryer mismatch";
                                   tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Click to open the shift log.`;
                                   if (isIntraConflict) tooltipText += " Also conflicts with other sessions on this date.";
@@ -1025,8 +1025,8 @@ export default function PlantHeatingSessions() {
                     <SelectValue placeholder="Not set" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TANK_1">Tank 1</SelectItem>
-                    <SelectItem value="TANK_2">Tank 2</SelectItem>
+                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
+                    <SelectItem value="TANK_2">Dryer tank</SelectItem>
                   </SelectContent>
                 </Select>
                 {!form.id && form.dryerFedFrom && form.dryerFedFrom === autoFilledDryerRef.current && (

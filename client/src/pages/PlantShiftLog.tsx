@@ -479,8 +479,8 @@ export default function PlantShiftLog() {
         return hsRes.json().then((sessions: Array<{ id?: number; dryerFedFrom?: string }>) => {
           const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== dryerFedFrom);
           if (mismatch && mismatch.id != null) {
-            const slLabel = dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
-            const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            const slLabel = dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
             const fixTarget: DryerSourceFixTarget = {
               mode: "heating-session",
               recordId: mismatch.id,
@@ -539,7 +539,7 @@ export default function PlantShiftLog() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Tank 1" : "Tank 2";
+      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
       toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
     },
     onError: (err: any) => {
@@ -761,8 +761,8 @@ export default function PlantShiftLog() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All tanks</SelectItem>
-                <SelectItem value="TANK_1">Tank 1</SelectItem>
-                <SelectItem value="TANK_2">Tank 2</SelectItem>
+                <SelectItem value="TANK_1">Boiler tank</SelectItem>
+                <SelectItem value="TANK_2">Dryer tank</SelectItem>
               </SelectContent>
             </Select>
             <Link href={appendPlantContext("/plant/shift-log-manpower-review", { defaultTab: "operations" })}>
@@ -778,7 +778,7 @@ export default function PlantShiftLog() {
           <CardHeader><CardTitle>Plant Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Tank 1" : "Tank 2"} in this date range.` : "No plant logs in this date range."}</p> :
+              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Boiler tank" : "Dryer tank"} in this date range.` : "No plant logs in this date range."}</p> :
               <div className="space-y-4">
                 {Object.keys(grouped).map(d => (
                   <div key={d}>
@@ -995,15 +995,19 @@ export default function PlantShiftLog() {
           <div>
             <Label>Tank 1 Opening Dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => setBitumenTank1OpeningDip(e.target.value)} data-testid="input-bitumen-t1-open" />
-            {dipHint(bitumenTank1OpeningDip, t1Lpc) && (
+            {dipHint(bitumenTank1OpeningDip, t1Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip, t1Lpc)}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
             )}
           </div>
           <div>
             <Label>Tank 1 Closing Dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
-            {dipHint(bitumenTank1ClosingDip, t1Lpc) && (
+            {dipHint(bitumenTank1ClosingDip, t1Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip, t1Lpc)}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
             )}
           </div>
           <div />
@@ -1011,15 +1015,19 @@ export default function PlantShiftLog() {
           <div>
             <Label>Tank 2 Opening Dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => setBitumenTank2OpeningDip(e.target.value)} data-testid="input-bitumen-t2-open" />
-            {dipHint(bitumenTank2OpeningDip, t2Lpc) && (
+            {dipHint(bitumenTank2OpeningDip, t2Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip, t2Lpc)}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
             )}
           </div>
           <div>
             <Label>Tank 2 Closing Dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
-            {dipHint(bitumenTank2ClosingDip, t2Lpc) && (
+            {dipHint(bitumenTank2ClosingDip, t2Lpc) ? (
               <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip, t2Lpc)}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">Measure with a dip stick and enter reading in centimetres</p>
             )}
           </div>
         </CardContent>
@@ -1035,14 +1043,14 @@ export default function PlantShiftLog() {
             <div className="flex flex-wrap items-center gap-3">
               {/* Routes the dryer-meter consumption to the selected tank. */}
               <div className="flex items-center gap-2 rounded border border-dashed border-blue-300 bg-blue-50/40 dark:bg-blue-950/20 px-3 py-2">
-                <Label htmlFor="dryer-fed-from" className="text-xs">Dryer fed from</Label>
+                <Label htmlFor="dryer-fed-from" className="text-xs">Which tank feeds the dryer?</Label>
                 <Select value={dryerFedFrom} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
-                  <SelectTrigger id="dryer-fed-from" className="h-8 w-32" data-testid="select-dryer-fed-from">
+                  <SelectTrigger id="dryer-fed-from" className="h-8 w-36" data-testid="select-dryer-fed-from">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TANK_1">Tank 1</SelectItem>
-                    <SelectItem value="TANK_2">Tank 2</SelectItem>
+                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
+                    <SelectItem value="TANK_2">Dryer tank</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

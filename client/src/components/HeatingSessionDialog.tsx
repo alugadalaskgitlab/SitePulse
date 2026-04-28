@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
+import { Switch } from "@/components/ui/switch";
 import { Save, Loader2, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -371,8 +372,8 @@ export function HeatingSessionDialog({
         if (!slRes.ok) return;
         return slRes.json().then((sl: any) => {
           if (sl.dryerFedFrom && sl.dryerFedFrom !== saved.dryerFedFrom) {
-            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
-            const slLabel = sl.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const slLabel = sl.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
             const fixTarget: DryerSourceFixTarget = {
               mode: "shift-log",
               recordId: sl.id,
@@ -467,18 +468,18 @@ export function HeatingSessionDialog({
           <Card>
             <CardHeader className="py-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <CardTitle className="text-base">LDO Boiler Meter</CardTitle>
+                <CardTitle className="text-base">Boiler Fuel Meter</CardTitle>
                 {/* Recorded on the session for the day's record; routing
                     of dryer-meter consumption is on the matching shift log. */}
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="hs-dryer-fed-from" className="text-xs">Dryer fed from</Label>
+                  <Label htmlFor="hs-dryer-fed-from" className="text-xs">Which tank feeds the dryer?</Label>
                   <Select value={form.dryerFedFrom} onValueChange={(v) => setField("dryerFedFrom", v as "TANK_1" | "TANK_2")}>
-                    <SelectTrigger id="hs-dryer-fed-from" className="h-8 w-32" data-testid="select-hs-dryer-fed-from">
+                    <SelectTrigger id="hs-dryer-fed-from" className="h-8 w-36" data-testid="select-hs-dryer-fed-from">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="TANK_1">Tank 1</SelectItem>
-                      <SelectItem value="TANK_2">Tank 2</SelectItem>
+                      <SelectItem value="TANK_1">Boiler tank</SelectItem>
+                      <SelectItem value="TANK_2">Dryer tank</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -490,34 +491,43 @@ export function HeatingSessionDialog({
                 <Input type="number" step="0.01" value={form.ldoTank1OpeningMeter}
                   onChange={e => setForm(p => ({ ...p, ldoTank1OpeningMeter: e.target.value, autoFilledOpening: false }))}
                   data-testid="input-ldo-open" />
-                {form.autoFilledOpening && form.autoFilledSource && (
+                {form.autoFilledOpening && form.autoFilledSource ? (
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-hint">
                     Auto-filled from previous closing ({form.autoFilledSource})
                   </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">Read at start of session</p>
                 )}
               </div>
-              <div><Label>Closing Meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
+              <div>
+                <Label>Closing Meter</Label>
+                <Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" />
+                <p className="text-xs text-muted-foreground mt-1">Read at end of session</p>
+              </div>
               <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
               <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="py-3"><CardTitle className="text-base">Generator (DG) for this Session</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Label className="mr-2">DG Mode:</Label>
-                <Select value={form.dgMode} onValueChange={v => setField("dgMode", v as DgMode)}>
-                  <SelectTrigger className="w-48" data-testid="select-dg-mode"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No DG used</SelectItem>
-                    <SelectItem value="inline">Inline (capture here, auto-create Generator Log)</SelectItem>
-                    <SelectItem value="link">Link Existing Generator Log</SelectItem>
-                  </SelectContent>
-                </Select>
+            <CardHeader className="py-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="text-base">Generator (DG)</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="hs-dg-running"
+                    checked={form.dgMode !== "none"}
+                    onCheckedChange={v => setField("dgMode", v ? "inline" : "none")}
+                    data-testid="switch-dg-running"
+                  />
+                  <Label htmlFor="hs-dg-running" className="text-xs cursor-pointer">
+                    DG was running during this session
+                  </Label>
+                </div>
               </div>
-
-              {form.dgMode === "inline" && (
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {form.dgMode !== "none" && form.dgMode !== "link" && (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="md:col-span-2"><Label>Generator</Label>
@@ -581,14 +591,22 @@ export function HeatingSessionDialog({
                     <div><Label>HSD L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Tip: enter both clock time and hour-meter readings — the system uses the hour-meter when available and falls back to time. DG Hours Used drives the L/Hr metric. The "Diesel Balance in Tank (last)" chip is the most recent tank reading from Equipment Usage; "New Balance" is last + Issued − Consumed.
+                    Enter both the clock times and hour-meter readings. The system uses the hour-meter when available and falls back to clock time. "Diesel Balance (last)" is the most recent tank balance from Equipment Usage.
                   </p>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline underline-offset-2 mt-1"
+                    onClick={() => setField("dgMode", "link")}
+                    data-testid="button-dg-switch-to-link"
+                  >
+                    Link to an existing DG run record instead →
+                  </button>
                 </>
               )}
 
               {form.dgMode === "link" && (
-                <div>
-                  <Label>Existing DG Run (same date)</Label>
+                <div className="space-y-2">
+                  <Label>Select an existing DG run for this date</Label>
                   <Select
                     value={
                       form.linkSelection
@@ -620,6 +638,14 @@ export function HeatingSessionDialog({
                       This is an Equipment Usage entry — on Save it will be mirrored into Generator Logs and linked to this session.
                     </p>
                   )}
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline underline-offset-2"
+                    onClick={() => setField("dgMode", "inline")}
+                    data-testid="button-dg-switch-to-inline"
+                  >
+                    ← Enter DG details directly instead
+                  </button>
                 </div>
               )}
             </CardContent>
