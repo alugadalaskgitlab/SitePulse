@@ -39,6 +39,7 @@ import PlantLdoBackfill from "@/pages/PlantLdoBackfill";
 import PlantLdoDipBackfill from "@/pages/PlantLdoDipBackfill";
 import PlantStockReassign from "@/pages/PlantStockReassign";
 import PlantStockTransfer from "@/pages/PlantStockTransfer";
+import PlantLedgerRebuild from "@/pages/PlantLedgerRebuild";
 import PlantShiftLogManpowerReview from "@/pages/PlantShiftLogManpowerReview";
 import PlantShiftLog from "@/pages/PlantShiftLog";
 import PlantDailyReport from "@/pages/PlantDailyReport";
@@ -164,6 +165,7 @@ function AuthedShell() {
             <Route path="/plant/ldo-dip-backfill" component={gated(PlantLdoDipBackfill, "admin_settings")} />
             <Route path="/plant/stock-reassign" component={gated(PlantStockReassign, "plant_stock")} />
             <Route path="/plant/stock-transfer" component={gated(PlantStockTransfer, "plant_stock")} />
+            <Route path="/plant/ledger-rebuild" component={gated(PlantLedgerRebuild, "plant_stock")} />
             <Route path="/plant/shift-log-manpower-review" component={gated(PlantShiftLogManpowerReview, "plant_shift_logs")} />
             <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
             <Route path="/plant/shift-log/:date" component={gated(PlantShiftLog, "plant_shift_logs")} />

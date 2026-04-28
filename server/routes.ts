@@ -1093,6 +1093,22 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/plant-module/mix-templates/:id/rebuild-ledger", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const templateId = Number(req.params.id);
+      const { fromDateTime } = req.body;
+      if (!fromDateTime || typeof fromDateTime !== "string") {
+        return res.status(400).json({ message: "fromDateTime is required (ISO datetime string)" });
+      }
+      const result = await storage.rebuildDispatchLedgerForTemplate({ templateId, fromDateTime });
+      res.json(result);
+    } catch (err) {
+      console.error("Error rebuilding dispatch ledger:", err);
+      res.status(500).json({ message: "Failed to rebuild dispatch ledger" });
+    }
+  });
+
   // Equipment Master
   app.get("/api/plant-module/equipment", async (req, res) => {
     try {

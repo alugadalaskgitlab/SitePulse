@@ -302,6 +302,18 @@ export interface IStorage {
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
 
+  // Rebuild aggregate dispatch ledger entries for a template from a date+time cutoff
+  rebuildDispatchLedgerForTemplate(opts: {
+    templateId: number;
+    fromDateTime: string;
+  }): Promise<{
+    fromDateTime: string;
+    dispatches: number;
+    ledgerRowsDeleted: number;
+    ledgerRowsCreated: number;
+    errors: string[];
+  }>;
+
   // Admin: preview / move ledger rows between parties (historical reassignment).
   previewLedgerForReassignment(opts: {
     materialId: number;
@@ -3139,6 +3151,9 @@ export class DatabaseStorage implements IStorage {
       const ownerParty = allPartiesList.find(p => p.id === partyId);
       const ownerPartyName = ownerParty?.name || `Party #${partyId}`;
       
+      // Track ledger IDs inserted during this dispatch so we can backfill referenceId
+      const insertedLedgerIds: number[] = [];
+
       // Helper to deduct from a specific source and write ledger entry
       const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
         const condition = pId === null 
@@ -3156,7 +3171,7 @@ export class DatabaseStorage implements IStorage {
           await tx.insert(stockBalances).values({ partyId: pId, materialId: matId, balance: newBalance, uom });
         }
         
-        await tx.insert(stockLedger).values({
+        const [insertedRow] = await tx.insert(stockLedger).values({
           date: dispatchData.date,
           partyId: pId,
           materialId: matId,
@@ -3165,7 +3180,8 @@ export class DatabaseStorage implements IStorage {
           balanceAfter: newBalance,
           uom,
           notes,
-        });
+        }).returning({ id: stockLedger.id });
+        if (insertedRow?.id) insertedLedgerIds.push(insertedRow.id);
         
         return newBalance;
       };
@@ -3295,6 +3311,13 @@ export class DatabaseStorage implements IStorage {
         stockDeducted: 1,
         shortageWarning: shortages.length ? JSON.stringify(shortages) : null,
       }).returning();
+
+      // Backfill referenceId on all ledger rows created during this transaction
+      if (insertedLedgerIds.length > 0) {
+        await tx.update(stockLedger)
+          .set({ referenceId: result.id })
+          .where(inArray(stockLedger.id, insertedLedgerIds));
+      }
       
       // Create audit log entries if actual differs from theoretical
       if (hasAdjustment && Math.abs(bitumenVariancePercent) > 0.01) {
@@ -3323,6 +3346,175 @@ export class DatabaseStorage implements IStorage {
       
       return { dispatch: result, shortages };
     });
+  }
+
+  async rebuildDispatchLedgerForTemplate(opts: {
+    templateId: number;
+    fromDateTime: string;
+  }): Promise<{
+    fromDateTime: string;
+    dispatches: number;
+    ledgerRowsDeleted: number;
+    ledgerRowsCreated: number;
+    errors: string[];
+  }> {
+    const { templateId, fromDateTime } = opts;
+    const errors: string[] = [];
+
+    // 1. Get current components for this template
+    const components = await db.select().from(mixTemplateComponents)
+      .where(eq(mixTemplateComponents.templateId, templateId));
+    const aggMaterialIds = components.map(c => c.materialId);
+    if (!aggMaterialIds.length) {
+      return { fromDateTime, dispatches: 0, ledgerRowsDeleted: 0, ledgerRowsCreated: 0, errors: ['No aggregate components defined for this template'] };
+    }
+
+    // 2. Parse fromDateTime — format "YYYY-MM-DDTHH:MM" or ISO string
+    const fromDate = fromDateTime.substring(0, 10);    // YYYY-MM-DD
+    const fromTime = fromDateTime.substring(11, 16);   // HH:MM
+
+    // 3. Find all dispatches for this template at or after the cutoff
+    const allTemplateDispatches = await db.select().from(truckDispatches)
+      .where(eq(truckDispatches.mixTemplateId, templateId));
+
+    const affectedDispatches = allTemplateDispatches.filter(d => {
+      if (d.date > fromDate) return true;
+      if (d.date === fromDate) {
+        const dTime = d.time || '00:00';
+        return dTime >= fromTime;
+      }
+      return false;
+    });
+
+    if (!affectedDispatches.length) {
+      return { fromDateTime, dispatches: 0, ledgerRowsDeleted: 0, ledgerRowsCreated: 0, errors: [] };
+    }
+
+    // 4. Get HLC party for borrow-entry identification
+    const [hlcParty] = await db.select().from(parties)
+      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
+      .limit(1);
+    const hlcPartyId = hlcParty?.id ?? null;
+
+    const dispatchIds = affectedDispatches.map(d => d.id);
+    const affectedDates = [...new Set(affectedDispatches.map(d => d.date))];
+    const affectedPartyIds = [...new Set(
+      affectedDispatches.map(d => d.partyId).filter((id): id is number => id != null)
+    )];
+
+    // 5. Delete existing aggregate dispatch ledger entries
+    let ledgerRowsDeleted = 0;
+
+    // a. Precise deletion for entries with referenceId linking to these dispatches
+    const deleteByRef = await db.delete(stockLedger)
+      .where(
+        and(
+          inArray(stockLedger.referenceId, dispatchIds),
+          eq(stockLedger.transactionType, 'dispatch'),
+          inArray(stockLedger.materialId, aggMaterialIds)
+        )
+      )
+      .returning({ id: stockLedger.id });
+    ledgerRowsDeleted += deleteByRef.length;
+
+    // b. Legacy entries (no referenceId) — owner party
+    if (affectedDates.length > 0 && affectedPartyIds.length > 0) {
+      const deleteLegacy = await db.delete(stockLedger)
+        .where(
+          and(
+            eq(stockLedger.transactionType, 'dispatch'),
+            inArray(stockLedger.date, affectedDates),
+            inArray(stockLedger.materialId, aggMaterialIds),
+            inArray(stockLedger.partyId, affectedPartyIds),
+            isNull(stockLedger.referenceId),
+            sql`${stockLedger.notes} LIKE '%Aggregate dispatch%'`
+          )
+        )
+        .returning({ id: stockLedger.id });
+      ledgerRowsDeleted += deleteLegacy.length;
+    }
+
+    // c. Legacy entries — HLC borrow rows (no referenceId)
+    if (hlcPartyId && affectedDates.length > 0) {
+      const deleteHlc = await db.delete(stockLedger)
+        .where(
+          and(
+            eq(stockLedger.transactionType, 'dispatch'),
+            inArray(stockLedger.date, affectedDates),
+            inArray(stockLedger.materialId, aggMaterialIds),
+            eq(stockLedger.partyId, hlcPartyId),
+            isNull(stockLedger.referenceId),
+            sql`${stockLedger.notes} LIKE '%Borrowed from HLC%'`
+          )
+        )
+        .returning({ id: stockLedger.id });
+      ledgerRowsDeleted += deleteHlc.length;
+    }
+
+    // 6. Re-create aggregate dispatch ledger entries with current proportions
+    let ledgerRowsCreated = 0;
+
+    const allParties = await db.select().from(parties);
+    const partyNameMap = new Map(allParties.map(p => [p.id, p.name]));
+
+    const sortedDispatches = [...affectedDispatches].sort((a, b) => {
+      const dc = a.date.localeCompare(b.date);
+      if (dc !== 0) return dc;
+      return (a.time || '00:00').localeCompare(b.time || '00:00');
+    });
+
+    for (const dispatch of sortedDispatches) {
+      try {
+        const partyName = partyNameMap.get(dispatch.partyId ?? -1) || `Party #${dispatch.partyId}`;
+        const newAggregates: Record<number, number> = {};
+
+        for (const comp of components) {
+          const qty = +(dispatch.loadWeight * (comp as any).percent / 100).toFixed(9);
+          if (qty <= 0) continue;
+          const uom = 'Ton';
+          await db.insert(stockLedger).values({
+            date: dispatch.date,
+            partyId: dispatch.partyId,
+            materialId: comp.materialId,
+            transactionType: 'dispatch',
+            quantityOut: qty,
+            balanceAfter: 0,
+            uom,
+            notes: `Aggregate dispatch (${partyName})`,
+            referenceId: dispatch.id,
+          });
+          ledgerRowsCreated++;
+          newAggregates[comp.materialId] = qty;
+        }
+
+        // Update theoreticalAggregates on the dispatch record
+        await db.update(truckDispatches)
+          .set({ theoreticalAggregates: JSON.stringify(newAggregates) })
+          .where(eq(truckDispatches.id, dispatch.id));
+      } catch (err) {
+        errors.push(`Dispatch #${dispatch.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // 7. Recompute running balance_after for all affected materials
+    for (const matId of aggMaterialIds) {
+      try {
+        await this.recomputeBalanceAfterForMaterial(matId);
+      } catch (err) {
+        errors.push(`Balance recompute material #${matId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // 8. Reconcile stock_balances table to match ledger totals
+    await this.reconcileStockBalancesFromLedger();
+
+    return {
+      fromDateTime,
+      dispatches: affectedDispatches.length,
+      ledgerRowsDeleted,
+      ledgerRowsCreated,
+      errors,
+    };
   }
 
   async recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number; varianceFixed: number }> {

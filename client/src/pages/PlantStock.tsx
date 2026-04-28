@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -961,6 +961,13 @@ export default function PlantStock() {
               <MoveHorizontal className="w-4 h-4" /> Stock Transfer
             </Button>
           </Link>
+          {canReconcile && (
+            <Link href={appendPlantContext("/plant/ledger-rebuild", { defaultTab: "stock" })}>
+              <Button size="sm" variant="outline" className="gap-1 border-orange-300 text-orange-700 dark:text-orange-400" data-testid="link-ledger-rebuild">
+                <RotateCcw className="w-4 h-4" /> Rebuild Ledger
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
