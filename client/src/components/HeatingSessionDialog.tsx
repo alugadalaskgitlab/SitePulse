@@ -135,6 +135,7 @@ export function HeatingSessionDialog({
   });
   const [newGenDialogOpen, setNewGenDialogOpen] = useState(false);
   const [newGenNameInput, setNewGenNameInput] = useState("");
+  const [dgAdvancedOpen, setDgAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -487,7 +488,7 @@ export function HeatingSessionDialog({
             </CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <Label>Opening Meter</Label>
+                <Label>Boiler fuel meter — start reading</Label>
                 <Input type="number" step="0.01" value={form.ldoTank1OpeningMeter}
                   onChange={e => setForm(p => ({ ...p, ldoTank1OpeningMeter: e.target.value, autoFilledOpening: false }))}
                   data-testid="input-ldo-open" />
@@ -496,13 +497,13 @@ export function HeatingSessionDialog({
                     Auto-filled from previous closing ({form.autoFilledSource})
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Read at start of session</p>
+                  <p className="text-xs text-muted-foreground mt-1">Read the meter at the start of this session</p>
                 )}
               </div>
               <div>
-                <Label>Closing Meter</Label>
+                <Label>Boiler fuel meter — end reading</Label>
                 <Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" />
-                <p className="text-xs text-muted-foreground mt-1">Read at end of session</p>
+                <p className="text-xs text-muted-foreground mt-1">Read the meter when the session ends</p>
               </div>
               <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
               <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
@@ -530,7 +531,8 @@ export function HeatingSessionDialog({
               {form.dgMode !== "none" && form.dgMode !== "link" && (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="md:col-span-2"><Label>Generator</Label>
+                    <div className="md:col-span-2">
+                      <Label>Generator</Label>
                       <Select
                         value={form.dgGeneratorName || undefined}
                         onValueChange={v => {
@@ -555,47 +557,74 @@ export function HeatingSessionDialog({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div><Label>DG Start</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
-                    <div><Label>DG End</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
-                    <div><Label>Hours from Time</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-time">{dgDurFromTime ?? "—"}</div></div>
-                    <div><Label>Hour-Meter Opening</Label><Input type="number" step="0.01" value={form.dgOpeningHourMeter} onChange={e => setField("dgOpeningHourMeter", e.target.value)} data-testid="input-dg-hm-open" /></div>
-                    <div><Label>Hour-Meter Closing</Label><Input type="number" step="0.01" value={form.dgClosingHourMeter} onChange={e => setField("dgClosingHourMeter", e.target.value)} data-testid="input-dg-hm-close" /></div>
-                    <div><Label>Hours from Meter</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-meter">{dgDurFromMeter ?? "—"}</div></div>
-                    <div><Label>DG Hours Used</Label><div className="px-3 py-2 rounded bg-emerald-50 dark:bg-emerald-950/30 font-semibold text-sm" data-testid="text-dg-hrs-used">{dgHoursUsed != null ? dgHoursUsed.toFixed(2) : "—"}</div></div>
-                    <div><Label>HSD Opening (L)</Label><Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" /></div>
-                    <div><Label>HSD Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
-                    <div><Label>HSD Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
-                    <div><Label>HSD Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
+                    <div><Label>DG started at</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
+                    <div><Label>DG stopped at</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
                     <div>
-                      <Label>Diesel Balance in Tank (last)</Label>
-                      <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-prev-balance">
-                        {selectedGeneratorEquipmentId == null
-                          ? "—"
-                          : dgPrevBalance
-                            ? `${dgPrevBalance.previousBalance.toFixed(2)} L`
-                            : "…"}
-                      </div>
+                      <Label>Diesel in tank — opening (L)</Label>
+                      <Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" />
+                      <p className="text-xs text-muted-foreground mt-1">Check dipstick before starting</p>
                     </div>
                     <div>
-                      <Label>New Balance in Tank</Label>
-                      <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-new-balance">
-                        {(() => {
-                          if (selectedGeneratorEquipmentId == null || !dgPrevBalance) return "—";
-                          const issued = parseFloat(form.dgIssuedDiesel) || 0;
-                          const consumed = dgConsumed ?? 0;
-                          const next = dgPrevBalance.previousBalance + issued - consumed;
-                          return `${next.toFixed(2)} L`;
-                        })()}
-                      </div>
+                      <Label>Diesel added to tank (L)</Label>
+                      <Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" />
+                      <p className="text-xs text-muted-foreground mt-1">Leave blank if nothing was added</p>
                     </div>
-                    <div><Label>HSD L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
+                    <div>
+                      <Label>Diesel in tank — closing (L)</Label>
+                      <Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" />
+                      <p className="text-xs text-muted-foreground mt-1">Check dipstick after stopping</p>
+                    </div>
+                    <div>
+                      <Label>Diesel used (L)</Label>
+                      <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Calculated automatically</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Enter both the clock times and hour-meter readings. The system uses the hour-meter when available and falls back to clock time. "Diesel Balance (last)" is the most recent tank balance from Equipment Usage.
-                  </p>
+
                   <button
                     type="button"
-                    className="text-xs text-muted-foreground underline underline-offset-2 mt-1"
+                    className="text-xs text-muted-foreground underline underline-offset-2"
+                    onClick={() => setDgAdvancedOpen(v => !v)}
+                    data-testid="button-dg-advanced-toggle"
+                  >
+                    {dgAdvancedOpen ? "▲ Hide advanced fields" : "▼ Show hour-meter and balance fields"}
+                  </button>
+
+                  {dgAdvancedOpen && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t">
+                      <div><Label>Hour-meter — start</Label><Input type="number" step="0.01" value={form.dgOpeningHourMeter} onChange={e => setField("dgOpeningHourMeter", e.target.value)} data-testid="input-dg-hm-open" /></div>
+                      <div><Label>Hour-meter — end</Label><Input type="number" step="0.01" value={form.dgClosingHourMeter} onChange={e => setField("dgClosingHourMeter", e.target.value)} data-testid="input-dg-hm-close" /></div>
+                      <div><Label>Hours from meter</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-meter">{dgDurFromMeter ?? "—"}</div></div>
+                      <div><Label>Hours from clock time</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-time">{dgDurFromTime ?? "—"}</div></div>
+                      <div><Label>DG hours used</Label><div className="px-3 py-2 rounded bg-emerald-50 dark:bg-emerald-950/30 font-semibold text-sm" data-testid="text-dg-hrs-used">{dgHoursUsed != null ? dgHoursUsed.toFixed(2) : "—"}</div></div>
+                      <div>
+                        <Label>Previous tank balance (L)</Label>
+                        <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-prev-balance">
+                          {selectedGeneratorEquipmentId == null ? "—" : dgPrevBalance ? `${dgPrevBalance.previousBalance.toFixed(2)} L` : "…"}
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Updated tank balance (L)</Label>
+                        <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-new-balance">
+                          {(() => {
+                            if (selectedGeneratorEquipmentId == null || !dgPrevBalance) return "—";
+                            const issued = parseFloat(form.dgIssuedDiesel) || 0;
+                            const consumed = dgConsumed ?? 0;
+                            const next = dgPrevBalance.previousBalance + issued - consumed;
+                            return `${next.toFixed(2)} L`;
+                          })()}
+                        </div>
+                      </div>
+                      <div><Label>Diesel used per hour (L/hr)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
+                      <div className="md:col-span-4 text-xs text-muted-foreground">
+                        The system uses the hour-meter when both opening and closing readings are provided; otherwise it falls back to clock times. DG hours used drives the diesel-per-hour metric.
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline underline-offset-2"
                     onClick={() => setField("dgMode", "link")}
                     data-testid="button-dg-switch-to-link"
                   >

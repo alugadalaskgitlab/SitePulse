@@ -1258,9 +1258,9 @@ export default function PlantLdoMismatch() {
                     <th className="py-2 px-3 text-right">Sessions (L)</th>
                     <th className="py-2 px-3 text-right">Shift (L)</th>
                     <th className="py-2 px-3 text-right">Ledger (L)</th>
-                    <th className="py-2 px-3 text-right">Sess vs Shift</th>
-                    <th className="py-2 px-3 text-right">Sess vs Ledger</th>
-                    <th className="py-2 px-3 text-right">Shift vs Ledger</th>
+                    <th className="py-2 px-3 text-right">Session total vs shift meter</th>
+                    <th className="py-2 px-3 text-right">Session total vs LDO ledger</th>
+                    <th className="py-2 px-3 text-right">Shift meter vs LDO ledger</th>
                     <th className="py-2 px-3 text-right" />
                   </tr>
                 </thead>
