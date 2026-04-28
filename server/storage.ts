@@ -3368,6 +3368,8 @@ export class DatabaseStorage implements IStorage {
     if (!aggMaterialIds.length) {
       return { fromDateTime, dispatches: 0, ledgerRowsDeleted: 0, ledgerRowsCreated: 0, errors: ['No aggregate components defined for this template'] };
     }
+    // Grows to include removed-component materials discovered during rebuild
+    const allAffectedMatIds = new Set<number>(aggMaterialIds);
 
     // 2. Parse fromDateTime — format "YYYY-MM-DDTHH:MM"
     const fromDate = fromDateTime.substring(0, 10);
@@ -3407,14 +3409,17 @@ export class DatabaseStorage implements IStorage {
     // ambiguity: we never bulk-delete unlinked rows (which could hit pre-cutoff
     // dispatches on the same date), and HLC borrow entries that belong to legacy
     // dispatches are left intact — only the delta adjustment is inserted.
+    // A dispatch is "linked" if any stock-ledger dispatch row has its ID as referenceId.
+    // We intentionally do NOT filter by aggMaterialIds here so that dispatches whose
+    // only linked rows are for materials removed from the template are still classified
+    // as "linked" (precise delete+recreate rather than delta).
     const linkedCheck = await db
       .select({ referenceId: stockLedger.referenceId })
       .from(stockLedger)
       .where(
         and(
           inArray(stockLedger.referenceId, dispatchIds),
-          eq(stockLedger.transactionType, 'dispatch'),
-          inArray(stockLedger.materialId, aggMaterialIds)
+          eq(stockLedger.transactionType, 'dispatch')
         )
       );
     const linkedDispatchIds = new Set(
@@ -3449,16 +3454,20 @@ export class DatabaseStorage implements IStorage {
     // ── PART A: Linked dispatches — delete and recreate precisely ────────────────
     if (linkedDispatches.length > 0) {
       const linkedIds = linkedDispatches.map(d => d.id);
+
+      // Delete ALL aggregate dispatch rows for these dispatches — no materialId
+      // filter — so rows for materials removed from the template are also purged.
       const deleted = await db.delete(stockLedger)
         .where(
           and(
             inArray(stockLedger.referenceId, linkedIds),
-            eq(stockLedger.transactionType, 'dispatch'),
-            inArray(stockLedger.materialId, aggMaterialIds)
+            eq(stockLedger.transactionType, 'dispatch')
           )
         )
-        .returning({ id: stockLedger.id });
+        .returning({ id: stockLedger.id, materialId: stockLedger.materialId });
       ledgerRowsDeleted += deleted.length;
+      // Track every material that had rows deleted for balance recompute later
+      deleted.forEach(r => { if (r.materialId != null) allAffectedMatIds.add(r.materialId); });
 
       for (const dispatch of sortByDateTime(linkedDispatches)) {
         try {
@@ -3558,6 +3567,9 @@ export class DatabaseStorage implements IStorage {
       ledgerRowsCreated++;
     };
 
+    // Current components keyed by materialId for fast lookup
+    const currentCompByMat = new Map(components.map(c => [c.materialId, c]));
+
     for (const dispatch of sortByDateTime(legacyDispatches)) {
       try {
         let oldAggregates: Record<string, number> = {};
@@ -3570,11 +3582,24 @@ export class DatabaseStorage implements IStorage {
         const partyName = partyNameMap.get(dispatch.partyId ?? -1) ?? `Party #${dispatch.partyId}`;
         const newAggregates: Record<number, number> = {};
 
-        for (const comp of components) {
-          const newQty = +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9);
-          const oldQty = +(oldAggregates[String(comp.materialId)] ?? 0);
+        // Union of current component materialIds and any materialIds recorded in
+        // oldAggregates — so removed materials get a full reversal delta.
+        const legacyMatIds = new Set<number>([
+          ...components.map(c => c.materialId),
+          ...Object.keys(oldAggregates).map(Number).filter(n => !isNaN(n)),
+        ]);
+
+        for (const matId of legacyMatIds) {
+          allAffectedMatIds.add(matId);
+          const comp = currentCompByMat.get(matId);
+          const newQty = comp
+            ? +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9)
+            : 0;
+          const oldQty = +(oldAggregates[String(matId)] ?? 0);
           const totalDelta = +(newQty - oldQty).toFixed(9);
-          newAggregates[comp.materialId] = newQty;
+
+          // Only persist into newAggregates for active (current) components
+          if (comp && newQty > 0) newAggregates[matId] = newQty;
 
           if (Math.abs(totalDelta) < 0.0001) continue;
 
@@ -3584,7 +3609,7 @@ export class DatabaseStorage implements IStorage {
             try {
               const sw: { materialId: number; required: number; available: number }[] =
                 JSON.parse(dispatch.shortageWarning as string) ?? [];
-              const s = sw.find(x => x.materialId === comp.materialId);
+              const s = sw.find(x => x.materialId === matId);
               if (s && s.required > 0) {
                 ownerFraction = Math.min(1, Math.max(0, s.available / s.required));
               }
@@ -3594,11 +3619,11 @@ export class DatabaseStorage implements IStorage {
           const ownerDelta = +(totalDelta * ownerFraction).toFixed(9);
           const hlcDelta   = +(totalDelta - ownerDelta).toFixed(9);
 
-          await insertLegacyDeltaEntry(dispatch.partyId, partyName, dispatch.date, comp.materialId, ownerDelta, dispatch.id);
+          await insertLegacyDeltaEntry(dispatch.partyId, partyName, dispatch.date, matId, ownerDelta, dispatch.id);
 
           if (Math.abs(hlcDelta) >= 0.0001 && hlcPartyId !== null) {
             const hlcLabel = partyNameMap.get(hlcPartyId) ?? "HLC";
-            await insertLegacyDeltaEntry(hlcPartyId, hlcLabel, dispatch.date, comp.materialId, hlcDelta, dispatch.id);
+            await insertLegacyDeltaEntry(hlcPartyId, hlcLabel, dispatch.date, matId, hlcDelta, dispatch.id);
           }
         }
 
@@ -3615,7 +3640,8 @@ export class DatabaseStorage implements IStorage {
     await this.recalculateAllDispatchConsumption();
 
     // 8. Recompute running balanceAfter for every affected material
-    for (const matId of aggMaterialIds) {
+    // (includes removed-component materials discovered during rebuild)
+    for (const matId of allAffectedMatIds) {
       try {
         await this.recomputeBalanceAfterForMaterial(matId);
       } catch (err) {

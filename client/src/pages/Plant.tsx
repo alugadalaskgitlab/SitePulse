@@ -1632,7 +1632,7 @@ function MixTemplateMaster() {
   const rebuildLedgerMutation = useMutation({
     mutationFn: ({ templateId, fromDateTime }: { templateId: number; fromDateTime: string }) =>
       apiRequest("POST", `/api/plant-module/mix-templates/${templateId}/rebuild-ledger`, { fromDateTime }).then(r => r.json()),
-    onSuccess: (data: { dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] }) => {
+    onSuccess: (data: { fromDateTime: string; dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] }) => {
       setRebuildResult(data);
     },
     onError: (error: any) => {
