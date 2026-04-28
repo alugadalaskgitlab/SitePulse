@@ -1098,7 +1098,10 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const templateId = Number(req.params.id);
       const bodySchema = z.object({
-        fromDateTime: z.string().min(10, "fromDateTime must be a valid datetime string (YYYY-MM-DDTHH:MM)"),
+        fromDateTime: z.string().regex(
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
+          "fromDateTime must be in YYYY-MM-DDTHH:MM format"
+        ),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {

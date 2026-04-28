@@ -1584,7 +1584,7 @@ function MixTemplateMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { 
+    mutationFn: ({ id, data, _proportionsChanged: _ }: { id: number; _proportionsChanged?: boolean; data: { 
       name?: string; 
       mixType?: string; 
       bitumenPercent?: number; 
@@ -1599,7 +1599,7 @@ function MixTemplateMaster() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDialogOpen(false);
       resetForm();
-      if (isAdmin) setPostSaveAlertTemplate({ id: savedId, name: savedName });
+      if (isAdmin && variables._proportionsChanged) setPostSaveAlertTemplate({ id: savedId, name: savedName });
       toast({ title: "Mix template updated successfully" });
     },
     onError: (error: any) => {
@@ -1710,7 +1710,14 @@ function MixTemplateMaster() {
     };
 
     if (editingTemplate) {
-      updateMutation.mutate({ id: editingTemplate.id, data });
+      // Detect whether component proportions changed for the post-save rebuild prompt
+      const prevComponents = allComponents?.filter(c => c.templateId === editingTemplate.id) ?? [];
+      const prevMap = new Map(prevComponents.map(c => [c.materialId, c.percent ?? 0]));
+      const nextComponents = data.components ?? [];
+      const proportionsChanged =
+        nextComponents.some(nc => Math.abs((prevMap.get(nc.materialId) ?? -1) - nc.percent) > 0.001) ||
+        prevComponents.some(pc => !nextComponents.find(nc => nc.materialId === pc.materialId));
+      updateMutation.mutate({ id: editingTemplate.id, data, _proportionsChanged: proportionsChanged });
     } else {
       createMutation.mutate(data);
     }
