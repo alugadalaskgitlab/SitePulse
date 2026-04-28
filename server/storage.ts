@@ -320,6 +320,17 @@ export interface IStorage {
     transactionType?: string;
   }): Promise<{ moved: number; totalIn: number; totalOut: number; reconciled: { updated: number; created: number; errors: number } }>;
 
+  // Create a forward stock transfer between two parties (e.g. returning borrowed material)
+  createStockTransfer(opts: {
+    materialId: number;
+    fromPartyId: number;
+    toPartyId: number;
+    quantity: number;
+    date: string;
+    notes?: string;
+    actorName?: string;
+  }): Promise<{ outEntry: StockLedgerEntry; inEntry: StockLedgerEntry; reconciled: { updated: number; created: number; errors: number } }>;
+
   // Migrate orphan stock (NULL partyId) to HLC party
   migrateOrphanStockToHLC(): Promise<{ ledgerFixed: number; balancesMerged: number; errors: number }>;
   
@@ -3556,6 +3567,63 @@ export class DatabaseStorage implements IStorage {
     const reconciled = await this.reconcileStockBalancesFromLedger();
 
     return { moved: matched.length, totalIn, totalOut, reconciled };
+  }
+
+  // Create a forward inter-party stock transfer (e.g. returning borrowed material to HLC).
+  // Writes two ledger rows in a transaction, then reconciles balances.
+  async createStockTransfer(opts: {
+    materialId: number;
+    fromPartyId: number;
+    toPartyId: number;
+    quantity: number;
+    date: string;
+    notes?: string;
+    actorName?: string;
+  }): Promise<{ outEntry: StockLedgerEntry; inEntry: StockLedgerEntry; reconciled: { updated: number; created: number; errors: number } }> {
+    const { materialId, fromPartyId, toPartyId, quantity, date, notes, actorName } = opts;
+
+    // Resolve UOM from material master
+    const [material] = await db.select().from(plantMaterials).where(eq(plantMaterials.id, materialId));
+    const uom = material?.defaultUom || "MT";
+
+    // Resolve party names for audit notes
+    const [fromParty] = await db.select().from(parties).where(eq(parties.id, fromPartyId));
+    const [toParty] = await db.select().from(parties).where(eq(parties.id, toPartyId));
+    const fromName = fromParty?.name || `Party ${fromPartyId}`;
+    const toName = toParty?.name || `Party ${toPartyId}`;
+    const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const actorTag = actorName ? ` by ${actorName}` : "";
+
+    const [outRow, inRow] = await db.transaction(async (tx) => {
+      const [out] = await tx.insert(stockLedger).values({
+        date,
+        partyId: fromPartyId,
+        materialId,
+        transactionType: "transfer",
+        quantityIn: 0,
+        quantityOut: quantity,
+        uom,
+        notes: `Transfer → ${toName}${actorTag} [${stamp}]${notes ? `: ${notes}` : ""}`,
+      }).returning();
+
+      const [ins] = await tx.insert(stockLedger).values({
+        date,
+        partyId: toPartyId,
+        materialId,
+        transactionType: "transfer",
+        quantityIn: quantity,
+        quantityOut: 0,
+        uom,
+        notes: `Transfer from ${fromName}${actorTag} [${stamp}]${notes ? `: ${notes}` : ""}`,
+      }).returning();
+
+      return [out, ins];
+    });
+
+    await this.recomputeBalanceAfterForMaterial(materialId);
+    const reconciled = await this.reconcileStockBalancesFromLedger();
+
+    return { outEntry: outRow, inEntry: inRow, reconciled };
   }
 
   // Rewrites the running `balance_after` column on stock_ledger chronologically,

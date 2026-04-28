@@ -2015,6 +2015,48 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: forward inter-party stock transfer (e.g. returning borrowed material to HLC).
+  // Writes two ledger rows (OUT from source, IN to destination) and reconciles balances.
+  app.post("/api/plant-module/stock-transfer", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const { materialId, fromPartyId, toPartyId, quantity, date, notes } = req.body || {};
+      const actorName = currentUserName(req);
+      if (!materialId || !fromPartyId || !toPartyId || !quantity || !date) {
+        return res.status(400).json({ message: "materialId, fromPartyId, toPartyId, quantity and date are required" });
+      }
+      if (parseInt(fromPartyId) === parseInt(toPartyId)) {
+        return res.status(400).json({ message: "From and To parties must differ" });
+      }
+      if (Number(quantity) <= 0) {
+        return res.status(400).json({ message: "Quantity must be greater than zero" });
+      }
+      const result = await storage.createStockTransfer({
+        materialId: parseInt(materialId),
+        fromPartyId: parseInt(fromPartyId),
+        toPartyId: parseInt(toPartyId),
+        quantity: Number(quantity),
+        date,
+        notes: notes || undefined,
+        actorName: actorName.trim() || undefined,
+      });
+      console.info(
+        `[StockTransfer] actor="${actorName.trim()}" materialId=${materialId} ` +
+        `from=${fromPartyId} to=${toPartyId} qty=${quantity} date=${date} ` +
+        `at=${new Date().toISOString()}`
+      );
+      res.json({
+        message: "Stock transfer recorded and balances updated",
+        outEntry: result.outEntry,
+        inEntry: result.inEntry,
+        reconciled: result.reconciled,
+      });
+    } catch (err: any) {
+      console.error("Stock transfer error:", err);
+      res.status(500).json({ message: err.message || "Failed to create stock transfer" });
+    }
+  });
+
   // Admin: rewrite the historical `balance_after` column for a given material,
   // chronologically per (party, material). Used to clean up displays after
   // legacy data moves. Auth: session-role check via assertAdmin (no legacy PIN field).

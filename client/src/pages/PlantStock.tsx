@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, X } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -941,6 +941,11 @@ export default function PlantStock() {
           <Link href={appendPlantContext("/plant/stock-reassign", { defaultTab: "stock" })}>
             <Button size="sm" variant="outline" className="gap-1 border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-stock-reassign">
               <ArrowRightLeft className="w-4 h-4" /> Reassign Ledger
+            </Button>
+          </Link>
+          <Link href={appendPlantContext("/plant/stock-transfer", { defaultTab: "stock" })}>
+            <Button size="sm" variant="outline" className="gap-1 border-blue-300 text-blue-700 dark:text-blue-400" data-testid="link-stock-transfer">
+              <MoveHorizontal className="w-4 h-4" /> Stock Transfer
             </Button>
           </Link>
         </div>
