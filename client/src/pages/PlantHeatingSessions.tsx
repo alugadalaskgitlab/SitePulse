@@ -840,7 +840,7 @@ export default function PlantHeatingSessions() {
                             onClick={() => alignMutation.mutate({ sessionIds: allSessionIds, targetValue: "TANK_1" })}
                             data-testid={`button-align-tank1-${date}`}
                           >
-                            {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T1"}
+                            {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → Boiler tank"}
                           </Button>
                           <Button
                             size="sm"
@@ -850,7 +850,7 @@ export default function PlantHeatingSessions() {
                             onClick={() => alignMutation.mutate({ sessionIds: allSessionIds, targetValue: "TANK_2" })}
                             data-testid={`button-align-tank2-${date}`}
                           >
-                            {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T2"}
+                            {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → Dryer tank"}
                           </Button>
                         </div>
                       );
@@ -925,7 +925,7 @@ export default function PlantHeatingSessions() {
                               )}
                               {(s.dryerFedFrom === "TANK_1" || s.dryerFedFrom === "TANK_2") && (
                                 <Badge variant="outline" className="text-xs border-sky-400 text-sky-700 dark:text-sky-400" data-testid={`badge-dryer-fed-${s.id}`}>
-                                  Dryer: {s.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
+                                  Dryer fed from: {s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank"}
                                 </Badge>
                               )}
                               {conflictingSessionIds.has(s.id) && (() => {
@@ -1055,11 +1055,11 @@ export default function PlantHeatingSessions() {
                   <div className="text-sm font-medium text-muted-foreground pb-2">Start °C</div>
                   <div className="text-sm font-medium text-muted-foreground pb-2">End °C</div>
 
-                  <Label className="pb-2">Bitumen T1</Label>
+                  <Label className="pb-2">Bitumen tank 1 (boiler)</Label>
                   <Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" />
                   <Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" />
 
-                  <Label className="pb-2">Bitumen T2</Label>
+                  <Label className="pb-2">Bitumen tank 2 (dryer)</Label>
                   <Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" />
                   <Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" />
                 </div>
