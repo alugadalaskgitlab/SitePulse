@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
+import { generateOperatorManualPdf } from './operator-manual-pdf';
 import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -652,6 +653,21 @@ export async function registerRoutes(
     }
     await storage.setSetting('manager_pin', newPin);
     res.json({ ok: true });
+  });
+
+  // Operator instruction manual — PDF download (admin only)
+  app.get('/api/admin/operator-manual.pdf', async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    try {
+      const pdfBuffer = await generateOperatorManualPdf();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="plant-operator-guide.pdf"');
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.end(pdfBuffer);
+    } catch (err) {
+      console.error('Operator manual PDF generation failed:', err);
+      res.status(500).json({ message: 'Failed to generate PDF' });
+    }
   });
 
   // NOTE (Task #248): The /api/plant-module/alert-thresholds and

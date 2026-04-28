@@ -30,7 +30,7 @@ export default function Plant() {
   const tabParam = params.get("tab");
 
   const [activeTab, setActiveTab] = useState(tabParam || "operations");
-  const { sectionVisible } = useAuth();
+  const { sectionVisible, isAdmin } = useAuth();
 
   const { getBackLink } = useOrigin();
   const backLink = getBackLink("/");
@@ -87,6 +87,18 @@ export default function Plant() {
             <p className="text-muted-foreground mt-1">Hot-mix plant operations and material tracking</p>
           </div>
         </div>
+        {isAdmin && (
+          <a
+            href="/api/admin/operator-manual.pdf"
+            download="plant-operator-guide.pdf"
+            data-testid="link-operator-manual"
+          >
+            <Button variant="outline" size="sm" className="gap-2">
+              <Download className="w-4 h-4" />
+              Operator Guide (PDF)
+            </Button>
+          </a>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
