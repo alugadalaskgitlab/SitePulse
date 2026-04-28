@@ -6,6 +6,7 @@ import { z } from "zod";
 import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
+import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -665,6 +666,20 @@ export async function registerRoutes(
       await pipeOperatorManualPdf(res, plantName);
     } catch (err) {
       console.error('Operator manual PDF generation failed:', err);
+      if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
+    }
+  });
+
+  // Admin & Manager guide — PDF download (admin only)
+  app.get('/api/admin/admin-guide.pdf', async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    const plantName = typeof req.query.plant === 'string' ? req.query.plant.trim() : undefined;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="plant-admin-guide.pdf"');
+    try {
+      await pipeAdminGuidePdf(res, plantName);
+    } catch (err) {
+      console.error('Admin guide PDF generation failed:', err);
       if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
     }
   });

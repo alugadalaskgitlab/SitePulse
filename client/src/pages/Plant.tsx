@@ -107,6 +107,20 @@ export default function Plant() {
             </Button>
           </a>
         )}
+        {isAdmin && (
+          <a
+            href={primaryPlantName
+              ? `/api/admin/admin-guide.pdf?plant=${encodeURIComponent(primaryPlantName)}`
+              : '/api/admin/admin-guide.pdf'}
+            download="plant-admin-guide.pdf"
+            data-testid="link-admin-guide"
+          >
+            <Button variant="outline" size="sm" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Admin Guide (PDF)
+            </Button>
+          </a>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
