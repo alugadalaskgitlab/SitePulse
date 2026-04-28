@@ -12,13 +12,20 @@ import { useToast } from "@/hooks/use-toast";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
-import type { Party, PlantMaterial as Material } from "@shared/schema";
+import type { Party, PlantMaterial as Material, StockLedgerEntry } from "@shared/schema";
 
 type StockBalance = {
   partyId: number | null;
   materialId: number;
   balance: number;
   uom: string | null;
+};
+
+type StockTransferResult = {
+  message: string;
+  outEntry: StockLedgerEntry;
+  inEntry: StockLedgerEntry;
+  reconciled: { updated: number; created: number; errors: number };
 };
 
 function getErrorMessage(err: unknown): string {
@@ -29,7 +36,8 @@ function getErrorMessage(err: unknown): string {
 export default function PlantStockTransfer() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { isAdmin } = useAuth();
+  const { isAdmin, sectionCan } = useAuth();
+  const canTransfer = isAdmin || sectionCan("plant_stock", "create");
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
   const today = format(new Date(), "yyyy-MM-dd");
@@ -41,11 +49,11 @@ export default function PlantStockTransfer() {
   const [date, setDate] = useState<string>(today);
   const [notes, setNotes] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<{ outEntry: any; inEntry: any } | null>(null);
+  const [result, setResult] = useState<StockTransferResult | null>(null);
 
-  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: isAdmin });
-  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: isAdmin });
-  const { data: allBalances } = useQuery<StockBalance[]>({ queryKey: ["/api/plant-module/stock-balances"], enabled: isAdmin });
+  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: canTransfer });
+  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: canTransfer });
+  const { data: allBalances } = useQuery<StockBalance[]>({ queryKey: ["/api/plant-module/stock-balances"], enabled: canTransfer });
 
   const fromPartyBalance = useMemo(() => {
     if (!allBalances || !materialId || !fromPartyId) return null;
@@ -84,7 +92,7 @@ export default function PlantStockTransfer() {
   const fromBalance = fromPartyBalance?.balance ?? null;
   const isOverBalance = fromBalance !== null && qtyNum > fromBalance && fromBalance >= 0;
   const canSave =
-    isAdmin &&
+    canTransfer &&
     !!materialId &&
     !!fromPartyId &&
     !!toPartyId &&
@@ -123,12 +131,12 @@ export default function PlantStockTransfer() {
     }
   };
 
-  if (!isAdmin) {
+  if (!canTransfer) {
     return (
       <div className="p-8 max-w-md mx-auto text-center space-y-4">
         <ShieldAlert className="w-10 h-10 mx-auto text-amber-600" />
-        <h1 className="text-xl font-bold">Admin access required</h1>
-        <p className="text-sm text-muted-foreground">Stock transfers are restricted to administrators.</p>
+        <h1 className="text-xl font-bold">Access required</h1>
+        <p className="text-sm text-muted-foreground">Stock transfers require admin or manager create access.</p>
         <Link href={backLink}><Button variant="outline">Back</Button></Link>
       </div>
     );
