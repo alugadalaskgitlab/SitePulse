@@ -5920,6 +5920,32 @@ export class DatabaseStorage implements IStorage {
     return !!deleted;
   }
 
+  async getOrphanedLdoFlowRows(filters: { dateFrom?: string; dateTo?: string; plant?: string }): Promise<LdoFlowReading[]> {
+    const conds = [isNotNull(ldoFlowReadings.sourceHeatingSessionId)];
+    if (filters.dateFrom) conds.push(gte(ldoFlowReadings.date, filters.dateFrom));
+    if (filters.dateTo) conds.push(lte(ldoFlowReadings.date, filters.dateTo));
+    if (filters.plant) conds.push(eq(ldoFlowReadings.plantName, filters.plant));
+
+    const rows = await db.select().from(ldoFlowReadings).where(and(...conds));
+    if (rows.length === 0) return [];
+
+    const sessionIds = [...new Set(rows.map(r => r.sourceHeatingSessionId!))];
+    const existing = await db
+      .select({ id: bitumenHeatingSessions.id })
+      .from(bitumenHeatingSessions)
+      .where(inArray(bitumenHeatingSessions.id, sessionIds));
+    const existingSet = new Set(existing.map(s => s.id));
+    return rows.filter(r => !existingSet.has(r.sourceHeatingSessionId!));
+  }
+
+  async deleteOrphanedLdoFlowRows(filters: { dateFrom?: string; dateTo?: string; plant?: string }): Promise<{ deleted: number }> {
+    const orphaned = await this.getOrphanedLdoFlowRows(filters);
+    if (orphaned.length === 0) return { deleted: 0 };
+    const ids = orphaned.map(r => r.id);
+    await db.delete(ldoFlowReadings).where(inArray(ldoFlowReadings.id, ids));
+    return { deleted: ids.length };
+  }
+
   // --- LDO Flow-Meter Backfill (admin-only historical entry) -----------------
   // Backfill rows live alongside shift-log / heating-session / manual rows in
   // `ldo_flow_readings`. They are identified by a "[BACKFILL ...]" marker in

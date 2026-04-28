@@ -2719,6 +2719,32 @@ export async function registerRoutes(
     }
   });
 
+  // Orphaned LDO flow readings — rows that reference a deleted heating session
+  app.get("/api/plant-module/ldo-orphaned-rows", async (req, res) => {
+    try {
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      const plant = req.query.plant as string | undefined;
+      const rows = await storage.getOrphanedLdoFlowRows({ dateFrom, dateTo, plant });
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch orphaned LDO rows" });
+    }
+  });
+
+  app.delete("/api/plant-module/ldo-orphaned-rows", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      const plant = req.query.plant as string | undefined;
+      const result = await storage.deleteOrphanedLdoFlowRows({ dateFrom, dateTo, plant });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete orphaned LDO rows" });
+    }
+  });
+
   // ============================================
   // LDO FLOW METER BACKFILL (admin-only)
   // Lets an admin enter historical Tank-1/Tank-2 opening + closing meters

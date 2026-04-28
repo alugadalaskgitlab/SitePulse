@@ -754,7 +754,7 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   notes: text("notes"),
   plantName: text("plant_name").notNull().default("Main Plant"),
   sourceShiftLogId: integer("source_shift_log_id"),
-  sourceHeatingSessionId: integer("source_heating_session_id"),
+  sourceHeatingSessionId: integer("source_heating_session_id").references(() => bitumenHeatingSessions.id, { onDelete: "cascade" }),
   // Task #255 — Denormalised dryer-source tag copied from the originating
   // shift log. Only set on tankNumber=2 (dryer-meter) rows. When present
   // and equal to "TANK_1", the litres recorded by this row are debited from

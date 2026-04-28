@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,11 @@ import {
   GaugeCircle,
   BookOpen,
   Calendar,
+  Trash2,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -86,6 +90,7 @@ interface DaySummary {
   sessions: BitumenHeatingSession[];
   shiftLogs: PlantShiftLog[];
   ledgerRows: LdoFlowReading[];
+  orphanedLedgerRows: LdoFlowReading[];
   sessionsTotalL: number;
   shiftTotalL: number;
   anyShiftHasMeter: boolean;
@@ -114,6 +119,11 @@ function buildDaySummaries(
       r =>
         r.date === date &&
         (r.sourceHeatingSessionId != null || r.sourceShiftLogId != null),
+    );
+
+    const sessionIds = new Set(sessions.map(s => s.id));
+    const orphanedLedgerRows = ledgerRows.filter(
+      r => r.sourceHeatingSessionId != null && !sessionIds.has(r.sourceHeatingSessionId),
     );
 
     const sessionsTotalL = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
@@ -149,6 +159,7 @@ function buildDaySummaries(
       sessions,
       shiftLogs,
       ledgerRows,
+      orphanedLedgerRows,
       sessionsTotalL,
       shiftTotalL,
       anyShiftHasMeter,
@@ -177,10 +188,13 @@ interface DayDetailProps {
   plant: string;
   appendPlantContext: (path: string, opts?: { defaultTab?: string }) => string;
   ldoFlowMeterLink: string;
+  isAdmin: boolean;
+  onCleanupOrphaned: (date: string) => void;
+  cleanupPending: boolean;
 }
 
-function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink }: DayDetailProps) {
-  const { date, sessions, shiftLogs, ledgerRows } = day;
+function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, onCleanupOrphaned, cleanupPending }: DayDetailProps) {
+  const { date, sessions, shiftLogs, ledgerRows, orphanedLedgerRows } = day;
 
   const heatSessionsLink = appendPlantContext(`/plant/heating-sessions/${date}`, {
     defaultTab: "operations",
@@ -195,6 +209,47 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink }: DayDeta
 
   return (
     <div className="space-y-4 mt-4">
+      {orphanedLedgerRows.length > 0 && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-2" data-testid={`alert-orphaned-rows-${date}`}>
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-destructive">
+                {orphanedLedgerRows.length} orphaned LDO ledger {orphanedLedgerRows.length === 1 ? "entry" : "entries"} found
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                These entries were auto-created by heating sessions that have since been deleted.
+                They are still counted in the LDO ledger, which is why the totals don't match.
+                Removing them will resolve the mismatch.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {[...new Set(orphanedLedgerRows.map(r => r.sourceHeatingSessionId))].map(sid => {
+                  const rows = orphanedLedgerRows.filter(r => r.sourceHeatingSessionId === sid);
+                  return (
+                    <li key={sid} className="text-xs text-muted-foreground">
+                      Session #{sid} — {rows.length} {rows.length === 1 ? "row" : "rows"} ({rows.map(r => r.readingType).join(", ")})
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+          {isAdmin && (
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={cleanupPending}
+                onClick={() => onCleanupOrphaned(date)}
+                data-testid={`button-cleanup-orphaned-${date}`}
+              >
+                {cleanupPending ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1.5" />}
+                Remove {orphanedLedgerRows.length} orphaned {orphanedLedgerRows.length === 1 ? "entry" : "entries"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -502,6 +557,9 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink }: DayDeta
 
 export default function PlantLdoMismatch() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const { toast } = useToast();
   const [, params] = useRoute("/plant/ldo-mismatch/:date");
   const routeDate = params?.date || "";
   const [, setLocation] = useLocation();
@@ -671,6 +729,29 @@ export default function PlantLdoMismatch() {
     sessionsQuery.isError || shiftLogsQuery.isError || ldoReadingsQuery.isError;
 
   const isMultiDay = dates.length > 1;
+
+  const [cleanupPendingDate, setCleanupPendingDate] = useState<string | null>(null);
+
+  const cleanupMutation = useMutation({
+    mutationFn: ({ date }: { date: string }) => {
+      const qs = new URLSearchParams({ dateFrom: date, dateTo: date, plant });
+      return apiRequest("DELETE", `/api/plant-module/ldo-orphaned-rows?${qs.toString()}`);
+    },
+    onSuccess: (_data, variables) => {
+      setCleanupPendingDate(null);
+      toast({ title: "Orphaned entries removed", description: `LDO ledger cleaned up for ${variables.date}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
+    },
+    onError: () => {
+      setCleanupPendingDate(null);
+      toast({ title: "Cleanup failed", description: "Could not remove orphaned entries. Try again.", variant: "destructive" });
+    },
+  });
+
+  function handleCleanupOrphaned(date: string) {
+    setCleanupPendingDate(date);
+    cleanupMutation.mutate({ date });
+  }
 
   function handleExport() {
     const fmtVal = (n: number | null | undefined, digits = 1) =>
@@ -1233,6 +1314,9 @@ export default function PlantLdoMismatch() {
                                 plant={plant}
                                 appendPlantContext={appendPlantContext}
                                 ldoFlowMeterLink={ldoFlowMeterLink}
+                                isAdmin={isAdmin}
+                                onCleanupOrphaned={handleCleanupOrphaned}
+                                cleanupPending={cleanupPendingDate === day.date && cleanupMutation.isPending}
                               />
                             </td>
                           </tr>
