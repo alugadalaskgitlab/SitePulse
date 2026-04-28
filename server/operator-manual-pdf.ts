@@ -151,7 +151,7 @@ function table(doc: Doc, cols: Array<{ label: string; width: number; align?: 'le
   doc.fillColor(C_DARK);
 }
 
-export function generateOperatorManualPdf(): Promise<Buffer> {
+export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: M, bufferPages: true, info: {
       Title: 'SiteLog Plant Operator Guide',
@@ -159,10 +159,10 @@ export function generateOperatorManualPdf(): Promise<Buffer> {
       Subject: 'Plant Operations — Heating Sessions, Shift Log, LDO Reconciliation',
     }});
 
-    const chunks: Buffer[] = [];
-    doc.on('data', (c: Buffer) => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.pipe(stream);
     doc.on('error', reject);
+    stream.on('error', reject);
+    stream.on('finish', resolve);
 
     // ── TITLE PAGE ─────────────────────────────────────────────────────────
     try {
@@ -182,7 +182,7 @@ export function generateOperatorManualPdf(): Promise<Buffer> {
     doc.moveDown(1.5);
 
     doc.fontSize(12).font('Helvetica').fillColor('#555555')
-      .text('High Lane Constructions Pvt Ltd', M, doc.y, { width: CONTENT_W, align: 'center' });
+      .text(plantName ? plantName : 'High Lane Constructions Pvt Ltd', M, doc.y, { width: CONTENT_W, align: 'center' });
     doc.moveDown(0.6);
     doc.fontSize(11).fillColor('#777777')
       .text('For use by plant operators and supervisors', M, doc.y, { width: CONTENT_W, align: 'center' });
@@ -550,7 +550,7 @@ export function generateOperatorManualPdf(): Promise<Buffer> {
       .text(`Generated ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`, M, doc.y + 2, { width: CONTENT_W, align: 'center' });
 
     // Add page numbers
-    const pages = (doc as any).bufferedPageRange();
+    const pages: { start: number; count: number } = doc.bufferedPageRange();
     for (let i = 0; i < pages.count; i++) {
       doc.switchToPage(i);
       const pageNum = i + 1;
