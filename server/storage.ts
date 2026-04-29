@@ -12017,10 +12017,17 @@ export class DatabaseStorage implements IStorage {
         .where(eq(materialOpeningStocks.id, 2));
     });
 
-    // Reconcile stock_balances from the corrected ledger
+    // Reconcile stock_balances from the corrected ledger (updates balance totals + uom)
     await this.reconcileStockBalancesFromLedger();
 
-    return { applied: true, message: "migrate6mmDownUomFix: corrected 9450 CFT → 425.25 Ton and reconciled stock balances." };
+    // Recompute balance_after on every stock_ledger row for 6MM Down so the
+    // running-balance column reflects the corrected Ton values throughout.
+    const recomputed = await this.recomputeBalanceAfterForMaterial(3);
+
+    return {
+      applied: true,
+      message: `migrate6mmDownUomFix: corrected 9450 CFT → 425.25 Ton, reconciled stock balances, recomputed ${recomputed.updated} balance_after row(s).`,
+    };
   }
 }
 
