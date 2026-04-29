@@ -152,7 +152,7 @@ export default function PlantStock() {
 
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number })[];
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
   };
   const { data: stmtData, isLoading: stmtLoading, refetch: refetchStmt } = useQuery<PartyStatementResult>({
     queryKey: [stmtUrl],
@@ -1109,11 +1109,13 @@ export default function PlantStock() {
             <span className="hidden sm:inline">Ledger Details</span>
             <span className="sm:hidden">Ledger</span>
           </TabsTrigger>
-          <TabsTrigger value="statement" className="gap-2 text-xs sm:text-sm" data-testid="tab-party-statement">
-            <ClipboardList className="w-4 h-4" />
-            <span className="hidden sm:inline">Party Statement</span>
-            <span className="sm:hidden">Statement</span>
-          </TabsTrigger>
+          {(isAdmin || canExport) && (
+            <TabsTrigger value="statement" className="gap-2 text-xs sm:text-sm" data-testid="tab-party-statement">
+              <ClipboardList className="w-4 h-4" />
+              <span className="hidden sm:inline">Party Statement</span>
+              <span className="sm:hidden">Statement</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="summary" className="mt-6">
@@ -1432,6 +1434,7 @@ export default function PlantStock() {
         </TabsContent>
 
         {/* ── Party Supply Obligation Statement ── */}
+        {(isAdmin || canExport) && (
         <TabsContent value="statement" className="mt-6">
           <Card>
             <CardHeader>
@@ -1491,12 +1494,15 @@ export default function PlantStock() {
                 const materialName = materials?.find(m => String(m.id) === stmtMaterialId)?.name ?? "Material";
                 const uom = summary.uom;
                 const isSettled = summary.outstanding <= 0.001;
+                const finalBalance = entries.length > 0 ? entries[entries.length - 1].runningBalance ?? 0 : 0;
+                const totalOut = summary.dispatchedOwn + summary.borrowedFromHlc;
 
                 const typeLabel = (dt: string) => {
                   switch (dt) {
                     case 'opening': return 'Opening Stock';
                     case 'receipt': return 'Material Received';
-                    case 'dispatch': return 'Dispatch (Own Stock)';
+                    case 'own_dispatch': return 'Dispatch (Own Stock)';
+                    case 'borrowed_dispatch': return 'Borrowed from HLC';
                     case 'correction': return 'Stock Correction';
                     case 'return': return 'Material Return';
                     case 'replenishment': return 'Replenishment to HLC';
@@ -1507,10 +1513,10 @@ export default function PlantStock() {
                 const typeBadgeClass = (dt: string) => {
                   switch (dt) {
                     case 'receipt': case 'opening': return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
-                    case 'dispatch': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300';
+                    case 'own_dispatch': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300';
+                    case 'borrowed_dispatch': return 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
                     case 'replenishment': return 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300';
-                    case 'correction': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
-                    case 'return': case 'transfer_in': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
+                    case 'correction': case 'return': case 'transfer_in': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
                     default: return 'bg-muted text-muted-foreground';
                   }
                 };
@@ -1518,16 +1524,16 @@ export default function PlantStock() {
                 const handlePrintStmt = () => {
                   const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
                   const rows = entries.map(e => {
-                    const qIn = (e.quantityIn || 0).toFixed(3);
-                    const qOut = (e.quantityOut || 0).toFixed(3);
-                    const borrowed = e.borrowedQty > 0 ? `(+ ${e.borrowedQty.toFixed(3)} borrowed from HLC)` : '';
+                    const qIn = (e.quantityIn || 0);
+                    const qOut = (e.quantityOut || 0);
                     return `<tr>
                       <td>${e.date}</td>
                       <td>${typeLabel(e.displayType)}</td>
+                      <td>${materialName}</td>
+                      <td style="text-align:right">${qIn > 0 ? qIn.toFixed(3) : '-'}</td>
+                      <td style="text-align:right">${qOut > 0 ? qOut.toFixed(3) : '-'}</td>
+                      <td style="text-align:right">${(e.runningBalance ?? 0).toFixed(3)}</td>
                       <td>${e.notes || '-'}</td>
-                      <td style="text-align:right">${Number(qIn) > 0 ? qIn : '-'}</td>
-                      <td style="text-align:right">${Number(qOut) > 0 ? qOut : '-'}</td>
-                      <td style="text-align:right;color:#dc2626">${borrowed || '-'}</td>
                     </tr>`;
                   }).join('');
                   const w = window.open('', '_blank');
@@ -1553,8 +1559,10 @@ export default function PlantStock() {
                       <div class="card"><div class="card-label">Replenished to HLC</div><div class="card-value">${summary.replenishedToHlc.toFixed(3)} ${uom}</div></div>
                       <div class="card ${isSettled ? 'settled' : 'outstanding'}"><div class="card-label">Still Outstanding</div><div class="card-value">${summary.outstanding.toFixed(3)} ${uom}</div></div>
                     </div>
-                    <table><thead><tr><th>Date</th><th>Type</th><th>Notes</th><th>In (${uom})</th><th>Out (${uom})</th><th>Borrowed from HLC</th></tr></thead>
-                    <tbody>${rows}</tbody></table>
+                    <table><thead><tr><th>Date</th><th>Type</th><th>Material</th><th>In (${uom})</th><th>Out (${uom})</th><th>Running Balance</th><th>Notes</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot><tr><td colspan="3"><strong>Totals</strong></td><td style="text-align:right"><strong>${summary.totalReceived.toFixed(3)}</strong></td><td style="text-align:right"><strong>${totalOut.toFixed(3)}</strong></td><td style="text-align:right"><strong>${finalBalance.toFixed(3)}</strong></td><td></td></tr></tfoot>
+                    </table>
                     </body></html>`);
                   w.document.close();
                   w.print();
@@ -1577,17 +1585,20 @@ export default function PlantStock() {
                   ].join('    '), 14, 28);
                   autoTable(doc, {
                     startY: 34,
-                    head: [['Date', 'Type', 'Notes', `In (${uom})`, `Out (${uom})`, 'Borrowed from HLC']],
+                    head: [['Date', 'Type', 'Material', `In (${uom})`, `Out (${uom})`, 'Running Balance', 'Notes']],
                     body: entries.map(e => [
                       e.date,
                       typeLabel(e.displayType),
-                      e.notes || '-',
+                      materialName,
                       (e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-',
                       (e.quantityOut || 0) > 0 ? (e.quantityOut || 0).toFixed(3) : '-',
-                      e.borrowedQty > 0 ? `${e.borrowedQty.toFixed(3)} ${uom}` : '-',
+                      (e.runningBalance ?? 0).toFixed(3),
+                      e.notes || '-',
                     ]),
+                    foot: [['', 'Totals', materialName, summary.totalReceived.toFixed(3), totalOut.toFixed(3), finalBalance.toFixed(3), '']],
                     theme: 'striped',
                     headStyles: { fillColor: [59, 130, 246] },
+                    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
                     styles: { fontSize: 7 },
                     margin: { left: 14, right: 14 },
                   });
@@ -1637,43 +1648,47 @@ export default function PlantStock() {
                           <tr className="border-b bg-muted/50">
                             <th className="text-left p-3 font-semibold">Date</th>
                             <th className="text-left p-3 font-semibold">Type</th>
-                            <th className="text-left p-3 font-semibold">Notes</th>
+                            <th className="text-left p-3 font-semibold">Material</th>
                             <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In ({uom})</th>
                             <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-amber-600 dark:text-amber-400">Borrowed from HLC</th>
+                            <th className="text-right p-3 font-semibold">Running Balance</th>
+                            <th className="text-left p-3 font-semibold">Notes</th>
                           </tr>
                         </thead>
                         <tbody>
                           {entries.map(e => (
-                            <tr key={e.id} className="border-b hover:bg-muted/30">
+                            <tr key={e.id} className={`border-b hover:bg-muted/30 ${e.displayType === 'borrowed_dispatch' ? 'bg-red-50/40 dark:bg-red-950/20' : ''}`}>
                               <td className="p-3">{e.date}</td>
                               <td className="p-3">
                                 <span className={`px-2 py-0.5 text-xs rounded ${typeBadgeClass(e.displayType)}`}>
                                   {typeLabel(e.displayType)}
                                 </span>
                               </td>
-                              <td className="p-3 text-muted-foreground text-sm">{e.notes || '-'}</td>
+                              <td className="p-3 text-muted-foreground">{materialName}</td>
                               <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
                                 {(e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-'}
                               </td>
                               <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
                                 {(e.quantityOut || 0) > 0 ? (e.quantityOut || 0).toFixed(3) : '-'}
                               </td>
-                              <td className="p-3 text-right text-amber-600 dark:text-amber-400 font-medium">
-                                {e.borrowedQty > 0 ? <span className="font-semibold">{e.borrowedQty.toFixed(3)}</span> : <span className="text-muted-foreground">-</span>}
+                              <td className={`p-3 text-right font-medium ${(e.runningBalance ?? 0) < 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
+                                {(e.runningBalance ?? 0).toFixed(3)}
                               </td>
+                              <td className="p-3 text-muted-foreground text-sm">{e.notes || '-'}</td>
                             </tr>
                           ))}
                           {entries.length === 0 && (
-                            <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
+                            <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
                           )}
                         </tbody>
                         <tfoot className="bg-muted/70 border-t-2">
                           <tr>
-                            <td colSpan={3} className="p-3 font-bold text-right">Totals:</td>
+                            <td colSpan={2} className="p-3 font-bold">Totals</td>
+                            <td className="p-3 text-muted-foreground">{materialName}</td>
                             <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">{summary.totalReceived.toFixed(3)}</td>
-                            <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">{summary.dispatchedOwn.toFixed(3)}</td>
-                            <td className="p-3 text-right text-amber-600 dark:text-amber-400 font-bold">{summary.borrowedFromHlc.toFixed(3)}</td>
+                            <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">{totalOut.toFixed(3)}</td>
+                            <td className={`p-3 text-right font-bold ${finalBalance < 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>{finalBalance.toFixed(3)}</td>
+                            <td />
                           </tr>
                         </tfoot>
                       </table>
@@ -1684,6 +1699,7 @@ export default function PlantStock() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
       </Tabs>
 

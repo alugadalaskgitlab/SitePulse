@@ -265,7 +265,7 @@ export interface IStorage {
   getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number }[]>;
   getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number })[];
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
   }>;
   addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry>;
   
@@ -3066,7 +3066,7 @@ export class DatabaseStorage implements IStorage {
 
   async getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number })[];
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
   }> {
     // Fetch ledger entries for this party+material in the date range
     const conditions = [
@@ -3092,60 +3092,82 @@ export class DatabaseStorage implements IStorage {
     const dispatchMap = new Map(dispatches.map(d => [d.id, d.shortageWarning]));
 
     // Resolve material UOM
-    const [material] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionFromUom: plantMaterials.conversionFromUom, conversionToUom: plantMaterials.conversionToUom })
+    const [mat] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionToUom: plantMaterials.conversionToUom })
       .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
-    const uom = material?.conversionToUom || material?.defaultUom || 'Ton';
+    const uom = mat?.conversionToUom || mat?.defaultUom || 'Ton';
 
     let totalReceived = 0;
     let dispatchedOwn = 0;
     let replenishedToHlc = 0;
     let borrowedFromHlc = 0;
+    let running = 0; // party's own-stock running balance
 
-    const detail = entries.map(e => {
+    type DetailEntry = StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number };
+    const detail: DetailEntry[] = [];
+
+    for (const e of entries) {
       const qIn = e.quantityIn || 0;
       const qOut = e.quantityOut || 0;
-      let displayType = 'other';
-      let borrowedQty = 0;
 
       if (e.transactionType === 'opening' || e.transactionType === 'receipt') {
-        displayType = e.transactionType === 'opening' ? 'opening' : 'receipt';
+        running += qIn;
         totalReceived += qIn;
+        detail.push({ ...e, displayType: e.transactionType === 'opening' ? 'opening' : 'receipt', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'return') {
-        displayType = 'return';
+        running += qIn;
         totalReceived += qIn;
+        detail.push({ ...e, displayType: 'return', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'adjustment') {
-        displayType = 'correction';
+        running += qIn - qOut;
         totalReceived += qIn;
         dispatchedOwn += qOut;
+        detail.push({ ...e, displayType: 'correction', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'dispatch') {
-        displayType = 'dispatch';
+        // Own-stock portion
+        running -= qOut;
         dispatchedOwn += qOut;
-        // Pull borrowed quantity from shortageWarning JSON on the dispatch record
+        detail.push({ ...e, displayType: 'own_dispatch', borrowedQty: 0, runningBalance: running });
+
+        // Borrowed portion (synthetic row)
+        let borrowedQty = 0;
         if (e.referenceId) {
           const sw = dispatchMap.get(e.referenceId);
           if (sw) {
             try {
               const warnings = JSON.parse(sw) as { materialId: number; required: number; available: number }[];
               const hit = warnings.find(w => w.materialId === materialId);
-              if (hit) {
-                borrowedQty = Math.max(0, hit.required - hit.available);
-                borrowedFromHlc += borrowedQty;
-              }
+              if (hit) borrowedQty = Math.max(0, hit.required - hit.available);
             } catch { /* malformed JSON — ignore */ }
           }
         }
+        if (borrowedQty > 0) {
+          running -= borrowedQty; // obligation deepens
+          borrowedFromHlc += borrowedQty;
+          // synthetic row: same date/notes/materialId, but displayType = 'borrowed_dispatch'
+          detail.push({
+            ...e,
+            id: -(e.id * 10 + 1), // synthetic id
+            displayType: 'borrowed_dispatch',
+            quantityIn: null,
+            quantityOut: borrowedQty,
+            borrowedQty,
+            runningBalance: running,
+          });
+        }
       } else if (e.transactionType === 'transfer') {
         if (qOut > 0) {
-          displayType = 'replenishment';
+          running += qOut; // repayment restores obligation
           replenishedToHlc += qOut;
+          detail.push({ ...e, displayType: 'replenishment', borrowedQty: 0, runningBalance: running });
         } else {
-          displayType = 'transfer_in';
+          running += qIn;
           totalReceived += qIn;
+          detail.push({ ...e, displayType: 'transfer_in', borrowedQty: 0, runningBalance: running });
         }
+      } else {
+        detail.push({ ...e, displayType: 'other', borrowedQty: 0, runningBalance: running });
       }
-
-      return { ...e, displayType, borrowedQty };
-    });
+    }
 
     const outstanding = Math.max(0, borrowedFromHlc - replenishedToHlc);
 
