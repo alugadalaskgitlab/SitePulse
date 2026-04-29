@@ -768,7 +768,19 @@ export default function PlantDispatches() {
 
               <div>
                 <Label>Mix Template</Label>
-                <Select value={mixTemplateId} onValueChange={(v) => { setMixTemplateId(v); setActualBitumenPercent(""); setActualLdoPerTon(""); }}>
+                <Select
+                  value={mixTemplateId}
+                  onValueChange={(val) => {
+                    // Clear stale actual values when the template is changed
+                    // during an edit so they aren't validated against the old
+                    // template's theoretical values on submit.
+                    if (editingDispatch && val !== mixTemplateId) {
+                      setActualBitumenPercent("");
+                      setActualLdoPerTon("");
+                    }
+                    setMixTemplateId(val);
+                  }}
+                >
                   <SelectTrigger data-testid="select-mix-template">
                     <SelectValue placeholder="Select mix template" />
                   </SelectTrigger>

@@ -1533,38 +1533,47 @@ export async function registerRoutes(
       const { adjustedBy, ...dispatchData } = req.body;
       
       // Server-side tolerance validation for actual consumption values.
-      // Use != null so that explicit null (meaning "clear the field") bypasses the check.
+      //
+      // Bug fix: the frontend always sends the field (even when empty), so
+      // the value arrives as `null`, not `undefined`. The original guard used
+      // `!== undefined`, which evaluated `true` for null and triggered the
+      // check — computing ((null - theoretical) / theoretical) * 100 = -100%,
+      // which always exceeded the ±10% band and blocked the save.
+      //
+      // Fix: use `!= null` (loose equality) so both `null` and `undefined`
+      // correctly skip the tolerance block when no actual value was entered.
       const TOLERANCE_PERCENT = 10;
       if (dispatchData.actualBitumenPercent != null || dispatchData.actualLdoQty != null) {
-        // Get current dispatch and mix template to calculate theoretical
         const dispatches = await storage.getTruckDispatches({});
         const currentDispatch = dispatches.find(d => d.id === id);
         if (currentDispatch) {
           const templates = await storage.getMixTemplates();
-          // Support edits that also change the mix template in the same request
+          // Prefer the incoming mixTemplateId so an edit that simultaneously
+          // changes the template is validated against the NEW template's
+          // theoretical values, not the old saved one.
           const templateId = dispatchData.mixTemplateId ?? currentDispatch.mixTemplateId;
           const template = templates.find(t => t.id === templateId);
           if (template) {
             const loadWeight = dispatchData.loadWeight ?? currentDispatch.loadWeight;
             const theoreticalBitumenPercent = template.bitumenPercent || 0;
             const theoreticalLdoQty = loadWeight * (template.ldoNorm || 6);
-            
-            // Validate bitumen tolerance (guard against divide-by-zero)
+
+            // Validate bitumen % — guard against divide-by-zero on zero theoretical
             if (dispatchData.actualBitumenPercent != null && theoreticalBitumenPercent > 0) {
               const bitumenVariance = ((dispatchData.actualBitumenPercent - theoreticalBitumenPercent) / theoreticalBitumenPercent) * 100;
               if (Math.abs(bitumenVariance) > TOLERANCE_PERCENT) {
-                return res.status(400).json({ 
-                  message: `Bitumen variance (${bitumenVariance.toFixed(1)}%) exceeds ±${TOLERANCE_PERCENT}% tolerance. Please contact admin.` 
+                return res.status(400).json({
+                  message: `Bitumen variance (${bitumenVariance.toFixed(1)}%) exceeds ±${TOLERANCE_PERCENT}% tolerance. Please contact admin.`,
                 });
               }
             }
-            
-            // Validate LDO tolerance (guard against divide-by-zero)
+
+            // Validate LDO qty — guard against divide-by-zero on zero theoretical
             if (dispatchData.actualLdoQty != null && theoreticalLdoQty > 0) {
               const ldoVariance = ((dispatchData.actualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100;
               if (Math.abs(ldoVariance) > TOLERANCE_PERCENT) {
-                return res.status(400).json({ 
-                  message: `LDO variance (${ldoVariance.toFixed(1)}%) exceeds ±${TOLERANCE_PERCENT}% tolerance. Please contact admin.` 
+                return res.status(400).json({
+                  message: `LDO variance (${ldoVariance.toFixed(1)}%) exceeds ±${TOLERANCE_PERCENT}% tolerance. Please contact admin.`,
                 });
               }
             }
