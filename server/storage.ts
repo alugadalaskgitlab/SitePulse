@@ -263,6 +263,10 @@ export interface IStorage {
   // Stock Ledger
   getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<StockLedgerEntry[]>;
   getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number }[]>;
+  getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
+    summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number })[];
+  }>;
   addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry>;
   
   // Material Issues (issues to sites/parties from central store)
@@ -3058,6 +3062,97 @@ export class DatabaseStorage implements IStorage {
   async addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry> {
     const [result] = await db.insert(stockLedger).values(entry).returning();
     return result;
+  }
+
+  async getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
+    summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number })[];
+  }> {
+    // Fetch ledger entries for this party+material in the date range
+    const conditions = [
+      eq(stockLedger.partyId, partyId),
+      eq(stockLedger.materialId, materialId),
+      ne(stockLedger.transactionType, 'equipment_issue' as string),
+    ];
+    if (dateFrom) conditions.push(gte(stockLedger.date, dateFrom));
+    if (dateTo) conditions.push(lte(stockLedger.date, dateTo));
+
+    const entries = await db.select().from(stockLedger)
+      .where(and(...conditions))
+      .orderBy(asc(stockLedger.date));
+
+    // Fetch dispatch records for entries that have a referenceId (to read shortageWarning)
+    const refIds = [...new Set(
+      entries.filter(e => e.referenceId && e.transactionType === 'dispatch').map(e => e.referenceId!)
+    )];
+    const dispatches = refIds.length
+      ? await db.select({ id: truckDispatches.id, shortageWarning: truckDispatches.shortageWarning })
+          .from(truckDispatches).where(inArray(truckDispatches.id, refIds))
+      : [];
+    const dispatchMap = new Map(dispatches.map(d => [d.id, d.shortageWarning]));
+
+    // Resolve material UOM
+    const [material] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionFromUom: plantMaterials.conversionFromUom, conversionToUom: plantMaterials.conversionToUom })
+      .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
+    const uom = material?.conversionToUom || material?.defaultUom || 'Ton';
+
+    let totalReceived = 0;
+    let dispatchedOwn = 0;
+    let replenishedToHlc = 0;
+    let borrowedFromHlc = 0;
+
+    const detail = entries.map(e => {
+      const qIn = e.quantityIn || 0;
+      const qOut = e.quantityOut || 0;
+      let displayType = 'other';
+      let borrowedQty = 0;
+
+      if (e.transactionType === 'opening' || e.transactionType === 'receipt') {
+        displayType = e.transactionType === 'opening' ? 'opening' : 'receipt';
+        totalReceived += qIn;
+      } else if (e.transactionType === 'return') {
+        displayType = 'return';
+        totalReceived += qIn;
+      } else if (e.transactionType === 'adjustment') {
+        displayType = 'correction';
+        totalReceived += qIn;
+        dispatchedOwn += qOut;
+      } else if (e.transactionType === 'dispatch') {
+        displayType = 'dispatch';
+        dispatchedOwn += qOut;
+        // Pull borrowed quantity from shortageWarning JSON on the dispatch record
+        if (e.referenceId) {
+          const sw = dispatchMap.get(e.referenceId);
+          if (sw) {
+            try {
+              const warnings = JSON.parse(sw) as { materialId: number; required: number; available: number }[];
+              const hit = warnings.find(w => w.materialId === materialId);
+              if (hit) {
+                borrowedQty = Math.max(0, hit.required - hit.available);
+                borrowedFromHlc += borrowedQty;
+              }
+            } catch { /* malformed JSON — ignore */ }
+          }
+        }
+      } else if (e.transactionType === 'transfer') {
+        if (qOut > 0) {
+          displayType = 'replenishment';
+          replenishedToHlc += qOut;
+        } else {
+          displayType = 'transfer_in';
+          totalReceived += qIn;
+        }
+      }
+
+      return { ...e, displayType, borrowedQty };
+    });
+
+    const outstanding = Math.max(0, borrowedFromHlc - replenishedToHlc);
+
+    return {
+      summary: { totalReceived, dispatchedOwn, borrowedFromHlc, replenishedToHlc, outstanding, uom },
+      entries: detail,
+    };
   }
 
   async postStockCorrection(data: {

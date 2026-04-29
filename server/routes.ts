@@ -2614,6 +2614,21 @@ export async function registerRoutes(
     }
   });
 
+  // Party Supply Obligation Statement
+  app.get("/api/plant-module/party-statement", async (req, res) => {
+    try {
+      const partyId = Number(req.query.partyId);
+      const materialId = Number(req.query.materialId);
+      if (!partyId || !materialId) return res.status(400).json({ message: "partyId and materialId are required" });
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      const result = await storage.getPartyStatement(partyId, materialId, dateFrom, dateTo);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to generate party statement" });
+    }
+  });
+
   // Aggregate balance as-of a given date (for efficient opening-balance computation)
   app.get("/api/plant-module/stock-balance-as-of", async (req, res) => {
     try {

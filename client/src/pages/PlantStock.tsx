@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -133,6 +133,31 @@ export default function PlantStock() {
     if (selectedMaterialId !== "all") params.set("materialId", selectedMaterialId);
     return `/api/plant-module/stock-balance-as-of?${params.toString()}`;
   };
+
+  // Party Statement state
+  const [stmtPartyId, setStmtPartyId] = useState<string>("all");
+  const [stmtMaterialId, setStmtMaterialId] = useState<string>("all");
+  const [stmtDateFrom, setStmtDateFrom] = useState<string>("");
+  const [stmtDateTo, setStmtDateTo] = useState<string>("");
+  const [stmtEnabled, setStmtEnabled] = useState(false);
+
+  const buildStmtUrl = () => {
+    if (!stmtEnabled || stmtPartyId === "all" || stmtMaterialId === "all") return null;
+    const p = new URLSearchParams({ partyId: stmtPartyId, materialId: stmtMaterialId });
+    if (stmtDateFrom) p.set("dateFrom", stmtDateFrom);
+    if (stmtDateTo) p.set("dateTo", stmtDateTo);
+    return `/api/plant-module/party-statement?${p.toString()}`;
+  };
+  const stmtUrl = buildStmtUrl();
+
+  type PartyStatementResult = {
+    summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number })[];
+  };
+  const { data: stmtData, isLoading: stmtLoading, refetch: refetchStmt } = useQuery<PartyStatementResult>({
+    queryKey: [stmtUrl],
+    enabled: !!stmtUrl,
+  });
 
   const { data: ledger, isLoading: ledgerLoading } = useQuery<StockLedgerEntry[]>({ 
     queryKey: [buildLedgerUrl()] 
@@ -1068,18 +1093,26 @@ export default function PlantStock() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="summary" className="gap-2">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="summary" className="gap-2 text-xs sm:text-sm">
             <Layers className="w-4 h-4" />
-            Stock Summary
+            <span className="hidden sm:inline">Stock Summary</span>
+            <span className="sm:hidden">Summary</span>
           </TabsTrigger>
-          <TabsTrigger value="balances" className="gap-2">
+          <TabsTrigger value="balances" className="gap-2 text-xs sm:text-sm">
             <Package className="w-4 h-4" />
-            Current Balances
+            <span className="hidden sm:inline">Current Balances</span>
+            <span className="sm:hidden">Balances</span>
           </TabsTrigger>
-          <TabsTrigger value="ledger" className="gap-2">
+          <TabsTrigger value="ledger" className="gap-2 text-xs sm:text-sm">
             <Calendar className="w-4 h-4" />
-            Ledger Details
+            <span className="hidden sm:inline">Ledger Details</span>
+            <span className="sm:hidden">Ledger</span>
+          </TabsTrigger>
+          <TabsTrigger value="statement" className="gap-2 text-xs sm:text-sm" data-testid="tab-party-statement">
+            <ClipboardList className="w-4 h-4" />
+            <span className="hidden sm:inline">Party Statement</span>
+            <span className="sm:hidden">Statement</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1397,6 +1430,261 @@ export default function PlantStock() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Party Supply Obligation Statement ── */}
+        <TabsContent value="statement" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5" />
+                Party Supply Obligation Statement
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Select a party and material to see what they supplied, what was borrowed from HLC, and what is still outstanding.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {/* Selectors */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <Label>Party</Label>
+                  <Select value={stmtPartyId} onValueChange={(v) => { setStmtPartyId(v); setStmtEnabled(false); }}>
+                    <SelectTrigger data-testid="stmt-select-party"><SelectValue placeholder="Select party" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">— Select party —</SelectItem>
+                      {parties?.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Material</Label>
+                  <Select value={stmtMaterialId} onValueChange={(v) => { setStmtMaterialId(v); setStmtEnabled(false); }}>
+                    <SelectTrigger data-testid="stmt-select-material"><SelectValue placeholder="Select material" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">— Select material —</SelectItem>
+                      {materials?.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>From Date</Label>
+                  <Input type="date" value={stmtDateFrom} onChange={e => { setStmtDateFrom(e.target.value); setStmtEnabled(false); }} data-testid="stmt-input-date-from" />
+                </div>
+                <div>
+                  <Label>To Date</Label>
+                  <Input type="date" value={stmtDateTo} onChange={e => { setStmtDateTo(e.target.value); setStmtEnabled(false); }} data-testid="stmt-input-date-to" />
+                </div>
+              </div>
+              <Button
+                disabled={stmtPartyId === "all" || stmtMaterialId === "all" || stmtLoading}
+                onClick={() => { setStmtEnabled(true); if (stmtEnabled) refetchStmt(); }}
+                data-testid="btn-generate-statement"
+                className="mb-6"
+              >
+                {stmtLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Generate Statement
+              </Button>
+
+              {stmtData && (() => {
+                const { summary, entries } = stmtData;
+                const partyName = parties?.find(p => String(p.id) === stmtPartyId)?.name ?? "Party";
+                const materialName = materials?.find(m => String(m.id) === stmtMaterialId)?.name ?? "Material";
+                const uom = summary.uom;
+                const isSettled = summary.outstanding <= 0.001;
+
+                const typeLabel = (dt: string) => {
+                  switch (dt) {
+                    case 'opening': return 'Opening Stock';
+                    case 'receipt': return 'Material Received';
+                    case 'dispatch': return 'Dispatch (Own Stock)';
+                    case 'correction': return 'Stock Correction';
+                    case 'return': return 'Material Return';
+                    case 'replenishment': return 'Replenishment to HLC';
+                    case 'transfer_in': return 'Transfer Received';
+                    default: return 'Other';
+                  }
+                };
+                const typeBadgeClass = (dt: string) => {
+                  switch (dt) {
+                    case 'receipt': case 'opening': return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
+                    case 'dispatch': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300';
+                    case 'replenishment': return 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300';
+                    case 'correction': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
+                    case 'return': case 'transfer_in': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
+                    default: return 'bg-muted text-muted-foreground';
+                  }
+                };
+
+                const handlePrintStmt = () => {
+                  const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
+                  const rows = entries.map(e => {
+                    const qIn = (e.quantityIn || 0).toFixed(3);
+                    const qOut = (e.quantityOut || 0).toFixed(3);
+                    const borrowed = e.borrowedQty > 0 ? `(+ ${e.borrowedQty.toFixed(3)} borrowed from HLC)` : '';
+                    return `<tr>
+                      <td>${e.date}</td>
+                      <td>${typeLabel(e.displayType)}</td>
+                      <td>${e.notes || '-'}</td>
+                      <td style="text-align:right">${Number(qIn) > 0 ? qIn : '-'}</td>
+                      <td style="text-align:right">${Number(qOut) > 0 ? qOut : '-'}</td>
+                      <td style="text-align:right;color:#dc2626">${borrowed || '-'}</td>
+                    </tr>`;
+                  }).join('');
+                  const w = window.open('', '_blank');
+                  if (!w) return;
+                  w.document.write(`<!DOCTYPE html><html><head><title>Party Statement — ${partyName}</title>
+                    <style>body{font-family:sans-serif;padding:20px;font-size:12px}
+                    h2{margin-bottom:4px}p{margin:2px 0}
+                    .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0}
+                    .card{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center}
+                    .card-label{font-size:10px;color:#666;margin-bottom:4px}
+                    .card-value{font-size:16px;font-weight:bold}
+                    .outstanding{background:#fef3c7;border-color:#fbbf24}
+                    .settled{background:#d1fae5;border-color:#34d399}
+                    table{width:100%;border-collapse:collapse;margin-top:12px}
+                    th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}
+                    th{background:#f5f5f5;font-size:11px}</style></head><body>
+                    <h2>Party Supply Obligation Statement</h2>
+                    <p><strong>Party:</strong> ${partyName} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
+                    <div class="summary">
+                      <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
+                      <div class="card"><div class="card-label">Dispatched (Own)</div><div class="card-value">${summary.dispatchedOwn.toFixed(3)} ${uom}</div></div>
+                      <div class="card"><div class="card-label">Borrowed from HLC</div><div class="card-value">${summary.borrowedFromHlc.toFixed(3)} ${uom}</div></div>
+                      <div class="card"><div class="card-label">Replenished to HLC</div><div class="card-value">${summary.replenishedToHlc.toFixed(3)} ${uom}</div></div>
+                      <div class="card ${isSettled ? 'settled' : 'outstanding'}"><div class="card-label">Still Outstanding</div><div class="card-value">${summary.outstanding.toFixed(3)} ${uom}</div></div>
+                    </div>
+                    <table><thead><tr><th>Date</th><th>Type</th><th>Notes</th><th>In (${uom})</th><th>Out (${uom})</th><th>Borrowed from HLC</th></tr></thead>
+                    <tbody>${rows}</tbody></table>
+                    </body></html>`);
+                  w.document.close();
+                  w.print();
+                };
+
+                const handlePdfStmt = () => {
+                  const doc = new jsPDF({ orientation: 'landscape' });
+                  const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
+                  doc.setFontSize(14);
+                  doc.text(`Party Supply Obligation Statement`, 14, 14);
+                  doc.setFontSize(10);
+                  doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 21);
+                  doc.setFontSize(9);
+                  doc.text([
+                    `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
+                    `Dispatched (Own): ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
+                    `Borrowed from HLC: ${summary.borrowedFromHlc.toFixed(3)} ${uom}`,
+                    `Replenished to HLC: ${summary.replenishedToHlc.toFixed(3)} ${uom}`,
+                    `Outstanding: ${summary.outstanding.toFixed(3)} ${uom}`,
+                  ].join('    '), 14, 28);
+                  autoTable(doc, {
+                    startY: 34,
+                    head: [['Date', 'Type', 'Notes', `In (${uom})`, `Out (${uom})`, 'Borrowed from HLC']],
+                    body: entries.map(e => [
+                      e.date,
+                      typeLabel(e.displayType),
+                      e.notes || '-',
+                      (e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-',
+                      (e.quantityOut || 0) > 0 ? (e.quantityOut || 0).toFixed(3) : '-',
+                      e.borrowedQty > 0 ? `${e.borrowedQty.toFixed(3)} ${uom}` : '-',
+                    ]),
+                    theme: 'striped',
+                    headStyles: { fillColor: [59, 130, 246] },
+                    styles: { fontSize: 7 },
+                    margin: { left: 14, right: 14 },
+                  });
+                  const ts = format(new Date(), 'yyyyMMdd_HHmm');
+                  const blob = doc.output('blob');
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `PartyStatement_${partyName.replace(/\s+/g,'')}_${materialName}_${ts}.pdf`;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  setTimeout(() => URL.revokeObjectURL(url), 100);
+                  toast({ title: "PDF download started" });
+                };
+
+                return (
+                  <div>
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+                      {[
+                        { label: 'Total Received', value: summary.totalReceived, color: 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20', textColor: 'text-green-700 dark:text-green-300' },
+                        { label: 'Dispatched (Own Stock)', value: summary.dispatchedOwn, color: 'border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20', textColor: 'text-orange-700 dark:text-orange-300' },
+                        { label: 'Borrowed from HLC', value: summary.borrowedFromHlc, color: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20', textColor: 'text-red-700 dark:text-red-300' },
+                        { label: 'Replenished to HLC', value: summary.replenishedToHlc, color: 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20', textColor: 'text-sky-700 dark:text-sky-300' },
+                        { label: 'Still Outstanding', value: summary.outstanding, color: isSettled ? 'border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/30' : 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20', textColor: isSettled ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300' },
+                      ].map(card => (
+                        <div key={card.label} className={`rounded-lg border p-3 text-center ${card.color}`}>
+                          <p className="text-xs text-muted-foreground mb-1">{card.label}</p>
+                          <p className={`text-lg font-bold ${card.textColor}`}>{card.value.toFixed(3)}</p>
+                          <p className="text-xs text-muted-foreground">{uom}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Export buttons */}
+                    <div className="flex gap-2 mb-4">
+                      <Button variant="outline" size="sm" onClick={handlePdfStmt} data-testid="btn-stmt-pdf">
+                        <Download className="w-4 h-4 mr-1" /> PDF
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handlePrintStmt} data-testid="btn-stmt-print">
+                        <Printer className="w-4 h-4 mr-1" /> Print
+                      </Button>
+                    </div>
+
+                    {/* Detail table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="text-left p-3 font-semibold">Date</th>
+                            <th className="text-left p-3 font-semibold">Type</th>
+                            <th className="text-left p-3 font-semibold">Notes</th>
+                            <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-amber-600 dark:text-amber-400">Borrowed from HLC</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {entries.map(e => (
+                            <tr key={e.id} className="border-b hover:bg-muted/30">
+                              <td className="p-3">{e.date}</td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 text-xs rounded ${typeBadgeClass(e.displayType)}`}>
+                                  {typeLabel(e.displayType)}
+                                </span>
+                              </td>
+                              <td className="p-3 text-muted-foreground text-sm">{e.notes || '-'}</td>
+                              <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
+                                {(e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-'}
+                              </td>
+                              <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
+                                {(e.quantityOut || 0) > 0 ? (e.quantityOut || 0).toFixed(3) : '-'}
+                              </td>
+                              <td className="p-3 text-right text-amber-600 dark:text-amber-400 font-medium">
+                                {e.borrowedQty > 0 ? <span className="font-semibold">{e.borrowedQty.toFixed(3)}</span> : <span className="text-muted-foreground">-</span>}
+                              </td>
+                            </tr>
+                          ))}
+                          {entries.length === 0 && (
+                            <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
+                          )}
+                        </tbody>
+                        <tfoot className="bg-muted/70 border-t-2">
+                          <tr>
+                            <td colSpan={3} className="p-3 font-bold text-right">Totals:</td>
+                            <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">{summary.totalReceived.toFixed(3)}</td>
+                            <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">{summary.dispatchedOwn.toFixed(3)}</td>
+                            <td className="p-3 text-right text-amber-600 dark:text-amber-400 font-bold">{summary.borrowedFromHlc.toFixed(3)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
 
     </div>
