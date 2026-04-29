@@ -3222,19 +3222,25 @@ export class DatabaseStorage implements IStorage {
       const [ldoMaterial] = await tx.select().from(plantMaterials)
         .where(sql`UPPER(${plantMaterials.name}) = 'LDO'`)
         .limit(1);
-      
+
+      // Build human-readable label for ledger notes: mix type + delivery site
+      const mixLabel = [
+        template?.name ?? "Dispatch",
+        dispatchData.deliveryLocation?.trim() || null,
+      ].filter(Boolean).join(" — ");
+
       // Build the consumption plan: list of {matId, qty, uom, label}
       type Plan = { matId: number; qty: number; uom: string; label: string };
       const plan: Plan[] = [];
       if (bitumenMaterial && theoreticalBitumenQty > 0) {
-        plan.push({ matId: bitumenMaterial.id, qty: theoreticalBitumenQty, uom: "Ton", label: "Bitumen dispatch" });
+        plan.push({ matId: bitumenMaterial.id, qty: theoreticalBitumenQty, uom: "Ton", label: mixLabel });
       }
       if (ldoMaterial && theoreticalLdoQty > 0) {
-        plan.push({ matId: ldoMaterial.id, qty: theoreticalLdoQty, uom: "Liters", label: "LDO dispatch" });
+        plan.push({ matId: ldoMaterial.id, qty: theoreticalLdoQty, uom: "Liters", label: mixLabel });
       }
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
-        if (qty > 0) plan.push({ matId, qty, uom: "Ton", label: "Aggregate dispatch" });
+        if (qty > 0) plan.push({ matId, qty, uom: "Ton", label: mixLabel });
       }
       
       // Helper to read a single party balance (returns raw value and UOM).
@@ -3318,7 +3324,7 @@ export class DatabaseStorage implements IStorage {
         const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
         const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
         if (fromOwner > 0) {
-          await deductFromSource(partyId, item.matId, fromOwner, item.uom, `${item.label} (${ownerPartyName})`);
+          await deductFromSource(partyId, item.matId, fromOwner, item.uom, item.label);
         }
         const remaining = +(item.qty - fromOwner).toFixed(9);
         if (remaining > 0) {
