@@ -88,6 +88,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    const result = await storage.migrate6mmDownUomFix();
+    console.log(`Startup: ${result.message}`);
+  } catch (e) {
+    console.error("Startup: migrate6mmDownUomFix failed:", e);
+  }
+
+  try {
     await backfillSplitPermissions();
   } catch (e) {
     console.error("Startup: backfillSplitPermissions failed:", e);

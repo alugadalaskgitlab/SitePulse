@@ -5480,8 +5480,24 @@ export class DatabaseStorage implements IStorage {
         .where(eq(materialOpeningStocks.id, id))
         .limit(1);
       if (!stock) return false;
+
+      // Compute how much was originally credited to the balance (with UOM conversion).
+      // Mirrors the same logic in createMaterialOpeningStock / updateMaterialOpeningStock.
+      const [mat] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, stock.materialId)).limit(1);
+      let reverseQuantity = stock.quantity;
+      let reverseUom = stock.uom;
+      if (
+        mat?.conversionFactor &&
+        mat.conversionFromUom &&
+        mat.conversionToUom &&
+        stock.uom.toUpperCase() === mat.conversionFromUom.toUpperCase()
+      ) {
+        reverseQuantity = stock.quantity * mat.conversionFactor;
+        reverseUom = mat.conversionToUom;
+      }
       
-      // Reverse stock balance
+      // Reverse stock balance using the converted amount
       const stockPartyId = stock.isPlantCommon ? null : stock.partyId;
       const condition = stockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, stock.materialId))
@@ -5489,21 +5505,21 @@ export class DatabaseStorage implements IStorage {
       
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
       if (existing) {
-        const newBalance = existing.balance - stock.quantity;
+        const newBalance = existing.balance - reverseQuantity;
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
           .where(eq(stockBalances.id, existing.id));
         
-        // Add reversal ledger entry
+        // Add reversal ledger entry in the stock UOM (post-conversion)
         await tx.insert(stockLedger).values({
           date: format(new Date(), "yyyy-MM-dd"),
           partyId: stockPartyId,
           materialId: stock.materialId,
           transactionType: "adjustment",
           referenceId: id,
-          quantityOut: stock.quantity,
+          quantityOut: reverseQuantity,
           balanceAfter: newBalance,
-          uom: stock.uom,
+          uom: reverseUom,
           notes: `Deleted opening stock #${id} reversal`,
         });
       }
@@ -11964,6 +11980,47 @@ export class DatabaseStorage implements IStorage {
       .where(eq(plantShiftLogs.id, id))
       .returning({ id: plantShiftLogs.id });
     return result.length > 0;
+  }
+
+  // One-time idempotent migration: fix the 6MM Down opening stock that was originally
+  // entered as 9,450 CFT but should have been stored as 425.25 Ton (9450 × 0.045).
+  // Safe to call on every startup — it checks the stale state before acting.
+  async migrate6mmDownUomFix(): Promise<{ applied: boolean; message: string }> {
+    // Identify the opening stock ledger entry for 6MM Down by checking if it still
+    // carries the old CFT values.
+    const [ledgerEntry] = await db.select().from(stockLedger)
+      .where(and(
+        eq(stockLedger.id, 19),
+        eq(stockLedger.transactionType, "opening"),
+        sql`${stockLedger.uom} = 'CFT'`,
+        sql`${stockLedger.quantityIn} >= 9449`,  // ≈ 9450 CFT (the old incorrect value)
+      )).limit(1);
+
+    if (!ledgerEntry) {
+      return { applied: false, message: "migrate6mmDownUomFix: already applied or entry not found, skipping." };
+    }
+
+    // Apply the fix inside a transaction
+    await db.transaction(async (tx) => {
+      // Fix stock_ledger opening entry
+      await tx.update(stockLedger)
+        .set({
+          quantityIn: 425.25,
+          uom: "Ton",
+          notes: "Opening stock entry (9450 CFT converted to 425.25 Ton) [data migration fix]",
+        })
+        .where(eq(stockLedger.id, 19));
+
+      // Fix material_opening_stocks record to reflect the converted unit
+      await tx.update(materialOpeningStocks)
+        .set({ quantity: 425.25, uom: "Ton" })
+        .where(eq(materialOpeningStocks.id, 2));
+    });
+
+    // Reconcile stock_balances from the corrected ledger
+    await this.reconcileStockBalancesFromLedger();
+
+    return { applied: true, message: "migrate6mmDownUomFix: corrected 9450 CFT → 425.25 Ton and reconciled stock balances." };
   }
 }
 
