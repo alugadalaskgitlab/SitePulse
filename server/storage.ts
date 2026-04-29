@@ -3079,7 +3079,7 @@ export class DatabaseStorage implements IStorage {
 
     const entries = await db.select().from(stockLedger)
       .where(and(...conditions))
-      .orderBy(asc(stockLedger.date));
+      .orderBy(asc(stockLedger.date), asc(stockLedger.id));
 
     // Fetch dispatch records for entries that have a referenceId (to read shortageWarning)
     const refIds = [...new Set(

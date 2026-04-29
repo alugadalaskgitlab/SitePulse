@@ -2615,7 +2615,7 @@ export async function registerRoutes(
   });
 
   // Party Supply Obligation Statement
-  app.get("/api/plant-module/party-statement", async (req, res) => {
+  app.get("/api/plant-module/party-statement", requireAuth, async (req, res) => {
     try {
       const partyId = Number(req.query.partyId);
       const materialId = Number(req.query.materialId);
