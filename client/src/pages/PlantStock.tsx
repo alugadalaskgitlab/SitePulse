@@ -1521,6 +1521,8 @@ export default function PlantStock() {
                   }
                 };
 
+                const PROJECT_NAME = "High Lane Constructions Pvt Ltd";
+
                 const handlePrintStmt = () => {
                   const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
                   const rows = entries.map(e => {
@@ -1540,7 +1542,7 @@ export default function PlantStock() {
                   if (!w) return;
                   w.document.write(`<!DOCTYPE html><html><head><title>Party Statement — ${partyName}</title>
                     <style>body{font-family:sans-serif;padding:20px;font-size:12px}
-                    h2{margin-bottom:4px}p{margin:2px 0}
+                    h1{margin-bottom:2px;font-size:16px}h2{margin-bottom:4px;font-size:13px}p{margin:2px 0}
                     .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0}
                     .card{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center}
                     .card-label{font-size:10px;color:#666;margin-bottom:4px}
@@ -1549,7 +1551,9 @@ export default function PlantStock() {
                     .settled{background:#d1fae5;border-color:#34d399}
                     table{width:100%;border-collapse:collapse;margin-top:12px}
                     th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}
-                    th{background:#f5f5f5;font-size:11px}</style></head><body>
+                    th{background:#f5f5f5;font-size:11px}
+                    .note{font-size:10px;color:#555;margin-top:6px}</style></head><body>
+                    <h1>${PROJECT_NAME}</h1>
                     <h2>Party Supply Obligation Statement</h2>
                     <p><strong>Party:</strong> ${partyName} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
                     <div class="summary">
@@ -1559,10 +1563,11 @@ export default function PlantStock() {
                       <div class="card"><div class="card-label">Replenished to HLC</div><div class="card-value">${summary.replenishedToHlc.toFixed(3)} ${uom}</div></div>
                       <div class="card ${isSettled ? 'settled' : 'outstanding'}"><div class="card-label">Still Outstanding</div><div class="card-value">${summary.outstanding.toFixed(3)} ${uom}</div></div>
                     </div>
-                    <table><thead><tr><th>Date</th><th>Type</th><th>Material</th><th>In (${uom})</th><th>Out (${uom})</th><th>Running Balance</th><th>Notes</th></tr></thead>
+                    <table><thead><tr><th>Date</th><th>Type</th><th>Material</th><th>In (${uom})</th><th>Out (${uom})</th><th>Own Stock Balance</th><th>Notes</th></tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr><td colspan="3"><strong>Totals</strong></td><td style="text-align:right"><strong>${summary.totalReceived.toFixed(3)}</strong></td><td style="text-align:right"><strong>${totalOut.toFixed(3)}</strong></td><td style="text-align:right"><strong>${finalBalance.toFixed(3)}</strong></td><td></td></tr></tfoot>
                     </table>
+                    <p class="note">* "Own Stock Balance" reflects the party's physical stock only. "Borrowed from HLC" rows do not reduce this balance — they represent an obligation tracked in the summary above.</p>
                     </body></html>`);
                   w.document.close();
                   w.print();
@@ -1571,21 +1576,22 @@ export default function PlantStock() {
                 const handlePdfStmt = () => {
                   const doc = new jsPDF({ orientation: 'landscape' });
                   const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
-                  doc.setFontSize(14);
-                  doc.text(`Party Supply Obligation Statement`, 14, 14);
-                  doc.setFontSize(10);
-                  doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 21);
+                  doc.setFontSize(16);
+                  doc.text(PROJECT_NAME, 14, 13);
+                  doc.setFontSize(12);
+                  doc.text(`Party Supply Obligation Statement`, 14, 20);
                   doc.setFontSize(9);
+                  doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
                   doc.text([
                     `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
                     `Dispatched (Own): ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
                     `Borrowed from HLC: ${summary.borrowedFromHlc.toFixed(3)} ${uom}`,
                     `Replenished to HLC: ${summary.replenishedToHlc.toFixed(3)} ${uom}`,
                     `Outstanding: ${summary.outstanding.toFixed(3)} ${uom}`,
-                  ].join('    '), 14, 28);
+                  ].join('    '), 14, 33);
                   autoTable(doc, {
-                    startY: 34,
-                    head: [['Date', 'Type', 'Material', `In (${uom})`, `Out (${uom})`, 'Running Balance', 'Notes']],
+                    startY: 38,
+                    head: [['Date', 'Type', 'Material', `In (${uom})`, `Out (${uom})`, 'Own Stock Balance', 'Notes']],
                     body: entries.map(e => [
                       e.date,
                       typeLabel(e.displayType),
@@ -1651,7 +1657,7 @@ export default function PlantStock() {
                             <th className="text-left p-3 font-semibold">Material</th>
                             <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In ({uom})</th>
                             <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out ({uom})</th>
-                            <th className="text-right p-3 font-semibold">Running Balance</th>
+                            <th className="text-right p-3 font-semibold">Own Stock Balance</th>
                             <th className="text-left p-3 font-semibold">Notes</th>
                           </tr>
                         </thead>

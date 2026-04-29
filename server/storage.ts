@@ -3105,30 +3105,39 @@ export class DatabaseStorage implements IStorage {
     type DetailEntry = StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number };
     const detail: DetailEntry[] = [];
 
+    // running = party's own physical stock balance (not HLC obligation).
+    // Borrowed-dispatch synthetic rows do NOT change running (borrowed material
+    // never touches party stock). Replenishment to HLC decreases party stock.
     for (const e of entries) {
       const qIn = e.quantityIn || 0;
       const qOut = e.quantityOut || 0;
 
-      if (e.transactionType === 'opening' || e.transactionType === 'receipt') {
+      if (e.transactionType === 'opening') {
         running += qIn;
         totalReceived += qIn;
-        detail.push({ ...e, displayType: e.transactionType === 'opening' ? 'opening' : 'receipt', borrowedQty: 0, runningBalance: running });
+        detail.push({ ...e, displayType: 'opening', borrowedQty: 0, runningBalance: running });
+      } else if (e.transactionType === 'receipt') {
+        running += qIn;
+        totalReceived += qIn;
+        detail.push({ ...e, displayType: 'receipt', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'return') {
+        // Material returned to party's stock — affects running balance but is
+        // not part of "total received" for obligation purposes.
         running += qIn;
-        totalReceived += qIn;
         detail.push({ ...e, displayType: 'return', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'adjustment') {
+        // Stock correction: can add or remove; not counted in totalReceived.
         running += qIn - qOut;
-        totalReceived += qIn;
-        dispatchedOwn += qOut;
         detail.push({ ...e, displayType: 'correction', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'dispatch') {
-        // Own-stock portion
+        // Own-stock portion — consumed from party's physical balance.
         running -= qOut;
         dispatchedOwn += qOut;
         detail.push({ ...e, displayType: 'own_dispatch', borrowedQty: 0, runningBalance: running });
 
-        // Borrowed portion (synthetic row)
+        // Borrowed portion (synthetic row).
+        // Running balance does NOT change — borrowed material came from HLC,
+        // not from the party's own stock.
         let borrowedQty = 0;
         if (e.referenceId) {
           const sw = dispatchMap.get(e.referenceId);
@@ -3141,27 +3150,27 @@ export class DatabaseStorage implements IStorage {
           }
         }
         if (borrowedQty > 0) {
-          running -= borrowedQty; // obligation deepens
           borrowedFromHlc += borrowedQty;
-          // synthetic row: same date/notes/materialId, but displayType = 'borrowed_dispatch'
           detail.push({
             ...e,
-            id: -(e.id * 10 + 1), // synthetic id
+            id: -(e.id * 10 + 1), // synthetic id, guaranteed unique within page
             displayType: 'borrowed_dispatch',
             quantityIn: null,
             quantityOut: borrowedQty,
             borrowedQty,
-            runningBalance: running,
+            runningBalance: running, // unchanged — HLC supplied this, not party
           });
         }
       } else if (e.transactionType === 'transfer') {
         if (qOut > 0) {
-          running += qOut; // repayment restores obligation
+          // Party returns material to HLC to repay obligation.
+          // This takes from party's physical stock.
+          running -= qOut;
           replenishedToHlc += qOut;
           detail.push({ ...e, displayType: 'replenishment', borrowedQty: 0, runningBalance: running });
         } else {
+          // Inbound inter-party transfer — adds to party's physical stock.
           running += qIn;
-          totalReceived += qIn;
           detail.push({ ...e, displayType: 'transfer_in', borrowedQty: 0, runningBalance: running });
         }
       } else {
