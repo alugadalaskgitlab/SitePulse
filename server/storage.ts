@@ -3154,21 +3154,49 @@ export class DatabaseStorage implements IStorage {
       // Track ledger IDs inserted during this dispatch so we can backfill referenceId
       const insertedLedgerIds: number[] = [];
 
-      // Helper to deduct from a specific source and write ledger entry
+      // Helper to deduct from a specific source and write ledger entry.
+      // If the dispatch UOM differs from the balance UOM, the quantity is converted
+      // using the material's conversion factor before deducting (e.g. Ton dispatch
+      // from a CFT-denominated opening balance like 6MM Down).
       const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
         const condition = pId === null 
           ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
           : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
         const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+
+        // UOM mismatch check: convert qty to the balance's UOM when they differ
+        let deductQty = qty;
+        let deductUom = uom;
+        if (existing?.uom && existing.uom !== uom) {
+          const [mat] = await tx.select().from(plantMaterials)
+            .where(eq(plantMaterials.id, matId)).limit(1);
+          if (mat?.conversionFactor && mat.conversionFromUom && mat.conversionToUom) {
+            if (
+              uom.toUpperCase() === mat.conversionToUom.toUpperCase() &&
+              existing.uom.toUpperCase() === mat.conversionFromUom.toUpperCase()
+            ) {
+              // Dispatch in Ton, balance in CFT → convert Ton → CFT
+              deductQty = qty / mat.conversionFactor;
+              deductUom = existing.uom;
+            } else if (
+              uom.toUpperCase() === mat.conversionFromUom.toUpperCase() &&
+              existing.uom.toUpperCase() === mat.conversionToUom.toUpperCase()
+            ) {
+              // Dispatch in CFT, balance in Ton → convert CFT → Ton
+              deductQty = qty * mat.conversionFactor;
+              deductUom = existing.uom;
+            }
+          }
+        }
         
-        const newBalance = (existing?.balance || 0) - qty;
+        const newBalance = (existing?.balance || 0) - deductQty;
         
         if (existing) {
           await tx.update(stockBalances)
             .set({ balance: newBalance, lastUpdated: new Date() })
             .where(eq(stockBalances.id, existing.id));
         } else {
-          await tx.insert(stockBalances).values({ partyId: pId, materialId: matId, balance: newBalance, uom });
+          await tx.insert(stockBalances).values({ partyId: pId, materialId: matId, balance: newBalance, uom: deductUom });
         }
         
         const [insertedRow] = await tx.insert(stockLedger).values({
@@ -3176,9 +3204,9 @@ export class DatabaseStorage implements IStorage {
           partyId: pId,
           materialId: matId,
           transactionType: "dispatch",
-          quantityOut: qty,
+          quantityOut: deductQty,
           balanceAfter: newBalance,
-          uom,
+          uom: deductUom,
           notes,
         }).returning({ id: stockLedger.id });
         if (insertedRow?.id) insertedLedgerIds.push(insertedRow.id);
@@ -4094,7 +4122,7 @@ export class DatabaseStorage implements IStorage {
 
           if (existing) {
             await db.update(stockBalances)
-              .set({ balance: data.balance, lastUpdated: new Date() })
+              .set({ balance: data.balance, uom: data.uom, lastUpdated: new Date() })
               .where(eq(stockBalances.id, existing.id));
             updated++;
           } else {
@@ -5280,6 +5308,23 @@ export class DatabaseStorage implements IStorage {
       
       // Determine stock owner (partyId or plant common)
       const stockPartyId = stock.isPlantCommon ? null : stock.partyId;
+
+      // Apply UOM conversion if the material has a conversion factor and the entered
+      // UOM matches the "from" side (e.g. CFT → Ton for aggregates like 6MM Down).
+      // Mirrors the same logic used by createMaterialReceipt.
+      const [openingMaterial] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, stock.materialId)).limit(1);
+      let stockQuantity = stock.quantity;
+      let stockUom = stock.uom;
+      if (
+        openingMaterial?.conversionFactor &&
+        openingMaterial.conversionFromUom &&
+        openingMaterial.conversionToUom &&
+        stock.uom.toUpperCase() === openingMaterial.conversionFromUom.toUpperCase()
+      ) {
+        stockQuantity = stock.quantity * openingMaterial.conversionFactor;
+        stockUom = openingMaterial.conversionToUom;
+      }
       
       // Update stock balance
       const condition = stockPartyId === null 
@@ -5287,7 +5332,7 @@ export class DatabaseStorage implements IStorage {
         : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, stock.materialId));
       
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance ?? 0) + stock.quantity;
+      const newBalance = (existing?.balance ?? 0) + stockQuantity;
       
       if (existing) {
         await tx.update(stockBalances)
@@ -5298,21 +5343,24 @@ export class DatabaseStorage implements IStorage {
           partyId: stockPartyId,
           materialId: stock.materialId,
           balance: newBalance,
-          uom: stock.uom,
+          uom: stockUom,
         });
       }
       
-      // Add ledger entry for opening stock
+      // Add ledger entry for opening stock (always in the stock UOM after conversion)
+      const conversionNote = stockQuantity !== stock.quantity
+        ? `Opening stock entry (${stock.quantity} ${stock.uom} converted to ${stockQuantity.toFixed(3)} ${stockUom})`
+        : (stock.notes ?? "Opening stock entry");
       await tx.insert(stockLedger).values({
         date: stock.date,
         partyId: stockPartyId,
         materialId: stock.materialId,
         transactionType: "opening",
         referenceId: result.id,
-        quantityIn: stock.quantity,
+        quantityIn: stockQuantity,
         balanceAfter: newBalance,
-        uom: stock.uom,
-        notes: stock.notes ?? "Opening stock entry",
+        uom: stockUom,
+        notes: conversionNote,
       });
       
       return result;
@@ -5325,8 +5373,22 @@ export class DatabaseStorage implements IStorage {
         .where(eq(materialOpeningStocks.id, id))
         .limit(1);
       if (!original) return undefined;
+
+      // Compute the stock quantity that was originally applied (possibly converted).
+      // Mirrors the reverse-step logic in updateMaterialReceipt.
+      const [oldMaterial] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, original.materialId)).limit(1);
+      let oldStockQuantity = original.quantity;
+      if (
+        oldMaterial?.conversionFactor &&
+        oldMaterial.conversionFromUom &&
+        oldMaterial.conversionToUom &&
+        original.uom.toUpperCase() === oldMaterial.conversionFromUom.toUpperCase()
+      ) {
+        oldStockQuantity = original.quantity * oldMaterial.conversionFactor;
+      }
       
-      // Reverse original stock balance
+      // Reverse original stock balance using the converted amount
       const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
       const origCondition = originalStockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
@@ -5335,7 +5397,7 @@ export class DatabaseStorage implements IStorage {
       const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
       if (origBal) {
         await tx.update(stockBalances)
-          .set({ balance: origBal.balance - original.quantity, lastUpdated: new Date() })
+          .set({ balance: origBal.balance - oldStockQuantity, lastUpdated: new Date() })
           .where(eq(stockBalances.id, origBal.id));
       }
       
@@ -5345,18 +5407,32 @@ export class DatabaseStorage implements IStorage {
         .where(eq(materialOpeningStocks.id, id))
         .returning();
       
-      // Apply new stock balance
+      // Compute the new stock quantity (possibly converted)
       const newStockPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
       const newMaterialId = updates.materialId ?? original.materialId;
       const newQuantity = updates.quantity ?? original.quantity;
       const newUom = updates.uom ?? original.uom;
+
+      const [newMaterial] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      let newStockQuantity = newQuantity;
+      let newStockUom = newUom;
+      if (
+        newMaterial?.conversionFactor &&
+        newMaterial.conversionFromUom &&
+        newMaterial.conversionToUom &&
+        newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()
+      ) {
+        newStockQuantity = newQuantity * newMaterial.conversionFactor;
+        newStockUom = newMaterial.conversionToUom;
+      }
       
       const newCondition = newStockPartyId === null 
         ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
         : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
       
       const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-      const newBalance = (newBal?.balance ?? 0) + newQuantity;
+      const newBalance = (newBal?.balance ?? 0) + newStockQuantity;
       
       if (newBal) {
         await tx.update(stockBalances)
@@ -5367,28 +5443,31 @@ export class DatabaseStorage implements IStorage {
           partyId: newStockPartyId,
           materialId: newMaterialId,
           balance: newBalance,
-          uom: newUom,
+          uom: newStockUom,
         });
       }
       
-      // Delete old ledger entry and create new one
+      // Delete old ledger entry and create new one in the stock UOM
       await tx.delete(stockLedger).where(
         and(eq(stockLedger.transactionType, "opening"), eq(stockLedger.referenceId, id))
       );
       
       const newDate = updates.date ?? original.date;
       const newNotes = updates.notes ?? original.notes;
-      
+      const conversionNote = newStockQuantity !== newQuantity
+        ? `Opening stock entry (${newQuantity} ${newUom} converted to ${newStockQuantity.toFixed(3)} ${newStockUom})`
+        : (newNotes ?? "Opening stock entry");
+
       await tx.insert(stockLedger).values({
         date: newDate,
         partyId: newStockPartyId,
         materialId: newMaterialId,
         transactionType: "opening",
         referenceId: result.id,
-        quantityIn: newQuantity,
+        quantityIn: newStockQuantity,
         balanceAfter: newBalance,
-        uom: newUom,
-        notes: newNotes ?? "Opening stock entry",
+        uom: newStockUom,
+        notes: conversionNote,
       });
       
       return result;

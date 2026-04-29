@@ -768,7 +768,7 @@ export default function PlantDispatches() {
 
               <div>
                 <Label>Mix Template</Label>
-                <Select value={mixTemplateId} onValueChange={setMixTemplateId}>
+                <Select value={mixTemplateId} onValueChange={(v) => { setMixTemplateId(v); setActualBitumenPercent(""); setActualLdoPerTon(""); }}>
                   <SelectTrigger data-testid="select-mix-template">
                     <SelectValue placeholder="Select mix template" />
                   </SelectTrigger>

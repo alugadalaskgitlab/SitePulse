@@ -1532,22 +1532,25 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const { adjustedBy, ...dispatchData } = req.body;
       
-      // Server-side tolerance validation for actual consumption values
+      // Server-side tolerance validation for actual consumption values.
+      // Use != null so that explicit null (meaning "clear the field") bypasses the check.
       const TOLERANCE_PERCENT = 10;
-      if (dispatchData.actualBitumenPercent !== undefined || dispatchData.actualLdoQty !== undefined) {
+      if (dispatchData.actualBitumenPercent != null || dispatchData.actualLdoQty != null) {
         // Get current dispatch and mix template to calculate theoretical
         const dispatches = await storage.getTruckDispatches({});
         const currentDispatch = dispatches.find(d => d.id === id);
         if (currentDispatch) {
           const templates = await storage.getMixTemplates();
-          const template = templates.find(t => t.id === currentDispatch.mixTemplateId);
+          // Support edits that also change the mix template in the same request
+          const templateId = dispatchData.mixTemplateId ?? currentDispatch.mixTemplateId;
+          const template = templates.find(t => t.id === templateId);
           if (template) {
             const loadWeight = dispatchData.loadWeight ?? currentDispatch.loadWeight;
             const theoreticalBitumenPercent = template.bitumenPercent || 0;
             const theoreticalLdoQty = loadWeight * (template.ldoNorm || 6);
             
             // Validate bitumen tolerance (guard against divide-by-zero)
-            if (dispatchData.actualBitumenPercent !== undefined && theoreticalBitumenPercent > 0) {
+            if (dispatchData.actualBitumenPercent != null && theoreticalBitumenPercent > 0) {
               const bitumenVariance = ((dispatchData.actualBitumenPercent - theoreticalBitumenPercent) / theoreticalBitumenPercent) * 100;
               if (Math.abs(bitumenVariance) > TOLERANCE_PERCENT) {
                 return res.status(400).json({ 
@@ -1557,7 +1560,7 @@ export async function registerRoutes(
             }
             
             // Validate LDO tolerance (guard against divide-by-zero)
-            if (dispatchData.actualLdoQty !== undefined && theoreticalLdoQty > 0) {
+            if (dispatchData.actualLdoQty != null && theoreticalLdoQty > 0) {
               const ldoVariance = ((dispatchData.actualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100;
               if (Math.abs(ldoVariance) > TOLERANCE_PERCENT) {
                 return res.status(400).json({ 
