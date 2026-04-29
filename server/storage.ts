@@ -565,6 +565,7 @@ export interface IStorage {
   getActivePushSubscriptions(): Promise<PushSubscription[]>;
   createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
   deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
+  deletePushSubscriptionsByUserId(userId: number): Promise<void>;
   
   // Sites Master
   getSites(): Promise<Site[]>;
@@ -4763,6 +4764,10 @@ export class DatabaseStorage implements IStorage {
 
   async deletePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  }
+
+  async deletePushSubscriptionsByUserId(userId: number): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
   }
 
   // Returns subscriptions that should actually receive a push:

@@ -26,6 +26,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { db } from "./db";
+import { storage } from "./storage";
 import {
   userDevices,
   userSessions,
@@ -478,6 +479,16 @@ export function registerAuthRoutes(app: Express) {
       }
       const updated = await updateUserProfile(id, input);
       if (!updated) return res.status(404).json({ error: "not_found" });
+
+      // When notifications are explicitly turned off, delete all push
+      // subscriptions for this user so stale rows don't silently re-activate
+      // if the flag is later re-enabled. The user must subscribe again.
+      if (input.notificationsEnabled === false && current.notificationsEnabled === true) {
+        await storage.deletePushSubscriptionsByUserId(id).catch((e) =>
+          console.error("[PATCH /api/auth/users/:id] push cleanup error:", e),
+        );
+      }
+
       res.json(toSafeUser(updated));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
