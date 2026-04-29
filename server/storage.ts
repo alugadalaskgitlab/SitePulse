@@ -3236,16 +3236,42 @@ export class DatabaseStorage implements IStorage {
         if (qty > 0) plan.push({ matId, qty, uom: "Ton", label: "Aggregate dispatch" });
       }
       
-      // Helper to read a single party balance
-      const getBalance = async (pId: number | null, matId: number) => {
+      // Helper to read a single party balance (returns raw value and UOM).
+      const getBalanceRow = async (pId: number | null, matId: number) => {
         const condition = pId === null 
           ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
           : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
         const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
-        return bal?.balance || 0;
+        return { balance: bal?.balance || 0, uom: bal?.uom || null };
+      };
+
+      // Helper: look up material conversion info from matRows (pre-fetched below).
+      const getMatConversion = (matId: number) => matRows.find(m => m.id === matId);
+
+      // Convert a balance expressed in `fromUom` into `toUom` using the material's factor.
+      // Returns the original value unchanged if no known conversion applies.
+      const normalizeBalance = (value: number, fromUom: string | null, toUom: string, matId: number) => {
+        if (!fromUom || fromUom === toUom) return value;
+        const mat = getMatConversion(matId);
+        if (!mat?.conversionFactor || !mat.conversionFromUom || !mat.conversionToUom) return value;
+        if (
+          fromUom.toUpperCase() === mat.conversionFromUom.toUpperCase() &&
+          toUom.toUpperCase() === mat.conversionToUom.toUpperCase()
+        ) {
+          return value * mat.conversionFactor;          // e.g. CFT → Ton
+        }
+        if (
+          fromUom.toUpperCase() === mat.conversionToUom.toUpperCase() &&
+          toUom.toUpperCase() === mat.conversionFromUom.toUpperCase()
+        ) {
+          return value / mat.conversionFactor;          // e.g. Ton → CFT
+        }
+        return value;
       };
       
-      // PHASE 1: Compute shortages without writing anything
+      // PHASE 1: Compute shortages without writing anything.
+      // Normalise the balance to the dispatch item's UOM before comparing so that
+      // a CFT balance is not compared directly against a Ton dispatch quantity.
       const shortageDetails: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] = [];
       const matIdsForLookup = Array.from(new Set(plan.map(p => p.matId)));
       const matRows = matIdsForLookup.length
@@ -3254,7 +3280,8 @@ export class DatabaseStorage implements IStorage {
       const matNameById = new Map(matRows.map(m => [m.id, m.name]));
       
       for (const item of plan) {
-        const ownerBal = await getBalance(partyId, item.matId);
+        const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
+        const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
         if (ownerBal < item.qty) {
           const shortfall = +(item.qty - ownerBal).toFixed(6);
           shortageDetails.push({
@@ -3283,8 +3310,11 @@ export class DatabaseStorage implements IStorage {
       }
       
       // PHASE 2: Actually deduct.
+      // Normalise balance to item UOM for the split calculation before calling
+      // deductFromSource (which handles its own conversion internally).
       for (const item of plan) {
-        const ownerBal = await getBalance(partyId, item.matId);
+        const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
+        const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
         const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
         if (fromOwner > 0) {
           await deductFromSource(partyId, item.matId, fromOwner, item.uom, `${item.label} (${ownerPartyName})`);
