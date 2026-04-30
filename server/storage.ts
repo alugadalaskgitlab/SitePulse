@@ -4584,14 +4584,17 @@ export class DatabaseStorage implements IStorage {
     const HLC_ENTRY_50   = 20434; // quantity_out was 14.85, correct is 7.5
 
     // Guard: if LAXMI party doesn't exist in this environment, skip (non-production env)
-    const [laxmiCheck] = await db.select({ id: parties.id })
+    const [laxmiParty] = await db.select({ id: parties.id, name: parties.name })
       .from(parties).where(eq(parties.id, LAXMI_PARTY_ID)).limit(1);
-    if (!laxmiCheck) {
+    if (!laxmiParty) {
       return { alreadyApplied: true, markersInserted: 0, hlcEntriesUpdated: 0, reconciled: { updated: 0, created: 0, errors: 0 } };
     }
+    const laxmiName = laxmiParty.name;
 
-    // Idempotency check: marker rows exist when qty_out=0, type=dispatch, party=LAXMI, mat=6mm, ref in (49,50)
-    const existing = await db.select({ referenceId: stockLedger.referenceId })
+    // ── Step A: LAXMI 0-qty marker rows ────────────────────────────────────────
+    // Check independently for each dispatch so reruns always converge even if only
+    // one marker was inserted in a previous partial run.
+    const existingMarkers = await db.select({ referenceId: stockLedger.referenceId })
       .from(stockLedger)
       .where(and(
         eq(stockLedger.partyId, LAXMI_PARTY_ID),
@@ -4600,23 +4603,11 @@ export class DatabaseStorage implements IStorage {
         eq(stockLedger.quantityOut, 0),
         inArray(stockLedger.referenceId, [DISPATCH_49, DISPATCH_50]),
       ));
-    const alreadyApplied = existing.length === 2;
-    if (alreadyApplied) {
-      return { alreadyApplied: true, markersInserted: 0, hlcEntriesUpdated: 0, reconciled: { updated: 0, created: 0, errors: 0 } };
-    }
-
-    // Fetch LAXMI party name for the notes field
-    const [laxmiParty] = await db.select({ name: parties.name })
-      .from(parties).where(eq(parties.id, LAXMI_PARTY_ID)).limit(1);
-    const laxmiName = laxmiParty?.name ?? 'LAXMI';
+    const existingMarkerRefs = new Set(existingMarkers.map(e => e.referenceId));
 
     let markersInserted = 0;
-    let hlcEntriesUpdated = 0;
-
-    // Insert 0-qty marker rows for LAXMI (only the ones missing)
-    const existingRefs = new Set(existing.map(e => e.referenceId));
     for (const dispatchId of [DISPATCH_49, DISPATCH_50]) {
-      if (!existingRefs.has(dispatchId)) {
+      if (!existingMarkerRefs.has(dispatchId)) {
         await db.insert(stockLedger).values({
           date: '2026-04-28',
           partyId: LAXMI_PARTY_ID,
@@ -4632,12 +4623,15 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Correct the over-counted HLC borrow entries and link them to their dispatches
-    const hlcUpdates: { id: number; qty: number; refId: number }[] = [
+    // ── Step B: HLC borrow entry corrections ───────────────────────────────────
+    // Always check the current state of each HLC entry and update if qty or
+    // referenceId is still wrong — independent of whether markers were inserted.
+    const hlcWanted: { id: number; qty: number; refId: number }[] = [
       { id: HLC_ENTRY_49, qty: 11,  refId: DISPATCH_49 },
       { id: HLC_ENTRY_50, qty: 7.5, refId: DISPATCH_50 },
     ];
-    for (const u of hlcUpdates) {
+    let hlcEntriesUpdated = 0;
+    for (const u of hlcWanted) {
       const res = await db.update(stockLedger)
         .set({ quantityOut: u.qty, referenceId: u.refId })
         .where(and(
@@ -4648,11 +4642,13 @@ export class DatabaseStorage implements IStorage {
       hlcEntriesUpdated += (res as { rowCount?: number }).rowCount ?? 0;
     }
 
+    const alreadyApplied = markersInserted === 0 && hlcEntriesUpdated === 0;
+
     // Recompute running balance_after for all 6mm Down ledger rows, then sync stock_balances
     await this.recomputeBalanceAfterForMaterial(MAT_6MM_DOWN);
     const reconciled = await this.reconcileStockBalancesFromLedger();
 
-    return { alreadyApplied: false, markersInserted, hlcEntriesUpdated, reconciled };
+    return { alreadyApplied, markersInserted, hlcEntriesUpdated, reconciled };
   }
 
   async migrateOrphanStockToHLC(): Promise<{ ledgerFixed: number; balancesMerged: number; errors: number }> {

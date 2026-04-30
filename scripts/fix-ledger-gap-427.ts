@@ -6,19 +6,17 @@
  * reads LAXMI's ledger only, so both dispatches were invisible → 18.5 MT gap
  * (238.75 MT shown instead of correct 257.25 MT).
  *
- * Fix:
- *   1. Insert 0-qty "marker" ledger rows for LAXMI (party_id=6, mat=3) linking to
+ * Fix (each step is independently idempotent — safe to rerun):
+ *   A. Insert 0-qty "marker" ledger rows for LAXMI (party_id=6, mat=3) linking to
  *      dispatch 49 (11 MT template) and dispatch 50 (7.5 MT template).
  *      getPartyStatement reads theoreticalAggregates via referenceId to get templateQty,
  *      then counts the full amount as borrowedFromHlc.
- *   2. Correct the over-counted HLC borrow entries (20415 → 11 MT / ref=49;
+ *   B. Correct the over-counted HLC borrow entries (20415 → 11 MT / ref=49;
  *      20434 → 7.5 MT / ref=50) so HLC's own ledger is also accurate.
- *   3. Recompute balance_after and reconcile stock_balances for material 3.
+ *   C. Recompute balance_after and reconcile stock_balances for material 3.
  *
  * Usage (production):
  *   npx tsx scripts/fix-ledger-gap-427.ts
- *
- * This script is idempotent — safe to run multiple times.
  */
 import { db } from "../server/db";
 import { stockLedger, stockBalances, parties } from "@shared/schema";
@@ -88,16 +86,17 @@ async function main() {
   console.log("=== Fix #427: 6mm Down ledger gap for LAXMI (dispatches 49 & 50) ===\n");
 
   // Guard: must be run on the production database where LAXMI (party_id=6) exists
-  const [laxmiCheck] = await db.select({ id: parties.id, name: parties.name })
+  const [laxmiParty] = await db.select({ id: parties.id, name: parties.name })
     .from(parties).where(eq(parties.id, LAXMI_PARTY_ID)).limit(1);
-  if (!laxmiCheck) {
+  if (!laxmiParty) {
     console.log("LAXMI party (id=6) not found — this is not the production database. Aborting.");
     process.exit(0);
   }
-  console.log(`LAXMI party: "${laxmiCheck.name}" (id=${laxmiCheck.id})`);
+  console.log(`LAXMI party: "${laxmiParty.name}" (id=${laxmiParty.id})\n`);
 
-  // Check idempotency
-  const existing = await db.select({ referenceId: stockLedger.referenceId })
+  // ── Step A: LAXMI 0-qty marker rows ────────────────────────────────────────
+  // Check each dispatch independently so reruns converge even in partial states.
+  const existingMarkers = await db.select({ referenceId: stockLedger.referenceId })
     .from(stockLedger)
     .where(and(
       eq(stockLedger.partyId, LAXMI_PARTY_ID),
@@ -106,19 +105,12 @@ async function main() {
       eq(stockLedger.quantityOut, 0),
       inArray(stockLedger.referenceId, [DISPATCH_49, DISPATCH_50]),
     ));
+  const existingMarkerRefs = new Set(existingMarkers.map(e => e.referenceId));
+  console.log(`Existing LAXMI marker rows: ${existingMarkers.length}/2 (refs: ${[...existingMarkerRefs].join(', ') || 'none'})`);
 
-  if (existing.length === 2) {
-    console.log("Fix already applied — both LAXMI marker rows exist. Nothing to do.");
-    process.exit(0);
-  }
-
-  const existingRefs = new Set(existing.map(e => e.referenceId));
-  console.log(`Found ${existing.length}/2 existing marker rows. Refs present: ${[...existingRefs].join(', ') || 'none'}`);
-
-  // Step 1: Insert missing LAXMI 0-qty marker rows
   let markersInserted = 0;
   for (const dispatchId of [DISPATCH_49, DISPATCH_50]) {
-    if (!existingRefs.has(dispatchId)) {
+    if (!existingMarkerRefs.has(dispatchId)) {
       const [row] = await db.insert(stockLedger).values({
         date: '2026-04-28',
         partyId: LAXMI_PARTY_ID,
@@ -127,21 +119,25 @@ async function main() {
         quantityOut: 0,
         balanceAfter: 0,
         uom: 'Ton',
-        notes: `Aggregate dispatch (${laxmiCheck.name})`,
+        notes: `Aggregate dispatch (${laxmiParty.name})`,
         referenceId: dispatchId,
       }).returning({ id: stockLedger.id });
       console.log(`  Inserted LAXMI marker row for dispatch #${dispatchId} → ledger id: ${row?.id}`);
       markersInserted++;
+    } else {
+      console.log(`  Marker for dispatch #${dispatchId} already present — skipping.`);
     }
   }
 
-  // Step 2: Correct over-counted HLC borrow entries
-  const hlcUpdates = [
+  // ── Step B: HLC borrow entry corrections ───────────────────────────────────
+  // Always attempt to set the correct qty + referenceId regardless of marker state.
+  const hlcWanted = [
     { id: HLC_ENTRY_49, qty: 11,  refId: DISPATCH_49 },
     { id: HLC_ENTRY_50, qty: 7.5, refId: DISPATCH_50 },
   ];
   let hlcEntriesUpdated = 0;
-  for (const u of hlcUpdates) {
+  console.log("\nHLC borrow entry corrections:");
+  for (const u of hlcWanted) {
     const res = await db.update(stockLedger)
       .set({ quantityOut: u.qty, referenceId: u.refId })
       .where(and(
@@ -150,22 +146,33 @@ async function main() {
         eq(stockLedger.materialId, MAT_6MM_DOWN),
       ));
     const cnt = (res as { rowCount?: number }).rowCount ?? 0;
-    console.log(`  HLC entry #${u.id}: ${cnt > 0 ? `updated qty_out=${u.qty}, reference_id=${u.refId}` : 'not found (may already be correct)'}`);
+    if (cnt > 0) {
+      console.log(`  Updated HLC entry #${u.id} → qty_out=${u.qty} MT, reference_id=${u.refId}`);
+    } else {
+      console.log(`  HLC entry #${u.id} not found or already correct — skipping.`);
+    }
     hlcEntriesUpdated += cnt;
   }
 
-  // Step 3: Recompute balance_after for all 6mm Down ledger rows
-  console.log("\nRecomputing balance_after for material_id=3...");
+  // ── Step C: Recompute balances ──────────────────────────────────────────────
+  console.log("\nRecomputing balance_after for material_id=3 (6mm Down)...");
   const balUpdated = await recomputeBalanceAfterForMaterial(MAT_6MM_DOWN);
   console.log(`  Updated ${balUpdated} balance_after values`);
 
-  // Step 4: Reconcile stock_balances for 6mm Down
   console.log("Reconciling stock_balances for material_id=3...");
   const reconciledCount = await reconcileStockBalancesForMaterial(MAT_6MM_DOWN);
-  console.log(`  Reconciled ${reconciledCount} party balances`);
+  console.log(`  Reconciled ${reconciledCount} party balance(s)`);
 
-  console.log(`\n✓ Done: ${markersInserted} marker rows inserted, ${hlcEntriesUpdated} HLC entries corrected.`);
-  console.log("LAXMI 6mm Down consumed should now show 257.25 MT (was 238.75 MT).");
+  const alreadyApplied = markersInserted === 0 && hlcEntriesUpdated === 0;
+  if (alreadyApplied) {
+    console.log("\n✓ Fix was already fully applied. No changes made.");
+  } else {
+    console.log(`\n✓ Done: ${markersInserted} marker row(s) inserted, ${hlcEntriesUpdated} HLC entry(ies) corrected.`);
+    console.log("LAXMI 6mm Down consumed should now show 257.25 MT (was 238.75 MT).");
+    console.log("\nVerification query:");
+    console.log("  SELECT id, quantity_out, reference_id FROM stock_ledger");
+    console.log("  WHERE party_id=6 AND material_id=3 AND transaction_type='dispatch' AND quantity_out=0;");
+  }
   process.exit(0);
 }
 
