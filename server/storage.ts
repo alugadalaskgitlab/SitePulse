@@ -4632,21 +4632,47 @@ export class DatabaseStorage implements IStorage {
     ];
     let hlcEntriesUpdated = 0;
     for (const u of hlcWanted) {
+      // Only update when at least one field still differs — keeps rowCount and
+      // "alreadyApplied" truthful on repeated calls.
       const res = await db.update(stockLedger)
         .set({ quantityOut: u.qty, referenceId: u.refId })
         .where(and(
           eq(stockLedger.id, u.id),
           eq(stockLedger.partyId, HLC_PARTY_ID),
           eq(stockLedger.materialId, MAT_6MM_DOWN),
+          sql`(${stockLedger.quantityOut} IS DISTINCT FROM ${u.qty}
+            OR ${stockLedger.referenceId} IS DISTINCT FROM ${u.refId})`,
         ));
       hlcEntriesUpdated += (res as { rowCount?: number }).rowCount ?? 0;
     }
 
     const alreadyApplied = markersInserted === 0 && hlcEntriesUpdated === 0;
 
-    // Recompute running balance_after for all 6mm Down ledger rows, then sync stock_balances
+    // Recompute balance_after for 6mm Down rows then update stock_balances for
+    // material_id=3 only — avoids the heavier global reconcile with side-effects.
     await this.recomputeBalanceAfterForMaterial(MAT_6MM_DOWN);
-    const reconciled = await this.reconcileStockBalancesFromLedger();
+    const reconcileResult = await db.execute(sql`
+      WITH ledger_totals AS (
+        SELECT party_id,
+          ROUND(SUM(COALESCE(quantity_in, 0) - COALESCE(quantity_out, 0))::numeric, 6) AS balance
+        FROM stock_ledger
+        WHERE material_id = ${MAT_6MM_DOWN}
+          AND transaction_type != 'equipment_issue'
+        GROUP BY party_id
+      )
+      UPDATE stock_balances sb
+      SET balance = lt.balance,
+          last_updated = NOW()
+      FROM ledger_totals lt
+      WHERE sb.material_id = ${MAT_6MM_DOWN}
+        AND sb.party_id IS NOT DISTINCT FROM lt.party_id
+        AND sb.balance IS DISTINCT FROM lt.balance
+    `);
+    const reconciled = {
+      updated: (reconcileResult as { rowCount?: number }).rowCount ?? 0,
+      created: 0,
+      errors: 0,
+    };
 
     return { alreadyApplied, markersInserted, hlcEntriesUpdated, reconciled };
   }

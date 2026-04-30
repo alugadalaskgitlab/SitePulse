@@ -130,7 +130,8 @@ async function main() {
   }
 
   // ── Step B: HLC borrow entry corrections ───────────────────────────────────
-  // Always attempt to set the correct qty + referenceId regardless of marker state.
+  // Update only when qty_out or reference_id still differs from desired value —
+  // keeps rowCount (and "alreadyApplied" flag) truthful on reruns.
   const hlcWanted = [
     { id: HLC_ENTRY_49, qty: 11,  refId: DISPATCH_49 },
     { id: HLC_ENTRY_50, qty: 7.5, refId: DISPATCH_50 },
@@ -144,6 +145,8 @@ async function main() {
         eq(stockLedger.id, u.id),
         eq(stockLedger.partyId, HLC_PARTY_ID),
         eq(stockLedger.materialId, MAT_6MM_DOWN),
+        sql`(${stockLedger.quantityOut} IS DISTINCT FROM ${u.qty}
+          OR ${stockLedger.referenceId} IS DISTINCT FROM ${u.refId})`,
       ));
     const cnt = (res as { rowCount?: number }).rowCount ?? 0;
     if (cnt > 0) {
