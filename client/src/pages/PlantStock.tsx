@@ -112,6 +112,9 @@ export default function PlantStock() {
   const { data: allStockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
   });
+  const { data: allTemplateComponents } = useQuery<{ id: number; templateId: number; materialId: number; percent: number | null; moistureContent?: number | null; wastageFactor?: number | null }[]>({
+    queryKey: ["/api/plant-module/mix-template-components"],
+  });
 
   // Filtered ledger URL (with date filter) for Stock Summary and Ledger Details tabs
   const buildLedgerUrl = () => {
@@ -1777,6 +1780,11 @@ export default function PlantStock() {
                   toast({ title: "PDF download started" });
                 };
 
+                const matId = parseInt(stmtMaterialId);
+                const hasAdjustments = allTemplateComponents?.some(
+                  c => c.materialId === matId && ((c.moistureContent ?? 0) > 0 || (c.wastageFactor ?? 0) > 0)
+                ) ?? false;
+
                 return (
                   <div>
                     {/* Summary cards */}
@@ -1872,6 +1880,16 @@ export default function PlantStock() {
                         </tfoot>
                       </table>
                     </div>
+
+                    {/* Footnote */}
+                    <p className="text-xs text-muted-foreground mt-3">
+                      * Template Qty = material consumption per dispatch as per mix template{hasAdjustments ? ", adjusted for moisture content and wastage factor" : ""}. From Own Stock = supplied from party's own inventory. Borrowed from HLC = balance covered by HLC. Outstanding = total borrowed − replenished to HLC.
+                    </p>
+                    {hasAdjustments && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        ⚠ Moisture content and/or wastage factor is set for this material in the mix template. Template Qty figures include the upward adjustment — the party must supply more wet material than the base mix design quantity to account for water and handling losses.
+                      </p>
+                    )}
                   </div>
                 );
               })()}

@@ -3392,12 +3392,20 @@ export class DatabaseStorage implements IStorage {
       const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
       const theoreticalLdoQty = loadWeight * ldoNorm;
       
-      // Calculate aggregate consumption from components (percent of total mix)
+      // Calculate aggregate consumption from components (percent of total mix).
+      // Applies moisture-content (MC) and wastage-factor (WF) corrections:
+      //   adjustedQty = (loadWeight × percent/100) × (1 + WF/100) / (1 − MC/100)
+      // Default MC=0, WF=0 produces no change for components without these factors.
       const theoreticalAggregates: Record<number, number> = {};
       for (const comp of components) {
         const percent = (comp as any).percent || 0;
-        // percent of loadWeight gives consumption in MT
-        theoreticalAggregates[comp.materialId] = loadWeight * percent / 100;
+        const mc = (comp as any).moistureContent || 0;
+        const wf = (comp as any).wastageFactor || 0;
+        const baseQty = loadWeight * percent / 100;
+        theoreticalAggregates[comp.materialId] =
+          mc !== 0 || wf !== 0
+            ? baseQty * (1 + wf / 100) / (1 - mc / 100)
+            : baseQty;
       }
       
       // Owner-first deduction model:
@@ -3934,7 +3942,12 @@ export class DatabaseStorage implements IStorage {
           const newAggregates: Record<number, number> = {};
 
           for (const comp of components) {
-            const totalQty = +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9);
+            const mc = comp.moistureContent || 0;
+            const wf = comp.wastageFactor || 0;
+            const baseQty = dispatch.loadWeight * (comp.percent ?? 0) / 100;
+            const totalQty = +(mc !== 0 || wf !== 0
+              ? baseQty * (1 + wf / 100) / (1 - mc / 100)
+              : baseQty).toFixed(9);
             if (totalQty <= 0) continue;
             const { ownerQty, hlcQty } = computeSplit(dispatch, comp.materialId, totalQty);
 
@@ -4045,7 +4058,12 @@ export class DatabaseStorage implements IStorage {
           allAffectedMatIds.add(matId);
           const comp = currentCompByMat.get(matId);
           const newQty = comp
-            ? +(dispatch.loadWeight * (comp.percent ?? 0) / 100).toFixed(9)
+            ? +((() => {
+                const mc = comp.moistureContent || 0;
+                const wf = comp.wastageFactor || 0;
+                const base = dispatch.loadWeight * (comp.percent ?? 0) / 100;
+                return mc !== 0 || wf !== 0 ? base * (1 + wf / 100) / (1 - mc / 100) : base;
+              })()).toFixed(9)
             : 0;
           const oldQty = +(oldAggregates[String(matId)] ?? 0);
           const totalDelta = +(newQty - oldQty).toFixed(9);

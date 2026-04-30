@@ -252,6 +252,8 @@ export const mixTemplateComponents = pgTable("mix_template_components", {
   materialId: integer("material_id").notNull(),
   percent: real("percent"), // % of total mix (all components + bitumen = 100%)
   uom: text("uom"),
+  moistureContent: real("moisture_content").default(0), // % water in as-received aggregate
+  wastageFactor: real("wastage_factor").default(0),   // % lost during handling/rehandling
 });
 
 // Equipment Master

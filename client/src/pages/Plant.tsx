@@ -1517,6 +1517,8 @@ type MixTemplateComponent = {
   materialId: number;
   percent: number | null;
   uom: string;
+  moistureContent?: number | null;
+  wastageFactor?: number | null;
 };
 
 function MixTemplateMaster() {
@@ -1534,6 +1536,8 @@ function MixTemplateMaster() {
   const [ldoNorm, setLdoNorm] = useState("6");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
+  const [aggregateMoistureContent, setAggregateMoistureContent] = useState<Record<number, string>>({});
+  const [aggregateWastageFactors, setAggregateWastageFactors] = useState<Record<number, string>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [newMixTypeDialogOpen, setNewMixTypeDialogOpen] = useState(false);
   const [newMixTypeName, setNewMixTypeName] = useState("");
@@ -1698,6 +1702,8 @@ function MixTemplateMaster() {
     setLdoNorm("6");
     setNotes("");
     setAggregateProportions({});
+    setAggregateMoistureContent({});
+    setAggregateWastageFactors({});
   };
 
   const openEdit = (template: MixTemplate) => {
@@ -1710,10 +1716,16 @@ function MixTemplateMaster() {
     // Load components for this template
     const templateComponents = allComponents?.filter(c => c.templateId === template.id) || [];
     const proportions: Record<number, string> = {};
+    const mc: Record<number, string> = {};
+    const wf: Record<number, string> = {};
     templateComponents.forEach(c => {
       proportions[c.materialId] = c.percent?.toString() || "";
+      if (c.moistureContent) mc[c.materialId] = c.moistureContent.toString();
+      if (c.wastageFactor) wf[c.materialId] = c.wastageFactor.toString();
     });
     setAggregateProportions(proportions);
+    setAggregateMoistureContent(mc);
+    setAggregateWastageFactors(wf);
     setDialogOpen(true);
   };
 
@@ -1731,7 +1743,9 @@ function MixTemplateMaster() {
       .map(([materialId, percent]) => ({
         materialId: parseInt(materialId),
         percent: parseFloat(percent),
-        uom: "%"
+        uom: "%",
+        moistureContent: parseFloat(aggregateMoistureContent[parseInt(materialId)] || "0") || 0,
+        wastageFactor: parseFloat(aggregateWastageFactors[parseInt(materialId)] || "0") || 0,
       }));
 
     const data = {
@@ -1772,7 +1786,7 @@ function MixTemplateMaster() {
               </Button>
             </DialogTrigger>
           )}
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingTemplate ? "Edit Mix Template" : "Add Mix Template"}</DialogTitle>
             </DialogHeader>
@@ -1840,30 +1854,82 @@ function MixTemplateMaster() {
               </div>
               
               <div className="space-y-2">
-                <Label>Aggregate Proportions (% of total mix)</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {aggregateMaterials.map((mat) => (
-                    <div key={mat.id} className="flex items-center gap-2">
-                      <Label className="w-20 text-xs">{mat.name}</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={aggregateProportions[mat.id] || ""}
-                        onChange={(e) => setAggregateProportions(prev => ({
-                          ...prev,
-                          [mat.id]: e.target.value
-                        }))}
-                        placeholder="0"
-                        className="h-8"
-                        data-testid={`input-aggregate-${mat.id}`}
-                      />
-                    </div>
-                  ))}
+                <Label>Aggregate Proportions</Label>
+                <div className="rounded-md border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left font-medium">Material</th>
+                        <th className="px-2 py-1.5 text-center font-medium">Mix %</th>
+                        <th className="px-2 py-1.5 text-center font-medium" title="Moisture content: water in as-received aggregate">MC %</th>
+                        <th className="px-2 py-1.5 text-center font-medium" title="Wastage factor: material lost during handling">WF %</th>
+                        <th className="px-2 py-1.5 text-center font-medium text-muted-foreground" title="Net supply multiplier = (1 + WF/100) / (1 − MC/100)">×Adj</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aggregateMaterials.map((mat, idx) => {
+                        const mc = parseFloat(aggregateMoistureContent[mat.id] || "0") || 0;
+                        const wf = parseFloat(aggregateWastageFactors[mat.id] || "0") || 0;
+                        const multiplier = (1 + wf / 100) / (1 - mc / 100);
+                        const hasAdj = mc > 0 || wf > 0;
+                        return (
+                          <tr key={mat.id} className={idx % 2 === 0 ? "" : "bg-muted/20"}>
+                            <td className="px-2 py-1 font-medium text-xs">{mat.name}</td>
+                            <td className="px-2 py-1">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                value={aggregateProportions[mat.id] || ""}
+                                onChange={(e) => setAggregateProportions(prev => ({ ...prev, [mat.id]: e.target.value }))}
+                                placeholder="0"
+                                className="h-7 text-xs text-center"
+                                data-testid={`input-aggregate-${mat.id}`}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="30"
+                                value={aggregateMoistureContent[mat.id] || ""}
+                                onChange={(e) => setAggregateMoistureContent(prev => ({ ...prev, [mat.id]: e.target.value }))}
+                                placeholder="0"
+                                className="h-7 text-xs text-center"
+                                data-testid={`input-mc-${mat.id}`}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="20"
+                                value={aggregateWastageFactors[mat.id] || ""}
+                                onChange={(e) => setAggregateWastageFactors(prev => ({ ...prev, [mat.id]: e.target.value }))}
+                                placeholder="0"
+                                className="h-7 text-xs text-center"
+                                data-testid={`input-wf-${mat.id}`}
+                              />
+                            </td>
+                            <td className="px-2 py-1 text-center">
+                              <span className={`font-mono text-xs ${hasAdj ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
+                                {hasAdj ? `×${multiplier.toFixed(3)}` : "—"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
                 <div className={`text-xs ${Math.abs(totalPercent - 100) < 0.5 ? "text-green-600" : "text-amber-600"}`}>
-                  Total: {totalPercent.toFixed(1)}% (Bitumen: {bitumenVal}% + Aggregates: {aggregateTotal.toFixed(1)}%)
-                  {Math.abs(totalPercent - 100) >= 0.5 && " - Should equal 100%"}
+                  Mix total: {totalPercent.toFixed(1)}% (Bitumen: {bitumenVal}% + Aggregates: {aggregateTotal.toFixed(1)}%)
+                  {Math.abs(totalPercent - 100) >= 0.5 && " — Should equal 100%"}
                 </div>
+                <p className="text-xs text-muted-foreground">MC = moisture content (water in as-received material). WF = wastage factor (handling losses). Both increase the required supply quantity.</p>
               </div>
 
               <div>
