@@ -19,8 +19,8 @@ import { ToastAction } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { LockBadge } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
-import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession, PlantSettings } from "@shared/schema";
-import { dipCmToMt } from "@shared/bitumen-dip-chart";
+import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
+import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
@@ -332,22 +332,6 @@ export default function PlantShiftLog() {
     setPlantName(existing.plantName || "Main Plant");
   }, [existing]);
 
-  // Task #253 — fetch per-plant tank calibration so we can derive bitumen MT
-  // from the operator's dip readings inline next to each input. The dip is
-  // the single source of truth; derived MT is read-only.
-  const { data: plantSettings } = useQuery<PlantSettings | null>({
-    queryKey: ["/api/plant-module/plant-settings", plantName],
-    enabled: !!plantName,
-    queryFn: async () => {
-      const res = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(plantName)}`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-  });
-  const t1Lpc = plantSettings?.bitumenTank1LitresPerCm ?? null;
-  const t2Lpc = plantSettings?.bitumenTank2LitresPerCm ?? null;
-  const density = plantSettings?.bitumenDensityKgPerL ?? null;
-
   // Task #325 — fetch today's dispatches to compute live L/MT stats in the
   // LDO Flow Meters card. Only active in edit mode (no new API needed).
   const { data: todayDispatches } = useQuery<Array<{ loadWeight: number; plantName: string }>>({
@@ -363,10 +347,11 @@ export default function PlantShiftLog() {
     },
   });
   const numOrNullSafe = (s: string) => (s.trim() === "" ? null : parseFloat(s));
-  const dipHint = (cm: string, lpc: number | null) => {
+  const dipHint = (cm: string) => {
     if (cm.trim() === "") return null;
-    const mt = dipCmToMt(numOrNullSafe(cm), lpc, density);
-    if (mt === null) return "≈ — MT (no calibration)";
+    const dipNum = numOrNullSafe(cm);
+    if (dipNum === null) return null;
+    const mt = getVolumeAtDepth(dipNum) * BITUMEN_DENSITY_KG_PER_LITER / 1000;
     return `≈ ${mt.toFixed(2)} MT`;
   };
 
@@ -981,22 +966,14 @@ export default function PlantShiftLog() {
       {!noMainPlantOps && <Card>
         <CardHeader>
           <CardTitle>Bitumen Tanks (Theoretical)</CardTitle>
-          {/* Task #253 — dip readings (cm) are the single source of truth.
-              Derived MT shown under each input uses the per-plant calibration
-              (litres/cm + density). Set calibration in Admin Settings. */}
-          {(t1Lpc == null && t2Lpc == null) && (
-            <p className="text-xs text-amber-700 dark:text-amber-400" data-testid="text-no-calibration">
-              No bitumen tank calibration set for "{plantName}". An admin can set litres/cm in Admin Settings to derive MT from dip readings.
-            </p>
-          )}
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
           <div>
             <Label>Bitumen tank 1 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => setBitumenTank1OpeningDip(e.target.value)} data-testid="input-bitumen-t1-open" />
-            {dipHint(bitumenTank1OpeningDip, t1Lpc) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip, t1Lpc)}</p>
+            {dipHint(bitumenTank1OpeningDip) ? (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip)}</p>
             ) : (
               <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
@@ -1004,8 +981,8 @@ export default function PlantShiftLog() {
           <div>
             <Label>Bitumen tank 1 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
-            {dipHint(bitumenTank1ClosingDip, t1Lpc) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip, t1Lpc)}</p>
+            {dipHint(bitumenTank1ClosingDip) ? (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>
             ) : (
               <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
@@ -1015,8 +992,8 @@ export default function PlantShiftLog() {
           <div>
             <Label>Bitumen tank 2 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => setBitumenTank2OpeningDip(e.target.value)} data-testid="input-bitumen-t2-open" />
-            {dipHint(bitumenTank2OpeningDip, t2Lpc) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip, t2Lpc)}</p>
+            {dipHint(bitumenTank2OpeningDip) ? (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip)}</p>
             ) : (
               <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
@@ -1024,8 +1001,8 @@ export default function PlantShiftLog() {
           <div>
             <Label>Bitumen tank 2 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
-            {dipHint(bitumenTank2ClosingDip, t2Lpc) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip, t2Lpc)}</p>
+            {dipHint(bitumenTank2ClosingDip) ? (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>
             ) : (
               <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at end of shift, in cm</p>
             )}

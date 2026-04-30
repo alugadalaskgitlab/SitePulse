@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X, Droplets } from "lucide-react";
+import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
@@ -13,9 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   type Site,
   type Party,
-  type PlantSettings,
 } from "@shared/schema";
-import { DEFAULT_BITUMEN_DENSITY_KG_PER_L } from "@shared/bitumen-dip-chart";
 
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -37,16 +35,6 @@ export default function AdminSettings() {
   // Manager PIN change state
   const [newManagerPin, setNewManagerPin] = useState("");
   const [confirmManagerPin, setConfirmManagerPin] = useState("");
-
-  // Task #253 — Plant Tank Calibration state. Each plant has its own
-  // litres-per-cm for tanks 1 & 2 plus a density (default 1.01 kg/L). The
-  // dip readings on the shift log are the single source of truth and these
-  // numbers turn dip cm → MT for downstream reports.
-  const [calibPlantName, setCalibPlantName] = useState<string>("Main Plant");
-  const [calibT1Lpc, setCalibT1Lpc] = useState<string>("");
-  const [calibT2Lpc, setCalibT2Lpc] = useState<string>("");
-  const [calibDensity, setCalibDensity] = useState<string>("");
-  const [calibNewPlantName, setCalibNewPlantName] = useState<string>("");
 
   const changeAdminPinMutation = useMutation({
     mutationFn: async (data: { newPin: string }) => {
@@ -176,61 +164,6 @@ export default function AdminSettings() {
       } else {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
-    },
-  });
-
-  // Task #253 — Plant Tank Calibration queries/mutation
-  const { data: knownPlants = [] } = useQuery<string[]>({
-    queryKey: ["/api/plant-module/shift-logs/plants"],
-    enabled: authenticated,
-  });
-  const { data: allPlantSettings = [] } = useQuery<PlantSettings[]>({
-    queryKey: ["/api/plant-module/plant-settings"],
-    enabled: authenticated,
-  });
-  const calibPlantOptions = Array.from(new Set([
-    ...(knownPlants || []),
-    ...(allPlantSettings || []).map(p => p.plantName),
-    "Main Plant",
-  ])).sort();
-  const { data: currentCalib } = useQuery<PlantSettings | null>({
-    queryKey: ["/api/plant-module/plant-settings", calibPlantName],
-    enabled: authenticated && !!calibPlantName,
-    queryFn: async () => {
-      const res = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(calibPlantName)}`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-  });
-  // Sync the form when the selected plant changes (or its row arrives).
-  useEffect(() => {
-    setCalibT1Lpc(currentCalib?.bitumenTank1LitresPerCm != null ? String(currentCalib.bitumenTank1LitresPerCm) : "");
-    setCalibT2Lpc(currentCalib?.bitumenTank2LitresPerCm != null ? String(currentCalib.bitumenTank2LitresPerCm) : "");
-    setCalibDensity(currentCalib?.bitumenDensityKgPerL != null ? String(currentCalib.bitumenDensityKgPerL) : "");
-  }, [currentCalib?.plantName, currentCalib?.bitumenTank1LitresPerCm, currentCalib?.bitumenTank2LitresPerCm, currentCalib?.bitumenDensityKgPerL]);
-
-  const savePlantCalibMutation = useMutation({
-    mutationFn: async () => {
-      const numOrNull = (s: string) => (s.trim() === "" ? null : Number(s));
-      const body = {
-        bitumenTank1LitresPerCm: numOrNull(calibT1Lpc),
-        bitumenTank2LitresPerCm: numOrNull(calibT2Lpc),
-        bitumenDensityKgPerL: numOrNull(calibDensity),
-      };
-      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(calibPlantName)}`, body);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Failed to save calibration");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/plant-settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/plant-settings", calibPlantName] });
-      toast({ title: "Calibration Saved", description: `Tank calibration updated for ${calibPlantName}.` });
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to save calibration", variant: "destructive" });
     },
   });
 
@@ -583,116 +516,6 @@ export default function AdminSettings() {
         </CardContent>
       </Card>
 
-      {/* Task #253 — Plant Tank Calibration. Per-plant litres-per-cm and
-          density used to derive bitumen MT from operator dip readings on the
-          Plant Shift Log. Density default is 1.01 kg/L when blank. */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <Droplets className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <CardTitle>Plant Tank Calibration</CardTitle>
-              <CardDescription>
-                Litres-per-cm for each bitumen tank, plus density (default {DEFAULT_BITUMEN_DENSITY_KG_PER_L} kg/L). Used to convert dip readings into MT on shift logs and daily reports.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-sm">Plant</Label>
-              <Select value={calibPlantName} onValueChange={setCalibPlantName}>
-                <SelectTrigger data-testid="select-calib-plant">
-                  <SelectValue placeholder="Select plant" />
-                </SelectTrigger>
-                <SelectContent>
-                  {calibPlantOptions.map(p => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-sm">Or add a new plant name</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={calibNewPlantName}
-                  onChange={(e) => setCalibNewPlantName(e.target.value)}
-                  placeholder="e.g. Site B Plant"
-                  data-testid="input-calib-new-plant"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    const t = calibNewPlantName.trim();
-                    if (!t) return;
-                    setCalibPlantName(t);
-                    setCalibNewPlantName("");
-                  }}
-                  disabled={!calibNewPlantName.trim()}
-                  data-testid="button-calib-use-new"
-                >
-                  Use
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <Label className="text-sm">Tank 1 (litres / cm)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={calibT1Lpc}
-                onChange={(e) => setCalibT1Lpc(e.target.value)}
-                placeholder="e.g. 49.08"
-                data-testid="input-calib-t1-lpc"
-              />
-            </div>
-            <div>
-              <Label className="text-sm">Tank 2 (litres / cm)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={calibT2Lpc}
-                onChange={(e) => setCalibT2Lpc(e.target.value)}
-                placeholder="e.g. 49.08"
-                data-testid="input-calib-t2-lpc"
-              />
-            </div>
-            <div>
-              <Label className="text-sm">Density (kg / L)</Label>
-              <Input
-                type="number"
-                step="0.001"
-                value={calibDensity}
-                onChange={(e) => setCalibDensity(e.target.value)}
-                placeholder={`default ${DEFAULT_BITUMEN_DENSITY_KG_PER_L}`}
-                data-testid="input-calib-density"
-              />
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            onClick={() => savePlantCalibMutation.mutate()}
-            disabled={savePlantCalibMutation.isPending || !calibPlantName.trim()}
-            className="w-full gap-2"
-            data-testid="button-save-calib"
-          >
-            {savePlantCalibMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
-            ) : (
-              <><Save className="w-4 h-4" />Save Calibration</>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
