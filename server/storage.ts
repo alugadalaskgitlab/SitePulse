@@ -3100,18 +3100,22 @@ export class DatabaseStorage implements IStorage {
 
     // ── Pre-process: identify rebuild delta rows and build a signed-delta map ─────
     // Delta rows are written by insertLegacyDeltaEntry with notes containing
-    // "[rebuild delta]" (dispatch type, positive) or "[rebuild delta]" (adjustment type, negative).
-    // We absorb them into their parent dispatch row and hide them from the output.
+    // "[rebuild delta]" (dispatch type, positive) or "[rebuild delta reversal]"
+    // (adjustment type, negative).  We absorb them into their parent dispatch
+    // row and hide them from the output entirely.
     //
     // deltaMap: referenceId → signed sum of all deltas for that dispatch
     //   dispatch delta (positive): +quantityOut
-    //   adjustment delta (negative reversal): -quantityIn
+    //   adjustment delta reversal (negative): -quantityIn
+    const isRebuildRevisionNote = (n: string) =>
+      n.includes('[rebuild delta]') || n.includes('[rebuild delta reversal]');
+
     const deltaMap = new Map<number, number>();
     const deltaRowIds = new Set<number>(); // IDs of rows to skip in the main loop
 
     for (const e of entries) {
       const notes = e.notes ?? '';
-      const isRebuildDelta = notes.includes('[rebuild delta]');
+      const isRebuildDelta = isRebuildRevisionNote(notes);
       if (!isRebuildDelta) continue;
 
       deltaRowIds.add(e.id);

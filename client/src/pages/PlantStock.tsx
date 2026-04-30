@@ -736,7 +736,7 @@ export default function PlantStock() {
       
       const ledgerTableData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
-        const isRebuildDeltaRow = (entry.notes ?? '').includes('[rebuild delta]');
+        const isRebuildDeltaRow = (entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]');
         return [
           entry.date,
           getMaterialName(entry.materialId),
@@ -880,7 +880,7 @@ export default function PlantStock() {
             <tbody>
               ${processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
                 const convData = getConvertedEntryData(entry);
-                const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]');
+                const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]');
                 const notes = isRebuildDelta
                   ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
                   : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
@@ -897,7 +897,7 @@ export default function PlantStock() {
                   <td>${entry.date}</td>
                   <td>${getMaterialName(entry.materialId)}</td>
                   <td>${getPartyName(entry.partyId)}</td>
-                  <td>${(entry.notes ?? '').includes('[rebuild delta]') ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType)}</td>
+                  <td>${((entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]')) ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType)}</td>
                   <td>${notes}</td>
                   <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(3) : '-'}</td>
                   <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(3) : '-'}</td>
@@ -1366,7 +1366,7 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3">
                             {(() => {
-                              const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]');
+                              const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]');
                               const badgeClass = isBF
                                 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
                                 : isRebuildDelta
@@ -1402,7 +1402,7 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
                             {isBF ? entry.notes
-                              : (entry.notes ?? '').includes('[rebuild delta]')
+                              : ((entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]'))
                               ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
                               : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                               ? entry.notes.replace('Diesel issued to ', '')
