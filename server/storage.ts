@@ -3891,7 +3891,7 @@ export class DatabaseStorage implements IStorage {
                     LIMIT 1
                   )
                 `);
-                const rowCount = (orphanDel as any).rowCount ?? 0;
+                const rowCount = (orphanDel as { rowCount?: number }).rowCount ?? 0;
                 ledgerRowsDeleted += rowCount;
                 if (rowCount > 0) allAffectedMatIds.add(matId);
               }
@@ -3915,7 +3915,7 @@ export class DatabaseStorage implements IStorage {
                     LIMIT 1
                   )
                 `);
-                const rowCountHlc = (orphanDelHlc as any).rowCount ?? 0;
+                const rowCountHlc = (orphanDelHlc as { rowCount?: number }).rowCount ?? 0;
                 ledgerRowsDeleted += rowCountHlc;
                 if (rowCountHlc > 0) allAffectedMatIds.add(matId);
               }
