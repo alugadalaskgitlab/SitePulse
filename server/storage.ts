@@ -3246,16 +3246,18 @@ export class DatabaseStorage implements IStorage {
           note += ` (was ${originalQty.toFixed(3)}T, ${sign}${delta.toFixed(3)}T \u2192 ${netRequired.toFixed(3)}T)`;
         }
 
-        // Own-vs-borrowed split: ownQty = what the party's stock ledger recorded as
-        // their actual contribution (netRequired = ledger qty_out ± rebuild delta).
-        // borrowedQty = the portion of the full template obligation that exceeded the
-        // party's own stock (i.e. what HLC supplemented for that dispatch).
-        // Using netRequired (not min(templateQty, running)) prevents the running balance
-        // from inflating ownQty beyond the actual ledger amount.
-        const ownQty = netRequired;
-        const borrowedQty = Math.max(0, templateQty - netRequired);
+        // Own-vs-borrowed split using a running-balance simulation:
+        // running = cumulative own-stock remaining for this party.
+        // ownQty  = how much of this dispatch came from the party's own stock
+        //           (capped at whatever is still available in the running balance).
+        // borrowedQty = the shortfall that HLC must cover (template obligation minus own).
+        // running is decremented by ownQty only — borrowed material never depletes
+        // the party's own-stock counter.
+        const available = Math.max(0, running);
+        const ownQty = Math.min(templateQty, available);
+        const borrowedQty = Math.max(0, templateQty - ownQty);
 
-        running -= netRequired;
+        running -= ownQty;
 
         dispatchedOwn += ownQty;
         borrowedFromHlc += borrowedQty;
@@ -3841,6 +3843,60 @@ export class DatabaseStorage implements IStorage {
       for (const dispatch of sortByDateTime(linkedDispatches)) {
         try {
           const partyName = partyNameMap.get(dispatch.partyId ?? -1) ?? `Party #${dispatch.partyId}`;
+
+          // ── Orphan cleanup: remove "no_ref" duplicate entries from the pre-backfill era ────
+          // When dispatches were originally created before the referenceId backfill code was
+          // added, ledger entries were written with referenceId = null. Later dispatches had
+          // referenceId set inline.  After a template proportion change, the Ledger Rebuild
+          // correctly creates new "has_ref" replacement rows — but the old "no_ref" rows are
+          // never touched by the main bulk-delete (which filters on referenceId IS NOT NULL).
+          // This leaves duplicate rows: one at the OLD proportion (no_ref) + one at the NEW
+          // proportion (has_ref), inflating every downstream total and party statement.
+          //
+          // Fix: before creating new entries for this dispatch, read the OLD theoreticalAggregates
+          // and delete exactly ONE matching no_ref entry per (dispatch × material × ownerParty)
+          // using a LIMIT 1 subquery ordered by id.  Ordering by id ensures that when two
+          // dispatches on the same day share the same load weight (and therefore the same old
+          // quantity), each cleanup call removes a distinct row — no over-deletion.
+          let oldAggBeforeRebuild: Record<string, number> = {};
+          try {
+            if (dispatch.theoreticalAggregates) {
+              oldAggBeforeRebuild = JSON.parse(dispatch.theoreticalAggregates as string) ?? {};
+            }
+          } catch { /* ignore — will simply skip cleanup for this dispatch */ }
+
+          if (dispatch.partyId !== null && Object.keys(oldAggBeforeRebuild).length > 0) {
+            for (const [matIdStr, totalOldQty] of Object.entries(oldAggBeforeRebuild)) {
+              const matId = Number(matIdStr);
+              if (isNaN(matId) || totalOldQty <= 0) continue;
+              // Reuse computeSplit so the owner fraction matches what was written at dispatch time
+              const { ownerQty: oldOwnerQty } = computeSplit(dispatch, matId, totalOldQty);
+              if (oldOwnerQty > 0.001) {
+                const lo = +(oldOwnerQty - 0.001).toFixed(6);
+                const hi = +(oldOwnerQty + 0.001).toFixed(6);
+                const orphanDel = await db.execute(sql`
+                  DELETE FROM stock_ledger
+                  WHERE id = (
+                    SELECT id FROM stock_ledger
+                    WHERE date          = ${dispatch.date}
+                      AND party_id      = ${dispatch.partyId}
+                      AND material_id   = ${matId}
+                      AND transaction_type = 'dispatch'
+                      AND reference_id  IS NULL
+                      AND quantity_out  >= ${lo}
+                      AND quantity_out  <= ${hi}
+                    ORDER BY id
+                    LIMIT 1
+                  )
+                `);
+                const rowCount = (orphanDel as any).rowCount ?? 0;
+                ledgerRowsDeleted += rowCount;
+                if (rowCount > 0) allAffectedMatIds.add(matId);
+              }
+            }
+          }
+          // ── End orphan cleanup ────────────────────────────────────────────────────────────
+
           const newAggregates: Record<number, number> = {};
 
           for (const comp of components) {
