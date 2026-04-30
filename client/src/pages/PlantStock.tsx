@@ -159,7 +159,7 @@ export default function PlantStock() {
 
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
   };
   const { data: stmtData, isLoading: stmtLoading, refetch: refetchStmt } = useQuery<PartyStatementResult>({
     queryKey: [stmtUrl],
@@ -1612,12 +1612,10 @@ export default function PlantStock() {
                     case 'opening': return 'Opening Stock';
                     case 'receipt': return 'Material Received';
                     case 'own_dispatch': return 'Material Consumed';
-                    case 'borrowed_dispatch': return 'Borrowed from HLC';
                     case 'correction': return 'Stock Correction';
                     case 'return': return 'Material Return';
                     case 'replenishment': return 'Replenishment to HLC';
                     case 'transfer_in': return 'Transfer Received';
-                    case 'dispatch_revision': return 'Dispatch Revision';
                     default: return 'Other';
                   }
                 };
@@ -1625,9 +1623,7 @@ export default function PlantStock() {
                   switch (dt) {
                     case 'receipt': case 'opening': return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
                     case 'own_dispatch': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300';
-                    case 'borrowed_dispatch': return 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
                     case 'replenishment': return 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300';
-                    case 'dispatch_revision': return 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
                     case 'correction': case 'return': case 'transfer_in': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
                     default: return 'bg-muted text-muted-foreground';
                   }
@@ -1639,13 +1635,19 @@ export default function PlantStock() {
                   const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
                   const rows = entries.map(e => {
                     const qIn = (e.quantityIn || 0);
-                    const qOut = (e.quantityOut || 0);
-                    return `<tr>
+                    const isDispatch = e.displayType === 'own_dispatch';
+                    const hasBorrow = isDispatch && (e.borrowedQty ?? 0) > 0.001;
+                    const tplQty = isDispatch && e.templateQty != null ? e.templateQty.toFixed(3) : '-';
+                    const ownQtyStr = isDispatch && e.ownQty != null ? e.ownQty.toFixed(3) : '-';
+                    const borrowedStr = isDispatch ? (e.borrowedQty ?? 0).toFixed(3) : '-';
+                    return `<tr${hasBorrow ? ' style="background:#fffbeb"' : ''}>
                       <td>${e.date}</td>
                       <td>${typeLabel(e.displayType)}</td>
                       <td>${materialName}</td>
                       <td style="text-align:right">${qIn > 0 ? qIn.toFixed(3) : '-'}</td>
-                      <td style="text-align:right">${qOut > 0 ? qOut.toFixed(3) : '-'}</td>
+                      <td style="text-align:right">${tplQty}</td>
+                      <td style="text-align:right">${ownQtyStr}</td>
+                      <td style="text-align:right">${hasBorrow ? `<strong>${borrowedStr}</strong>` : borrowedStr}</td>
                       <td style="text-align:right">${(e.runningBalance ?? 0).toFixed(3)}</td>
                       <td>${e.notes || '-'}</td>
                     </tr>`;
@@ -1653,33 +1655,49 @@ export default function PlantStock() {
                   const w = window.open('', '_blank');
                   if (!w) return;
                   w.document.write(`<!DOCTYPE html><html><head><title>Party Statement — ${partyName}</title>
-                    <style>body{font-family:sans-serif;padding:20px;font-size:12px}
+                    <style>body{font-family:sans-serif;padding:20px;font-size:11px}
                     h1{margin-bottom:2px;font-size:16px}h2{margin-bottom:4px;font-size:13px}p{margin:2px 0}
                     .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0}
                     .card{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center}
                     .card-label{font-size:10px;color:#666;margin-bottom:4px}
-                    .card-value{font-size:16px;font-weight:bold}
+                    .card-value{font-size:14px;font-weight:bold}
                     .outstanding{background:#fef3c7;border-color:#fbbf24}
                     .settled{background:#d1fae5;border-color:#34d399}
                     table{width:100%;border-collapse:collapse;margin-top:12px}
-                    th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}
-                    th{background:#f5f5f5;font-size:11px}
+                    th,td{border:1px solid #ddd;padding:5px 7px;text-align:left}
+                    th{background:#f5f5f5;font-size:10px}
                     .note{font-size:10px;color:#555;margin-top:6px}</style></head><body>
                     <h1>${PROJECT_NAME}</h1>
                     <h2>Party Supply Obligation Statement</h2>
                     <p><strong>Party:</strong> ${partyName} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
                     <div class="summary">
                       <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
-                      <div class="card"><div class="card-label">Dispatched (Own)</div><div class="card-value">${summary.dispatchedOwn.toFixed(3)} ${uom}</div></div>
+                      <div class="card"><div class="card-label">From Own Stock</div><div class="card-value">${summary.dispatchedOwn.toFixed(3)} ${uom}</div></div>
                       <div class="card"><div class="card-label">Borrowed from HLC</div><div class="card-value">${summary.borrowedFromHlc.toFixed(3)} ${uom}</div></div>
                       <div class="card"><div class="card-label">Replenished to HLC</div><div class="card-value">${summary.replenishedToHlc.toFixed(3)} ${uom}</div></div>
                       <div class="card ${isSettled ? 'settled' : 'outstanding'}"><div class="card-label">Still Outstanding</div><div class="card-value">${summary.outstanding.toFixed(3)} ${uom}</div></div>
                     </div>
-                    <table><thead><tr><th>Date</th><th>Type</th><th>Material</th><th>In (${uom})</th><th>Out (${uom})</th><th>Own Stock Balance</th><th>Notes</th></tr></thead>
+                    <table><thead><tr>
+                      <th>Date</th><th>Type</th><th>Material</th>
+                      <th>Received (${uom})</th>
+                      <th>Template Qty (${uom})</th>
+                      <th>From Own Stock (${uom})</th>
+                      <th>Borrowed from HLC (${uom})</th>
+                      <th>Own Stock Balance</th>
+                      <th>Notes</th>
+                    </tr></thead>
                     <tbody>${rows}</tbody>
-                    <tfoot><tr><td colspan="3"><strong>Totals</strong></td><td style="text-align:right"><strong>${summary.totalReceived.toFixed(3)}</strong></td><td style="text-align:right"><strong>${totalOut.toFixed(3)}</strong></td><td style="text-align:right"><strong>${finalBalance.toFixed(3)}</strong></td><td></td></tr></tfoot>
+                    <tfoot><tr>
+                      <td colspan="3"><strong>Totals</strong></td>
+                      <td style="text-align:right"><strong>${summary.totalReceived.toFixed(3)}</strong></td>
+                      <td style="text-align:right"><strong>${totalOut.toFixed(3)}</strong></td>
+                      <td style="text-align:right"><strong>${summary.dispatchedOwn.toFixed(3)}</strong></td>
+                      <td style="text-align:right"><strong>${summary.borrowedFromHlc.toFixed(3)}</strong></td>
+                      <td style="text-align:right"><strong>${finalBalance.toFixed(3)}</strong></td>
+                      <td></td>
+                    </tr></tfoot>
                     </table>
-                    <p class="note">* "Own Stock Balance" reflects the party's physical stock only. "Borrowed from HLC" rows do not reduce this balance — they represent an obligation tracked in the summary above.</p>
+                    <p class="note">* Template Qty = full material consumption per dispatch as per mix template. From Own Stock = supplied from party's own inventory. Borrowed from HLC = balance covered by HLC. Outstanding = total borrowed − replenished to HLC.</p>
                     </body></html>`);
                   w.document.close();
                   w.print();
@@ -1696,29 +1714,58 @@ export default function PlantStock() {
                   doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
                   doc.text([
                     `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
-                    `Dispatched (Own): ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
+                    `From Own Stock: ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
                     `Borrowed from HLC: ${summary.borrowedFromHlc.toFixed(3)} ${uom}`,
                     `Replenished to HLC: ${summary.replenishedToHlc.toFixed(3)} ${uom}`,
                     `Outstanding: ${summary.outstanding.toFixed(3)} ${uom}`,
                   ].join('    '), 14, 33);
                   autoTable(doc, {
                     startY: 38,
-                    head: [['Date', 'Type', 'Material', `In (${uom})`, `Out (${uom})`, 'Own Stock Balance', 'Notes']],
-                    body: entries.map(e => [
-                      e.date,
-                      typeLabel(e.displayType),
-                      materialName,
-                      (e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-',
-                      (e.quantityOut || 0) > 0 ? (e.quantityOut || 0).toFixed(3) : '-',
-                      (e.runningBalance ?? 0).toFixed(3),
-                      e.notes || '-',
-                    ]),
-                    foot: [['', 'Totals', materialName, summary.totalReceived.toFixed(3), totalOut.toFixed(3), finalBalance.toFixed(3), '']],
+                    head: [[
+                      'Date', 'Type', 'Material',
+                      `Received\n(${uom})`,
+                      `Template Qty\n(${uom})`,
+                      `From Own\nStock (${uom})`,
+                      `Borrowed\nfrom HLC (${uom})`,
+                      'Own Stock\nBalance',
+                      'Notes',
+                    ]],
+                    body: entries.map(e => {
+                      const isDispatch = e.displayType === 'own_dispatch';
+                      return [
+                        e.date,
+                        typeLabel(e.displayType),
+                        materialName,
+                        (e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-',
+                        isDispatch && e.templateQty != null ? e.templateQty.toFixed(3) : '-',
+                        isDispatch && e.ownQty != null ? e.ownQty.toFixed(3) : '-',
+                        isDispatch ? (e.borrowedQty ?? 0).toFixed(3) : '-',
+                        (e.runningBalance ?? 0).toFixed(3),
+                        e.notes || '-',
+                      ];
+                    }),
+                    foot: [[
+                      '', 'Totals', materialName,
+                      summary.totalReceived.toFixed(3),
+                      totalOut.toFixed(3),
+                      summary.dispatchedOwn.toFixed(3),
+                      summary.borrowedFromHlc.toFixed(3),
+                      finalBalance.toFixed(3),
+                      '',
+                    ]],
                     theme: 'striped',
                     headStyles: { fillColor: [59, 130, 246] },
                     footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-                    styles: { fontSize: 7 },
-                    margin: { left: 14, right: 14 },
+                    styles: { fontSize: 6.5 },
+                    margin: { left: 10, right: 10 },
+                    didParseCell: (data) => {
+                      if (data.section === 'body') {
+                        const rowEntry = entries[data.row.index];
+                        if (rowEntry?.displayType === 'own_dispatch' && (rowEntry?.borrowedQty ?? 0) > 0.001) {
+                          data.cell.styles.fillColor = [255, 251, 235];
+                        }
+                      }
+                    },
                   });
                   const ts = format(new Date(), 'yyyyMMdd_HHmm');
                   const blob = doc.output('blob');
@@ -1767,16 +1814,21 @@ export default function PlantStock() {
                             <th className="text-left p-3 font-semibold">Date</th>
                             <th className="text-left p-3 font-semibold">Type</th>
                             <th className="text-left p-3 font-semibold">Material</th>
-                            <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out ({uom})</th>
-                            <th className="text-right p-3 font-semibold">Own Stock Balance</th>
+                            <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">Received ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-blue-600 dark:text-blue-400">Template Qty ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-orange-600 dark:text-orange-400">From Own Stock ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Borrowed from HLC ({uom})</th>
+                            <th className="text-right p-3 font-semibold">Own Balance</th>
                             <th className="text-left p-3 font-semibold">Notes</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {entries.map(e => (
-                            <tr key={e.id} className={`border-b hover:bg-muted/30 ${e.displayType === 'borrowed_dispatch' ? 'bg-red-50/40 dark:bg-red-950/20' : ''}`}>
-                              <td className="p-3">{e.date}</td>
+                          {entries.map(e => {
+                            const isDispatch = e.displayType === 'own_dispatch';
+                            const hasBorrow = isDispatch && (e.borrowedQty ?? 0) > 0.001;
+                            return (
+                            <tr key={e.id} className={`border-b hover:bg-muted/30 ${hasBorrow ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
+                              <td className="p-3 whitespace-nowrap">{e.date}</td>
                               <td className="p-3">
                                 <span className={`px-2 py-0.5 text-xs rounded ${typeBadgeClass(e.displayType)}`}>
                                   {typeLabel(e.displayType)}
@@ -1786,17 +1838,24 @@ export default function PlantStock() {
                               <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
                                 {(e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-'}
                               </td>
-                              <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
-                                {(e.quantityOut || 0) > 0 ? (e.quantityOut || 0).toFixed(3) : '-'}
+                              <td className="p-3 text-right text-blue-600 dark:text-blue-400 font-medium">
+                                {isDispatch && e.templateQty != null ? e.templateQty.toFixed(3) : '-'}
+                              </td>
+                              <td className="p-3 text-right text-orange-600 dark:text-orange-400 font-medium">
+                                {isDispatch && e.ownQty != null ? e.ownQty.toFixed(3) : '-'}
+                              </td>
+                              <td className={`p-3 text-right font-medium ${hasBorrow ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                {isDispatch ? (e.borrowedQty ?? 0).toFixed(3) : '-'}
                               </td>
                               <td className={`p-3 text-right font-medium ${(e.runningBalance ?? 0) < 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
                                 {(e.runningBalance ?? 0).toFixed(3)}
                               </td>
                               <td className="p-3 text-muted-foreground text-sm">{e.notes || '-'}</td>
                             </tr>
-                          ))}
+                            );
+                          })}
                           {entries.length === 0 && (
-                            <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
+                            <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
                           )}
                         </tbody>
                         <tfoot className="bg-muted/70 border-t-2">
@@ -1804,7 +1863,9 @@ export default function PlantStock() {
                             <td colSpan={2} className="p-3 font-bold">Totals</td>
                             <td className="p-3 text-muted-foreground">{materialName}</td>
                             <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">{summary.totalReceived.toFixed(3)}</td>
-                            <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">{totalOut.toFixed(3)}</td>
+                            <td className="p-3 text-right text-blue-600 dark:text-blue-400 font-bold">{totalOut.toFixed(3)}</td>
+                            <td className="p-3 text-right text-orange-600 dark:text-orange-400 font-bold">{summary.dispatchedOwn.toFixed(3)}</td>
+                            <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">{summary.borrowedFromHlc.toFixed(3)}</td>
                             <td className={`p-3 text-right font-bold ${finalBalance < 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>{finalBalance.toFixed(3)}</td>
                             <td />
                           </tr>

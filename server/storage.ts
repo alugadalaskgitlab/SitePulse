@@ -3066,7 +3066,7 @@ export class DatabaseStorage implements IStorage {
 
   async getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
+    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
   }> {
     // Fetch ledger entries for this party+material in the date range
     const conditions = [
@@ -3081,17 +3081,24 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .orderBy(asc(stockLedger.date), asc(stockLedger.id));
 
-    // Fetch dispatch records for entries that have a referenceId — need deliveryLocation for notes.
-    // We collect refIds from ALL entry types (dispatch AND delta adjustment rows) so that
-    // delta rows linked via referenceId can be matched to their parent dispatch.
+    // Fetch dispatch records for entries that have a referenceId.
+    // Also fetches theoreticalAggregates so we can derive the full template quantity
+    // for each dispatch (needed for the corrected own-vs-borrowed split).
     const refIds = [...new Set(
       entries.filter(e => e.referenceId != null).map(e => e.referenceId!)
     )];
     const dispatches = refIds.length
-      ? await db.select({ id: truckDispatches.id, deliveryLocation: truckDispatches.deliveryLocation })
+      ? await db.select({
+          id: truckDispatches.id,
+          deliveryLocation: truckDispatches.deliveryLocation,
+          theoreticalAggregates: truckDispatches.theoreticalAggregates,
+        })
           .from(truckDispatches).where(inArray(truckDispatches.id, refIds))
       : [];
-    const dispatchMeta = new Map(dispatches.map(d => [d.id, { deliveryLocation: d.deliveryLocation }]));
+    const dispatchMeta = new Map(dispatches.map(d => [d.id, {
+      deliveryLocation: d.deliveryLocation,
+      theoreticalAggregates: d.theoreticalAggregates,
+    }]));
 
     // Resolve material UOM
     const [mat] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionToUom: plantMaterials.conversionToUom })
@@ -3153,9 +3160,15 @@ export class DatabaseStorage implements IStorage {
     let dispatchedOwn = 0;
     let replenishedToHlc = 0;
     let borrowedFromHlc = 0;
-    let running = 0; // party's own-stock running balance (never goes negative here)
+    let running = 0; // party's own-stock running balance
 
-    type DetailEntry = StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number };
+    type DetailEntry = StockLedgerEntry & {
+      displayType: string;
+      borrowedQty: number;
+      runningBalance: number;
+      templateQty?: number;
+      ownQty?: number;
+    };
     const detail: DetailEntry[] = [];
 
     // running = party's own physical stock balance.
@@ -3196,13 +3209,31 @@ export class DatabaseStorage implements IStorage {
           const dateKey = `${e.date}|${e.materialId}|${e.partyId ?? 0}`;
           const queue = dateKeyDeltaQueue.get(dateKey);
           if (queue && queue.length > 0) {
-            const entry = queue.shift()!;
-            delta = entry.delta;
-            siteRefId = entry.refId; // use delta row's refId for site lookup
+            const item = queue.shift()!;
+            delta = item.delta;
+            siteRefId = item.refId; // use delta row's refId for site lookup
           }
         }
         const originalQty = qOut;
         const netRequired = Math.max(0, originalQty + delta);
+
+        // Resolve the full template quantity from theoreticalAggregates (updated by the rebuild).
+        // This is the authoritative "how much of this material should have been consumed" value.
+        // Falls back to netRequired for pre-rebuild legacy rows without aggregates data.
+        let templateQty = netRequired;
+        if (siteRefId != null) {
+          const meta = dispatchMeta.get(siteRefId);
+          if (meta?.theoreticalAggregates) {
+            try {
+              const agg: Record<string, number> =
+                typeof meta.theoreticalAggregates === 'string'
+                  ? JSON.parse(meta.theoreticalAggregates as string)
+                  : (meta.theoreticalAggregates as Record<string, number>);
+              const aggVal = agg[String(materialId)] ?? (agg as Record<number, number>)[materialId];
+              if (aggVal != null && +aggVal > 0) templateQty = +aggVal;
+            } catch { /* fallback to netRequired */ }
+          }
+        }
 
         // Build note: "Material Consumed — {site} (revision info if applicable)"
         const site = siteRefId != null
@@ -3215,44 +3246,30 @@ export class DatabaseStorage implements IStorage {
           note += ` (was ${originalQty.toFixed(3)}T, ${sign}${delta.toFixed(3)}T \u2192 ${netRequired.toFixed(3)}T)`;
         }
 
-        // Dynamic own-vs-borrowed split based on live running balance.
-        // available: floors at 0 so a negative balance never inflates borrowed qty.
-        // ownQty: capped at what the party actually has on hand.
-        // borrowedQty: the shortfall HLC must cover (always ≥ 0 since ownQty ≤ netRequired).
+        // Own-vs-borrowed split based on full template qty and live running balance.
+        // Using templateQty (not netRequired) ensures HLC-routed material from the
+        // shortage-warning routing is included in the debt calculation.
         const available = Math.max(0, running);
-        const ownQty = Math.min(netRequired, available);
-        const borrowedQty = netRequired - ownQty;
+        const ownQty = Math.min(templateQty, available);
+        const borrowedQty = templateQty - ownQty;
 
-        running -= ownQty; // reduce own-stock balance (may stay negative if it was already)
+        running -= ownQty;
 
         dispatchedOwn += ownQty;
+        borrowedFromHlc += borrowedQty;
 
+        // Single row per dispatch — templateQty, ownQty, and borrowedQty are embedded
+        // as extra fields so the frontend can show the breakdown inline without synthetic rows.
         detail.push({
           ...e,
           quantityOut: ownQty,
           notes: note,
           displayType: 'own_dispatch',
-          borrowedQty: 0,
+          borrowedQty,
+          ownQty,
+          templateQty,
           runningBalance: running,
         });
-
-        // Emit synthetic borrowed row only when HLC had to contribute
-        if (borrowedQty > 0.0001) {
-          borrowedFromHlc += borrowedQty;
-          const borrowNote = site
-            ? `Borrowed from HLC \u2014 ${site}: ${borrowedQty.toFixed(3)} Ton`
-            : `Borrowed from HLC: ${borrowedQty.toFixed(3)} Ton`;
-          detail.push({
-            ...e,
-            id: -(e.id * 10 + 1),
-            displayType: 'borrowed_dispatch',
-            quantityIn: null,
-            quantityOut: borrowedQty,
-            notes: borrowNote,
-            borrowedQty,
-            runningBalance: running, // unchanged — HLC supplied this portion
-          });
-        }
       } else if (e.transactionType === 'transfer') {
         if (qOut > 0) {
           running -= qOut;
