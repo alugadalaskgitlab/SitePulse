@@ -3184,13 +3184,14 @@ export class DatabaseStorage implements IStorage {
         }
 
         // Dynamic own-vs-borrowed split based on live running balance.
-        // ownQty: how much the party can supply from their own stock (capped at available).
-        // borrowedQty: any shortfall that must come from HLC.
-        const preBalance = running;
-        const ownQty = Math.min(netRequired, Math.max(0, preBalance));
-        const borrowedQty = Math.max(0, netRequired - preBalance);
+        // available: floors at 0 so a negative balance never inflates borrowed qty.
+        // ownQty: capped at what the party actually has on hand.
+        // borrowedQty: the shortfall HLC must cover (always ≥ 0 since ownQty ≤ netRequired).
+        const available = Math.max(0, running);
+        const ownQty = Math.min(netRequired, available);
+        const borrowedQty = netRequired - ownQty;
 
-        running -= ownQty; // own-stock balance floors at 0
+        running -= ownQty; // reduce own-stock balance (may stay negative if it was already)
 
         dispatchedOwn += ownQty;
 
