@@ -736,12 +736,15 @@ export default function PlantStock() {
       
       const ledgerTableData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
+        const isRebuildDeltaRow = (entry.notes ?? '').includes('[rebuild delta]');
         return [
           entry.date,
           getMaterialName(entry.materialId),
           getPartyName(entry.partyId),
-          getTransactionTypeLabel(entry.transactionType),
-          entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+          isRebuildDeltaRow ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
+          isRebuildDeltaRow
+            ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
+            : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
             ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
@@ -877,7 +880,10 @@ export default function PlantStock() {
             <tbody>
               ${processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
                 const convData = getConvertedEntryData(entry);
-                const notes = entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
+                const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]');
+                const notes = isRebuildDelta
+                  ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
+                  : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                   ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
                   : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
                   ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
@@ -891,7 +897,7 @@ export default function PlantStock() {
                   <td>${entry.date}</td>
                   <td>${getMaterialName(entry.materialId)}</td>
                   <td>${getPartyName(entry.partyId)}</td>
-                  <td>${getTransactionTypeLabel(entry.transactionType)}</td>
+                  <td>${(entry.notes ?? '').includes('[rebuild delta]') ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType)}</td>
                   <td>${notes}</td>
                   <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(3) : '-'}</td>
                   <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(3) : '-'}</td>
@@ -1359,11 +1365,14 @@ export default function PlantStock() {
                             </span>
                           </td>
                           <td className="p-3">
-                            <span className={`px-2 py-0.5 text-xs rounded ${
-                              isBF
+                            {(() => {
+                              const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]');
+                              const badgeClass = isBF
+                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                                : isRebuildDelta
                                 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
                                 : entry.transactionType === 'receipt' || entry.transactionType === 'opening' || entry.transactionType === 'adjustment'
-                                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' 
+                                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
                                 : entry.transactionType === 'return'
                                 ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
                                 : entry.transactionType === 'issue'
@@ -1374,13 +1383,27 @@ export default function PlantStock() {
                                 ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
                                 : entry.transactionType === 'direct_purchase'
                                 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                                : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                            }`}>
-                              {isBF ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType}
-                            </span>
+                                : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
+                              const label = isBF ? 'B/F Opening Bal.'
+                                : isRebuildDelta ? 'Dispatch Revision'
+                                : entry.transactionType === 'receipt' ? 'Receipt'
+                                : entry.transactionType === 'dispatch' ? 'Dispatch'
+                                : entry.transactionType === 'issue' ? 'Issue'
+                                : entry.transactionType === 'opening' ? 'Opening'
+                                : entry.transactionType === 'adjustment' ? 'Adjustment'
+                                : entry.transactionType === 'return' ? 'Return'
+                                : entry.transactionType === 'transfer' ? 'Transfer'
+                                : entry.transactionType === 'equipment_usage' ? 'Equip. Usage'
+                                : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage'
+                                : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase'
+                                : entry.transactionType;
+                              return <span className={`px-2 py-0.5 text-xs rounded ${badgeClass}`}>{label}</span>;
+                            })()}
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
                             {isBF ? entry.notes
+                              : (entry.notes ?? '').includes('[rebuild delta]')
+                              ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
                               : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                               ? entry.notes.replace('Diesel issued to ', '')
                               : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -1501,12 +1524,13 @@ export default function PlantStock() {
                   switch (dt) {
                     case 'opening': return 'Opening Stock';
                     case 'receipt': return 'Material Received';
-                    case 'own_dispatch': return 'Dispatch (Own Stock)';
+                    case 'own_dispatch': return 'Material Consumed';
                     case 'borrowed_dispatch': return 'Borrowed from HLC';
                     case 'correction': return 'Stock Correction';
                     case 'return': return 'Material Return';
                     case 'replenishment': return 'Replenishment to HLC';
                     case 'transfer_in': return 'Transfer Received';
+                    case 'dispatch_revision': return 'Dispatch Revision';
                     default: return 'Other';
                   }
                 };
@@ -1516,6 +1540,7 @@ export default function PlantStock() {
                     case 'own_dispatch': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300';
                     case 'borrowed_dispatch': return 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
                     case 'replenishment': return 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300';
+                    case 'dispatch_revision': return 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
                     case 'correction': case 'return': case 'transfer_in': return 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300';
                     default: return 'bg-muted text-muted-foreground';
                   }

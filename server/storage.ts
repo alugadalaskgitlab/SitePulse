@@ -3081,34 +3081,69 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .orderBy(asc(stockLedger.date), asc(stockLedger.id));
 
-    // Fetch dispatch records for entries that have a referenceId (to read shortageWarning)
+    // Fetch dispatch records for entries that have a referenceId — need deliveryLocation for notes.
+    // We collect refIds from ALL entry types (dispatch AND delta adjustment rows) so that
+    // delta rows linked via referenceId can be matched to their parent dispatch.
     const refIds = [...new Set(
-      entries.filter(e => e.referenceId && e.transactionType === 'dispatch').map(e => e.referenceId!)
+      entries.filter(e => e.referenceId != null).map(e => e.referenceId!)
     )];
     const dispatches = refIds.length
-      ? await db.select({ id: truckDispatches.id, shortageWarning: truckDispatches.shortageWarning })
+      ? await db.select({ id: truckDispatches.id, deliveryLocation: truckDispatches.deliveryLocation })
           .from(truckDispatches).where(inArray(truckDispatches.id, refIds))
       : [];
-    const dispatchMap = new Map(dispatches.map(d => [d.id, d.shortageWarning]));
+    const dispatchMeta = new Map(dispatches.map(d => [d.id, { deliveryLocation: d.deliveryLocation }]));
 
     // Resolve material UOM
     const [mat] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionToUom: plantMaterials.conversionToUom })
       .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
     const uom = mat?.conversionToUom || mat?.defaultUom || 'Ton';
 
+    // ── Pre-process: identify rebuild delta rows and build a signed-delta map ─────
+    // Delta rows are written by insertLegacyDeltaEntry with notes containing
+    // "[rebuild delta]" (dispatch type, positive) or "[rebuild delta]" (adjustment type, negative).
+    // We absorb them into their parent dispatch row and hide them from the output.
+    //
+    // deltaMap: referenceId → signed sum of all deltas for that dispatch
+    //   dispatch delta (positive): +quantityOut
+    //   adjustment delta (negative reversal): -quantityIn
+    const deltaMap = new Map<number, number>();
+    const deltaRowIds = new Set<number>(); // IDs of rows to skip in the main loop
+
+    for (const e of entries) {
+      const notes = e.notes ?? '';
+      const isRebuildDelta = notes.includes('[rebuild delta]');
+      if (!isRebuildDelta) continue;
+
+      deltaRowIds.add(e.id);
+      if (e.referenceId == null) continue; // unmatched delta — drop silently
+
+      const prev = deltaMap.get(e.referenceId) ?? 0;
+      if (e.transactionType === 'dispatch') {
+        // Positive delta: more material was consumed than originally recorded
+        deltaMap.set(e.referenceId, prev + (e.quantityOut || 0));
+      } else if (e.transactionType === 'adjustment') {
+        // Negative delta reversal: less material was consumed (adjustment In credited back)
+        deltaMap.set(e.referenceId, prev - (e.quantityIn || 0));
+      }
+    }
+
     let totalReceived = 0;
     let dispatchedOwn = 0;
     let replenishedToHlc = 0;
     let borrowedFromHlc = 0;
-    let running = 0; // party's own-stock running balance
+    let running = 0; // party's own-stock running balance (never goes negative here)
 
     type DetailEntry = StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number };
     const detail: DetailEntry[] = [];
 
-    // running = party's own physical stock balance (not HLC obligation).
-    // Borrowed-dispatch synthetic rows do NOT change running (borrowed material
-    // never touches party stock). Replenishment to HLC decreases party stock.
+    // running = party's own physical stock balance.
+    // Borrowed-dispatch rows do NOT change running (HLC supplied that material).
+    // Replenishment to HLC decreases party stock.
+    // Rebuild delta rows are skipped — absorbed into their parent dispatch row.
     for (const e of entries) {
+      // Skip rebuild delta rows — they are merged into their parent dispatch below
+      if (deltaRowIds.has(e.id)) continue;
+
       const qIn = e.quantityIn || 0;
       const qOut = e.quantityOut || 0;
 
@@ -3121,55 +3156,72 @@ export class DatabaseStorage implements IStorage {
         totalReceived += qIn;
         detail.push({ ...e, displayType: 'receipt', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'return') {
-        // Material returned to party's stock — affects running balance but is
-        // not part of "total received" for obligation purposes.
         running += qIn;
         detail.push({ ...e, displayType: 'return', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'adjustment') {
-        // Stock correction: can add or remove; not counted in totalReceived.
+        // Regular (non-delta) stock correction
         running += qIn - qOut;
         detail.push({ ...e, displayType: 'correction', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'dispatch') {
-        // Own-stock portion — consumed from party's physical balance.
-        running -= qOut;
-        dispatchedOwn += qOut;
-        detail.push({ ...e, displayType: 'own_dispatch', borrowedQty: 0, runningBalance: running });
+        // Apply any rebuild delta to get the net required quantity for this dispatch
+        const delta = e.referenceId != null ? (deltaMap.get(e.referenceId) ?? 0) : 0;
+        const originalQty = qOut;
+        const netRequired = Math.max(0, originalQty + delta);
 
-        // Borrowed portion (synthetic row).
-        // Running balance does NOT change — borrowed material came from HLC,
-        // not from the party's own stock.
-        let borrowedQty = 0;
-        if (e.referenceId) {
-          const sw = dispatchMap.get(e.referenceId);
-          if (sw) {
-            try {
-              const warnings = JSON.parse(sw) as { materialId: number; required: number; available: number }[];
-              const hit = warnings.find(w => w.materialId === materialId);
-              if (hit) borrowedQty = Math.max(0, hit.required - hit.available);
-            } catch { /* malformed JSON — ignore */ }
-          }
+        // Build note: "Material Consumed — {site} (revision info if applicable)"
+        const site = e.referenceId != null
+          ? (dispatchMeta.get(e.referenceId)?.deliveryLocation?.trim() || '')
+          : '';
+        let note = 'Material Consumed';
+        if (site) note += ` \u2014 ${site}`;
+        if (Math.abs(delta) >= 0.0001) {
+          const sign = delta >= 0 ? '+' : '';
+          note += ` (was ${originalQty.toFixed(3)}T, ${sign}${delta.toFixed(3)}T \u2192 ${netRequired.toFixed(3)}T)`;
         }
-        if (borrowedQty > 0) {
+
+        // Dynamic own-vs-borrowed split based on live running balance.
+        // ownQty: how much the party can supply from their own stock (capped at available).
+        // borrowedQty: any shortfall that must come from HLC.
+        const preBalance = running;
+        const ownQty = Math.min(netRequired, Math.max(0, preBalance));
+        const borrowedQty = Math.max(0, netRequired - preBalance);
+
+        running -= ownQty; // own-stock balance floors at 0
+
+        dispatchedOwn += ownQty;
+
+        detail.push({
+          ...e,
+          quantityOut: ownQty,
+          notes: note,
+          displayType: 'own_dispatch',
+          borrowedQty: 0,
+          runningBalance: running,
+        });
+
+        // Emit synthetic borrowed row only when HLC had to contribute
+        if (borrowedQty > 0.0001) {
           borrowedFromHlc += borrowedQty;
+          const borrowNote = site
+            ? `Borrowed from HLC \u2014 ${site}: ${borrowedQty.toFixed(3)} Ton`
+            : `Borrowed from HLC: ${borrowedQty.toFixed(3)} Ton`;
           detail.push({
             ...e,
-            id: -(e.id * 10 + 1), // synthetic id, guaranteed unique within page
+            id: -(e.id * 10 + 1),
             displayType: 'borrowed_dispatch',
             quantityIn: null,
             quantityOut: borrowedQty,
+            notes: borrowNote,
             borrowedQty,
-            runningBalance: running, // unchanged — HLC supplied this, not party
+            runningBalance: running, // unchanged — HLC supplied this portion
           });
         }
       } else if (e.transactionType === 'transfer') {
         if (qOut > 0) {
-          // Party returns material to HLC to repay obligation.
-          // This takes from party's physical stock.
           running -= qOut;
           replenishedToHlc += qOut;
           detail.push({ ...e, displayType: 'replenishment', borrowedQty: 0, runningBalance: running });
         } else {
-          // Inbound inter-party transfer — adds to party's physical stock.
           running += qIn;
           detail.push({ ...e, displayType: 'transfer_in', borrowedQty: 0, runningBalance: running });
         }
