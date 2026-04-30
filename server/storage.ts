@@ -3865,13 +3865,15 @@ export class DatabaseStorage implements IStorage {
             }
           } catch { /* ignore — will simply skip cleanup for this dispatch */ }
 
-          if (dispatch.partyId !== null && Object.keys(oldAggBeforeRebuild).length > 0) {
+          if (Object.keys(oldAggBeforeRebuild).length > 0) {
             for (const [matIdStr, totalOldQty] of Object.entries(oldAggBeforeRebuild)) {
               const matId = Number(matIdStr);
               if (isNaN(matId) || totalOldQty <= 0) continue;
-              // Reuse computeSplit so the owner fraction matches what was written at dispatch time
-              const { ownerQty: oldOwnerQty } = computeSplit(dispatch, matId, totalOldQty);
-              if (oldOwnerQty > 0.001) {
+              // Reuse computeSplit so the owner/HLC fractions match what was written at dispatch time
+              const { ownerQty: oldOwnerQty, hlcQty: oldHlcQty } = computeSplit(dispatch, matId, totalOldQty);
+
+              // Owner party orphan
+              if (oldOwnerQty > 0.001 && dispatch.partyId !== null) {
                 const lo = +(oldOwnerQty - 0.001).toFixed(6);
                 const hi = +(oldOwnerQty + 0.001).toFixed(6);
                 const orphanDel = await db.execute(sql`
@@ -3892,6 +3894,30 @@ export class DatabaseStorage implements IStorage {
                 const rowCount = (orphanDel as any).rowCount ?? 0;
                 ledgerRowsDeleted += rowCount;
                 if (rowCount > 0) allAffectedMatIds.add(matId);
+              }
+
+              // HLC party orphan (material HLC supplied at the old proportion)
+              if (oldHlcQty > 0.001 && hlcPartyId !== null) {
+                const lo = +(oldHlcQty - 0.001).toFixed(6);
+                const hi = +(oldHlcQty + 0.001).toFixed(6);
+                const orphanDelHlc = await db.execute(sql`
+                  DELETE FROM stock_ledger
+                  WHERE id = (
+                    SELECT id FROM stock_ledger
+                    WHERE date          = ${dispatch.date}
+                      AND party_id      = ${hlcPartyId}
+                      AND material_id   = ${matId}
+                      AND transaction_type = 'dispatch'
+                      AND reference_id  IS NULL
+                      AND quantity_out  >= ${lo}
+                      AND quantity_out  <= ${hi}
+                    ORDER BY id
+                    LIMIT 1
+                  )
+                `);
+                const rowCountHlc = (orphanDelHlc as any).rowCount ?? 0;
+                ledgerRowsDeleted += rowCountHlc;
+                if (rowCountHlc > 0) allAffectedMatIds.add(matId);
               }
             }
           }
