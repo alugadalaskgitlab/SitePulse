@@ -283,20 +283,90 @@ export default function PlantStock() {
       }
     }
 
-    const mainRows = sorted.map(entry => {
+    // ── Delta-merge pre-scan ────────────────────────────────────────────────────
+    // Rebuild delta rows are written alongside unmatched (Path B) original dispatch
+    // entries. We absorb them into the parent dispatch row so that only ONE merged
+    // row appears per dispatch. Two matching strategies:
+    //   Part A: original entry already has referenceId = dispatch.id → direct map lookup
+    //   Part B: original entry has referenceId = null → sequential queue by date|mat|party
+    const isRebuildNoteStr = (n: string) =>
+      n.includes('[rebuild delta]') || n.includes('[rebuild delta reversal]');
+
+    // Step 1: referenceIds present on non-delta dispatch rows (Part A originals)
+    const ledgerLinkedRefIds = new Set<number>();
+    for (const e of sorted) {
+      if (!isRebuildNoteStr(e.notes ?? '') && e.referenceId != null && e.transactionType === 'dispatch') {
+        ledgerLinkedRefIds.add(e.referenceId);
+      }
+    }
+
+    // Step 2: classify delta rows and collect IDs to skip
+    const rawDeltaForRef = new Map<number, number>();   // Part A: refId → raw delta sum
+    const rawDeltaQueue  = new Map<string, number[]>(); // Part B: "date|mat|party" → queue
+    const ledgerDeltaIds = new Set<number>();
+
+    for (const e of sorted) {
+      if (!isRebuildNoteStr(e.notes ?? '')) continue;
+      ledgerDeltaIds.add(e.id);
+      if (e.referenceId == null) continue;
+      const rawDelta = e.transactionType === 'dispatch'
+        ? (e.quantityOut || 0)
+        : -(e.quantityIn || 0);
+      if (ledgerLinkedRefIds.has(e.referenceId)) {
+        rawDeltaForRef.set(e.referenceId, (rawDeltaForRef.get(e.referenceId) ?? 0) + rawDelta);
+      } else {
+        const qkey = `${e.date}|${e.materialId}|${e.partyId ?? 0}`;
+        const q = rawDeltaQueue.get(qkey) ?? [];
+        q.push(rawDelta);
+        rawDeltaQueue.set(qkey, q);
+      }
+    }
+
+    // ── Main accumulation loop ──────────────────────────────────────────────────
+    type MergedEntry = StockLedgerEntry & {
+      calculatedBalance: number;
+      isSynthetic?: boolean;
+      _mergedDelta?: number;
+      _originalQtyOut?: number;
+    };
+    const mainRows: MergedEntry[] = [];
+
+    for (const entry of sorted) {
+      // Skip rebuild delta rows entirely — their quantity is absorbed below
+      if (ledgerDeltaIds.has(entry.id)) continue;
+
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (groupBalances[key] === undefined) groupBalances[key] = 0;
-      
-      // Convert quantities before accumulating running balance
-      const convertedIn = getConvertedQty(entry, entry.quantityIn);
-      const convertedOut = getConvertedQty(entry, entry.quantityOut);
+
+      let convertedIn  = getConvertedQty(entry, entry.quantityIn);
+      let convertedOut = getConvertedQty(entry, entry.quantityOut);
+      let rawDelta = 0;
+      const originalRawOut = entry.quantityOut || 0;
+
+      if (entry.transactionType === 'dispatch') {
+        if (entry.referenceId != null) {
+          rawDelta = rawDeltaForRef.get(entry.referenceId) ?? 0;
+        } else {
+          const dkey = `${entry.date}|${entry.materialId}|${entry.partyId ?? 0}`;
+          const q = rawDeltaQueue.get(dkey);
+          if (q && q.length > 0) rawDelta = q.shift()!;
+        }
+        if (rawDelta !== 0) {
+          const mergedRaw = Math.max(0, originalRawOut + rawDelta);
+          convertedOut = getConvertedQty(entry, mergedRaw);
+        }
+      }
+
       groupBalances[key] = roundBalance(groupBalances[key] + convertedIn - convertedOut);
-      
-      return {
-        ...entry,
-        calculatedBalance: groupBalances[key]
-      };
-    });
+
+      const row: MergedEntry = { ...entry, calculatedBalance: groupBalances[key] };
+      if (rawDelta !== 0) {
+        row.quantityOut = Math.max(0, originalRawOut + rawDelta);
+        row._mergedDelta = rawDelta;
+        row._originalQtyOut = originalRawOut;
+      }
+      mainRows.push(row);
+    }
 
     // Synthetic rows come first (oldest); they appear last when the display reverses the array
     return [...syntheticRows, ...mainRows];
@@ -736,14 +806,19 @@ export default function PlantStock() {
       
       const ledgerTableData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
-        const isRebuildDeltaRow = (entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]');
+        const mergedDelta: number | undefined = (entry as any)._mergedDelta;
+        const origQtyOut: number | undefined = (entry as any)._originalQtyOut;
+        const isRevision = mergedDelta != null && mergedDelta !== 0;
+        const revisionSuffix = isRevision
+          ? ` (was ${(origQtyOut ?? 0).toFixed(3)}T, ${mergedDelta >= 0 ? '+' : ''}${mergedDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`
+          : '';
         return [
           entry.date,
           getMaterialName(entry.materialId),
           getPartyName(entry.partyId),
-          isRebuildDeltaRow ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
-          isRebuildDeltaRow
-            ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
+          isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
+          isRevision
+            ? (entry.notes || '-') + revisionSuffix
             : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -880,9 +955,14 @@ export default function PlantStock() {
             <tbody>
               ${processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
                 const convData = getConvertedEntryData(entry);
-                const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]');
-                const notes = isRebuildDelta
-                  ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
+                const mDelta: number | undefined = (entry as any)._mergedDelta;
+                const mOrigOut: number | undefined = (entry as any)._originalQtyOut;
+                const isRevision = mDelta != null && mDelta !== 0;
+                const revSuffix = isRevision
+                  ? ` (was ${(mOrigOut ?? 0).toFixed(3)}T, ${mDelta >= 0 ? '+' : ''}${mDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`
+                  : '';
+                const notes = isRevision
+                  ? (entry.notes || '-') + revSuffix
                   : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                   ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
                   : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -897,7 +977,7 @@ export default function PlantStock() {
                   <td>${entry.date}</td>
                   <td>${getMaterialName(entry.materialId)}</td>
                   <td>${getPartyName(entry.partyId)}</td>
-                  <td>${((entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]')) ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType)}</td>
+                  <td>${isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType)}</td>
                   <td>${notes}</td>
                   <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(3) : '-'}</td>
                   <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(3) : '-'}</td>
@@ -1366,7 +1446,7 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3">
                             {(() => {
-                              const isRebuildDelta = (entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]');
+                              const isRebuildDelta = !!(entry as any)._mergedDelta;
                               const badgeClass = isBF
                                 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
                                 : isRebuildDelta

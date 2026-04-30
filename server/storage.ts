@@ -3098,36 +3098,54 @@ export class DatabaseStorage implements IStorage {
       .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
     const uom = mat?.conversionToUom || mat?.defaultUom || 'Ton';
 
-    // ── Pre-process: identify rebuild delta rows and build a signed-delta map ─────
+    // ── Pre-process: identify rebuild delta rows and build signed-delta maps ──────
     // Delta rows are written by insertLegacyDeltaEntry with notes containing
     // "[rebuild delta]" (dispatch type, positive) or "[rebuild delta reversal]"
     // (adjustment type, negative).  We absorb them into their parent dispatch
     // row and hide them from the output entirely.
     //
-    // deltaMap: referenceId → signed sum of all deltas for that dispatch
-    //   dispatch delta (positive): +quantityOut
-    //   adjustment delta reversal (negative): -quantityIn
+    // Two matching paths:
+    //   Part A (linked): original dispatch entry already has referenceId = dispatch.id
+    //     → deltaMap[referenceId] holds the signed delta; looked up directly.
+    //   Part B (unlinked): original dispatch entry has referenceId = null while the
+    //     delta row has referenceId = dispatch.id → matched by date+materialId+partyId
+    //     using a sequential queue (delta rows and original rows share same date/material).
     const isRebuildRevisionNote = (n: string) =>
       n.includes('[rebuild delta]') || n.includes('[rebuild delta reversal]');
 
-    const deltaMap = new Map<number, number>();
+    // Step 1 — collect referenceIds on non-delta dispatch entries (Part A originals)
+    const linkedRefIds = new Set<number>();
+    for (const e of entries) {
+      if (!isRebuildRevisionNote(e.notes ?? '') && e.referenceId != null && e.transactionType === 'dispatch') {
+        linkedRefIds.add(e.referenceId);
+      }
+    }
+
+    // Step 2 — classify each delta row as Part A or Part B
+    const deltaMap = new Map<number, number>();                          // Part A: refId → signed delta
+    const dateKeyDeltaQueue = new Map<string, { delta: number; refId: number }[]>(); // Part B: date|mat|party → queue
     const deltaRowIds = new Set<number>(); // IDs of rows to skip in the main loop
 
     for (const e of entries) {
       const notes = e.notes ?? '';
-      const isRebuildDelta = isRebuildRevisionNote(notes);
-      if (!isRebuildDelta) continue;
+      if (!isRebuildRevisionNote(notes)) continue;
 
       deltaRowIds.add(e.id);
-      if (e.referenceId == null) continue; // unmatched delta — drop silently
+      if (e.referenceId == null) continue; // delta with no referenceId — drop silently
 
-      const prev = deltaMap.get(e.referenceId) ?? 0;
-      if (e.transactionType === 'dispatch') {
-        // Positive delta: more material was consumed than originally recorded
-        deltaMap.set(e.referenceId, prev + (e.quantityOut || 0));
-      } else if (e.transactionType === 'adjustment') {
-        // Negative delta reversal: less material was consumed (adjustment In credited back)
-        deltaMap.set(e.referenceId, prev - (e.quantityIn || 0));
+      const signedDelta = e.transactionType === 'dispatch'
+        ? (e.quantityOut || 0)
+        : -(e.quantityIn || 0);
+
+      if (linkedRefIds.has(e.referenceId)) {
+        // Part A: direct match via referenceId
+        deltaMap.set(e.referenceId, (deltaMap.get(e.referenceId) ?? 0) + signedDelta);
+      } else {
+        // Part B: original entry has referenceId = null — queue by date+matId+partyId
+        const dateKey = `${e.date}|${e.materialId}|${e.partyId ?? 0}`;
+        const queue = dateKeyDeltaQueue.get(dateKey) ?? [];
+        queue.push({ delta: signedDelta, refId: e.referenceId });
+        dateKeyDeltaQueue.set(dateKey, queue);
       }
     }
 
@@ -3167,14 +3185,28 @@ export class DatabaseStorage implements IStorage {
         running += qIn - qOut;
         detail.push({ ...e, displayType: 'correction', borrowedQty: 0, runningBalance: running });
       } else if (e.transactionType === 'dispatch') {
-        // Apply any rebuild delta to get the net required quantity for this dispatch
-        const delta = e.referenceId != null ? (deltaMap.get(e.referenceId) ?? 0) : 0;
+        // Apply any rebuild delta — Part A (direct refId) or Part B (date-key queue fallback)
+        let delta = 0;
+        let siteRefId = e.referenceId;
+        if (e.referenceId != null) {
+          // Part A: original entry already has the matching referenceId
+          delta = deltaMap.get(e.referenceId) ?? 0;
+        } else {
+          // Part B: original entry has referenceId = null — consume next queued delta
+          const dateKey = `${e.date}|${e.materialId}|${e.partyId ?? 0}`;
+          const queue = dateKeyDeltaQueue.get(dateKey);
+          if (queue && queue.length > 0) {
+            const entry = queue.shift()!;
+            delta = entry.delta;
+            siteRefId = entry.refId; // use delta row's refId for site lookup
+          }
+        }
         const originalQty = qOut;
         const netRequired = Math.max(0, originalQty + delta);
 
         // Build note: "Material Consumed — {site} (revision info if applicable)"
-        const site = e.referenceId != null
-          ? (dispatchMeta.get(e.referenceId)?.deliveryLocation?.trim() || '')
+        const site = siteRefId != null
+          ? (dispatchMeta.get(siteRefId)?.deliveryLocation?.trim() || '')
           : '';
         let note = 'Material Consumed';
         if (site) note += ` \u2014 ${site}`;
