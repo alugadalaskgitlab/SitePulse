@@ -5905,6 +5905,18 @@ export async function registerRoutes(
     }
   });
 
+  // One-time admin data fix — Task #427 (6mm Down ledger gap for LAXMI, dispatches 49 & 50)
+  app.post("/api/admin/fix-ledger-gap-427", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const result = await storage.applyLedgerGapFix427();
+      res.json(result);
+    } catch (err) {
+      console.error("Error applying ledger gap fix 427:", err);
+      res.status(500).json({ message: "Failed to apply fix", error: String(err) });
+    }
+  });
+
   // ====== MIX ESTIMATES ======
   app.get("/api/mix-estimates", async (_req, res) => {
     try {

@@ -306,6 +306,10 @@ export interface IStorage {
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
 
+  // One-time data fix: insert missing LAXMI 0-qty marker rows for dispatches 49 & 50
+  // and correct the over-counted HLC borrow entries (Task #427).
+  applyLedgerGapFix427(): Promise<{ alreadyApplied: boolean; markersInserted: number; hlcEntriesUpdated: number; reconciled: { updated: number; created: number; errors: number } }>;
+
   // Rebuild aggregate dispatch ledger entries for a template from a date+time cutoff
   rebuildDispatchLedgerForTemplate(opts: {
     templateId: number;
@@ -3618,6 +3622,23 @@ export class DatabaseStorage implements IStorage {
         if (remaining > 0) {
           // Borrowing branch — only reachable when allowHlcFallback === true.
           if (hlcPartyId && hlcPartyId !== partyId) {
+            // When the owner has zero stock (fromOwner === 0), insert a 0-qty marker row for the
+            // owner party BEFORE the HLC borrow entry.  Without this marker getPartyStatement only
+            // reads the owner's ledger and would never see this dispatch at all, so the full HLC
+            // obligation would be silently dropped from borrowedFromHlc.
+            if (fromOwner === 0) {
+              const [markerRow] = await tx.insert(stockLedger).values({
+                date: dispatchData.date,
+                partyId,
+                materialId: item.matId,
+                transactionType: "dispatch",
+                quantityOut: 0,
+                balanceAfter: Math.max(ownerBal, 0),
+                uom: item.uom,
+                notes: item.label,
+              }).returning({ id: stockLedger.id });
+              if (markerRow?.id) insertedLedgerIds.push(markerRow.id);
+            }
             await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from HLC)`);
           } else {
             // Owner IS HLC, or no HLC found — record the shortfall against the owner so the ledger remains complete.
@@ -3963,7 +3984,11 @@ export class DatabaseStorage implements IStorage {
             if (totalQty <= 0) continue;
             const { ownerQty, hlcQty } = computeSplit(dispatch, comp.materialId, totalQty);
 
-            if (ownerQty > 0) {
+            // Insert owner row always when there's a template quantity to track.
+            // ownerQty may be 0 when the dispatch is fully HLC-covered — in that case we
+            // still write a 0-qty marker row so getPartyStatement can detect this dispatch
+            // in the owner's ledger and count the HLC obligation toward borrowedFromHlc.
+            if (ownerQty > 0 || (ownerQty === 0 && hlcQty > 0 && dispatch.partyId !== null)) {
               await db.insert(stockLedger).values({
                 date: dispatch.date,
                 partyId: dispatch.partyId,
@@ -4546,6 +4571,88 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { updated, created, errors };
+  }
+
+  async applyLedgerGapFix427(): Promise<{ alreadyApplied: boolean; markersInserted: number; hlcEntriesUpdated: number; reconciled: { updated: number; created: number; errors: number } }> {
+    // Constants for this fix
+    const LAXMI_PARTY_ID = 6;
+    const HLC_PARTY_ID   = 1;
+    const MAT_6MM_DOWN   = 3;
+    const DISPATCH_49    = 49;
+    const DISPATCH_50    = 50;
+    const HLC_ENTRY_49   = 20415; // quantity_out was 12.32, correct is 11
+    const HLC_ENTRY_50   = 20434; // quantity_out was 14.85, correct is 7.5
+
+    // Guard: if LAXMI party doesn't exist in this environment, skip (non-production env)
+    const [laxmiCheck] = await db.select({ id: parties.id })
+      .from(parties).where(eq(parties.id, LAXMI_PARTY_ID)).limit(1);
+    if (!laxmiCheck) {
+      return { alreadyApplied: true, markersInserted: 0, hlcEntriesUpdated: 0, reconciled: { updated: 0, created: 0, errors: 0 } };
+    }
+
+    // Idempotency check: marker rows exist when qty_out=0, type=dispatch, party=LAXMI, mat=6mm, ref in (49,50)
+    const existing = await db.select({ referenceId: stockLedger.referenceId })
+      .from(stockLedger)
+      .where(and(
+        eq(stockLedger.partyId, LAXMI_PARTY_ID),
+        eq(stockLedger.materialId, MAT_6MM_DOWN),
+        eq(stockLedger.transactionType, 'dispatch'),
+        eq(stockLedger.quantityOut, 0),
+        inArray(stockLedger.referenceId, [DISPATCH_49, DISPATCH_50]),
+      ));
+    const alreadyApplied = existing.length === 2;
+    if (alreadyApplied) {
+      return { alreadyApplied: true, markersInserted: 0, hlcEntriesUpdated: 0, reconciled: { updated: 0, created: 0, errors: 0 } };
+    }
+
+    // Fetch LAXMI party name for the notes field
+    const [laxmiParty] = await db.select({ name: parties.name })
+      .from(parties).where(eq(parties.id, LAXMI_PARTY_ID)).limit(1);
+    const laxmiName = laxmiParty?.name ?? 'LAXMI';
+
+    let markersInserted = 0;
+    let hlcEntriesUpdated = 0;
+
+    // Insert 0-qty marker rows for LAXMI (only the ones missing)
+    const existingRefs = new Set(existing.map(e => e.referenceId));
+    for (const dispatchId of [DISPATCH_49, DISPATCH_50]) {
+      if (!existingRefs.has(dispatchId)) {
+        await db.insert(stockLedger).values({
+          date: '2026-04-28',
+          partyId: LAXMI_PARTY_ID,
+          materialId: MAT_6MM_DOWN,
+          transactionType: 'dispatch',
+          quantityOut: 0,
+          balanceAfter: 0,
+          uom: 'Ton',
+          notes: `Aggregate dispatch (${laxmiName})`,
+          referenceId: dispatchId,
+        });
+        markersInserted++;
+      }
+    }
+
+    // Correct the over-counted HLC borrow entries and link them to their dispatches
+    const hlcUpdates: { id: number; qty: number; refId: number }[] = [
+      { id: HLC_ENTRY_49, qty: 11,  refId: DISPATCH_49 },
+      { id: HLC_ENTRY_50, qty: 7.5, refId: DISPATCH_50 },
+    ];
+    for (const u of hlcUpdates) {
+      const res = await db.update(stockLedger)
+        .set({ quantityOut: u.qty, referenceId: u.refId })
+        .where(and(
+          eq(stockLedger.id, u.id),
+          eq(stockLedger.partyId, HLC_PARTY_ID),
+          eq(stockLedger.materialId, MAT_6MM_DOWN),
+        ));
+      hlcEntriesUpdated += (res as { rowCount?: number }).rowCount ?? 0;
+    }
+
+    // Recompute running balance_after for all 6mm Down ledger rows, then sync stock_balances
+    await this.recomputeBalanceAfterForMaterial(MAT_6MM_DOWN);
+    const reconciled = await this.reconcileStockBalancesFromLedger();
+
+    return { alreadyApplied: false, markersInserted, hlcEntriesUpdated, reconciled };
   }
 
   async migrateOrphanStockToHLC(): Promise<{ ledgerFixed: number; balancesMerged: number; errors: number }> {
