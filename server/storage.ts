@@ -3246,14 +3246,16 @@ export class DatabaseStorage implements IStorage {
           note += ` (was ${originalQty.toFixed(3)}T, ${sign}${delta.toFixed(3)}T \u2192 ${netRequired.toFixed(3)}T)`;
         }
 
-        // Own-vs-borrowed split based on full template qty and live running balance.
-        // Using templateQty (not netRequired) ensures HLC-routed material from the
-        // shortage-warning routing is included in the debt calculation.
-        const available = Math.max(0, running);
-        const ownQty = Math.min(templateQty, available);
-        const borrowedQty = templateQty - ownQty;
+        // Own-vs-borrowed split: ownQty = what the party's stock ledger recorded as
+        // their actual contribution (netRequired = ledger qty_out ± rebuild delta).
+        // borrowedQty = the portion of the full template obligation that exceeded the
+        // party's own stock (i.e. what HLC supplemented for that dispatch).
+        // Using netRequired (not min(templateQty, running)) prevents the running balance
+        // from inflating ownQty beyond the actual ledger amount.
+        const ownQty = netRequired;
+        const borrowedQty = Math.max(0, templateQty - netRequired);
 
-        running -= ownQty;
+        running -= netRequired;
 
         dispatchedOwn += ownQty;
         borrowedFromHlc += borrowedQty;
@@ -3279,6 +3281,11 @@ export class DatabaseStorage implements IStorage {
           running += qIn;
           detail.push({ ...e, displayType: 'transfer_in', borrowedQty: 0, runningBalance: running });
         }
+      } else if (e.transactionType === 'issue') {
+        // Material issued directly from stock (e.g. to a site) — reduces the party's
+        // physical balance just like a dispatch, so running must decrease.
+        running -= qOut;
+        detail.push({ ...e, displayType: 'other', borrowedQty: 0, runningBalance: running });
       } else {
         detail.push({ ...e, displayType: 'other', borrowedQty: 0, runningBalance: running });
       }
