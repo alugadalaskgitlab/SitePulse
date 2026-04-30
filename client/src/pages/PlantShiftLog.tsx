@@ -78,6 +78,14 @@ export default function PlantShiftLog() {
   const [boilerRunsDuringProduction, setBoilerRunsDuringProduction] = useState(false);
   const [noMainPlantOps, setNoMainPlantOps] = useState(false);
   const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
+  // Step 2 — detect ?focus=dryerFedFrom in URL so we can scroll and highlight
+  // the "Which tank feeds the dryer?" field when navigated from a mismatch link.
+  const focusDryerParam = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("focus") === "dryerFedFrom";
+  }, []);
+  const [dryerHighlighted, setDryerHighlighted] = useState(false);
+  const dryerFocusRef = useRef<HTMLDivElement | null>(null);
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
@@ -331,6 +339,19 @@ export default function PlantShiftLog() {
     setIsFinalized(existing.isFinalized || 0);
     setPlantName(existing.plantName || "Main Plant");
   }, [existing]);
+
+  // Scroll + briefly highlight the "Which tank feeds the dryer?" section when
+  // navigated here via ?focus=dryerFedFrom (i.e. from a mismatch fix link).
+  useEffect(() => {
+    if (!focusDryerParam) return;
+    // Wait for the form to render before scrolling.
+    const timer = setTimeout(() => {
+      dryerFocusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setDryerHighlighted(true);
+      setTimeout(() => setDryerHighlighted(false), 2500);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [focusDryerParam, viewMode]);
 
   // Task #325 — fetch today's dispatches to compute live L/MT stats in the
   // LDO Flow Meters card. Only active in edit mode (no new API needed).
@@ -815,45 +836,43 @@ export default function PlantShiftLog() {
                                 <span className="text-muted-foreground">Op: {r.operatorName || "—"}</span>
                                 <span className="text-muted-foreground">Weather: {r.weather || "—"}</span>
                               </div>
-                              {/* Dryer mismatch warning — shown only when there's an actual conflict */}
-                              {mismatch && (() => {
-                                const slLabel = mismatch.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                              {/* Dryer mismatch — guided one-click fix panel */}
+                              {mismatch && mismatch.shiftLogValue && (() => {
+                                const slValue = mismatch.shiftLogValue;
+                                const slLabel = slValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+                                const oppLabel = slValue === "TANK_1" ? "Dryer tank" : "Boiler tank";
                                 const sessionIds = mismatch.conflictingSessions.map(s => s.id);
-                                const tooltip = mismatch.conflictingSessions.map(s => {
-                                  const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
-                                  const time = s.startTime ? ` at ${s.startTime}` : "";
-                                  return `Session #${s.id} (${s.sessionType}${time}) → ${hsLabel} vs log → ${slLabel}`;
-                                }).join("\n");
+                                const n = sessionIds.length;
+                                const fixLogHref = appendPlantContext(
+                                  `/plant/shift-log/${r.date}?plant=${encodeURIComponent(r.plantName)}&focus=dryerFedFrom`,
+                                  { defaultTab: "operations" }
+                                );
                                 return (
-                                  <div className="flex items-center gap-1 flex-wrap mt-1.5" data-testid={`panel-dryer-mismatch-${r.id}`}>
-                                    <Badge
-                                      variant="destructive"
-                                      className="text-[10px] cursor-help"
-                                      title={tooltip}
-                                      data-testid={`badge-dryer-mismatch-${r.id}`}
-                                    >
-                                      ⚠ Dryer source mismatch ({sessionIds.length})
-                                    </Badge>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                                      disabled={alignMutation.isPending}
-                                      onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_1" })}
-                                      data-testid={`button-align-tank1-${r.id}`}
-                                    >
-                                      {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T1"}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                                      disabled={alignMutation.isPending}
-                                      onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_2" })}
-                                      data-testid={`button-align-tank2-${r.id}`}
-                                    >
-                                      {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T2"}
-                                    </Button>
+                                  <div
+                                    className="mt-2 rounded-md border border-red-300 bg-red-50/60 dark:border-red-800 dark:bg-red-950/20 px-3 py-2 text-xs space-y-1.5"
+                                    data-testid={`panel-dryer-mismatch-${r.id}`}
+                                  >
+                                    <p className="text-red-700 dark:text-red-300 leading-snug">
+                                      ⚠ <strong>Dryer source conflict:</strong> This shift log says <strong>{slLabel}</strong>, but {n} heating session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} <strong>{oppLabel}</strong>.
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        className="h-7 text-xs"
+                                        disabled={alignMutation.isPending}
+                                        onClick={() => alignMutation.mutate({ sessionIds, targetValue: slValue })}
+                                        data-testid={`button-fix-sessions-${r.id}`}
+                                      >
+                                        {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                                        Fix {n} session{n !== 1 ? "s" : ""} → match shift log ({slLabel})
+                                      </Button>
+                                      <Link href={fixLogHref}>
+                                        <span className="text-red-600 dark:text-red-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[11px]" data-testid={`link-fix-shiftlog-${r.id}`}>
+                                          Fix the shift log instead →
+                                        </span>
+                                      </Link>
+                                    </div>
                                   </div>
                                 );
                               })()}
@@ -1027,7 +1046,14 @@ export default function PlantShiftLog() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {/* Routes the dryer-meter consumption to the selected tank. */}
-              <div className="flex items-center gap-2 rounded border border-dashed border-blue-300 bg-blue-50/40 dark:bg-blue-950/20 px-3 py-2">
+              <div
+                ref={dryerFocusRef}
+                className={`flex items-center gap-2 rounded border border-dashed px-3 py-2 transition-all duration-300 ${
+                  dryerHighlighted
+                    ? "border-red-500 bg-red-50/70 dark:bg-red-950/30 ring-2 ring-red-400"
+                    : "border-blue-300 bg-blue-50/40 dark:bg-blue-950/20"
+                }`}
+              >
                 <Label htmlFor="dryer-fed-from" className="text-xs">Which tank feeds the dryer?</Label>
                 <Select value={dryerFedFrom} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
                   <SelectTrigger id="dryer-fed-from" className="h-8 w-36" data-testid="select-dryer-fed-from">
