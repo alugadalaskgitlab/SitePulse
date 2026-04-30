@@ -28,6 +28,13 @@ type StockBalanceAsOf = {
   totalOut: number;
 };
 
+type ProcessedLedgerEntry = StockLedgerEntry & {
+  calculatedBalance: number;
+  isSynthetic?: boolean;
+  _mergedDelta?: number;
+  _originalQtyOut?: number;
+};
+
 export default function PlantStock() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
@@ -253,7 +260,7 @@ export default function PlantStock() {
 
     // Build synthetic opening-balance rows (one per material+party group) so the
     // ledger table always shows a "B/F" line when a date filter is active.
-    const syntheticRows: (StockLedgerEntry & { calculatedBalance: number; isSynthetic?: boolean })[] = [];
+    const syntheticRows: ProcessedLedgerEntry[] = [];
 
     if (dateFrom && balanceAsOf) {
       const filteredGroups = new Set(sorted.map(e => `${e.materialId}-${e.partyId ?? 0}`));
@@ -279,7 +286,7 @@ export default function PlantStock() {
           createdAt: null,
           calculatedBalance: openingBalance,
           isSynthetic: true,
-        } as StockLedgerEntry & { calculatedBalance: number; isSynthetic?: boolean });
+        } as ProcessedLedgerEntry);
       }
     }
 
@@ -323,13 +330,7 @@ export default function PlantStock() {
     }
 
     // ── Main accumulation loop ──────────────────────────────────────────────────
-    type MergedEntry = StockLedgerEntry & {
-      calculatedBalance: number;
-      isSynthetic?: boolean;
-      _mergedDelta?: number;
-      _originalQtyOut?: number;
-    };
-    const mainRows: MergedEntry[] = [];
+    const mainRows: ProcessedLedgerEntry[] = [];
 
     for (const entry of sorted) {
       // Skip rebuild delta rows entirely — their quantity is absorbed below
@@ -359,7 +360,7 @@ export default function PlantStock() {
 
       groupBalances[key] = roundBalance(groupBalances[key] + convertedIn - convertedOut);
 
-      const row: MergedEntry = { ...entry, calculatedBalance: groupBalances[key] };
+      const row: ProcessedLedgerEntry = { ...entry, calculatedBalance: groupBalances[key] };
       if (rawDelta !== 0) {
         row.quantityOut = Math.max(0, originalRawOut + rawDelta);
         row._mergedDelta = rawDelta;
@@ -806,8 +807,8 @@ export default function PlantStock() {
       
       const ledgerTableData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
-        const mergedDelta: number | undefined = (entry as any)._mergedDelta;
-        const origQtyOut: number | undefined = (entry as any)._originalQtyOut;
+        const mergedDelta = entry._mergedDelta;
+        const origQtyOut = entry._originalQtyOut;
         const isRevision = mergedDelta != null && mergedDelta !== 0;
         const revisionSuffix = isRevision
           ? ` (was ${(origQtyOut ?? 0).toFixed(3)}T, ${mergedDelta >= 0 ? '+' : ''}${mergedDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`
@@ -955,8 +956,8 @@ export default function PlantStock() {
             <tbody>
               ${processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
                 const convData = getConvertedEntryData(entry);
-                const mDelta: number | undefined = (entry as any)._mergedDelta;
-                const mOrigOut: number | undefined = (entry as any)._originalQtyOut;
+                const mDelta = entry._mergedDelta;
+                const mOrigOut = entry._originalQtyOut;
                 const isRevision = mDelta != null && mDelta !== 0;
                 const revSuffix = isRevision
                   ? ` (was ${(mOrigOut ?? 0).toFixed(3)}T, ${mDelta >= 0 ? '+' : ''}${mDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`
@@ -1446,7 +1447,7 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3">
                             {(() => {
-                              const isRebuildDelta = !!(entry as any)._mergedDelta;
+                              const isRebuildDelta = !!entry._mergedDelta;
                               const badgeClass = isBF
                                 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
                                 : isRebuildDelta
@@ -1481,18 +1482,24 @@ export default function PlantStock() {
                             })()}
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
-                            {isBF ? entry.notes
-                              : ((entry.notes ?? '').includes('[rebuild delta]') || (entry.notes ?? '').includes('[rebuild delta reversal]'))
-                              ? (entry.notes ?? '').replace(' [rebuild delta]', '').replace(' [rebuild delta reversal]', '')
-                              : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
-                              ? entry.notes.replace('Diesel issued to ', '')
-                              : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
-                              ? entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)'
-                              : entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at ')
-                              ? entry.notes.replace('Direct purchase at ', '')
-                              : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
-                              ? entry.notes.replace('Issue to ', '').split(' - ')[0]
-                              : entry.notes || '-'}
+                            {(() => {
+                              if (isBF) return entry.notes;
+                              const mDelta = entry._mergedDelta;
+                              const mOrigOut = entry._originalQtyOut;
+                              if (mDelta != null && mDelta !== 0) {
+                                const suffix = ` (was ${(mOrigOut ?? 0).toFixed(3)}T, ${mDelta >= 0 ? '+' : ''}${mDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`;
+                                return (entry.notes || '-') + suffix;
+                              }
+                              if (entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to '))
+                                return entry.notes.replace('Diesel issued to ', '');
+                              if (entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to '))
+                                return entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)';
+                              if (entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at '))
+                                return entry.notes.replace('Direct purchase at ', '');
+                              if (entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to '))
+                                return entry.notes.replace('Issue to ', '').split(' - ')[0];
+                              return entry.notes || '-';
+                            })()}
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
                             {isBF ? (displayBalance >= 0 ? displayBalance.toFixed(3) : '-') : (displayIn > 0 ? `${displayIn.toFixed(3)}` : '-')}
