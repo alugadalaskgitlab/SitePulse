@@ -3128,6 +3128,22 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Step 1b — collect date+materialId+partyId keys for unlinked original dispatch entries.
+    // Used in Step 2 to detect when a Part-B delta has NO matching original entry — meaning
+    // the material was brand-new for that dispatch (added to the template after the dispatch
+    // was created). In that case the delta row carries the full quantity and must NOT be
+    // silently skipped; the main loop will process it as a standalone dispatch entry.
+    const originalEntryDateKeys = new Set<string>();
+    for (const e of entries) {
+      if (
+        !isRebuildRevisionNote(e.notes ?? '') &&
+        e.referenceId === null &&
+        e.transactionType === 'dispatch'
+      ) {
+        originalEntryDateKeys.add(`${e.date}|${e.materialId}|${e.partyId ?? 0}`);
+      }
+    }
+
     // Step 2 — classify each delta row as Part A or Part B
     const deltaMap = new Map<number, number>();                          // Part A: refId → signed delta
     const dateKeyDeltaQueue = new Map<string, { delta: number; refId: number }[]>(); // Part B: date|mat|party → queue
@@ -3137,22 +3153,34 @@ export class DatabaseStorage implements IStorage {
       const notes = e.notes ?? '';
       if (!isRebuildRevisionNote(notes)) continue;
 
-      deltaRowIds.add(e.id);
-      if (e.referenceId == null) continue; // delta with no referenceId — drop silently
+      // Always drop delta rows with no referenceId — nothing to pair them with.
+      if (e.referenceId == null) {
+        deltaRowIds.add(e.id);
+        continue;
+      }
 
       const signedDelta = e.transactionType === 'dispatch'
         ? (e.quantityOut || 0)
         : -(e.quantityIn || 0);
 
       if (linkedRefIds.has(e.referenceId)) {
-        // Part A: direct match via referenceId
+        // Part A: direct referenceId match — absorb into parent dispatch, skip in main loop.
+        deltaRowIds.add(e.id);
         deltaMap.set(e.referenceId, (deltaMap.get(e.referenceId) ?? 0) + signedDelta);
       } else {
-        // Part B: original entry has referenceId = null — queue by date+matId+partyId
         const dateKey = `${e.date}|${e.materialId}|${e.partyId ?? 0}`;
-        const queue = dateKeyDeltaQueue.get(dateKey) ?? [];
-        queue.push({ delta: signedDelta, refId: e.referenceId });
-        dateKeyDeltaQueue.set(dateKey, queue);
+        if (originalEntryDateKeys.has(dateKey) || e.transactionType !== 'dispatch') {
+          // Part B (normal): an original unlinked entry exists to pair with, OR this is a
+          // reversal adjustment — queue it and skip it in the main loop as usual.
+          deltaRowIds.add(e.id);
+          const queue = dateKeyDeltaQueue.get(dateKey) ?? [];
+          queue.push({ delta: signedDelta, refId: e.referenceId });
+          dateKeyDeltaQueue.set(dateKey, queue);
+        }
+        // Part B (new-material): no original entry exists for this material on this dispatch.
+        // Do NOT add to deltaRowIds — the main loop processes it as a standalone dispatch
+        // entry. Its referenceId lets dispatchMeta supply theoreticalAggregates[materialId]
+        // as templateQty, giving the correct own-vs-borrowed split.
       }
     }
 
