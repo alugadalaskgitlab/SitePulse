@@ -782,75 +782,83 @@ export default function PlantShiftLog() {
                           if (mins < 0) mins += 24 * 60;
                           return Math.round((mins / 60) * 100) / 100;
                         })();
-                        const ldoLPerHr = (ldo1 != null && dur && dur > 0) ? (ldo1 / dur).toFixed(2) : null;
-                        const ldoLPerHrDryer = (ldo2 != null && dur && dur > 0) ? (ldo2 / dur).toFixed(2) : null;
+                        const ldoLPerHr = (ldo1 != null && dur && dur > 0) ? (ldo1 / dur).toFixed(1) : null;
+                        const ldoLPerHrDryer = (ldo2 != null && dur && dur > 0) ? (ldo2 / dur).toFixed(1) : null;
+                        const mismatch = dryerMismatchByKey.get(`${r.date}||${r.plantName}`);
                         return (
-                          <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover-elevate" data-testid={`row-shift-log-${r.id}`}>
-                            <div className="flex-1">
+                          <div key={r.id} className="flex items-start justify-between p-3 rounded-lg bg-muted/50 hover-elevate gap-3" data-testid={`row-shift-log-${r.id}`}>
+                            <div className="flex-1 min-w-0">
+                              {/* Line 1 — timing + status */}
                               <div className="flex items-center gap-2 flex-wrap">
-                                <Badge variant="outline">{r.shiftCode}</Badge>
-                                <span className="font-medium">{r.plantStartTime || "—"} → {r.plantStopTime || "—"}</span>
-                                {dur != null && <span className="text-sm text-muted-foreground">({dur} h)</span>}
-                                <span className="text-xs text-muted-foreground">{r.plantName}</span>
-                                {r.isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : <Badge variant="secondary">Draft</Badge>}
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{r.shiftCode}</span>
+                                <span className="font-medium text-sm">{r.plantStartTime || "—"} → {r.plantStopTime || "—"}</span>
+                                {dur != null && <span className="text-xs text-muted-foreground">({dur} h)</span>}
+                                {r.plantName !== "Main Plant" && <span className="text-xs text-muted-foreground">· {r.plantName}</span>}
+                                {r.isFinalized
+                                  ? <Badge variant="default" className="bg-green-600 text-xs px-1.5 py-0">✓ Done</Badge>
+                                  : <Badge variant="secondary" className="text-xs px-1.5 py-0">Draft</Badge>
+                                }
                                 <LockBadge record={r} resourceType="plant_shift_log" resourceId={r.id} compact />
-                                {(r.dryerFedFrom === "TANK_1" || r.dryerFedFrom === "TANK_2") && (
-                                  <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dryer-fed-${r.id}`}>
-                                    Dryer: {r.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
-                                  </Badge>
-                                )}
-                                {(() => {
-                                  const mismatch = dryerMismatchByKey.get(`${r.date}||${r.plantName}`);
-                                  if (!mismatch) return null;
-                                  const slLabel = mismatch.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
-                                  const sessionIds = mismatch.conflictingSessions.map(s => s.id);
-                                  const tooltip = mismatch.conflictingSessions.map(s => {
-                                    const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
-                                    const time = s.startTime ? ` at ${s.startTime}` : "";
-                                    return `Heating session #${s.id} (${s.sessionType}${time}) says ${hsLabel} — shift log says ${slLabel}`;
-                                  }).join("\n");
-                                  return (
-                                    <div className="flex items-center gap-1 flex-wrap" data-testid={`panel-dryer-mismatch-${r.id}`}>
-                                      <Badge
-                                        variant="destructive"
-                                        className="text-[10px] cursor-help"
-                                        title={tooltip}
-                                        data-testid={`badge-dryer-mismatch-${r.id}`}
-                                      >
-                                        ⚠ Dryer mismatch ({sessionIds.length})
-                                      </Badge>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                                        disabled={alignMutation.isPending}
-                                        onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_1" })}
-                                        data-testid={`button-align-tank1-${r.id}`}
-                                      >
-                                        {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T1"}
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                                        disabled={alignMutation.isPending}
-                                        onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_2" })}
-                                        data-testid={`button-align-tank2-${r.id}`}
-                                      >
-                                        {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T2"}
-                                      </Button>
-                                    </div>
-                                  );
-                                })()}
                               </div>
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
-                                <span>Operator: {r.operatorName || "—"}</span>
-                                <span>Boiler Meter: {ldo1?.toFixed(1) ?? "—"} L{ldoLPerHr && <span className="ml-1">({ldoLPerHr} L/Hr)</span>}</span>
-                                <span>Dryer Meter: {ldo2?.toFixed(1) ?? "—"} L{ldoLPerHrDryer && <span className="ml-1">({ldoLPerHrDryer} L/Hr)</span>}</span>
-                                <span>Weather: {r.weather || "—"}</span>
+                              {/* Line 2 — consumption metrics */}
+                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1.5">
+                                <span>
+                                  <span className="text-muted-foreground">Boiler LDO: </span>
+                                  <span className="font-medium">{ldo1 != null ? `${ldo1.toFixed(0)} L` : "—"}</span>
+                                  {ldoLPerHr && <span className="text-muted-foreground ml-1">({ldoLPerHr} L/h)</span>}
+                                </span>
+                                <span>
+                                  <span className="text-muted-foreground">Dryer LDO: </span>
+                                  <span className="font-medium">{ldo2 != null ? `${ldo2.toFixed(0)} L` : "—"}</span>
+                                  {ldoLPerHrDryer && <span className="text-muted-foreground ml-1">({ldoLPerHrDryer} L/h)</span>}
+                                </span>
+                                {r.operatorName && <span className="text-muted-foreground">Op: {r.operatorName}</span>}
+                                {r.weather && <span className="text-muted-foreground">Weather: {r.weather}</span>}
                               </div>
+                              {/* Dryer mismatch warning — shown only when there's an actual conflict */}
+                              {mismatch && (() => {
+                                const slLabel = mismatch.shiftLogValue === "TANK_1" ? "Tank 1" : "Tank 2";
+                                const sessionIds = mismatch.conflictingSessions.map(s => s.id);
+                                const tooltip = mismatch.conflictingSessions.map(s => {
+                                  const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1" : "Tank 2";
+                                  const time = s.startTime ? ` at ${s.startTime}` : "";
+                                  return `Session #${s.id} (${s.sessionType}${time}) → ${hsLabel} vs log → ${slLabel}`;
+                                }).join("\n");
+                                return (
+                                  <div className="flex items-center gap-1 flex-wrap mt-1.5" data-testid={`panel-dryer-mismatch-${r.id}`}>
+                                    <Badge
+                                      variant="destructive"
+                                      className="text-[10px] cursor-help"
+                                      title={tooltip}
+                                      data-testid={`badge-dryer-mismatch-${r.id}`}
+                                    >
+                                      ⚠ Dryer source mismatch ({sessionIds.length})
+                                    </Badge>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                                      disabled={alignMutation.isPending}
+                                      onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_1" })}
+                                      data-testid={`button-align-tank1-${r.id}`}
+                                    >
+                                      {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T1"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-5 text-[10px] px-1.5 border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                                      disabled={alignMutation.isPending}
+                                      onClick={() => alignMutation.mutate({ sessionIds, targetValue: "TANK_2" })}
+                                      data-testid={`button-align-tank2-${r.id}`}
+                                    >
+                                      {alignMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : "Set all → T2"}
+                                    </Button>
+                                  </div>
+                                );
+                              })()}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 shrink-0">
                               <Link href={appendPlantContext(`/plant/daily-report/${r.date}`, { defaultTab: "operations" })}>
                                 <Button variant="ghost" size="sm" data-testid={`button-daily-report-${r.id}`}>
                                   <FileText className="w-4 h-4 mr-1" />Report

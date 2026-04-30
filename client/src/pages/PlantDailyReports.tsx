@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X } from "lucide-react";
+import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X, Circle, AlertCircle } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { unzipSync, strFromU8 } from "fflate";
+import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
 type PartyOpt = { id: number; name: string };
 type MixTypeOpt = { id: number; name: string };
@@ -93,6 +94,15 @@ type IndexRow = {
   shiftLogFinalized: boolean;
   dryerFedFrom: "TANK_1" | "TANK_2" | null;
   breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
+  ldoBoilerLitres: number | null;
+  ldoDryerLitres: number | null;
+  ldoHeatingSessionLitres: number | null;
+  dgDieselLitres: number | null;
+  bitumenTank1OpeningDip: number | null;
+  bitumenTank1ClosingDip: number | null;
+  bitumenTank2OpeningDip: number | null;
+  bitumenTank2ClosingDip: number | null;
+  bitumenTemplateMt: number | null;
 };
 
 export default function PlantDailyReports() {
@@ -553,26 +563,34 @@ export default function PlantDailyReports() {
         </Card>
       )}
 
-      {!isLoading && grouped.map(([month, monthRows]) => (
+      {!isLoading && grouped.map(([month, monthRows]) => {
+        const monthTotalLoads = monthRows.reduce((s, r) => s + (r.totalLoads || 0), 0);
+        const monthTotalMt = monthRows.reduce((s, r) => s + (r.totalProductionMt || 0), 0);
+        return (
         <Card key={month}>
           <CardHeader>
-            <CardTitle className="text-base">
-              {format(parseISO(`${month}-01`), "MMMM yyyy")}
-              <Badge variant="outline" className="ml-2">{monthRows.length} day{monthRows.length === 1 ? "" : "s"}</Badge>
-            </CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base">
+                {format(parseISO(`${month}-01`), "MMMM yyyy")}
+                <Badge variant="outline" className="ml-2">{monthRows.length} day{monthRows.length === 1 ? "" : "s"}</Badge>
+              </CardTitle>
+              {monthTotalLoads > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {monthTotalLoads} loads · {monthTotalMt.toFixed(1)} MT total
+                </span>
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Plant</TableHead>
-                  <TableHead>Sections With Data</TableHead>
-                  <TableHead className="text-right">Loads</TableHead>
-                  <TableHead className="text-right">MT</TableHead>
-                  <TableHead>Party / Mix Breakdown</TableHead>
-                  <TableHead className="text-right">Sessions</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                <TableRow className="text-xs">
+                  <TableHead className="pl-4 w-36">Date</TableHead>
+                  <TableHead className="w-28 text-right">Production</TableHead>
+                  <TableHead>Party / Mix</TableHead>
+                  <TableHead>LDO · Diesel · Bitumen</TableHead>
+                  <TableHead className="w-8 text-center">Status</TableHead>
+                  <TableHead className="text-right pr-4 w-32">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -580,50 +598,147 @@ export default function PlantDailyReports() {
                   const rowKey = `${r.date}-${r.plantName}`;
                   const openHref = appendPlantContext(`/plant/daily-report/${r.date}?plant=${encodeURIComponent(r.plantName)}`, { defaultTab: "reports" });
                   const pdfHref = `/api/plant-module/daily-reports/${r.date}/pdf?plant=${encodeURIComponent(r.plantName)}`;
+
+                  // Compute bitumen actual MT from shift log dip readings
+                  const dipToMt = (dip: number | null): number => {
+                    if (dip == null || dip <= 0) return 0;
+                    return getVolumeAtDepth(dip) * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+                  };
+                  let bitumenActualMt: number | null = null;
+                  const t1HasBoth = r.bitumenTank1OpeningDip != null && r.bitumenTank1ClosingDip != null;
+                  const t2HasBoth = r.bitumenTank2OpeningDip != null && r.bitumenTank2ClosingDip != null;
+                  if (t1HasBoth || t2HasBoth) {
+                    bitumenActualMt = 0;
+                    if (t1HasBoth) {
+                      bitumenActualMt += Math.max(0, dipToMt(r.bitumenTank1OpeningDip) - dipToMt(r.bitumenTank1ClosingDip));
+                    }
+                    if (t2HasBoth) {
+                      bitumenActualMt += Math.max(0, dipToMt(r.bitumenTank2OpeningDip) - dipToMt(r.bitumenTank2ClosingDip));
+                    }
+                  }
+
+                  // Bitumen variance colour
+                  const bitVarPct = (bitumenActualMt != null && r.bitumenTemplateMt && r.bitumenTemplateMt > 0)
+                    ? Math.abs(bitumenActualMt - r.bitumenTemplateMt) / r.bitumenTemplateMt * 100
+                    : null;
+                  const bitVarClass = bitVarPct == null ? "" : bitVarPct <= 5 ? "text-green-600 dark:text-green-400" : bitVarPct <= 15 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+
+                  // Data completeness indicator
+                  const isComplete = r.hasShiftLog && r.shiftLogFinalized && r.hasDispatches && (r.hasLdoMeter || r.ldoBoilerLitres != null || r.ldoDryerLitres != null);
+                  const isPartial = r.hasShiftLog || r.hasDispatches;
+                  const statusIcon = isComplete
+                    ? <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    : isPartial
+                    ? <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                    : <Circle className="w-4 h-4 text-muted-foreground/40" />;
+
+                  const fmt = (n: number | null, decimals = 0) =>
+                    n == null ? "—" : n.toFixed(decimals);
+
                   return (
-                    <TableRow key={rowKey} data-testid={`row-report-${rowKey}`}>
-                      <TableCell className="font-medium">
-                        {format(parseISO(r.date), "EEE, dd MMM yyyy")}
+                    <TableRow key={rowKey} data-testid={`row-report-${rowKey}`} className="align-top">
+                      <TableCell className="pl-4 py-3">
+                        <div className="font-medium text-sm">{format(parseISO(r.date), "EEE, dd MMM")}</div>
+                        <div className="text-xs text-muted-foreground">{r.plantName}</div>
                       </TableCell>
-                      <TableCell>{r.plantName}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {r.hasShiftLog && (
-                            <Badge variant={r.shiftLogFinalized ? "default" : "secondary"} className={r.shiftLogFinalized ? "bg-green-600" : ""}>
-                              Shift Log{r.shiftLogFinalized ? " ✓" : ""}
-                            </Badge>
-                          )}
-                          {r.hasDispatches && <Badge variant="outline">Dispatches</Badge>}
-                          {r.hasEquipment && <Badge variant="outline">Equipment</Badge>}
-                          {r.hasBitumenDips && <Badge variant="outline">Bitumen Dips</Badge>}
-                          {r.hasLdoMeter && <Badge variant="outline">LDO Meter</Badge>}
-                          {r.hasHeatingSessions && <Badge variant="outline" className="border-orange-400 text-orange-700 dark:text-orange-300">Heating</Badge>}
-                          {r.dryerFedFrom != null && (
-                            <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dryer-fed-${r.date}-${r.plantName}`}>
-                              Dryer: {r.dryerFedFrom === "TANK_1" ? "T1" : "T2"}
-                            </Badge>
-                          )}
-                        </div>
+
+                      <TableCell className="text-right py-3">
+                        {r.hasDispatches ? (
+                          <>
+                            <div className="font-semibold text-sm">{r.totalLoads} loads</div>
+                            <div className="text-xs text-muted-foreground">{r.totalProductionMt.toFixed(1)} MT</div>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
-                      <TableCell className="text-right">{r.totalLoads || "—"}</TableCell>
-                      <TableCell className="text-right">{r.totalProductionMt ? r.totalProductionMt.toFixed(2) : "—"}</TableCell>
-                      <TableCell className="max-w-md">
+
+                      <TableCell className="py-3 max-w-xs">
                         {r.breakdown && r.breakdown.length > 0 ? (
                           <ul className="space-y-0.5 text-xs" data-testid={`breakdown-${rowKey}`}>
                             {r.breakdown.map((b, i) => (
                               <li key={`${b.partyName}-${b.mixType}-${i}`} className="leading-snug" data-testid={`breakdown-item-${rowKey}-${i}`}>
                                 <span className="font-medium">{b.partyName}</span>
-                                <span className="text-muted-foreground">: {b.loads} load{b.loads === 1 ? "" : "s"} / {b.mt.toFixed(2)} MT</span>
-                                <span className="text-muted-foreground"> ({b.mixType})</span>
+                                <span className="text-muted-foreground"> · {b.loads}×{b.mt.toFixed(1)} MT ({b.mixType})</span>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-muted-foreground">No dispatches</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">{r.sessionsCount || "—"}</TableCell>
-                      <TableCell className="text-right">
+
+                      <TableCell className="py-3">
+                        <div className="space-y-1 text-xs min-w-[18rem]">
+                          {/* LDO section */}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                            {r.ldoHeatingSessionLitres != null && (
+                              <span data-testid={`ldo-heating-${rowKey}`}>
+                                <span className="text-muted-foreground">Heating: </span>
+                                <span className="font-medium">{fmt(r.ldoHeatingSessionLitres)} L</span>
+                                {r.sessionsCount > 0 && <span className="text-muted-foreground"> ({r.sessionsCount} sess.)</span>}
+                              </span>
+                            )}
+                            {r.ldoBoilerLitres != null && (
+                              <span data-testid={`ldo-boiler-${rowKey}`}>
+                                <span className="text-muted-foreground">Boiler: </span>
+                                <span className="font-medium">{fmt(r.ldoBoilerLitres)} L</span>
+                              </span>
+                            )}
+                            {r.ldoDryerLitres != null && (
+                              <span data-testid={`ldo-dryer-${rowKey}`}>
+                                <span className="text-muted-foreground">Dryer: </span>
+                                <span className="font-medium">{fmt(r.ldoDryerLitres)} L</span>
+                              </span>
+                            )}
+                            {r.ldoHeatingSessionLitres == null && r.ldoBoilerLitres == null && r.ldoDryerLitres == null && (
+                              <span className="text-muted-foreground">LDO: —</span>
+                            )}
+                          </div>
+                          {/* DG diesel section */}
+                          {r.dgDieselLitres != null ? (
+                            <div data-testid={`dg-diesel-${rowKey}`}>
+                              <span className="text-muted-foreground">DG Diesel: </span>
+                              <span className="font-medium">{fmt(r.dgDieselLitres)} L</span>
+                            </div>
+                          ) : (
+                            <div className="text-muted-foreground">DG Diesel: —</div>
+                          )}
+                          {/* Bitumen section */}
+                          <div data-testid={`bitumen-${rowKey}`}>
+                            <span className="text-muted-foreground">Bitumen: </span>
+                            {r.bitumenTemplateMt != null ? (
+                              <span>
+                                <span className="font-medium">Tmpl {r.bitumenTemplateMt.toFixed(2)} MT</span>
+                                {bitumenActualMt != null && (
+                                  <span className={`ml-1 ${bitVarClass}`}>
+                                    → Act {bitumenActualMt.toFixed(2)} MT
+                                    {bitVarPct != null && (
+                                      <span className="ml-1 opacity-80">
+                                        ({bitumenActualMt > r.bitumenTemplateMt! ? "▲" : "▼"}{bitVarPct.toFixed(1)}%)
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                              </span>
+                            ) : bitumenActualMt != null ? (
+                              <span className="font-medium">Act {bitumenActualMt.toFixed(2)} MT</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="text-center py-3" title={
+                        isComplete ? "Complete — shift log finalized, dispatches & fuel recorded"
+                        : isPartial ? "Partial — some data recorded but not all sections complete"
+                        : "No data recorded yet"
+                      }>
+                        {statusIcon}
+                      </TableCell>
+
+                      <TableCell className="text-right pr-4 py-3">
                         <div className="flex gap-1 justify-end">
                           <Link href={openHref}>
                             <Button variant="outline" size="sm" data-testid={`button-open-${rowKey}`}>
@@ -644,7 +759,8 @@ export default function PlantDailyReports() {
             </Table>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

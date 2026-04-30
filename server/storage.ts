@@ -727,6 +727,15 @@ export interface IStorage {
     shiftLogFinalized: boolean;
     dryerFedFrom: "TANK_1" | "TANK_2" | null;
     breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
+    ldoBoilerLitres: number | null;
+    ldoDryerLitres: number | null;
+    ldoHeatingSessionLitres: number | null;
+    dgDieselLitres: number | null;
+    bitumenTank1OpeningDip: number | null;
+    bitumenTank1ClosingDip: number | null;
+    bitumenTank2OpeningDip: number | null;
+    bitumenTank2ClosingDip: number | null;
+    bitumenTemplateMt: number | null;
   }>>;
 
   // Bitumen Heating Sessions
@@ -10652,6 +10661,15 @@ export class DatabaseStorage implements IStorage {
     shiftLogFinalized: boolean;
     dryerFedFrom: "TANK_1" | "TANK_2" | null;
     breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
+    ldoBoilerLitres: number | null;
+    ldoDryerLitres: number | null;
+    ldoHeatingSessionLitres: number | null;
+    dgDieselLitres: number | null;
+    bitumenTank1OpeningDip: number | null;
+    bitumenTank1ClosingDip: number | null;
+    bitumenTank2OpeningDip: number | null;
+    bitumenTank2ClosingDip: number | null;
+    bitumenTemplateMt: number | null;
   }>> {
     const from = filters?.from;
     const to = filters?.to;
@@ -10704,6 +10722,15 @@ export class DatabaseStorage implements IStorage {
       shiftLogFinalized: boolean;
       dryerFedFrom: "TANK_1" | "TANK_2" | null;
       breakdown: Array<{ partyName: string; mixType: string; loads: number; mt: number }>;
+      ldoBoilerLitres: number | null;
+      ldoDryerLitres: number | null;
+      ldoHeatingSessionLitres: number | null;
+      dgDieselLitres: number | null;
+      bitumenTank1OpeningDip: number | null;
+      bitumenTank1ClosingDip: number | null;
+      bitumenTank2OpeningDip: number | null;
+      bitumenTank2ClosingDip: number | null;
+      bitumenTemplateMt: number | null;
     };
     const map = new Map<string, Row>();
     const get = (date: string, plantName: string): Row => {
@@ -10718,6 +10745,11 @@ export class DatabaseStorage implements IStorage {
           shiftLogFinalized: false,
           dryerFedFrom: null,
           breakdown: [],
+          ldoBoilerLitres: null, ldoDryerLitres: null,
+          ldoHeatingSessionLitres: null, dgDieselLitres: null,
+          bitumenTank1OpeningDip: null, bitumenTank1ClosingDip: null,
+          bitumenTank2OpeningDip: null, bitumenTank2ClosingDip: null,
+          bitumenTemplateMt: null,
         };
         map.set(key, r);
       }
@@ -10802,6 +10834,14 @@ export class DatabaseStorage implements IStorage {
       plantName: plantShiftLogs.plantName,
       isFinalized: plantShiftLogs.isFinalized,
       dryerFedFrom: plantShiftLogs.dryerFedFrom,
+      ldoTank1OpeningMeter: plantShiftLogs.ldoTank1OpeningMeter,
+      ldoTank1ClosingMeter: plantShiftLogs.ldoTank1ClosingMeter,
+      ldoTank2OpeningMeter: plantShiftLogs.ldoTank2OpeningMeter,
+      ldoTank2ClosingMeter: plantShiftLogs.ldoTank2ClosingMeter,
+      bitumenTank1OpeningDip: plantShiftLogs.bitumenTank1OpeningDip,
+      bitumenTank1ClosingDip: plantShiftLogs.bitumenTank1ClosingDip,
+      bitumenTank2OpeningDip: plantShiftLogs.bitumenTank2OpeningDip,
+      bitumenTank2ClosingDip: plantShiftLogs.bitumenTank2ClosingDip,
     }).from(plantShiftLogs)
       .where(and(dateRange(plantShiftLogs.date), plantEq(plantShiftLogs.plantName)));
     for (const r of slRows) {
@@ -10811,12 +10851,27 @@ export class DatabaseStorage implements IStorage {
       if (r.dryerFedFrom === "TANK_1" || r.dryerFedFrom === "TANK_2") {
         row.dryerFedFrom = r.dryerFedFrom;
       }
+      // LDO boiler (Tank 1) — max(0, closing - opening)
+      if (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null) {
+        row.ldoBoilerLitres = Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter);
+      }
+      // LDO dryer (Tank 2) — max(0, closing - opening)
+      if (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null) {
+        row.ldoDryerLitres = Math.max(0, r.ldoTank2ClosingMeter - r.ldoTank2OpeningMeter);
+      }
+      // Bitumen dip readings (raw — frontend converts to MT using dip chart)
+      if (r.bitumenTank1OpeningDip != null) row.bitumenTank1OpeningDip = r.bitumenTank1OpeningDip;
+      if (r.bitumenTank1ClosingDip != null) row.bitumenTank1ClosingDip = r.bitumenTank1ClosingDip;
+      if (r.bitumenTank2OpeningDip != null) row.bitumenTank2OpeningDip = r.bitumenTank2OpeningDip;
+      if (r.bitumenTank2ClosingDip != null) row.bitumenTank2ClosingDip = r.bitumenTank2ClosingDip;
     }
 
     const hsRows = await db.select({
       date: bitumenHeatingSessions.date,
       plantName: bitumenHeatingSessions.plantName,
       cnt: sql<number>`COUNT(*)::int`,
+      ldoConsumed: sql<number>`COALESCE(SUM(${bitumenHeatingSessions.ldoTank1Consumed}), 0)::float`,
+      dgDiesel: sql<number>`COALESCE(SUM(${bitumenHeatingSessions.dgDieselConsumed}), 0)::float`,
     }).from(bitumenHeatingSessions)
       .where(and(dateRange(bitumenHeatingSessions.date), plantEq(bitumenHeatingSessions.plantName)))
       .groupBy(bitumenHeatingSessions.date, bitumenHeatingSessions.plantName);
@@ -10824,6 +10879,10 @@ export class DatabaseStorage implements IStorage {
       const row = get(r.date, r.plantName);
       row.hasHeatingSessions = true;
       row.sessionsCount = Number(r.cnt) || 0;
+      const ldo = Number(r.ldoConsumed);
+      const dg = Number(r.dgDiesel);
+      if (ldo > 0) row.ldoHeatingSessionLitres = ldo;
+      if (dg > 0) row.dgDieselLitres = dg;
     }
 
     const bdRows = await db.select({
@@ -10841,6 +10900,29 @@ export class DatabaseStorage implements IStorage {
       .where(and(dateRange(ldoFlowReadings.date), plantEq(ldoFlowReadings.plantName)))
       .groupBy(ldoFlowReadings.date, ldoFlowReadings.plantName);
     for (const r of ldoRows) get(r.date, r.plantName).hasLdoMeter = true;
+
+    // Bitumen template MT: SUM(loadWeight × bitumenPercent/100) per (date, plant)
+    // Respects the same party/mix filters as the dispatch totals.
+    const btplRows = await db.select({
+      date: truckDispatches.date,
+      plantName: truckDispatches.plantName,
+      templateMt: sql<number>`COALESCE(SUM(${truckDispatches.loadWeight} * ${mixTemplates.bitumenPercent} / 100.0), 0)::float`,
+    }).from(truckDispatches)
+      .innerJoin(mixTemplates, and(
+        eq(truckDispatches.mixTemplateId, mixTemplates.id),
+        isNotNull(mixTemplates.bitumenPercent),
+      ))
+      .where(and(
+        dateRange(truckDispatches.date),
+        plantEq(truckDispatches.plantName),
+        partyIds.length ? inArray(truckDispatches.partyId, partyIds) : undefined,
+        matchingMixIds ? inArray(truckDispatches.mixTemplateId, matchingMixIds) : undefined,
+      ))
+      .groupBy(truckDispatches.date, truckDispatches.plantName);
+    for (const r of btplRows) {
+      const tmt = Number(r.templateMt);
+      if (tmt > 0) get(r.date, r.plantName).bitumenTemplateMt = tmt;
+    }
 
     let result = Array.from(map.values());
     if (allowedKeys) {
