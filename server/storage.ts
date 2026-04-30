@@ -3846,79 +3846,59 @@ export class DatabaseStorage implements IStorage {
 
           // ── Orphan cleanup: remove "no_ref" duplicate entries from the pre-backfill era ────
           // When dispatches were originally created before the referenceId backfill code was
-          // added, ledger entries were written with referenceId = null. Later dispatches had
-          // referenceId set inline.  After a template proportion change, the Ledger Rebuild
-          // correctly creates new "has_ref" replacement rows — but the old "no_ref" rows are
-          // never touched by the main bulk-delete (which filters on referenceId IS NOT NULL).
-          // This leaves duplicate rows: one at the OLD proportion (no_ref) + one at the NEW
-          // proportion (has_ref), inflating every downstream total and party statement.
+          // added, ledger entries were written with referenceId = null. After a template
+          // proportion change + Ledger Rebuild, the main bulk-delete removes only "has_ref"
+          // entries (WHERE reference_id IN ...). The old "no_ref" rows are never touched,
+          // leaving one stale duplicate per dispatch per material.
           //
-          // Fix: before creating new entries for this dispatch, read the OLD theoreticalAggregates
-          // and delete exactly ONE matching no_ref entry per (dispatch × material × ownerParty)
-          // using a LIMIT 1 subquery ordered by id.  Ordering by id ensures that when two
-          // dispatches on the same day share the same load weight (and therefore the same old
-          // quantity), each cleanup call removes a distinct row — no over-deletion.
-          let oldAggBeforeRebuild: Record<string, number> = {};
-          try {
-            if (dispatch.theoreticalAggregates) {
-              oldAggBeforeRebuild = JSON.parse(dispatch.theoreticalAggregates as string) ?? {};
+          // Strategy: for each template component, delete the single oldest remaining no_ref
+          // dispatch entry for that (date, party, material) using LIMIT 1 ORDER BY id.
+          // We do NOT filter by quantity because theoreticalAggregates already reflects the
+          // CURRENT proportions (already updated by a prior rebuild), not the historical ones
+          // at which the orphans were written. Quantity matching would silently find nothing.
+          //
+          // Safety: dispatches in linkedDispatches are guaranteed to have been rebuilt
+          // (they have has_ref entries). Any remaining no_ref entry on the same date/party/
+          // material is therefore an orphan. Processing dispatches in sortByDateTime order
+          // and using LIMIT 1 ORDER BY id ensures each call removes exactly one orphan in
+          // ascending-id order — correct even when multiple dispatches share the same date.
+          for (const comp of components) {
+            if (dispatch.partyId !== null) {
+              const orphanDel = await db.execute(sql`
+                DELETE FROM stock_ledger
+                WHERE id = (
+                  SELECT id FROM stock_ledger
+                  WHERE date             = ${dispatch.date}
+                    AND party_id         = ${dispatch.partyId}
+                    AND material_id      = ${comp.materialId}
+                    AND transaction_type = 'dispatch'
+                    AND reference_id     IS NULL
+                  ORDER BY id
+                  LIMIT 1
+                )
+              `);
+              const n = (orphanDel as { rowCount?: number }).rowCount ?? 0;
+              ledgerRowsDeleted += n;
+              if (n > 0) allAffectedMatIds.add(comp.materialId);
             }
-          } catch { /* ignore — will simply skip cleanup for this dispatch */ }
 
-          if (Object.keys(oldAggBeforeRebuild).length > 0) {
-            for (const [matIdStr, totalOldQty] of Object.entries(oldAggBeforeRebuild)) {
-              const matId = Number(matIdStr);
-              if (isNaN(matId) || totalOldQty <= 0) continue;
-              // Reuse computeSplit so the owner/HLC fractions match what was written at dispatch time
-              const { ownerQty: oldOwnerQty, hlcQty: oldHlcQty } = computeSplit(dispatch, matId, totalOldQty);
-
-              // Owner party orphan
-              if (oldOwnerQty > 0.001 && dispatch.partyId !== null) {
-                const lo = +(oldOwnerQty - 0.001).toFixed(6);
-                const hi = +(oldOwnerQty + 0.001).toFixed(6);
-                const orphanDel = await db.execute(sql`
-                  DELETE FROM stock_ledger
-                  WHERE id = (
-                    SELECT id FROM stock_ledger
-                    WHERE date          = ${dispatch.date}
-                      AND party_id      = ${dispatch.partyId}
-                      AND material_id   = ${matId}
-                      AND transaction_type = 'dispatch'
-                      AND reference_id  IS NULL
-                      AND quantity_out  >= ${lo}
-                      AND quantity_out  <= ${hi}
-                    ORDER BY id
-                    LIMIT 1
-                  )
-                `);
-                const rowCount = (orphanDel as { rowCount?: number }).rowCount ?? 0;
-                ledgerRowsDeleted += rowCount;
-                if (rowCount > 0) allAffectedMatIds.add(matId);
-              }
-
-              // HLC party orphan (material HLC supplied at the old proportion)
-              if (oldHlcQty > 0.001 && hlcPartyId !== null) {
-                const lo = +(oldHlcQty - 0.001).toFixed(6);
-                const hi = +(oldHlcQty + 0.001).toFixed(6);
-                const orphanDelHlc = await db.execute(sql`
-                  DELETE FROM stock_ledger
-                  WHERE id = (
-                    SELECT id FROM stock_ledger
-                    WHERE date          = ${dispatch.date}
-                      AND party_id      = ${hlcPartyId}
-                      AND material_id   = ${matId}
-                      AND transaction_type = 'dispatch'
-                      AND reference_id  IS NULL
-                      AND quantity_out  >= ${lo}
-                      AND quantity_out  <= ${hi}
-                    ORDER BY id
-                    LIMIT 1
-                  )
-                `);
-                const rowCountHlc = (orphanDelHlc as { rowCount?: number }).rowCount ?? 0;
-                ledgerRowsDeleted += rowCountHlc;
-                if (rowCountHlc > 0) allAffectedMatIds.add(matId);
-              }
+            if (hlcPartyId !== null) {
+              const orphanDelHlc = await db.execute(sql`
+                DELETE FROM stock_ledger
+                WHERE id = (
+                  SELECT id FROM stock_ledger
+                  WHERE date             = ${dispatch.date}
+                    AND party_id         = ${hlcPartyId}
+                    AND material_id      = ${comp.materialId}
+                    AND transaction_type = 'dispatch'
+                    AND reference_id     IS NULL
+                  ORDER BY id
+                  LIMIT 1
+                )
+              `);
+              const nh = (orphanDelHlc as { rowCount?: number }).rowCount ?? 0;
+              ledgerRowsDeleted += nh;
+              if (nh > 0) allAffectedMatIds.add(comp.materialId);
             }
           }
           // ── End orphan cleanup ────────────────────────────────────────────────────────────
