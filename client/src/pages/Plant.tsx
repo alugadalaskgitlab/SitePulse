@@ -1738,6 +1738,21 @@ function MixTemplateMaster() {
   const totalPercent = aggregateTotal + bitumenVal;
 
   const handleSubmit = () => {
+    // Validate MC and WF bounds before submit
+    for (const [matIdStr] of Object.entries(aggregateProportions).filter(([_, v]) => v && parseFloat(v) > 0)) {
+      const matId = parseInt(matIdStr);
+      const mc = parseFloat(aggregateMoistureContent[matId] || "0") || 0;
+      const wf = parseFloat(aggregateWastageFactors[matId] || "0") || 0;
+      const matName = getMaterialName(matId);
+      if (mc < 0 || mc > 30) {
+        toast({ title: `Invalid moisture content for ${matName}`, description: "Moisture content must be between 0% and 30%.", variant: "destructive" });
+        return;
+      }
+      if (wf < 0 || wf > 20) {
+        toast({ title: `Invalid wastage factor for ${matName}`, description: "Wastage factor must be between 0% and 20%.", variant: "destructive" });
+        return;
+      }
+    }
     const components = Object.entries(aggregateProportions)
       .filter(([_, value]) => value && parseFloat(value) > 0)
       .map(([materialId, percent]) => ({

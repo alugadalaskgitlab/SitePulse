@@ -1089,10 +1089,29 @@ export async function registerRoutes(
     }
   });
 
+  // Validate mix template component bounds before persist
+  const mixTemplateComponentSchema = z.object({
+    materialId: z.number().int().positive(),
+    percent: z.number().min(0).max(100).optional(),
+    uom: z.string().optional(),
+    moistureContent: z.number().min(0).max(30, { message: "Moisture content must be between 0 and 30%" }).optional().default(0),
+    wastageFactor: z.number().min(0).max(20, { message: "Wastage factor must be between 0 and 20%" }).optional().default(0),
+  });
+  const validateComponents = (components: unknown): string | null => {
+    if (!Array.isArray(components)) return null;
+    for (const c of components) {
+      const result = mixTemplateComponentSchema.safeParse(c);
+      if (!result.success) return result.error.errors[0]?.message ?? "Invalid component data";
+    }
+    return null;
+  };
+
   app.post("/api/plant-module/mix-templates", async (req, res) => {
     try {
       if (!assertCreate(req, res, "master_materials")) return;
       const { components, ...template } = req.body;
+      const validationError = validateComponents(components);
+      if (validationError) return res.status(400).json({ message: validationError });
       const result = await storage.createMixTemplate(template, components);
       res.status(201).json(result);
     } catch (err) {
@@ -1104,6 +1123,8 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "master_materials")) return;
       const { components, ...template } = req.body;
+      const validationError = validateComponents(components);
+      if (validationError) return res.status(400).json({ message: validationError });
       const result = await storage.updateMixTemplate(Number(req.params.id), template, components);
       if (!result) return res.status(404).json({ message: "Mix template not found" });
       res.json(result);

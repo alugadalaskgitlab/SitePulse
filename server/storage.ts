@@ -3395,17 +3395,19 @@ export class DatabaseStorage implements IStorage {
       // Calculate aggregate consumption from components (percent of total mix).
       // Applies moisture-content (MC) and wastage-factor (WF) corrections:
       //   adjustedQty = (loadWeight × percent/100) × (1 + WF/100) / (1 − MC/100)
-      // Default MC=0, WF=0 produces no change for components without these factors.
+      // MC must be < 100 (denominator guard). Default MC=0, WF=0 → no change.
+      const applyMcWfAdjustment = (baseQty: number, mc: number, wf: number): number => {
+        if (mc >= 100) throw new Error(`Invalid moisture content ${mc}% — must be less than 100%`);
+        if (mc === 0 && wf === 0) return baseQty;
+        return baseQty * (1 + wf / 100) / (1 - mc / 100);
+      };
       const theoreticalAggregates: Record<number, number> = {};
       for (const comp of components) {
         const percent = (comp as any).percent || 0;
-        const mc = (comp as any).moistureContent || 0;
-        const wf = (comp as any).wastageFactor || 0;
+        const mc = Math.max(0, Math.min((comp as any).moistureContent || 0, 30));
+        const wf = Math.max(0, Math.min((comp as any).wastageFactor || 0, 20));
         const baseQty = loadWeight * percent / 100;
-        theoreticalAggregates[comp.materialId] =
-          mc !== 0 || wf !== 0
-            ? baseQty * (1 + wf / 100) / (1 - mc / 100)
-            : baseQty;
+        theoreticalAggregates[comp.materialId] = applyMcWfAdjustment(baseQty, mc, wf);
       }
       
       // Owner-first deduction model:
@@ -3942,8 +3944,9 @@ export class DatabaseStorage implements IStorage {
           const newAggregates: Record<number, number> = {};
 
           for (const comp of components) {
-            const mc = comp.moistureContent || 0;
-            const wf = comp.wastageFactor || 0;
+            const mc = Math.max(0, Math.min(comp.moistureContent || 0, 30));
+            const wf = Math.max(0, Math.min(comp.wastageFactor || 0, 20));
+            if (mc >= 100) { errors.push(`Dispatch #${dispatch.id}: moisture content ${mc}% is invalid`); continue; }
             const baseQty = dispatch.loadWeight * (comp.percent ?? 0) / 100;
             const totalQty = +(mc !== 0 || wf !== 0
               ? baseQty * (1 + wf / 100) / (1 - mc / 100)
@@ -4059,8 +4062,9 @@ export class DatabaseStorage implements IStorage {
           const comp = currentCompByMat.get(matId);
           const newQty = comp
             ? +((() => {
-                const mc = comp.moistureContent || 0;
-                const wf = comp.wastageFactor || 0;
+                const mc = Math.max(0, Math.min(comp.moistureContent || 0, 30));
+                const wf = Math.max(0, Math.min(comp.wastageFactor || 0, 20));
+                if (mc >= 100) throw new Error(`Invalid moisture content ${mc}% for material ${matId}`);
                 const base = dispatch.loadWeight * (comp.percent ?? 0) / 100;
                 return mc !== 0 || wf !== 0 ? base * (1 + wf / 100) / (1 - mc / 100) : base;
               })()).toFixed(9)
