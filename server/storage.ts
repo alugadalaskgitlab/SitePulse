@@ -10879,10 +10879,9 @@ export class DatabaseStorage implements IStorage {
       const row = get(r.date, r.plantName);
       row.hasHeatingSessions = true;
       row.sessionsCount = Number(r.cnt) || 0;
-      const ldo = Number(r.ldoConsumed);
-      const dg = Number(r.dgDiesel);
-      if (ldo > 0) row.ldoHeatingSessionLitres = ldo;
-      if (dg > 0) row.dgDieselLitres = dg;
+      // Set even when 0 — a recorded zero is meaningful (no LDO/DG used that day)
+      row.ldoHeatingSessionLitres = Number(r.ldoConsumed);
+      row.dgDieselLitres = Number(r.dgDiesel);
     }
 
     const bdRows = await db.select({
@@ -10920,8 +10919,8 @@ export class DatabaseStorage implements IStorage {
       ))
       .groupBy(truckDispatches.date, truckDispatches.plantName);
     for (const r of btplRows) {
-      const tmt = Number(r.templateMt);
-      if (tmt > 0) get(r.date, r.plantName).bitumenTemplateMt = tmt;
+      // Set even when 0 — a recorded zero means template calls for no bitumen that day
+      get(r.date, r.plantName).bitumenTemplateMt = Number(r.templateMt);
     }
 
     let result = Array.from(map.values());

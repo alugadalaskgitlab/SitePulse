@@ -670,62 +670,54 @@ export default function PlantDailyReports() {
 
                       <TableCell className="py-3">
                         <div className="space-y-1 text-xs min-w-[18rem]">
-                          {/* LDO section */}
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                            {r.ldoHeatingSessionLitres != null && (
-                              <span data-testid={`ldo-heating-${rowKey}`}>
-                                <span className="text-muted-foreground">Heating: </span>
-                                <span className="font-medium">{fmt(r.ldoHeatingSessionLitres)} L</span>
-                                {r.sessionsCount > 0 && <span className="text-muted-foreground"> ({r.sessionsCount} sess.)</span>}
-                              </span>
-                            )}
-                            {r.ldoBoilerLitres != null && (
-                              <span data-testid={`ldo-boiler-${rowKey}`}>
-                                <span className="text-muted-foreground">Boiler: </span>
-                                <span className="font-medium">{fmt(r.ldoBoilerLitres)} L</span>
-                              </span>
-                            )}
-                            {r.ldoDryerLitres != null && (
-                              <span data-testid={`ldo-dryer-${rowKey}`}>
-                                <span className="text-muted-foreground">Dryer: </span>
-                                <span className="font-medium">{fmt(r.ldoDryerLitres)} L</span>
-                              </span>
-                            )}
-                            {r.ldoHeatingSessionLitres == null && r.ldoBoilerLitres == null && r.ldoDryerLitres == null && (
-                              <span className="text-muted-foreground">LDO: —</span>
-                            )}
+                          {/* LDO line — always show all three sub-labels with — when missing */}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5" data-testid={`ldo-row-${rowKey}`}>
+                            <span data-testid={`ldo-heating-${rowKey}`}>
+                              <span className="text-muted-foreground">Heating: </span>
+                              {r.ldoHeatingSessionLitres != null
+                                ? <span className="font-medium">{fmt(r.ldoHeatingSessionLitres)} L{r.sessionsCount > 0 ? <span className="text-muted-foreground"> ({r.sessionsCount}×)</span> : null}</span>
+                                : <span className="text-muted-foreground">—</span>}
+                            </span>
+                            <span data-testid={`ldo-boiler-${rowKey}`}>
+                              <span className="text-muted-foreground">Boiler: </span>
+                              {r.ldoBoilerLitres != null
+                                ? <span className="font-medium">{fmt(r.ldoBoilerLitres)} L</span>
+                                : <span className="text-muted-foreground">—</span>}
+                            </span>
+                            <span data-testid={`ldo-dryer-${rowKey}`}>
+                              <span className="text-muted-foreground">Dryer: </span>
+                              {r.ldoDryerLitres != null
+                                ? <span className="font-medium">{fmt(r.ldoDryerLitres)} L</span>
+                                : <span className="text-muted-foreground">—</span>}
+                            </span>
                           </div>
-                          {/* DG diesel section */}
-                          {r.dgDieselLitres != null ? (
-                            <div data-testid={`dg-diesel-${rowKey}`}>
-                              <span className="text-muted-foreground">DG Diesel: </span>
-                              <span className="font-medium">{fmt(r.dgDieselLitres)} L</span>
-                            </div>
-                          ) : (
-                            <div className="text-muted-foreground">DG Diesel: —</div>
-                          )}
-                          {/* Bitumen section */}
+                          {/* DG diesel — include session count when available */}
+                          <div data-testid={`dg-diesel-${rowKey}`}>
+                            <span className="text-muted-foreground">DG Diesel: </span>
+                            {r.dgDieselLitres != null
+                              ? <span className="font-medium">
+                                  {fmt(r.dgDieselLitres)} L
+                                  {r.sessionsCount > 0 && <span className="text-muted-foreground ml-1">({r.sessionsCount} sess.)</span>}
+                                </span>
+                              : <span className="text-muted-foreground">—</span>}
+                          </div>
+                          {/* Bitumen — always show both template and actual, — when unavailable */}
                           <div data-testid={`bitumen-${rowKey}`}>
                             <span className="text-muted-foreground">Bitumen: </span>
-                            {r.bitumenTemplateMt != null ? (
-                              <span>
-                                <span className="font-medium">Tmpl {r.bitumenTemplateMt.toFixed(2)} MT</span>
-                                {bitumenActualMt != null && (
-                                  <span className={`ml-1 ${bitVarClass}`}>
-                                    → Act {bitumenActualMt.toFixed(2)} MT
+                            <span className="font-medium">Tmpl {r.bitumenTemplateMt != null ? `${r.bitumenTemplateMt.toFixed(2)} MT` : "—"}</span>
+                            <span className={`ml-1 ${bitVarClass}`}>
+                              {" → Act "}
+                              {bitumenActualMt != null
+                                ? <>
+                                    <span className="font-medium">{bitumenActualMt.toFixed(2)} MT</span>
                                     {bitVarPct != null && (
                                       <span className="ml-1 opacity-80">
-                                        ({bitumenActualMt > r.bitumenTemplateMt! ? "▲" : "▼"}{bitVarPct.toFixed(1)}%)
+                                        ({bitumenActualMt > (r.bitumenTemplateMt ?? 0) ? "▲" : "▼"}{bitVarPct.toFixed(1)}%)
                                       </span>
                                     )}
-                                  </span>
-                                )}
-                              </span>
-                            ) : bitumenActualMt != null ? (
-                              <span className="font-medium">Act {bitumenActualMt.toFixed(2)} MT</span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
+                                  </>
+                                : <span className="text-muted-foreground">—</span>}
+                            </span>
                           </div>
                         </div>
                       </TableCell>

@@ -812,8 +812,8 @@ export default function PlantShiftLog() {
                                   <span className="font-medium">{ldo2 != null ? `${ldo2.toFixed(0)} L` : "—"}</span>
                                   {ldoLPerHrDryer && <span className="text-muted-foreground ml-1">({ldoLPerHrDryer} L/h)</span>}
                                 </span>
-                                {r.operatorName && <span className="text-muted-foreground">Op: {r.operatorName}</span>}
-                                {r.weather && <span className="text-muted-foreground">Weather: {r.weather}</span>}
+                                <span className="text-muted-foreground">Op: {r.operatorName || "—"}</span>
+                                <span className="text-muted-foreground">Weather: {r.weather || "—"}</span>
                               </div>
                               {/* Dryer mismatch warning — shown only when there's an actual conflict */}
                               {mismatch && (() => {
