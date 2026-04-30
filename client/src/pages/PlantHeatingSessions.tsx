@@ -101,6 +101,9 @@ export default function PlantHeatingSessions() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
+  // When true, the dialog will scroll and focus the "Dryer fed from" select
+  // after it opens (set when the user clicks a per-session dryer mismatch badge).
+  const [focusDryerOnOpen, setFocusDryerOnOpen] = useState(false);
 
   const { data: sessions, isLoading } = useQuery<BitumenHeatingSession[]>({
     queryKey: ["/api/plant-module/heating-sessions", filterDateFrom, filterDateTo],
@@ -620,6 +623,18 @@ export default function PlantHeatingSessions() {
     setDialogOpen(true);
   };
 
+  // Focus the "Dryer fed from" select when the dialog opens from a mismatch badge click.
+  useEffect(() => {
+    if (!dialogOpen || !focusDryerOnOpen) return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>('[data-testid="select-dryer-fed-from"]');
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus();
+      setFocusDryerOnOpen(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [dialogOpen, focusDryerOnOpen]);
+
   // Group sessions by date for the list.
   const grouped = useMemo(() => {
     const list = (sessions || [])
@@ -827,13 +842,13 @@ export default function PlantHeatingSessions() {
                                           className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
                                           disabled={alignMutation.isPending}
                                           onClick={() => alignMutation.mutate({ sessionIds: fixSessionIds, targetValue: slValue })}
-                                          data-testid={`button-fix-sessions-${date}`}
+                                          data-testid={`button-fix-sessions-${date}-${dm.plantName.replace(/\s+/g, "-")}`}
                                         >
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Fix {n} session{n !== 1 ? "s" : ""} → match shift log ({slLabel})
                                         </Button>
                                         <Link href={fixLogHref}>
-                                          <span className="text-orange-700 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[11px]" data-testid={`link-fix-shiftlog-${date}`}>
+                                          <span className="text-orange-700 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[11px]" data-testid={`link-fix-shiftlog-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                             Fix the shift log instead →
                                           </span>
                                         </Link>
@@ -851,11 +866,11 @@ export default function PlantHeatingSessions() {
                                         ⚠ <strong>{dm.plantName}</strong> — {n} heating session{n !== 1 ? "s" : ""} disagree with each other on dryer source. Choose which is correct:
                                       </p>
                                       <div className="flex flex-wrap gap-2">
-                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-tank1-${date}`}>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Set all → Boiler tank
                                         </Button>
-                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-tank2-${date}`}>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Set all → Dryer tank
                                         </Button>
@@ -964,7 +979,7 @@ export default function PlantHeatingSessions() {
                                       variant="outline"
                                       className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950"
                                       title={tooltipText}
-                                      onClick={() => openEdit(s)}
+                                      onClick={() => { openEdit(s); setFocusDryerOnOpen(true); }}
                                       data-testid={`badge-dryer-mismatch-session-${s.id}`}
                                     >
                                       {badgeLabel}
