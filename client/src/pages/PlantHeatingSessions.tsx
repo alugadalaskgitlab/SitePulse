@@ -902,6 +902,17 @@ export default function PlantHeatingSessions() {
                                       <p className="text-orange-800 dark:text-orange-300 leading-snug">
                                         ⚠ <strong>{dm.plantName}</strong> — {n} heating session{n !== 1 ? "s" : ""} disagree with each other on dryer source{hasShiftLogConflict ? " (separate from shift-log conflict above)" : ""}. Choose which is correct:
                                       </p>
+                                      {!hasShiftLogConflict && dm.shiftLogId == null && (
+                                        <p className="text-orange-700 dark:text-orange-400 text-[11px]">
+                                          No shift log exists for this date yet.{" "}
+                                          <Link
+                                            href={appendPlantContext(`/plant/shift-log/${dm.date}?plant=${encodeURIComponent(dm.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
+                                            data-testid={`link-create-shiftlog-intra-${date}-${dm.plantName.replace(/\s+/g, "-")}`}
+                                          >
+                                            <span className="underline underline-offset-2 cursor-pointer hover:opacity-80">Create a shift log to set the authoritative dryer source →</span>
+                                          </Link>
+                                        </p>
+                                      )}
                                       <div className="flex flex-wrap gap-2">
                                         <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
@@ -1009,6 +1020,7 @@ export default function PlantHeatingSessions() {
                                 } else if (isIntraConflict) {
                                   badgeLabel = "⚠ Dryer ≠ other session — fix this session";
                                   tooltipText = `Heating sessions on ${s.date} at ${s.plantName} disagree on dryer source — this session says ${hsLabel}. Click to open and correct it.`;
+                                  if (dm?.shiftLogId == null) tooltipText += " No shift log exists yet — create one to set the authoritative dryer source.";
                                 }
                                 const dm2 = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
                                 const slLabel2 = dm2?.shiftLogValue === "TANK_1" ? "Boiler tank" : dm2?.shiftLogValue === "TANK_2" ? "Dryer tank" : null;
@@ -1045,6 +1057,14 @@ export default function PlantHeatingSessions() {
                                           <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Fix shift log →</span>
                                         </Link>
                                       )}
+                                      {isIntraConflict && !isShiftLogConflict && dm?.shiftLogId == null && (
+                                        <Link
+                                          href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
+                                          data-testid={`link-create-shiftlog-session-${s.id}`}
+                                        >
+                                          <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Create shift log →</span>
+                                        </Link>
+                                      )}
                                     </span>
                                     {isShiftLogConflict && slLabel2 && (
                                       <span className="text-orange-600 dark:text-orange-400 text-[10px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
@@ -1053,7 +1073,7 @@ export default function PlantHeatingSessions() {
                                     )}
                                     {isIntraConflict && !isShiftLogConflict && (
                                       <span className="text-orange-600 dark:text-orange-400 text-[10px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
-                                        This session says {hsLabel} · disagrees with other sessions
+                                        This session says {hsLabel} · disagrees with other sessions{dm?.shiftLogId == null ? " · no shift log yet" : ""}
                                       </span>
                                     )}
                                   </div>
