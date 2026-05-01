@@ -804,9 +804,8 @@ export default function PlantLdoMismatch() {
       });
     }
 
-    const mismatchDays = daySummaries.filter(d => d.hasMismatch);
     const detailRows: Record<string, string>[] = [];
-    for (const day of mismatchDays) {
+    for (const day of daySummaries) {
       for (const s of day.sessions) {
         detailRows.push({
           Date: day.date,
@@ -849,8 +848,8 @@ export default function PlantLdoMismatch() {
     const wb = XLSX.utils.book_new();
     const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
     XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
-    if (detailRows.length > 0) {
-      const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+    if (daySummaries.length > 0) {
+      const wsDetail = XLSX.utils.json_to_sheet(detailRows.length > 0 ? detailRows : [{}]);
       XLSX.utils.book_append_sheet(wb, wsDetail, "Mismatch Detail");
     }
 
