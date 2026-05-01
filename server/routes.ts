@@ -3173,9 +3173,7 @@ export async function registerRoutes(
         if (!assertCreate(req, res, "plant_shift_logs")) return;
       }
       // Shift logs are inherently multi-edit records (opening readings at shift
-      // start, closing readings at shift end). The row-lock system is intentionally
-      // NOT applied here — locking after the first save would prevent operators
-      // from entering closing values later in the day. The isFinalized /
+      // start, closing readings at shift end). The isFinalized /
       // FINALIZED_LOCKED gate inside upsertPlantShiftLog (with authorizedRole
       // bypass) is the correct re-edit guard for shift logs.
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
@@ -4609,7 +4607,7 @@ export async function registerRoutes(
       const existing = await storage.getPurchaseIndent(id);
       if (!existing) return res.status(404).json({ message: "Purchase indent not found" });
 
-      // Permission check FIRST — never consume an unlock on a forbidden call.
+      // Permission check: non-pending records require admin.
       if (existing.status !== "pending") {
         if (!assertAdmin(req, res)) return;
       } else {
@@ -4822,7 +4820,7 @@ export async function registerRoutes(
       const existing = await storage.getDieselRequirement(id);
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
 
-      // Permission check FIRST — never consume an unlock on a forbidden call.
+      // Permission check: non-pending records require admin.
       if (existing.status !== "pending") {
         if (!assertAdmin(req, res)) return;
       } else {
@@ -5318,7 +5316,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
-      // Permission check FIRST — never consume an unlock on a forbidden call.
+      // Permission check: verified/approved/paid bills require admin.
       if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {
         if (!assertAdmin(req, res)) return;
         input.status = "draft";

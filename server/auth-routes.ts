@@ -368,10 +368,9 @@ export function registerAuthRoutes(app: Express) {
     res.json(list);
   });
 
-  // Lightweight {id, fullName} list available to any authenticated user. Used
-  // by the Lock badge to render "Unlocked by <name>" without needing
-  // user-management permission. Names of co-workers who saved/unlocked a
-  // record aren't sensitive — they're already shown elsewhere in the UI.
+  // Lightweight {id, fullName} list available to any authenticated user.
+  // Names of co-workers who saved a record aren't sensitive — they're
+  // already shown elsewhere in the UI (e.g. "Last saved by <name>").
   app.get("/api/auth/users/basic", requireAuth, async (_req, res) => {
     try {
       const list = await listAllUsers();
