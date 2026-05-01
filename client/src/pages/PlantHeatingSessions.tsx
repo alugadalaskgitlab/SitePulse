@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ChevronLeft, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HEATING_SESSION_TYPE_LABELS, heatingSessionTypeLabel } from "@shared/schema";
@@ -713,9 +713,10 @@ export default function PlantHeatingSessions() {
               <div className="mb-4 space-y-3" data-testid="section-recon-only-dates">
                 {reconOnlyDates.map(date => (
                   <div key={`recon-only-${date}`}>
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{date}</div>
-                      <span className="text-[10px] text-muted-foreground">(no sessions logged)</span>
+                    <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-2 pt-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-base">{format(parseISO(date), "EEEE, dd MMM yyyy")}</span>
+                        <span className="text-sm text-muted-foreground">(no sessions logged)</span>
                       {(reconByDate.get(date) || []).map(rec => (
                         <Link
                           key={rec.plantName}
@@ -730,6 +731,7 @@ export default function PlantHeatingSessions() {
                           </Badge>
                         </Link>
                       ))}
+                      </div>
                     </div>
                     {(reconByDate.get(date) || []).map(rec => (
                       <div
@@ -779,8 +781,10 @@ export default function PlantHeatingSessions() {
             <div className="space-y-4">
               {groupedDates.map(date => (
                 <div key={date}>
+                  <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-2 pt-1">
+                    <h3 className="font-semibold text-lg">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
+                  </div>
                   <div className="flex items-center gap-2 flex-wrap mb-2">
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{date}</div>
                     {(reconByDate.get(date) || []).map(rec => (
                       <Link
                         key={rec.plantName}

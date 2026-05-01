@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -788,7 +788,9 @@ export default function PlantShiftLog() {
               <div className="space-y-4">
                 {Object.keys(grouped).map(d => (
                   <div key={d}>
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{d}</div>
+                    <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-3 pt-1">
+                      <h3 className="font-semibold text-lg">{format(parseISO(d), "EEEE, dd MMM yyyy")}</h3>
+                    </div>
                     <div className="space-y-2">
                       {grouped[d].map(r => {
                         const ldo1 = (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null)
