@@ -218,7 +218,7 @@ export default function PlantEquipmentUsage() {
       if (err.message.startsWith("423")) {
         toast({
           title: "Record is locked",
-          description: "This entry is currently locked and cannot be edited. Contact your administrator.",
+          description: "Click the Unlock button next to this entry first, then save.",
           variant: "destructive",
         });
       } else {
