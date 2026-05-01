@@ -853,6 +853,9 @@ export default function PlantHeatingSessions() {
                                       <p className="text-orange-800 dark:text-orange-300 leading-snug">
                                         ⚠ <strong>{dm.plantName}</strong> shift log says <strong>{slLabel}</strong>, but {n} heating session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} <strong>{oppLabel}</strong>.
                                       </p>
+                                      <p className="text-orange-700 dark:text-orange-400 text-[11px] font-medium" data-testid={`text-dryer-conflict-summary-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                        Shift log: {slLabel} · {n} session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} {oppLabel}
+                                      </p>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Button
                                           size="sm"
@@ -999,26 +1002,40 @@ export default function PlantHeatingSessions() {
                                   badgeLabel = "⚠ Dryer ≠ other session — fix this session";
                                   tooltipText = `Heating sessions on ${s.date} at ${s.plantName} disagree on dryer source — this session says ${hsLabel}. Click to open and correct it.`;
                                 }
+                                const dm2 = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
+                                const slLabel2 = dm2?.shiftLogValue === "TANK_1" ? "Boiler tank" : dm2?.shiftLogValue === "TANK_2" ? "Dryer tank" : null;
                                 return (
-                                  <span className="inline-flex items-center gap-1.5" key={`dryer-conflict-wrap-${s.id}`}>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950"
-                                      title={tooltipText}
-                                      onClick={() => { openEdit(s); setFocusDryerOnOpen(true); }}
-                                      data-testid={`badge-dryer-mismatch-session-${s.id}`}
-                                    >
-                                      {badgeLabel}
-                                    </Badge>
-                                    {isShiftLogConflict && (
-                                      <Link
-                                        href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
-                                        data-testid={`link-fix-shiftlog-session-${s.id}`}
+                                  <div className="inline-flex flex-col gap-0.5" key={`dryer-conflict-wrap-${s.id}`}>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950"
+                                        title={tooltipText}
+                                        onClick={() => { openEdit(s); setFocusDryerOnOpen(true); }}
+                                        data-testid={`badge-dryer-mismatch-session-${s.id}`}
                                       >
-                                        <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Fix shift log →</span>
-                                      </Link>
+                                        {badgeLabel}
+                                      </Badge>
+                                      {isShiftLogConflict && (
+                                        <Link
+                                          href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
+                                          data-testid={`link-fix-shiftlog-session-${s.id}`}
+                                        >
+                                          <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Fix shift log →</span>
+                                        </Link>
+                                      )}
+                                    </span>
+                                    {isShiftLogConflict && slLabel2 && (
+                                      <span className="text-orange-600 dark:text-orange-400 text-[10px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
+                                        Shift log: {slLabel2} · This session says {hsLabel}
+                                      </span>
                                     )}
-                                  </span>
+                                    {isIntraConflict && !isShiftLogConflict && (
+                                      <span className="text-orange-600 dark:text-orange-400 text-[10px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
+                                        This session says {hsLabel} · disagrees with other sessions
+                                      </span>
+                                    )}
+                                  </div>
                                 );
                               })()}
                             </div>

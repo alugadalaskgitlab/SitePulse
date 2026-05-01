@@ -896,6 +896,9 @@ export default function PlantShiftLog() {
                                     <p className="text-red-700 dark:text-red-300 leading-snug">
                                       ⚠ <strong>Dryer source conflict:</strong> This shift log says <strong>{slLabel}</strong>, but {n} heating session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} <strong>{oppLabel}</strong>.
                                     </p>
+                                    <p className="text-red-600 dark:text-red-400 font-medium" data-testid={`text-dryer-mismatch-summary-${r.id}`}>
+                                      Shift log: {slLabel} · {n} session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} {oppLabel}
+                                    </p>
                                     <div className="flex flex-wrap items-center gap-2">
                                       <Button
                                         size="sm"
