@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock } from "lucide-react";
+import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock, Wand2 } from "lucide-react";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -156,6 +157,7 @@ export default function PlantLdoDipBackfill() {
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(today);
   const [plant, setPlant] = useState(PLANT_OPTIONS[0]);
+  const [autoChain, setAutoChain] = useState(true);
   const [csvText, setCsvText] = useState("");
   const [csvOpen, setCsvOpen] = useState(false);
 
@@ -195,6 +197,23 @@ export default function PlantLdoDipBackfill() {
       tankObj[kind] = cell;
       row[tankKey] = tankObj;
       next[rowIdx] = row;
+
+      if (autoChain && kind === "closing" && value !== "" && !Number.isNaN(Number(value))) {
+        const nextIdx = rowIdx + 1;
+        if (nextIdx < next.length) {
+          const nextRow = { ...next[nextIdx] };
+          const nextTankObj = { ...nextRow[tankKey] };
+          const openCell = nextTankObj.opening;
+          const canFill =
+            openCell.source !== "manual" &&
+            (openCell.value === "" || openCell.source === "backfill" || openCell.source === "empty");
+          if (canFill) {
+            nextTankObj.opening = { ...openCell, value, source: "backfill" };
+            nextRow[tankKey] = nextTankObj;
+            next[nextIdx] = nextRow;
+          }
+        }
+      }
       return next;
     });
   };
@@ -410,7 +429,7 @@ export default function PlantLdoDipBackfill() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-xs">From</Label>
               <Input type="date" value={from} onChange={e => setFrom(e.target.value)} data-testid="input-backfill-from" />
@@ -429,6 +448,12 @@ export default function PlantLdoDipBackfill() {
                   {PLANT_OPTIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-end gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={autoChain} onCheckedChange={(v) => setAutoChain(!!v)} data-testid="checkbox-autochain" />
+                <span><Wand2 className="w-3.5 h-3.5 inline mr-1" />Auto-chain closings → next-day openings</span>
+              </label>
             </div>
           </div>
 
