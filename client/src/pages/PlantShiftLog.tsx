@@ -876,6 +876,7 @@ export default function PlantShiftLog() {
                                   {ldoLPerHrDryer && <span className="text-muted-foreground ml-1">({ldoLPerHrDryer} L/h)</span>}
                                 </span>
                                 <span className="text-muted-foreground">Op: {r.operatorName || "—"}</span>
+                                <span className="text-muted-foreground">Supervisor: {r.supervisorName || "—"}</span>
                                 <span className="text-muted-foreground">Weather: {r.weather || "—"}</span>
                               </div>
                               {/* Dryer mismatch — guided one-click fix panel */}
