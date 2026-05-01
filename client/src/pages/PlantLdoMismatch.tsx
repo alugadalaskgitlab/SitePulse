@@ -5,6 +5,12 @@ import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -723,6 +729,26 @@ export default function PlantLdoMismatch() {
     [daySummaries],
   );
 
+  const mismatchBreakdown = useMemo(() => {
+    const sessVsShift = daySummaries.filter(
+      d => d.deltaSessionsVsShift != null && Math.abs(d.deltaSessionsVsShift) > MISMATCH_THRESHOLD_L,
+    ).length;
+    const sessVsLedger = daySummaries.filter(
+      d => d.deltaSessionsVsLedger != null && Math.abs(d.deltaSessionsVsLedger) > MISMATCH_THRESHOLD_L,
+    ).length;
+    const shiftVsLedger = daySummaries.filter(
+      d => d.deltaShiftVsLedger != null && Math.abs(d.deltaShiftVsLedger) > MISMATCH_THRESHOLD_L,
+    ).length;
+    const parts: string[] = [];
+    if (sessVsShift > 0)
+      parts.push(`${sessVsShift} day${sessVsShift !== 1 ? "s" : ""}: Sessions≠Shift`);
+    if (sessVsLedger > 0)
+      parts.push(`${sessVsLedger} day${sessVsLedger !== 1 ? "s" : ""}: Sessions≠Ledger`);
+    if (shiftVsLedger > 0)
+      parts.push(`${shiftVsLedger} day${shiftVsLedger !== 1 ? "s" : ""}: Shift≠Ledger`);
+    return parts;
+  }, [daySummaries]);
+
   const isLoading =
     sessionsQuery.isLoading || shiftLogsQuery.isLoading || ldoReadingsQuery.isLoading;
   const isError =
@@ -1077,18 +1103,39 @@ export default function PlantLdoMismatch() {
               Apply
             </Button>
             {!isLoading && !isError && daySummaries.length > 0 && (
-              <Badge
-                className={
-                  mismatchCount > 0
-                    ? "bg-destructive text-destructive-foreground self-end mb-1"
-                    : "bg-green-600 text-white self-end mb-1"
-                }
-                data-testid="badge-mismatch-count"
-              >
-                {mismatchCount > 0
-                  ? `${mismatchCount} of ${daySummaries.length} day${daySummaries.length !== 1 ? "s" : ""} exceed the ±${MISMATCH_THRESHOLD_L} L tolerance`
-                  : `All ${daySummaries.length} day${daySummaries.length !== 1 ? "s" : ""} within ±${MISMATCH_THRESHOLD_L} L tolerance`}
-              </Badge>
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      tabIndex={0}
+                      className="self-end mb-1 outline-none rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid="badge-mismatch-trigger"
+                    >
+                      <Badge
+                        className={
+                          mismatchCount > 0
+                            ? "bg-destructive text-destructive-foreground cursor-default"
+                            : "bg-green-600 text-white cursor-default"
+                        }
+                        data-testid="badge-mismatch-count"
+                      >
+                        {mismatchCount > 0
+                          ? `${mismatchCount} of ${daySummaries.length} day${daySummaries.length !== 1 ? "s" : ""} exceed the ±${MISMATCH_THRESHOLD_L} L tolerance`
+                          : `All ${daySummaries.length} day${daySummaries.length !== 1 ? "s" : ""} within ±${MISMATCH_THRESHOLD_L} L tolerance`}
+                      </Badge>
+                    </span>
+                  </TooltipTrigger>
+                  {mismatchCount > 0 && mismatchBreakdown.length > 0 && (
+                    <TooltipContent
+                      side="bottom"
+                      className="text-xs max-w-xs"
+                      data-testid="tooltip-mismatch-breakdown"
+                    >
+                      {mismatchBreakdown.join(" · ")}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </CardContent>
