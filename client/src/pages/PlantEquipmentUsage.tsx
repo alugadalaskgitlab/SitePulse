@@ -199,6 +199,9 @@ export default function PlantEquipmentUsage() {
       resetForm();
       toast({ title: "Equipment usage recorded successfully" });
     },
+    onError: () => {
+      toast({ title: "Failed to record equipment usage. Please try again.", variant: "destructive" });
+    },
   });
 
   const updateMutation = useMutation({
@@ -210,6 +213,9 @@ export default function PlantEquipmentUsage() {
       setEditingUsage(null);
       resetForm();
       toast({ title: "Equipment usage updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update equipment usage. Please try again.", variant: "destructive" });
     },
   });
 
