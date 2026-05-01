@@ -31,7 +31,7 @@ type DailyPlantSummary = {
   receipts: { byMaterial: Array<{ materialName: string; quantity: number; uom: string; lines: number }>; totalLines: number };
   runningHours: number | null;
   productiveHours: number | null;
-  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null; dryerFedFrom?: "TANK_1" | "TANK_2"; tank1DeductedL?: number | null; tank2DeductedL?: number | null };
+  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null; dryerFedFrom?: "TANK_1" | "TANK_2"; tank1DeductedL?: number | null; tank2DeductedL?: number | null; dipDeltaT1L?: number | null; dipDeltaT2L?: number | null };
   bitumenDips: unknown[];
   ldoFlows: unknown[];
   ldoDips: unknown[];
@@ -380,6 +380,54 @@ export default function PlantDailyReport() {
                 <KV label="Boiler Meter Shift (recon)" value={fmt(data.ldo.reconciliationT1ShiftL, 1)} />
               )}
             </CardContent>
+            {(data.ldo.dipDeltaT1L != null || data.ldo.dipDeltaT2L != null) && (() => {
+              const DIP_THRESHOLD_L = 200;
+              const t1Var = (data.ldo.consumedT1L != null && data.ldo.dipDeltaT1L != null)
+                ? Math.round((data.ldo.consumedT1L - data.ldo.dipDeltaT1L) * 10) / 10
+                : null;
+              const t2Var = (data.ldo.consumedT2L != null && data.ldo.dipDeltaT2L != null)
+                ? Math.round((data.ldo.consumedT2L - data.ldo.dipDeltaT2L) * 10) / 10
+                : null;
+              const anyHighVar = (t1Var != null && Math.abs(t1Var) > DIP_THRESHOLD_L)
+                || (t2Var != null && Math.abs(t2Var) > DIP_THRESHOLD_L);
+              return (
+                <CardContent className="border-t pt-4 pb-3" data-testid="section-ldo-dip-crosscheck">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-medium">Dip-stick cross-check</span>
+                    <span className="text-xs text-muted-foreground">(shift log opening − closing, depth → volume)</span>
+                    {anyHighVar && (
+                      <span className="text-xs font-semibold text-destructive flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Meter vs dip gap &gt; {DIP_THRESHOLD_L} L
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    {data.ldo.dipDeltaT1L != null && (
+                      <KV label="Boiler Dip Δ (L)" value={fmt(data.ldo.dipDeltaT1L, 1)} testId="text-ldo-dip-t1" />
+                    )}
+                    {t1Var != null && (
+                      <div data-testid="text-ldo-dip-var-t1">
+                        <div className="text-xs text-muted-foreground mb-0.5">Meter vs Dip T1</div>
+                        <div className={`font-medium ${Math.abs(t1Var) > DIP_THRESHOLD_L ? "text-destructive" : "text-green-600"}`}>
+                          {t1Var > 0 ? "+" : ""}{t1Var} L
+                        </div>
+                      </div>
+                    )}
+                    {data.ldo.dipDeltaT2L != null && (
+                      <KV label="Dryer Dip Δ (L)" value={fmt(data.ldo.dipDeltaT2L, 1)} testId="text-ldo-dip-t2" />
+                    )}
+                    {t2Var != null && (
+                      <div data-testid="text-ldo-dip-var-t2">
+                        <div className="text-xs text-muted-foreground mb-0.5">Meter vs Dip T2</div>
+                        <div className={`font-medium ${Math.abs(t2Var) > DIP_THRESHOLD_L ? "text-destructive" : "text-green-600"}`}>
+                          {t2Var > 0 ? "+" : ""}{t2Var} L
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              );
+            })()}
             {!data.ldo.dryerFedFrom && (
               <CardContent className="border-t pt-4 pb-3" data-testid="warning-dryer-fed-from-unset">
                 <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">

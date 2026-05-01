@@ -3382,6 +3382,39 @@ export async function registerRoutes(
       }
       line("Tank 1 stock used (L)", summary.ldo.tank1DeductedL?.toFixed(1) ?? "—");
       line("Tank 2 stock used (L)", summary.ldo.tank2DeductedL?.toFixed(1) ?? "—");
+      if (summary.ldo.dipDeltaT1L != null || summary.ldo.dipDeltaT2L != null) {
+        const DIP_THRESHOLD_L = 200;
+        doc.moveDown(0.3).fontSize(9).font("Helvetica-Bold").text("Dip-stick cross-check (shift log opening − closing)");
+        doc.font("Helvetica").fontSize(10);
+        if (summary.ldo.dipDeltaT1L != null) {
+          line("Boiler Dip Δ (L)", summary.ldo.dipDeltaT1L.toFixed(1));
+          if (summary.ldo.consumedT1L != null) {
+            const varL = Math.round((summary.ldo.consumedT1L - summary.ldo.dipDeltaT1L) * 10) / 10;
+            const isHigh = Math.abs(varL) > DIP_THRESHOLD_L;
+            if (isHigh) {
+              doc.fontSize(10).font("Helvetica-Bold").text(`Meter vs Dip T1: `, { continued: true });
+              doc.fillColor("#CC0000").text(`${varL > 0 ? "+" : ""}${varL} L — gap exceeds ${DIP_THRESHOLD_L} L`);
+              doc.fillColor("#000000").font("Helvetica");
+            } else {
+              line("Meter vs Dip T1", `${varL > 0 ? "+" : ""}${varL} L`);
+            }
+          }
+        }
+        if (summary.ldo.dipDeltaT2L != null) {
+          line("Dryer Dip Δ (L)", summary.ldo.dipDeltaT2L.toFixed(1));
+          if (summary.ldo.consumedT2L != null) {
+            const varL = Math.round((summary.ldo.consumedT2L - summary.ldo.dipDeltaT2L) * 10) / 10;
+            const isHigh = Math.abs(varL) > DIP_THRESHOLD_L;
+            if (isHigh) {
+              doc.fontSize(10).font("Helvetica-Bold").text(`Meter vs Dip T2: `, { continued: true });
+              doc.fillColor("#CC0000").text(`${varL > 0 ? "+" : ""}${varL} L — gap exceeds ${DIP_THRESHOLD_L} L`);
+              doc.fillColor("#000000").font("Helvetica");
+            } else {
+              line("Meter vs Dip T2", `${varL > 0 ? "+" : ""}${varL} L`);
+            }
+          }
+        }
+      }
 
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
