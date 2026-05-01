@@ -6362,6 +6362,15 @@ async function seedDatabase() {
   }
 
   try {
+    const lockStatusResult = await storage.backfillShiftLogLockStatus();
+    if (lockStatusResult.updated > 0 || lockStatusResult.errors > 0) {
+      console.log(`Startup: Shift-log lock_status backfill — unlocked: ${lockStatusResult.updated}, errors: ${lockStatusResult.errors}`);
+    }
+  } catch (err) {
+    console.error("Startup: Failed to backfill shift-log lock_status:", err);
+  }
+
+  try {
     const orphanResult = await storage.migrateOrphanStockToHLC();
     if (orphanResult.ledgerFixed > 0 || orphanResult.balancesMerged > 0) {
       console.log(`Startup: Migrated orphan stock to HLC - ${orphanResult.ledgerFixed} ledger entries fixed, ${orphanResult.balancesMerged} balances merged, ${orphanResult.errors} errors`);

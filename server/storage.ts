@@ -375,6 +375,9 @@ export interface IStorage {
   // Backfill contractorName / category / gender on legacy plant_shift_log_manpower rows
   migrateLegacyPlantShiftLogManpower(): Promise<{ updated: number; skipped: number; errors: number }>;
 
+  // Backfill lock_status = 'unlocked' on all plant_shift_logs rows (Task #376 — lock gate removed in #375)
+  backfillShiftLogLockStatus(): Promise<{ updated: number; errors: number }>;
+
   // Rewrite legacy short generator names (e.g. "600 KVA") to canonical Equipment Master names ("600 KVA GENERATOR")
   migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }>;
 
@@ -8706,6 +8709,20 @@ export class DatabaseStorage implements IStorage {
       }
     } catch (err) {
       console.error('migrateLegacyPlantShiftLogManpower: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
+  }
+
+  async backfillShiftLogLockStatus(): Promise<{ updated: number; errors: number }> {
+    const result = { updated: 0, errors: 0 };
+    try {
+      const res = await db.update(plantShiftLogs)
+        .set({ lockStatus: "unlocked" })
+        .where(eq(plantShiftLogs.lockStatus, "locked"));
+      result.updated = (res as { rowCount?: number }).rowCount ?? 0;
+    } catch (err) {
+      console.error("backfillShiftLogLockStatus: Fatal error:", err);
       result.errors++;
     }
     return result;
