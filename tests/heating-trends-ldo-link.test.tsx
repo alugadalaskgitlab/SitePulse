@@ -109,6 +109,97 @@ beforeEach(() => {
   } as ReturnType<typeof useQuery>);
 });
 
+const NULL_DATE = "2025-04-11";
+const PLAIN_DATE = "2025-04-12";
+
+function makeRow(date: string, overrides: Partial<typeof mockTrendsData["rows"][0]>) {
+  return {
+    date,
+    productionMT: 100,
+    night: { ...emptyBucket },
+    day: { ...emptyBucket },
+    total: { count: 1, hours: 3, ldoT1L: 150, dgDieselL: 0, lPerHour: 50, lPerMT: 1.5 },
+    hotOilEndAvgC: 245,
+    hotOilEndMinC: 240,
+    hotOilEndMaxC: 250,
+    hotOilEndSampleCount: 1,
+    hotOilEndBelowThreshold: false,
+    hotOilSupplyAvgC: 260,
+    hotOilReturnAvgC: 240,
+    hotOilDeltaAvgC: 20,
+    hotOilDeltaSampleCount: 1,
+    hotOilDeltaBelowThreshold: false,
+    shiftMeterT1L: 200,
+    shiftMeterLPerMT: 2.0,
+    mismatchL: null as number | null,
+    mismatchFlag: false,
+    ...overrides,
+  };
+}
+
+describe("PlantHeatingTrends — mismatch cell: null mismatchL (em-dash branch)", () => {
+  beforeEach(() => {
+    vi.mocked(useQuery).mockReturnValue({
+      data: {
+        ...mockTrendsData,
+        rows: [makeRow(NULL_DATE, { mismatchL: null, mismatchFlag: false })],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useQuery>);
+  });
+
+  it("renders no link element in the mismatch cell when mismatchL is null", () => {
+    render(<PlantHeatingTrends />);
+    expect(screen.queryByTestId(`link-mismatch-${NULL_DATE}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`link-ldo-ledger-${NULL_DATE}`)).not.toBeInTheDocument();
+  });
+
+  it("renders no badge element in the mismatch cell when mismatchL is null", () => {
+    render(<PlantHeatingTrends />);
+    expect(screen.queryByTestId(`badge-mismatch-${NULL_DATE}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`badge-ldo-ledger-${NULL_DATE}`)).not.toBeInTheDocument();
+  });
+
+  it("renders the mismatch cell container when mismatchL is null", () => {
+    render(<PlantHeatingTrends />);
+    expect(screen.getByTestId(`cell-mismatch-${NULL_DATE}`)).toBeInTheDocument();
+  });
+});
+
+describe("PlantHeatingTrends — mismatch cell: non-null mismatchL with mismatchFlag false (plain span branch)", () => {
+  beforeEach(() => {
+    vi.mocked(useQuery).mockReturnValue({
+      data: {
+        ...mockTrendsData,
+        rows: [makeRow(PLAIN_DATE, { mismatchL: 3, mismatchFlag: false })],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useQuery>);
+  });
+
+  it("renders no link element in the mismatch cell when mismatchFlag is false", () => {
+    render(<PlantHeatingTrends />);
+    expect(screen.queryByTestId(`link-mismatch-${PLAIN_DATE}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`link-ldo-ledger-${PLAIN_DATE}`)).not.toBeInTheDocument();
+  });
+
+  it("renders no badge element in the mismatch cell when mismatchFlag is false", () => {
+    render(<PlantHeatingTrends />);
+    expect(screen.queryByTestId(`badge-mismatch-${PLAIN_DATE}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`badge-ldo-ledger-${PLAIN_DATE}`)).not.toBeInTheDocument();
+  });
+
+  it("renders the delta value as plain text in the mismatch cell when mismatchFlag is false", () => {
+    render(<PlantHeatingTrends />);
+    const cell = screen.getByTestId(`cell-mismatch-${PLAIN_DATE}`);
+    expect(cell).toHaveTextContent("3.0");
+  });
+});
+
 describe("PlantHeatingTrends — mismatch cell LDO Ledger link", () => {
   it("renders the Sessions vs Shift badge link when mismatchFlag is true", () => {
     render(<PlantHeatingTrends />);
