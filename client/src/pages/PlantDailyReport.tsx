@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, Edit, Loader2, History } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Download, Edit, Loader2, History } from "lucide-react";
 import { format } from "date-fns";
 import { heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLogWithDetails, PlantSettings } from "@shared/schema";
@@ -380,6 +380,24 @@ export default function PlantDailyReport() {
                 <KV label="Boiler Meter Shift (recon)" value={fmt(data.ldo.reconciliationT1ShiftL, 1)} />
               )}
             </CardContent>
+            {!data.ldo.dryerFedFrom && (
+              <CardContent className="border-t pt-4 pb-3" data-testid="warning-dryer-fed-from-unset">
+                <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <span className="font-semibold">Dryer routing not set.</span>{" "}
+                    No feed tank has been selected for the dryer meter today — stock deduction calculations may be incorrect.{" "}
+                    <Link
+                      href={appendPlantContext(`/plant/shift-log/${date}`, { defaultTab: "reports" }) + "&focus=dryerFedFrom"}
+                      className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200"
+                      data-testid="link-fix-dryer-fed-from"
+                    >
+                      Fix in Shift Log
+                    </Link>
+                  </span>
+                </div>
+              </CardContent>
+            )}
             <CardContent className="border-t pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div className="md:col-span-4 text-xs text-muted-foreground">
                 Tank stock deducted today (dryer meter is routed to{" "}

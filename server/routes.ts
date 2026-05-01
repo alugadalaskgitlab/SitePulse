@@ -3371,8 +3371,15 @@ export async function registerRoutes(
       line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
       line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
       line("Boiler L / MT Production", summary.ldo.boilerLPerMT ?? "—");
-      const dryerFedFromLabel = summary.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : summary.ldo.dryerFedFrom === "TANK_2" ? "Tank 2" : "Not set";
-      line("Dryer fed from", dryerFedFromLabel);
+      const dryerFedFromLabel = summary.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : summary.ldo.dryerFedFrom === "TANK_2" ? "Tank 2" : null;
+      if (dryerFedFromLabel) {
+        line("Dryer fed from", dryerFedFromLabel);
+      } else {
+        // Highlight missing dryer routing so reviewers notice it immediately.
+        doc.fontSize(10).font("Helvetica-Bold").text("Dryer fed from: ", { continued: true });
+        doc.fillColor("#CC0000").font("Helvetica-Oblique").text("Not set — dryer routing unknown");
+        doc.fillColor("#000000");
+      }
       line("Tank 1 stock used (L)", summary.ldo.tank1DeductedL?.toFixed(1) ?? "—");
       line("Tank 2 stock used (L)", summary.ldo.tank2DeductedL?.toFixed(1) ?? "—");
 
