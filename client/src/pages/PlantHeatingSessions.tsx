@@ -713,9 +713,9 @@ export default function PlantHeatingSessions() {
               <div className="mb-4 space-y-3" data-testid="section-recon-only-dates">
                 {reconOnlyDates.map(date => (
                   <div key={`recon-only-${date}`}>
-                    <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-2 pt-1">
+                    <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-3 pt-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-base">{format(parseISO(date), "EEEE, dd MMM yyyy")}</span>
+                        <h3 className="font-semibold text-lg">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
                         <span className="text-sm text-muted-foreground">(no sessions logged)</span>
                       {(reconByDate.get(date) || []).map(rec => (
                         <Link
