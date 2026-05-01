@@ -17,6 +17,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HEATING_SESSION_TYPE_LABELS, heatingSessionTypeLabel } from "@shared/schema";
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
+import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
+import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
 type DgMode = "none" | "inline" | "link";
 
@@ -104,6 +106,9 @@ export default function PlantHeatingSessions() {
   // When true, the dialog will scroll and focus the "Dryer fed from" select
   // after it opens (set when the user clicks a per-session dryer mismatch badge).
   const [focusDryerOnOpen, setFocusDryerOnOpen] = useState(false);
+
+  const [dryerFixDialogOpen, setDryerFixDialogOpen] = useState(false);
+  const [dryerFixTarget, setDryerFixTarget] = useState<DryerSourceFixTarget | null>(null);
 
   const { data: sessions, isLoading } = useQuery<BitumenHeatingSession[]>({
     queryKey: ["/api/plant-module/heating-sessions", filterDateFrom, filterDateTo],
@@ -1014,7 +1019,20 @@ export default function PlantHeatingSessions() {
                                         variant="outline"
                                         className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950"
                                         title={tooltipText}
-                                        onClick={() => { openEdit(s); setFocusDryerOnOpen(true); }}
+                                        onClick={() => {
+                                          const currentVal = s.dryerFedFrom as "TANK_1" | "TANK_2";
+                                          const dm3 = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
+                                          const suggested: "TANK_1" | "TANK_2" =
+                                            dm3?.shiftLogValue ?? (currentVal === "TANK_1" ? "TANK_2" : "TANK_1");
+                                          setDryerFixTarget({
+                                            mode: "heating-session",
+                                            recordId: s.id,
+                                            date: s.date,
+                                            currentValue: currentVal,
+                                            suggestedValue: suggested,
+                                          });
+                                          setDryerFixDialogOpen(true);
+                                        }}
                                         data-testid={`badge-dryer-mismatch-session-${s.id}`}
                                       >
                                         {badgeLabel}
@@ -1380,6 +1398,15 @@ export default function PlantHeatingSessions() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DryerSourceFixDialog
+        open={dryerFixDialogOpen}
+        onOpenChange={(v) => {
+          setDryerFixDialogOpen(v);
+          if (!v) setDryerFixTarget(null);
+        }}
+        target={dryerFixTarget}
+      />
     </div>
   );
 }
