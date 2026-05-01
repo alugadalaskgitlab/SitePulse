@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock, Wand2 } from "lucide-react";
+import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock, Wand2, Filter } from "lucide-react";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -162,6 +162,7 @@ export default function PlantLdoDipBackfill() {
   const [csvOpen, setCsvOpen] = useState(false);
 
   const [grid, setGrid] = useState<GridRow[]>([]);
+  const [showGapsOnly, setShowGapsOnly] = useState(false);
 
   const dateRange = useMemo(() => buildDateRange(from, to), [from, to]);
 
@@ -264,6 +265,25 @@ export default function PlantLdoDipBackfill() {
   const warnCount = validation.filter(v => v.severity === "warn").length;
 
   const isProtected = (c: CellValue): boolean => c.source === "manual";
+
+  const isRowAllEmpty = (row: GridRow): boolean =>
+    row.tank1.opening.source === "empty" &&
+    row.tank1.closing.source === "empty" &&
+    row.tank2.opening.source === "empty" &&
+    row.tank2.closing.source === "empty";
+
+  const isRowHasAnyEmpty = (row: GridRow): boolean =>
+    (!isProtected(row.tank1.opening) && row.tank1.opening.source === "empty") ||
+    (!isProtected(row.tank1.closing) && row.tank1.closing.source === "empty") ||
+    (!isProtected(row.tank2.opening) && row.tank2.opening.source === "empty") ||
+    (!isProtected(row.tank2.closing) && row.tank2.closing.source === "empty");
+
+  const missingCount = useMemo(() => grid.filter(isRowAllEmpty).length, [grid]);
+
+  const filteredGrid = useMemo(
+    () => showGapsOnly ? grid.filter(isRowHasAnyEmpty) : grid,
+    [grid, showGapsOnly],
+  );
 
   const errorMessage = (err: unknown): string => {
     if (err instanceof Error) return err.message;
@@ -520,7 +540,37 @@ export default function PlantLdoDipBackfill() {
           )}
 
           {grid.length > 0 && (
-            <div className="overflow-x-auto border rounded-lg">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm">
+                  {missingCount > 0 ? (
+                    <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium" data-testid="text-missing-count">
+                      <AlertTriangle className="w-4 h-4" />
+                      {missingCount} date{missingCount !== 1 ? "s" : ""} have missing readings
+                    </span>
+                  ) : (
+                    <span className="text-green-700 dark:text-green-400 font-medium" data-testid="text-missing-count">
+                      All dates have readings
+                    </span>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={showGapsOnly}
+                    onCheckedChange={(v) => setShowGapsOnly(!!v)}
+                    data-testid="checkbox-gaps-only"
+                  />
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Show gaps only</span>
+                  {showGapsOnly && filteredGrid.length !== grid.length && (
+                    <Badge variant="secondary" className="text-[10px] py-0" data-testid="badge-gaps-count">
+                      {filteredGrid.length} / {grid.length}
+                    </Badge>
+                  )}
+                </label>
+              </div>
+
+              <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide">
                   <tr>
@@ -534,8 +584,10 @@ export default function PlantLdoDipBackfill() {
                   </tr>
                 </thead>
                 <tbody>
-                  {grid.map((row, idx) => {
+                  {filteredGrid.map((row) => {
                     const rowIssues = validation.filter(v => v.date === row.date);
+                    const allEmpty = isRowAllEmpty(row);
+                    const gridIdx = grid.findIndex(r => r.date === row.date);
                     const cellEntries: Array<{ tankKey: TankKey; tankNum: TankNumber; kind: ReadingKind; cell: CellValue }> = [
                       { tankKey: "tank1", tankNum: 1, kind: "opening", cell: row.tank1.opening },
                       { tankKey: "tank1", tankNum: 1, kind: "closing", cell: row.tank1.closing },
@@ -543,8 +595,21 @@ export default function PlantLdoDipBackfill() {
                       { tankKey: "tank2", tankNum: 2, kind: "closing", cell: row.tank2.closing },
                     ];
                     return (
-                      <tr key={row.date} className="border-t">
-                        <td className="p-2 font-mono text-xs sticky left-0 bg-background">{row.date}</td>
+                      <tr
+                        key={row.date}
+                        className={`border-t ${allEmpty ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}
+                        data-testid={`row-date-${row.date}`}
+                      >
+                        <td className="p-2 font-mono text-xs sticky left-0 bg-background">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{row.date}</span>
+                            {allEmpty && (
+                              <Badge className="text-[10px] py-0 bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 border-amber-300 dark:border-amber-700" variant="outline" data-testid={`badge-missing-${row.date}`}>
+                                Missing
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
                         {cellEntries.map(({ tankKey, tankNum, kind, cell }) => {
                           const protectedCell = isProtected(cell);
                           const issue = rowIssues.find(i => i.tank === tankNum);
@@ -555,7 +620,7 @@ export default function PlantLdoDipBackfill() {
                                 type="number"
                                 step="any"
                                 value={cell.value}
-                                onChange={e => updateCell(idx, tankNum, kind, e.target.value)}
+                                onChange={e => updateCell(gridIdx, tankNum, kind, e.target.value)}
                                 disabled={protectedCell}
                                 className={`h-8 ${issue ? "border-red-500" : ""}`}
                                 data-testid={`input-${tankKey}-${kind}-${row.date}`}
@@ -574,7 +639,7 @@ export default function PlantLdoDipBackfill() {
                         <td className="p-2">
                           <Input
                             value={row.remarks}
-                            onChange={e => updateRemarks(idx, e.target.value)}
+                            onChange={e => updateRemarks(gridIdx, e.target.value)}
                             placeholder="optional"
                             className="h-8"
                             data-testid={`input-remarks-${row.date}`}
@@ -596,6 +661,7 @@ export default function PlantLdoDipBackfill() {
                   })}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
         </CardContent>
