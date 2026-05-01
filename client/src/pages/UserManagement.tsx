@@ -886,7 +886,20 @@ function PermissionsDialog({
                   ); })}
                 </div>
               ) : (
-                <PermMatrix sections={g.sections} />
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">
+                    <span>{g.label}</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer normal-case font-normal text-xs tracking-normal">
+                      <Checkbox
+                        checked={g.sections.length > 0 && g.sections.every((s) => ACTIONS.every((a) => matrix[s][a]))}
+                        onCheckedChange={(v) => setAllForSubGroup(g.sections, !!v)}
+                        data-testid={`checkbox-tab-${g.id}-all`}
+                      />
+                      Grant all
+                    </label>
+                  </div>
+                  <PermMatrix sections={g.sections} />
+                </div>
               )}
             </TabsContent>
           ))}
