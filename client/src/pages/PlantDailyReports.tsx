@@ -9,11 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X, Circle, AlertCircle } from "lucide-react";
+import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X, Circle, AlertCircle, Wrench } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { unzipSync, strFromU8 } from "fflate";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
+import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
 type PartyOpt = { id: number; name: string };
 type MixTypeOpt = { id: number; name: string };
@@ -215,6 +217,9 @@ export default function PlantDailyReports() {
     plant !== "" ||
     selectedParties.length > 0 ||
     selectedMixTypes.length > 0;
+  // Fix dialog state
+  const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
+
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string>("");
   type BulkStatus = { date: string; plant: string; ok: boolean; error?: string; bytes?: number };
@@ -244,6 +249,36 @@ export default function PlantDailyReports() {
     () => [...(mixTypesList || [])].sort((a, b) => a.name.localeCompare(b.name)),
     [mixTypesList],
   );
+
+  type DryerMismatchRow = {
+    date: string;
+    plantName: string;
+    shiftLogId: number | null;
+    shiftLogValue: "TANK_1" | "TANK_2" | null;
+    conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    intraSessionConflicts: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+    hasIntraSessionConflict: boolean;
+    hasMismatch: boolean;
+  };
+
+  const { data: dryerMismatchRows } = useQuery<DryerMismatchRow[]>({
+    queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches", from, to],
+    enabled: !!from && !!to,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ dateFrom: from, dateTo: to });
+      const res = await fetch(`/api/plant-module/heating-sessions/dryer-source-mismatches?${qs.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const dryerMismatchByKey = useMemo(() => {
+    const map = new Map<string, DryerMismatchRow>();
+    for (const r of dryerMismatchRows || []) {
+      if (r.hasMismatch) map.set(`${r.date}||${r.plantName}`, r);
+    }
+    return map;
+  }, [dryerMismatchRows]);
 
   const { data: rows, isLoading } = useQuery<IndexRow[]>({
     queryKey: ["/api/plant-module/daily-reports-index", from, to, plant, selectedParties, selectedMixTypes],
@@ -635,6 +670,33 @@ export default function PlantDailyReports() {
                   const fmt = (n: number | null, decimals = 0) =>
                     n == null ? "—" : n.toFixed(decimals);
 
+                  const mismatchKey = `${r.date}||${r.plantName}`;
+                  const mismatch = dryerMismatchByKey.get(mismatchKey) ?? null;
+                  const openFixDialog = () => {
+                    if (!mismatch) return;
+                    let target: DryerSourceFixTarget;
+                    if (mismatch.shiftLogId != null && mismatch.shiftLogValue != null && mismatch.conflictingSessions.length > 0) {
+                      target = {
+                        mode: "shift-log",
+                        recordId: mismatch.shiftLogId,
+                        date: mismatch.date,
+                        currentValue: mismatch.shiftLogValue,
+                        suggestedValue: mismatch.conflictingSessions[0].dryerFedFrom,
+                      };
+                    } else if (mismatch.conflictingSessions.length > 0) {
+                      target = {
+                        mode: "heating-session",
+                        recordId: mismatch.conflictingSessions[0].id,
+                        date: mismatch.date,
+                        currentValue: mismatch.conflictingSessions[0].dryerFedFrom,
+                        suggestedValue: mismatch.shiftLogValue ?? (mismatch.conflictingSessions[0].dryerFedFrom === "TANK_1" ? "TANK_2" : "TANK_1"),
+                      };
+                    } else {
+                      return;
+                    }
+                    setFixDialog({ open: true, target });
+                  };
+
                   return (
                     <TableRow key={rowKey} data-testid={`row-report-${rowKey}`} className="align-top">
                       <TableCell className="pl-4 py-3">
@@ -670,6 +732,12 @@ export default function PlantDailyReports() {
 
                       <TableCell className="py-3">
                         <div className="space-y-1 text-xs min-w-[18rem]">
+                          {mismatch && (
+                            <div className="flex items-center gap-1.5" data-testid={`dryer-mismatch-warning-${rowKey}`}>
+                              <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                              <span className="text-amber-600 dark:text-amber-400">Dryer-source mismatch</span>
+                            </div>
+                          )}
                           {/* LDO line — always show all three sub-labels with — when missing */}
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5" data-testid={`ldo-row-${rowKey}`}>
                             <span data-testid={`ldo-heating-${rowKey}`}>
@@ -731,7 +799,18 @@ export default function PlantDailyReports() {
                       </TableCell>
 
                       <TableCell className="text-right pr-4 py-3">
-                        <div className="flex gap-1 justify-end">
+                        <div className="flex gap-1 justify-end flex-wrap">
+                          {mismatch && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={openFixDialog}
+                              data-testid={`button-fix-dryer-${rowKey}`}
+                              className="text-amber-600 border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950"
+                            >
+                              <Wrench className="w-3.5 h-3.5 mr-1" /> Fix
+                            </Button>
+                          )}
                           <Link href={openHref}>
                             <Button variant="outline" size="sm" data-testid={`button-open-${rowKey}`}>
                               <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open
@@ -753,6 +832,12 @@ export default function PlantDailyReports() {
         </Card>
         );
       })}
+
+      <DryerSourceFixDialog
+        open={fixDialog.open}
+        onOpenChange={(v) => setFixDialog((prev) => ({ ...prev, open: v }))}
+        target={fixDialog.target}
+      />
     </div>
   );
 }

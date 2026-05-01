@@ -52,6 +52,7 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports-index"] });
       toast({ title: "Dryer source corrected" });
       setSelected(null);
       onOpenChange(false);
