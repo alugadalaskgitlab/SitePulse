@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -150,30 +149,21 @@ export default function DprDetails() {
                 {isAdmin ? "Admin" : user.fullName}
               </p>
             )}
-            <div className="mt-2">
-              <LockBadge
-                record={dpr}
-                resourceType="dpr"
-                resourceId={dpr.id}
-              />
-            </div>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           {canEdit && (
-            <LockAwareEditButton
-              record={dpr}
-              resourceType="dpr"
-              resourceId={dpr.id}
+            <Button
               variant="secondary"
+              size="sm"
               className="gap-2"
               onClick={handleEditClick}
-              pending={cloneMutation.isPending}
+              disabled={cloneMutation.isPending}
               data-testid="button-edit-dpr"
             >
               <Edit className="w-4 h-4" />
               {cloneMutation.isPending ? "Cloning..." : "Edit Report"}
-            </LockAwareEditButton>
+            </Button>
           )}
           {canDelete && (
             <Button

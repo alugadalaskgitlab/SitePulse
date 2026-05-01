@@ -26,10 +26,7 @@ import {
   assertCreate,
   assertView,
   currentUserName,
-  claimUnlockOrLockedRow,
-  lockNewRow,
 } from "./auth-routes";
-import type { LockableResourceType } from "@shared/permissions";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -736,10 +733,6 @@ export async function registerRoutes(
       });
       sendPushToAll("DPR Updated", `${actor} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
 
-      // Lock the new version. New rows are inserted by storage; we just stamp
-      // lock_status='locked' + author. Atomic per-row update; cannot race.
-      await lockNewRow("dpr", newVersion.id, req.authUser!.id);
-
       res.status(201).json(newVersion);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -780,8 +773,6 @@ export async function registerRoutes(
         isRead: 0,
       });
       sendPushToAll("DPR Cloned", `${cloned.site} - ${cloned.date}`, "/site-reports").catch(() => {});
-
-      await lockNewRow("dpr", cloned.id, req.authUser!.id);
 
       res.status(201).json(cloned);
     } catch (err) {
@@ -1731,11 +1722,6 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (!assertEdit(req, res, "plant_equipment")) return;
-      // Atomic claim: flips the row from 'unlocked' → 'locked' and consumes
-      // the unlock entry in a single SQL statement. If the data update below
-      // fails for any reason, the row stays locked with its prior data — no
-      // orphaned-unlocked state can ever exist.
-      if (!(await claimUnlockOrLockedRow(res, "equipment_usage", id, req.authUser!.id, req.authUser!.isAdmin))) return;
       const updated = await storage.updateEquipmentUsage(id, req.body);
       if (!updated) {
         return res.status(404).json({ message: "Equipment usage not found" });
@@ -4630,9 +4616,6 @@ export async function registerRoutes(
         if (!assertEdit(req, res, "site_procurement")) return;
       }
 
-      // Atomic claim — flips 'unlocked' → 'locked' before the data change.
-      if (!(await claimUnlockOrLockedRow(res, "purchase_indent", id, req.authUser!.id, req.authUser!.isAdmin))) return;
-
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
@@ -4845,9 +4828,6 @@ export async function registerRoutes(
       } else {
         if (!assertEdit(req, res, "site_diesel")) return;
       }
-
-      // Atomic claim — flips 'unlocked' → 'locked' before the data change.
-      if (!(await claimUnlockOrLockedRow(res, "diesel_requirement", id, req.authUser!.id, req.authUser!.isAdmin))) return;
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);
@@ -5345,9 +5325,6 @@ export async function registerRoutes(
       } else {
         if (!assertEdit(req, res, "vendor_bills")) return;
       }
-
-      // Atomic claim — flips 'unlocked' → 'locked' before the data change.
-      if (!(await claimUnlockOrLockedRow(res, "vendor_bill", id, req.authUser!.id, req.authUser!.isAdmin))) return;
 
       const bill = await storage.updateVendorBill(id, input);
       if (!bill) {

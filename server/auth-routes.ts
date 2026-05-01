@@ -19,9 +19,6 @@
 //   GET    /api/auth/devices         list all devices (filterable by status)
 //   POST   /api/auth/devices/:id/approve
 //   POST   /api/auth/devices/:id/revoke
-//
-// Locking:
-//   POST   /api/auth/locks/unlock    { resourceType, resourceId, reason } — checks edit perm + canUnlockRecords
 
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
@@ -31,7 +28,6 @@ import {
   userDevices,
   userSessions,
   users,
-  recordUnlockLog,
   type User,
   type UserDevice,
 } from "@shared/schema";
@@ -42,9 +38,6 @@ import {
   emptyMatrix,
   fullMatrix,
   type SessionPolicy,
-  LOCKABLE_RESOURCE_TYPES,
-  LOCKABLE_RESOURCE_SECTION,
-  type LockableResourceType,
 } from "@shared/permissions";
 import {
   setSessionCookie,
@@ -78,18 +71,6 @@ import {
 } from "./auth";
 import { eq, and, isNull, desc } from "drizzle-orm";
 
-// Drizzle table name for each lockable resource type. Must match the
-// pgTable("...") names in shared/schema.ts. Used by the unlock endpoint
-// (raw SQL) and by the lock-aware helpers in routes.ts.
-export const LOCKABLE_TABLE_NAMES: Record<LockableResourceType, string> = {
-  dpr: "dprs",
-  plant_shift_log: "plant_shift_logs",
-  equipment_usage: "equipment_usage",
-  purchase_indent: "purchase_indents",
-  diesel_requirement: "diesel_requirements",
-  vendor_bill: "vendor_bills",
-};
-
 // Task #280 — identifier accepts either an email address or a phone number.
 const loginSchema = z.object({
   identifier: z.string().min(1, "Enter your email or phone number"),
@@ -102,7 +83,6 @@ const createUserSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   fullName: z.string().min(1),
   isAdmin: z.boolean().optional(),
-  canUnlockRecords: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
 }).superRefine((d, ctx) => {
@@ -119,7 +99,6 @@ const patchUserSchema = z.object({
   phone: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
-  canUnlockRecords: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
 });
@@ -140,11 +119,6 @@ const permissionMatrixSchema = z.record(
   }),
 );
 
-const unlockSchema = z.object({
-  resourceType: z.enum(LOCKABLE_RESOURCE_TYPES as unknown as [LockableResourceType, ...LockableResourceType[]]),
-  resourceId: z.number().int().positive(),
-  reason: z.string().min(10, "Reason must be at least 10 characters"),
-});
 
 export function registerAuthRoutes(app: Express) {
   // -----------------------------------------------------------------
@@ -616,51 +590,6 @@ export function registerAuthRoutes(app: Express) {
     res.json({ ok: true });
   });
 
-  // -----------------------------------------------------------------
-  // Record unlock — requires edit on the section + canUnlockRecords.
-  // The next save through the regular update endpoint will atomically
-  // re-lock the row (handled in routes.ts by the lock-aware update wrappers).
-  // -----------------------------------------------------------------
-
-  app.post("/api/auth/locks/unlock", requireAuth, async (req, res) => {
-    try {
-      const input = unlockSchema.parse(req.body);
-      const u = req.authUser!;
-      const matrix = req.authPermissions!;
-      const section = LOCKABLE_RESOURCE_SECTION[input.resourceType];
-      const hasEdit = u.isAdmin || (matrix[section]?.edit === true);
-      if (!hasEdit) return res.status(403).json({ error: "forbidden_section" });
-      if (!u.canUnlockRecords && !u.isAdmin) return res.status(403).json({ error: "unlock_not_allowed" });
-
-      // Update the row using parameterized raw SQL via the pg pool
-      // (drizzle's typed updates would require dispatching per-table).
-      const tableName = LOCKABLE_TABLE_NAMES[input.resourceType];
-      const { pool } = await import("./db");
-      const result = await pool.query(
-        `UPDATE ${tableName}
-            SET lock_status = 'unlocked',
-                unlocked_by_user_id = $1,
-                unlocked_at = NOW(),
-                unlock_reason = $2
-          WHERE id = $3
-          RETURNING id`,
-        [u.id, input.reason, input.resourceId],
-      );
-      if (result.rowCount === 0) return res.status(404).json({ error: "not_found" });
-
-      await db.insert(recordUnlockLog).values({
-        resourceType: input.resourceType,
-        resourceId: input.resourceId,
-        unlockedByUserId: u.id,
-        unlockReason: input.reason,
-      });
-      res.json({ ok: true });
-    } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
-      console.error("[POST /api/auth/locks/unlock]", err);
-      res.status(500).json({ error: "server_error" });
-    }
-  });
 }
 
 // =================================================================
@@ -733,148 +662,3 @@ export function currentUserName(req: Request): string {
   return req.authUser?.fullName || "Unknown";
 }
 
-// =============================================================================
-// Lockable record concurrency / atomicity (Task #229)
-// -----------------------------------------------------------------------------
-// Lock semantics:
-//   - Records auto-lock on save (lock_status='locked').
-//   - To edit a locked row, an authorized user calls
-//     POST /api/auth/locks/unlock with a reason (≥10 chars). The row flips to
-//     'unlocked' (one-time grant).
-//   - The next mutating request MUST atomically: (a) verify the row is still
-//     unlocked, (b) flip it back to 'locked', AND (c) consume the unlock-log
-//     entry — all in a single SQL statement so two racing requests can never
-//     both consume the same unlock and idempotent retries can never bypass
-//     re-locking.
-//
-// claimUnlockOrLockedRow() does exactly that. Call it BEFORE the data update.
-// If it returns false, it has already written the 423/404 response and the
-// caller must `return`. If it returns true, the row is locked + the unlock
-// has been consumed; the caller may now perform the data update. If the data
-// update later fails, the row remains in its safe locked state with the prior
-// data — no orphaned unlocked rows are ever possible.
-// =============================================================================
-
-export async function claimUnlockOrLockedRow(
-  res: Response,
-  resourceType: LockableResourceType,
-  resourceId: number,
-  authorUserId: number,
-  isAdmin = false,
-): Promise<boolean> {
-  const tableName = LOCKABLE_TABLE_NAMES[resourceType];
-  const { pool } = await import("./db");
-
-  // Admin bypass: admins can edit any record regardless of lock status.
-  // Just stamp the author and ensure the row is locked after the save —
-  // no unlock grant is needed or consumed.
-  if (isAdmin) {
-    const result = await pool.query(
-      `UPDATE ${tableName}
-          SET lock_status = 'locked',
-              unlocked_by_user_id = NULL,
-              unlocked_at = NULL,
-              unlock_reason = NULL,
-              author_user_id = COALESCE(author_user_id, $1)
-        WHERE id = $2
-        RETURNING id`,
-      [authorUserId, resourceId],
-    );
-    if (!result.rowCount || result.rowCount === 0) {
-      res.status(404).json({ error: "not_found" });
-      return false;
-    }
-    return true;
-  }
-
-  // Single atomic flip: locked-status='unlocked' → 'locked' (and clear the
-  // unlock metadata). RETURNING tells us whether the unlock was consumed.
-  const claim = await pool.query(
-    `UPDATE ${tableName}
-        SET lock_status = 'locked',
-            unlocked_by_user_id = NULL,
-            unlocked_at = NULL,
-            unlock_reason = NULL,
-            author_user_id = COALESCE(author_user_id, $1)
-      WHERE id = $2 AND lock_status = 'unlocked'
-      RETURNING id`,
-    [authorUserId, resourceId],
-  );
-
-  if (claim.rowCount && claim.rowCount > 0) {
-    // Stamp the unlock-log entry as consumed for audit. Done in the same
-    // logical step; if it fails we still succeeded above (audit is a
-    // best-effort secondary record, not the truth).
-    try {
-      await pool.query(
-        `UPDATE record_unlock_log
-            SET relocked_at = NOW()
-          WHERE resource_type = $1 AND resource_id = $2 AND relocked_at IS NULL`,
-        [resourceType, resourceId],
-      );
-    } catch (err) {
-      console.warn("[locks] failed to stamp record_unlock_log:", err);
-    }
-    return true;
-  }
-
-  // Couldn't consume an unlock — figure out why so we can return the right code.
-  const probe = await pool.query(
-    `SELECT lock_status FROM ${tableName} WHERE id = $1`,
-    [resourceId],
-  );
-  if (probe.rowCount === 0) {
-    res.status(404).json({ error: "not_found" });
-    return false;
-  }
-  res.status(423).json({ error: "record_locked", resourceType, resourceId });
-  return false;
-}
-
-// New-row helper: lock a freshly created row. New rows are inserted by storage
-// in a default state; we just stamp lock_status='locked' + author. This isn't
-// a state transition (not consuming an unlock), so it can't race with anything
-// — it always succeeds.
-export async function lockNewRow(
-  resourceType: LockableResourceType,
-  resourceId: number,
-  authorUserId: number,
-): Promise<void> {
-  const tableName = LOCKABLE_TABLE_NAMES[resourceType];
-  const { pool } = await import("./db");
-  await pool.query(
-    `UPDATE ${tableName}
-        SET lock_status = 'locked',
-            author_user_id = COALESCE(author_user_id, $1),
-            unlocked_by_user_id = NULL,
-            unlocked_at = NULL,
-            unlock_reason = NULL
-      WHERE id = $2`,
-    [authorUserId, resourceId],
-  );
-}
-
-// Backward-compat aliases — kept so existing call sites compile while we
-// migrate them to the atomic claim model.
-export const relockResource = lockNewRow;
-export async function assertWritable(
-  res: Response,
-  resourceType: LockableResourceType,
-  resourceId: number,
-): Promise<boolean> {
-  const tableName = LOCKABLE_TABLE_NAMES[resourceType];
-  const { pool } = await import("./db");
-  const r = await pool.query(
-    `SELECT lock_status FROM ${tableName} WHERE id = $1`,
-    [resourceId],
-  );
-  if (r.rowCount === 0) {
-    res.status(404).json({ error: "not_found" });
-    return false;
-  }
-  if (r.rows[0]?.lock_status === "locked") {
-    res.status(423).json({ error: "record_locked", resourceType, resourceId });
-    return false;
-  }
-  return true;
-}

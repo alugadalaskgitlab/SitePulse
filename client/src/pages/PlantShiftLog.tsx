@@ -17,7 +17,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
-import { LockBadge } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -863,7 +862,6 @@ export default function PlantShiftLog() {
                                   ? <Badge variant="default" className="bg-green-600 text-xs px-1.5 py-0">✓ Done</Badge>
                                   : <Badge variant="secondary" className="text-xs px-1.5 py-0">Draft</Badge>
                                 }
-                                <LockBadge record={r} resourceType="plant_shift_log" resourceId={r.id} compact />
                               </div>
                               {/* Line 2 — consumption metrics */}
                               <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1.5">
@@ -970,9 +968,6 @@ export default function PlantShiftLog() {
         </div>
         <div className="flex items-center gap-2">
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
-          {savedId && existing && (
-            <LockBadge record={existing} resourceType="plant_shift_log" resourceId={savedId} />
-          )}
           <Link href={appendPlantContext(`/plant/daily-report/${date}`, { defaultTab: "operations" })}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
           </Link>

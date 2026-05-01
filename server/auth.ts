@@ -236,7 +236,6 @@ export async function createUserRow(input: {
   password: string;
   fullName: string;
   isAdmin?: boolean;
-  canUnlockRecords?: boolean;
   notificationsEnabled?: boolean;
   sessionPolicy?: SessionPolicy;
 }): Promise<User> {
@@ -248,7 +247,6 @@ export async function createUserRow(input: {
     fullName: input.fullName.trim(),
     isActive: true,
     isAdmin: !!input.isAdmin,
-    canUnlockRecords: !!input.canUnlockRecords,
     notificationsEnabled: !!input.notificationsEnabled,
     sessionPolicy: input.sessionPolicy ?? "strict",
   }).returning();
@@ -271,7 +269,6 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   phone: string | null;
   isActive: boolean;
   isAdmin: boolean;
-  canUnlockRecords: boolean;
   notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
 }>): Promise<User | undefined> {
@@ -281,7 +278,6 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   if (patch.phone !== undefined) update.phone = patch.phone ? patch.phone.trim() : null;
   if (patch.isActive !== undefined) update.isActive = patch.isActive;
   if (patch.isAdmin !== undefined) update.isAdmin = patch.isAdmin;
-  if (patch.canUnlockRecords !== undefined) update.canUnlockRecords = patch.canUnlockRecords;
   if (patch.notificationsEnabled !== undefined) update.notificationsEnabled = patch.notificationsEnabled;
   if (patch.sessionPolicy !== undefined) update.sessionPolicy = patch.sessionPolicy;
   if (Object.keys(update).length === 0) return getUserById(userId);
@@ -627,7 +623,6 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     await db.update(users).set({
       isAdmin: true,
       isActive: true,
-      canUnlockRecords: true,
     }).where(eq(users.id, existingByEmail.id));
     await setUserPermissions(existingByEmail.id, fullMatrix());
     console.log(`[auth] Promoted existing user ${email} to admin (bootstrap).`);
@@ -638,7 +633,6 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     password,
     fullName: "Administrator",
     isAdmin: true,
-    canUnlockRecords: true,
     sessionPolicy: "sticky",
   });
   await setUserPermissions(u.id, fullMatrix());

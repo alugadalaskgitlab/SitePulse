@@ -24,7 +24,6 @@ export type AuthUser = {
   fullName: string;
   isAdmin: boolean;
   isActive: boolean;
-  canUnlockRecords: boolean;
   sessionPolicy: "strict" | "sticky";
 };
 

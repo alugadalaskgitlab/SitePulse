@@ -115,27 +115,6 @@ export function fullMatrix(): PermissionMatrix {
   return out;
 }
 
-// Lockable resource types (auto-lock on save, unlock with reason).
-export const LOCKABLE_RESOURCE_TYPES = [
-  "dpr",
-  "plant_shift_log",
-  "equipment_usage",
-  "purchase_indent",
-  "diesel_requirement",
-  "vendor_bill",
-] as const;
-export type LockableResourceType = (typeof LOCKABLE_RESOURCE_TYPES)[number];
-
-// Each lockable resource maps to the permission section that owns it. Used
-// when checking unlock permission server-side.
-export const LOCKABLE_RESOURCE_SECTION: Record<LockableResourceType, SectionKey> = {
-  dpr: "site_dprs",
-  plant_shift_log: "plant_shift_logs",
-  equipment_usage: "plant_equipment",
-  purchase_indent: "site_procurement",
-  diesel_requirement: "site_diesel",
-  vendor_bill: "vendor_bills",
-};
 
 export const SESSION_POLICIES = ["strict", "sticky"] as const;
 export type SessionPolicy = (typeof SESSION_POLICIES)[number];

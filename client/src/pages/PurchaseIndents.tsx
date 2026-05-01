@@ -13,7 +13,6 @@ import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingC
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { LockBadge, LockAwareEditButton } from "@/components/LockBadge";
 import { format } from "date-fns";
 import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry, PlantMaterial } from "@shared/schema";
 
@@ -1071,9 +1070,6 @@ export default function PurchaseIndents() {
                               REASON: {indent.rejectionReason}
                             </p>
                           )}
-                          <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                            <LockBadge record={indent} resourceType="purchase_indent" resourceId={indent.id} compact />
-                          </div>
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
                           <div className="text-right">
@@ -1323,12 +1319,8 @@ export default function PurchaseIndents() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base uppercase" data-testid="text-detail-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <LockBadge record={selectedIndent} resourceType="purchase_indent" resourceId={selectedIndent.id} />
                     {selectedIndent.status !== "completed" && canEdit && (
-                      <LockAwareEditButton
-                        record={selectedIndent}
-                        resourceType="purchase_indent"
-                        resourceId={selectedIndent.id}
+                      <Button
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300"
@@ -1336,7 +1328,7 @@ export default function PurchaseIndents() {
                         data-testid="button-edit-indent"
                       >
                         <Pencil className="w-3 h-3 mr-1" /> EDIT
-                      </LockAwareEditButton>
+                      </Button>
                     )}
                     {canDelete && (
                       <Button
@@ -1644,12 +1636,8 @@ export default function PurchaseIndents() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base uppercase" data-testid="text-purchase-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <LockBadge record={selectedIndent} resourceType="purchase_indent" resourceId={selectedIndent.id} />
                     {selectedIndent.status !== "completed" && canEdit && (
-                      <LockAwareEditButton
-                        record={selectedIndent}
-                        resourceType="purchase_indent"
-                        resourceId={selectedIndent.id}
+                      <Button
                         variant="outline"
                         size="sm"
                         className="text-blue-600 border-blue-300"
@@ -1657,7 +1645,7 @@ export default function PurchaseIndents() {
                         data-testid="button-edit-indent-purchase"
                       >
                         <Pencil className="w-3 h-3 mr-1" /> EDIT
-                      </LockAwareEditButton>
+                      </Button>
                     )}
                     {canDelete && (
                       <Button

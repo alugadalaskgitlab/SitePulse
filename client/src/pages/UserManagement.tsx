@@ -56,7 +56,6 @@ type SafeUser = {
   fullName: string;
   isAdmin: boolean;
   isActive: boolean;
-  canUnlockRecords: boolean;
   notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
   createdAt?: string;
@@ -155,7 +154,6 @@ export default function UserManagement() {
                     <th className="py-2 pr-4">Role</th>
                     <th className="py-2 pr-4">Session</th>
                     <th className="py-2 pr-4">Active</th>
-                    <th className="py-2 pr-4">Unlock?</th>
                     <th className="py-2 pr-4">Notif.</th>
                     <th className="py-2 pr-4">Actions</th>
                   </tr>
@@ -279,14 +277,6 @@ function UserRow({
       </td>
       <td className="py-2 pr-4">
         <Switch
-          checked={user.canUnlockRecords}
-          disabled={!canEdit}
-          onCheckedChange={(v) => patch.mutate({ canUnlockRecords: v })}
-          data-testid={`switch-unlock-${user.id}`}
-        />
-      </td>
-      <td className="py-2 pr-4">
-        <Switch
           checked={user.notificationsEnabled}
           disabled={!canEdit}
           onCheckedChange={(v) => patch.mutate({ notificationsEnabled: v })}
@@ -342,7 +332,6 @@ function CreateUserDialog({
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [canUnlock, setCanUnlock] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [policy, setPolicy] = useState<SessionPolicy>("strict");
 
@@ -354,7 +343,6 @@ function CreateUserDialog({
         fullName: fullName.trim(),
         password,
         isAdmin,
-        canUnlockRecords: canUnlock,
         notificationsEnabled,
         sessionPolicy: policy,
       });
@@ -404,10 +392,6 @@ function CreateUserDialog({
           <div className="flex items-center justify-between">
             <Label htmlFor="isAdmin">Admin</Label>
             <Switch id="isAdmin" checked={isAdmin} onCheckedChange={setIsAdmin} data-testid="switch-new-admin" />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="canUnlock">Can unlock locked records</Label>
-            <Switch id="canUnlock" checked={canUnlock} onCheckedChange={setCanUnlock} data-testid="switch-new-unlock" />
           </div>
           <div className="flex items-center justify-between">
             <Label htmlFor="notifEnabled">Push notifications</Label>
@@ -460,7 +444,6 @@ function EditUserDialog({
   const [email, setEmail] = useState(target?.email ?? "");
   const [phone, setPhone] = useState(target?.phone ?? "");
   const [isAdmin, setIsAdmin] = useState(target?.isAdmin ?? false);
-  const [canUnlock, setCanUnlock] = useState(target?.canUnlockRecords ?? false);
   const [notifEnabled, setNotifEnabled] = useState(target?.notificationsEnabled ?? false);
   const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
 
@@ -486,7 +469,6 @@ function EditUserDialog({
       patch.phone = trimmedPhone || null;
     }
     if (isAdmin !== target.isAdmin) patch.isAdmin = isAdmin;
-    if (canUnlock !== target.canUnlockRecords) patch.canUnlockRecords = canUnlock;
     if (notifEnabled !== target.notificationsEnabled) patch.notificationsEnabled = notifEnabled;
     if (policy !== target.sessionPolicy) patch.sessionPolicy = policy;
     return patch;
@@ -567,15 +549,6 @@ function EditUserDialog({
               checked={isAdmin}
               onCheckedChange={setIsAdmin}
               data-testid="switch-edit-admin"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="edit-canUnlock">Can unlock locked records</Label>
-            <Switch
-              id="edit-canUnlock"
-              checked={canUnlock}
-              onCheckedChange={setCanUnlock}
-              data-testid="switch-edit-unlock"
             />
           </div>
           <div className="flex items-center justify-between">
