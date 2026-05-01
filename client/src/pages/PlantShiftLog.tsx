@@ -20,7 +20,8 @@ import { Switch } from "@/components/ui/switch";
 import { LockBadge } from "@/components/LockBadge";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
-import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
@@ -68,6 +69,10 @@ export default function PlantShiftLog() {
   const [ldoTank1ClosingMeter, setLdoTank1ClosingMeter] = useState("");
   const [ldoTank2OpeningMeter, setLdoTank2OpeningMeter] = useState("");
   const [ldoTank2ClosingMeter, setLdoTank2ClosingMeter] = useState("");
+  const [ldoTank1OpeningDip, setLdoTank1OpeningDip] = useState("");
+  const [ldoTank1ClosingDip, setLdoTank1ClosingDip] = useState("");
+  const [ldoTank2OpeningDip, setLdoTank2OpeningDip] = useState("");
+  const [ldoTank2ClosingDip, setLdoTank2ClosingDip] = useState("");
   // Which physical tank fed the dryer this shift; controls which tank's
   // stock balance the dryer-meter consumption debits.
   const [dryerFedFrom, setDryerFedFrom] = useState<"TANK_1" | "TANK_2">("TANK_2");
@@ -247,6 +252,8 @@ export default function PlantShiftLog() {
     setBitumenTank2OpeningDip(""); setBitumenTank2ClosingDip("");
     setLdoTank1OpeningMeter(""); setLdoTank1ClosingMeter("");
     setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
+    setLdoTank1OpeningDip(""); setLdoTank1ClosingDip("");
+    setLdoTank2OpeningDip(""); setLdoTank2ClosingDip("");
     setDryerFedFrom("TANK_2");
     setBoilerRunsDuringProduction(false);
     setNoMainPlantOps(false);
@@ -308,6 +315,10 @@ export default function PlantShiftLog() {
     setLdoTank1ClosingMeter(existing.ldoTank1ClosingMeter?.toString() || "");
     setLdoTank2OpeningMeter(existing.ldoTank2OpeningMeter?.toString() || "");
     setLdoTank2ClosingMeter(existing.ldoTank2ClosingMeter?.toString() || "");
+    setLdoTank1OpeningDip(existing.ldoTank1OpeningDip?.toString() || "");
+    setLdoTank1ClosingDip(existing.ldoTank1ClosingDip?.toString() || "");
+    setLdoTank2OpeningDip(existing.ldoTank2OpeningDip?.toString() || "");
+    setLdoTank2ClosingDip(existing.ldoTank2ClosingDip?.toString() || "");
     setDryerFedFrom(existing.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
     // Task #254 — back-compat: rows saved before the toggle existed default
     // boilerRunsDuringProduction to 0. If they have any T1 reading recorded,
@@ -376,6 +387,15 @@ export default function PlantShiftLog() {
     return `≈ ${mt.toFixed(2)} MT`;
   };
 
+  const ldoDipHint = (tank: 1 | 2, cm: string) => {
+    if (cm.trim() === "") return null;
+    const dipNum = numOrNullSafe(cm);
+    if (dipNum === null) return null;
+    const vol = getLdoVolumeAtDepth(tank, dipNum);
+    const mt = vol * LDO_DENSITY_KG_PER_LITER / 1000;
+    return `≈ ${Math.round(vol).toLocaleString()} L / ${mt.toFixed(3)} MT`;
+  };
+
   const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
 
   const editedBy = "operator";
@@ -418,6 +438,10 @@ export default function PlantShiftLog() {
         ldoTank1ClosingMeter: boilerRunsDuringProduction ? numOrNull(ldoTank1ClosingMeter) : null,
         ldoTank2OpeningMeter: numOrNull(ldoTank2OpeningMeter),
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
+        ldoTank1OpeningDip: numOrNull(ldoTank1OpeningDip),
+        ldoTank1ClosingDip: numOrNull(ldoTank1ClosingDip),
+        ldoTank2OpeningDip: numOrNull(ldoTank2OpeningDip),
+        ldoTank2ClosingDip: numOrNull(ldoTank2ClosingDip),
         dryerFedFrom,
         boilerRunsDuringProduction: boilerRunsDuringProduction ? 1 : 0,
         noMainPlantOps,
@@ -464,6 +488,7 @@ export default function PlantShiftLog() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
       setSavedId(data.id);
       setIsFinalized(1);
@@ -1132,6 +1157,49 @@ export default function PlantShiftLog() {
           <div><Label>Dryer fuel meter — closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
           <div><Label>Dryer fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
+
+          {/* Task #344 — LDO dip-stick readings */}
+          <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
+            <p className="text-xs font-medium text-muted-foreground mb-2">LDO Tank Dip-Stick Readings</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <Label>Tank 1 — opening dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={e => setLdoTank1OpeningDip(e.target.value)} data-testid="input-ldo-dip-t1-open" />
+                {ldoDipHint(1, ldoTank1OpeningDip) ? (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t1-open-hint">{ldoDipHint(1, ldoTank1OpeningDip)}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift start, in cm</p>
+                )}
+              </div>
+              <div>
+                <Label>Tank 1 — closing dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={e => setLdoTank1ClosingDip(e.target.value)} data-testid="input-ldo-dip-t1-close" />
+                {ldoDipHint(1, ldoTank1ClosingDip) ? (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t1-close-hint">{ldoDipHint(1, ldoTank1ClosingDip)}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift end, in cm</p>
+                )}
+              </div>
+              <div>
+                <Label>Tank 2 — opening dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={e => setLdoTank2OpeningDip(e.target.value)} data-testid="input-ldo-dip-t2-open" />
+                {ldoDipHint(2, ldoTank2OpeningDip) ? (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t2-open-hint">{ldoDipHint(2, ldoTank2OpeningDip)}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift start, in cm</p>
+                )}
+              </div>
+              <div>
+                <Label>Tank 2 — closing dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={e => setLdoTank2ClosingDip(e.target.value)} data-testid="input-ldo-dip-t2-close" />
+                {ldoDipHint(2, ldoTank2ClosingDip) ? (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t2-close-hint">{ldoDipHint(2, ldoTank2ClosingDip)}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift end, in cm</p>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Task #325/#372 — live LDO efficiency stats strip. Updates as the
               operator types closing readings, changes plant start/stop times,

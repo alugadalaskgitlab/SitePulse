@@ -10640,6 +10640,7 @@ export class DatabaseStorage implements IStorage {
   private async _syncShiftLogReadings(tx: typeof db, log: PlantShiftLog): Promise<void> {
     await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, log.id));
     await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, log.id));
+    await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, log.id));
 
     const ldoRows: any[] = [];
     const pushLdo = (tank: number, type: "opening" | "closing", value: number | null | undefined, time: string | null) => {
@@ -10688,6 +10689,31 @@ export class DatabaseStorage implements IStorage {
     pushBitumen(2, "opening", log.bitumenTank2OpeningDip, log.plantStartTime);
     pushBitumen(2, "closing", log.bitumenTank2ClosingDip, log.plantStopTime);
     if (bitumenRows.length) await tx.insert(bitumenDipReadings).values(bitumenRows);
+
+    // Task #344 — LDO dip readings auto-created from shift log dip fields.
+    const ldoDipRows: any[] = [];
+    const pushLdoDip = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
+      if (depth === null || depth === undefined) return;
+      const vol = getLdoVolumeAtDepth(tank, depth);
+      const wt = vol * LDO_DENSITY_KG_PER_LITER;
+      ldoDipRows.push({
+        date: log.date,
+        time,
+        tankNumber: tank,
+        depthCm: depth,
+        volumeLiters: Math.round(vol),
+        weightKg: Math.round(wt),
+        readingType: type,
+        notes: `AUTO from Plant Shift Log #${log.id}`,
+        plantName: log.plantName,
+        sourceShiftLogId: log.id,
+      });
+    };
+    pushLdoDip(1, "opening", log.ldoTank1OpeningDip, log.plantStartTime);
+    pushLdoDip(1, "closing", log.ldoTank1ClosingDip, log.plantStopTime);
+    pushLdoDip(2, "opening", log.ldoTank2OpeningDip, log.plantStartTime);
+    pushLdoDip(2, "closing", log.ldoTank2ClosingDip, log.plantStopTime);
+    if (ldoDipRows.length) await tx.insert(ldoDipReadings).values(ldoDipRows);
   }
 
   async upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails> {
@@ -10774,6 +10800,7 @@ export class DatabaseStorage implements IStorage {
     return db.transaction(async (tx) => {
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, id));
       await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, id));
+      await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, id));
       await tx.delete(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, id));
       await tx.delete(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, id));
       await tx.delete(plantShiftLogVersions).where(eq(plantShiftLogVersions.shiftLogId, id));

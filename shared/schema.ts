@@ -830,6 +830,12 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
   ldoTank2OpeningMeter: real("ldo_tank2_opening_meter"),
   ldoTank2ClosingMeter: real("ldo_tank2_closing_meter"),
+  // Task #344 — LDO dip-stick readings (cm) captured each shift; auto-synced
+  // into ldo_dip_readings the same way bitumen dips flow through.
+  ldoTank1OpeningDip: real("ldo_tank1_opening_dip"),
+  ldoTank1ClosingDip: real("ldo_tank1_closing_dip"),
+  ldoTank2OpeningDip: real("ldo_tank2_opening_dip"),
+  ldoTank2ClosingDip: real("ldo_tank2_closing_dip"),
   // Task #255 — Which physical LDO storage tank fed the dryer on this
   // shift. The dryer flow-meter records litres burned at the dryer, but the
   // litres themselves are debited from whichever tank the supply line was
