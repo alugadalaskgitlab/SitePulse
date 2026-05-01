@@ -214,8 +214,16 @@ export default function PlantEquipmentUsage() {
       resetForm();
       toast({ title: "Equipment usage updated successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to update equipment usage. Please try again.", variant: "destructive" });
+    onError: (err: Error) => {
+      if (err.message.startsWith("423")) {
+        toast({
+          title: "Record is locked",
+          description: "This entry is currently locked and cannot be edited. Contact your administrator.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Failed to update equipment usage. Please try again.", variant: "destructive" });
+      }
     },
   });
 
