@@ -8821,12 +8821,17 @@ export class DatabaseStorage implements IStorage {
               });
             }
             if (hasClosing) {
+              const consumed = session.ldoTank1Consumed ??
+                (hasOpening
+                  ? Math.max(0, (session.ldoTank1ClosingMeter as number) - (session.ldoTank1OpeningMeter as number))
+                  : null);
               ldoRows.push({
                 date: session.date,
                 time: endTimeStr,
                 tankNumber: 1,
                 meterReading: session.ldoTank1ClosingMeter as number,
                 readingType: "closing",
+                quantityLiters: consumed,
                 notes: `Auto from heating session #${session.id}`,
                 plantName: session.plantName,
                 sourceHeatingSessionId: session.id,
@@ -11785,6 +11790,9 @@ export class DatabaseStorage implements IStorage {
           tankNumber: 1,
           meterReading: saved.ldoTank1ClosingMeter,
           readingType: "closing",
+          // Store the consumed amount here so the LDO Flow reconciliation page
+          // can sum quantityLiters directly per row (opening rows carry no qty).
+          quantityLiters: saved.ldoTank1Consumed ?? null,
           notes: `Auto from heating session #${saved.id}`,
           plantName: saved.plantName,
           sourceHeatingSessionId: saved.id,
