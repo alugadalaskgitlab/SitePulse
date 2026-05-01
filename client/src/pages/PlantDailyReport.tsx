@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useRoute } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { format } from "date-fns";
 import { heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLogWithDetails, PlantSettings } from "@shared/schema";
 import { dipCmToMt } from "@shared/bitumen-dip-chart";
+import DryerSourceFixDialog, { type DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 type DailyPlantSummary = {
   date: string;
@@ -98,13 +101,24 @@ type DailyPlantSummary = {
   };
 };
 
+type DryerMismatchRow = {
+  date: string;
+  plantName: string;
+  shiftLogId: number | null;
+  shiftLogValue: "TANK_1" | "TANK_2" | null;
+  conflictingSessions: Array<{ id: number; dryerFedFrom: "TANK_1" | "TANK_2"; sessionType: string; startTime: string | null }>;
+  hasMismatch: boolean;
+};
+
 export default function PlantDailyReport() {
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
+  const { toast } = useToast();
   const [, params] = useRoute("/plant/daily-report/:date");
   const backHref = getPlantBackLink({ defaultTab: "reports" });
   const [date, setDate] = useState(params?.date || format(new Date(), "yyyy-MM-dd"));
   const [plantName, setPlantName] = useState("Main Plant");
   const [showAllDispatches, setShowAllDispatches] = useState(false);
+  const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
 
   const { data: plantsList } = useQuery<string[]>({
     queryKey: ["/api/plant-module/shift-logs/plants"],
@@ -144,6 +158,31 @@ export default function PlantDailyReport() {
   const density = plantSettings?.bitumenDensityKgPerL ?? null;
   const fmtMt = (mt: number | null) => (mt === null ? "—" : mt.toFixed(2));
 
+  const { data: dryerMismatchRows } = useQuery<DryerMismatchRow[]>({
+    queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches", date, date],
+    queryFn: async () => {
+      const qs = new URLSearchParams({ dateFrom: date, dateTo: date });
+      const res = await fetch(`/api/plant-module/heating-sessions/dryer-source-mismatches?${qs}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!date,
+  });
+  const mismatch = (dryerMismatchRows || []).find(r => r.hasMismatch && r.plantName === plantName) ?? null;
+
+  const alignSessionsMutation = useMutation({
+    mutationFn: ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) =>
+      apiRequest("PATCH", "/api/plant-module/heating-sessions/align-dryer-source", { sessionIds, targetValue }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
+      toast({ title: "Sessions updated — dryer source corrected" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update sessions", description: err.message, variant: "destructive" });
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -172,6 +211,57 @@ export default function PlantDailyReport() {
           </a>
         </div>
       </div>
+
+      {mismatch && mismatch.shiftLogValue && (() => {
+        const slValue = mismatch.shiftLogValue;
+        const slLabel = slValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+        const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
+        const oppLabel = slValue === "TANK_1" ? "Dryer tank" : "Boiler tank";
+        const sessionIds = mismatch.conflictingSessions.map(s => s.id);
+        const n = sessionIds.length;
+        return (
+          <div
+            className="rounded-md border border-red-300 bg-red-50/60 dark:border-red-800 dark:bg-red-950/20 px-4 py-3 text-sm space-y-2"
+            data-testid="panel-dryer-mismatch"
+          >
+            <p className="text-red-700 dark:text-red-300 leading-snug font-medium">
+              <AlertTriangle className="inline w-4 h-4 mr-1 -mt-0.5" />
+              <strong>Dryer-source conflict:</strong> The shift log says <strong>{slLabel}</strong>, but {n} heating session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} <strong>{oppLabel}</strong>.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {mismatch.shiftLogId != null && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setFixDialog({
+                    open: true,
+                    target: {
+                      mode: "shift-log",
+                      recordId: mismatch.shiftLogId!,
+                      date,
+                      currentValue: slValue,
+                      suggestedValue: oppValue,
+                    },
+                  })}
+                  data-testid="button-fix-shiftlog"
+                >
+                  Fix shift log → {oppLabel}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={alignSessionsMutation.isPending}
+                onClick={() => alignSessionsMutation.mutate({ sessionIds, targetValue: slValue })}
+                data-testid="button-fix-sessions"
+              >
+                {alignSessionsMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                Fix {n} session{n !== 1 ? "s" : ""} → match shift log ({slLabel})
+              </Button>
+            </div>
+          </div>
+        );
+      })()}
 
       {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
       {!isLoading && data && (
@@ -688,6 +778,12 @@ export default function PlantDailyReport() {
           )}
         </>
       )}
+
+      <DryerSourceFixDialog
+        open={fixDialog.open}
+        onOpenChange={(v) => setFixDialog(f => ({ ...f, open: v }))}
+        target={fixDialog.target}
+      />
     </div>
   );
 }
