@@ -265,9 +265,63 @@ export default function PlantShiftLog() {
 
   const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
     setDate(d);
-    setPlantName(plant || "Main Plant");
+    const resolvedPlant = plant || "Main Plant";
+    setPlantName(resolvedPlant);
     resetForNew();
-    if (row) {
+
+    const cached = queryClient.getQueryData<PlantShiftLogWithDetails | undefined>([
+      "/api/plant-module/shift-logs/by-date",
+      d,
+      resolvedPlant,
+    ]);
+
+    if (cached) {
+      setSavedId(cached.id);
+      setShiftCode(cached.shiftCode || "DAY");
+      setPlantStartTime(cached.plantStartTime || "");
+      setPlantStopTime(cached.plantStopTime || "");
+      setWeather(cached.weather || "");
+      setAmbientTemp(cached.ambientTemp?.toString() || "");
+      setOperatorName(cached.operatorName || "");
+      setSupervisorName(cached.supervisorName || "");
+      setRemarks(cached.remarks || "");
+      setBitumenTank1Temp(cached.bitumenTank1Temp?.toString() || "");
+      setBitumenTank2Temp(cached.bitumenTank2Temp?.toString() || "");
+      setBitumenTank1OpeningDip(cached.bitumenTank1OpeningDip?.toString() || "");
+      setBitumenTank1ClosingDip(cached.bitumenTank1ClosingDip?.toString() || "");
+      setBitumenTank2OpeningDip(cached.bitumenTank2OpeningDip?.toString() || "");
+      setBitumenTank2ClosingDip(cached.bitumenTank2ClosingDip?.toString() || "");
+      setLdoTank1OpeningMeter(cached.ldoTank1OpeningMeter?.toString() || "");
+      setLdoTank1ClosingMeter(cached.ldoTank1ClosingMeter?.toString() || "");
+      setLdoTank2OpeningMeter(cached.ldoTank2OpeningMeter?.toString() || "");
+      setLdoTank2ClosingMeter(cached.ldoTank2ClosingMeter?.toString() || "");
+      setLdoTank1OpeningDip(cached.ldoTank1OpeningDip?.toString() || "");
+      setLdoTank1ClosingDip(cached.ldoTank1ClosingDip?.toString() || "");
+      setLdoTank2OpeningDip(cached.ldoTank2OpeningDip?.toString() || "");
+      setLdoTank2ClosingDip(cached.ldoTank2ClosingDip?.toString() || "");
+      setDryerFedFrom(cached.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
+      const legacyHasT1Reading =
+        cached.ldoTank1OpeningMeter != null || cached.ldoTank1ClosingMeter != null;
+      setBoilerRunsDuringProduction(!!cached.boilerRunsDuringProduction || legacyHasT1Reading);
+      setNoMainPlantOps(!!cached.noMainPlantOps);
+      setAutoFillT1Source("");
+      setAutoFillT1ClosingSource("");
+      setAutoFillT2Source("");
+      autoFilledT1ValueRef.current = null;
+      autoFilledT1ClosingValueRef.current = null;
+      autoFilledT2ValueRef.current = null;
+      setManpower(cached.manpower.map(m => ({
+        name: m.name,
+        role: m.role,
+        contractorName: m.contractorName ?? null,
+        category: m.category ?? null,
+        gender: m.gender ?? null,
+      })));
+      setIdleEvents(cached.idleEvents.map(e => ({
+        startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
+      })));
+      setIsFinalized(cached.isFinalized || 0);
+    } else if (row) {
       if (row.shiftCode) setShiftCode(row.shiftCode);
       if (row.plantStartTime) setPlantStartTime(row.plantStartTime);
       if (row.plantStopTime) setPlantStopTime(row.plantStopTime);
@@ -276,6 +330,7 @@ export default function PlantShiftLog() {
       if (row.operatorName) setOperatorName(row.operatorName);
       if (row.supervisorName) setSupervisorName(row.supervisorName);
     }
+
     setViewMode("edit");
   };
   const openNew = () => {
