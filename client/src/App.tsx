@@ -1,6 +1,9 @@
 import { Switch, Route } from "wouter";
+import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { queryClient } from "./lib/queryClient";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/lib/auth-context";
@@ -84,13 +87,34 @@ function Watermark() {
 }
 
 function AppHeader() {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  function handleRefresh() {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    queryClient.invalidateQueries().finally(() => {
+      setTimeout(() => setIsRefreshing(false), 600);
+    });
+  }
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 items-center justify-center px-4 md:px-8 max-w-7xl">
-        <div className="flex items-center gap-2">
+      <div className="container mx-auto flex h-14 items-center px-4 md:px-8 max-w-7xl">
+        <div className="flex items-center gap-2 flex-1 justify-center">
           <img src={companyLogo} alt="HLC" className="h-8 w-8 rounded object-cover" />
           <span className="font-semibold text-lg hidden sm:inline">High Lane Constructions Pvt Ltd</span>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          aria-label="Refresh data"
+          data-testid="button-global-refresh"
+          className="shrink-0"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+        </Button>
       </div>
     </header>
   );
