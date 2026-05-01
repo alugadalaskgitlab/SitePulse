@@ -1239,7 +1239,9 @@ export default function PlantDispatches() {
                 const dayDispatches = groupedDispatches[dateKey].sort((a, b) => (b.time || "").localeCompare(a.time || ""));
                 return (
                   <div key={dateKey}>
-                    <h3 className="font-semibold text-lg mb-3 border-b pb-2">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
+                    <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-3 pt-1">
+                      <h3 className="font-semibold text-lg">{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</h3>
+                    </div>
                     <div className="space-y-2">
                       {dayDispatches.map((dispatch) => {
                         const template = templates?.find(t => t.id === dispatch.mixTemplateId);
