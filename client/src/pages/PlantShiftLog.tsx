@@ -578,6 +578,23 @@ export default function PlantShiftLog() {
     },
   });
 
+  // Task #353 — Fix shift log to match sessions (bidirectional quick-fix).
+  const fixShiftLogMutation = useMutation({
+    mutationFn: async ({ shiftLogId, dryerFedFrom }: { shiftLogId: number; dryerFedFrom: "TANK_1" | "TANK_2" }) => {
+      const res = await apiRequest("PATCH", `/api/plant-module/shift-logs/${shiftLogId}/dryer-source`, { dryerFedFrom });
+      return res.json() as Promise<{ success: boolean }>;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      const label = variables.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+      toast({ title: `Shift log updated to ${label}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Fix shift log failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Task #254 — Reactive query: roll up every heating session attributed to
   // this production day (i.e. all sessions since the prior production day,
   // overnight pre-heat included). Drives both the Boiler Meter auto-prefill
@@ -867,13 +884,10 @@ export default function PlantShiftLog() {
                               {mismatch && mismatch.shiftLogValue && (() => {
                                 const slValue = mismatch.shiftLogValue;
                                 const slLabel = slValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+                                const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
                                 const oppLabel = slValue === "TANK_1" ? "Dryer tank" : "Boiler tank";
                                 const sessionIds = mismatch.conflictingSessions.map(s => s.id);
                                 const n = sessionIds.length;
-                                const fixLogHref = appendPlantContext(
-                                  `/plant/shift-log/${r.date}?plant=${encodeURIComponent(r.plantName)}&focus=dryerFedFrom`,
-                                  { defaultTab: "operations" }
-                                );
                                 return (
                                   <div
                                     className="mt-2 rounded-md border border-red-300 bg-red-50/60 dark:border-red-800 dark:bg-red-950/20 px-3 py-2 text-xs space-y-1.5"
@@ -887,18 +901,24 @@ export default function PlantShiftLog() {
                                         size="sm"
                                         variant="destructive"
                                         className="h-7 text-xs"
-                                        disabled={alignMutation.isPending}
+                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending}
                                         onClick={() => alignMutation.mutate({ sessionIds, targetValue: slValue })}
                                         data-testid={`button-fix-sessions-${r.id}`}
                                       >
                                         {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                         Fix {n} session{n !== 1 ? "s" : ""} → match shift log ({slLabel})
                                       </Button>
-                                      <Link href={fixLogHref}>
-                                        <span className="text-red-600 dark:text-red-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[11px]" data-testid={`link-fix-shiftlog-${r.id}`}>
-                                          Fix the shift log instead →
-                                        </span>
-                                      </Link>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-red-400 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending}
+                                        onClick={() => fixShiftLogMutation.mutate({ shiftLogId: r.id, dryerFedFrom: oppValue })}
+                                        data-testid={`button-fix-shiftlog-${r.id}`}
+                                      >
+                                        {fixShiftLogMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                                        Fix shift log → {oppLabel}
+                                      </Button>
                                     </div>
                                   </div>
                                 );
