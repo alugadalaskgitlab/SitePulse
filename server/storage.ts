@@ -11415,13 +11415,15 @@ export class DatabaseStorage implements IStorage {
     const dipT1Close = shiftDips.find(d => d.tankNumber === 1 && d.readingType === "closing");
     const dipT2Open = shiftDips.find(d => d.tankNumber === 2 && d.readingType === "opening");
     const dipT2Close = shiftDips.find(d => d.tankNumber === 2 && d.readingType === "closing");
+    // Signed delta: positive = consumed, negative = tank refilled during shift.
+    // Not clamped to zero so refill events remain visible for discrepancy analysis.
     const dipDeltaT1L: number | null =
       (dipT1Open?.volumeLiters != null && dipT1Close?.volumeLiters != null)
-        ? Math.round(Math.max(0, dipT1Open.volumeLiters - dipT1Close.volumeLiters) * 10) / 10
+        ? Math.round((dipT1Open.volumeLiters - dipT1Close.volumeLiters) * 10) / 10
         : null;
     const dipDeltaT2L: number | null =
       (dipT2Open?.volumeLiters != null && dipT2Close?.volumeLiters != null)
-        ? Math.round(Math.max(0, dipT2Open.volumeLiters - dipT2Close.volumeLiters) * 10) / 10
+        ? Math.round((dipT2Open.volumeLiters - dipT2Close.volumeLiters) * 10) / 10
         : null;
 
     return {
