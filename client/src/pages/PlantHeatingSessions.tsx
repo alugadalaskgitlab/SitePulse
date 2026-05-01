@@ -886,20 +886,23 @@ export default function PlantHeatingSessions() {
                                   );
                                 })()}
                                 {/* Intra-session conflict: no authoritative source, show two options */}
-                                {hasIntraConflict && !hasShiftLogConflict && (() => {
+                                {hasIntraConflict && (() => {
                                   const n = intraConflictSessions.length;
                                   const allIds = intraConflictSessions.map(s => s.id);
                                   return (
                                     <>
+                                      {hasShiftLogConflict && (
+                                        <hr className="border-orange-300 dark:border-orange-700" />
+                                      )}
                                       <p className="text-orange-800 dark:text-orange-300 leading-snug">
-                                        ⚠ <strong>{dm.plantName}</strong> — {n} heating session{n !== 1 ? "s" : ""} disagree with each other on dryer source. Choose which is correct:
+                                        ⚠ <strong>{dm.plantName}</strong> — {n} heating session{n !== 1 ? "s" : ""} disagree with each other on dryer source{hasShiftLogConflict ? " (separate from shift-log conflict above)" : ""}. Choose which is correct:
                                       </p>
                                       <div className="flex flex-wrap gap-2">
-                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Set all → Boiler tank
                                         </Button>
-                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-intra-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Set all → Dryer tank
                                         </Button>
