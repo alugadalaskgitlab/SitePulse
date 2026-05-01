@@ -159,16 +159,16 @@ export default function PlantDailyReport() {
   const fmtMt = (mt: number | null) => (mt === null ? "—" : mt.toFixed(2));
 
   const { data: dryerMismatchRows } = useQuery<DryerMismatchRow[]>({
-    queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches", date, date],
+    queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches", date, date, plantName],
     queryFn: async () => {
-      const qs = new URLSearchParams({ dateFrom: date, dateTo: date });
+      const qs = new URLSearchParams({ dateFrom: date, dateTo: date, plant: plantName });
       const res = await fetch(`/api/plant-module/heating-sessions/dryer-source-mismatches?${qs}`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!date,
+    enabled: !!date && !!plantName,
   });
-  const mismatch = (dryerMismatchRows || []).find(r => r.hasMismatch && r.plantName === plantName) ?? null;
+  const mismatch = (dryerMismatchRows || []).find(r => r.hasMismatch) ?? null;
 
   const alignSessionsMutation = useMutation({
     mutationFn: ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) =>
