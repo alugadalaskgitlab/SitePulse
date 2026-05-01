@@ -2219,6 +2219,7 @@ function EquipmentMasterSection() {
   const canExport = sectionCan("master_equipment", "view_reports");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
+  const [deleteEquipmentId, setDeleteEquipmentId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [ownership, setOwnership] = useState("owned");
@@ -2275,11 +2276,16 @@ function EquipmentMasterSection() {
       apiRequest("DELETE", `/api/plant-module/equipment/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+      setDeleteEquipmentId(null);
       toast({ title: "Equipment deleted successfully" });
     },
     onError: (error: any) => {
+      setDeleteEquipmentId(null);
       if (isForbiddenError(error)) {
         toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else if (error?.status === 404 || error?.message?.includes("404") || error?.message?.toLowerCase().includes("not found")) {
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+        toast({ title: "Not found", description: "This equipment record no longer exists.", variant: "destructive" });
       } else {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
@@ -2483,23 +2489,33 @@ function EquipmentMasterSection() {
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 </div>
-                {canEdit && (
+                {(canEdit || canDelete) && (
                   <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => toggleActiveMutation.mutate(equip.id)}
-                      disabled={toggleActiveMutation.isPending}
-                      title={isInactive ? "Activate" : "Deactivate"}
-                      data-testid={`button-toggle-equipment-${equip.id}`}
-                    >
-                      <Power className={`w-4 h-4 ${isInactive ? "text-green-600" : "text-gray-400"}`} />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(equip)} data-testid={`button-edit-equipment-${equip.id}`}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
+                    {canEdit && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleActiveMutation.mutate(equip.id)}
+                          disabled={toggleActiveMutation.isPending}
+                          title={isInactive ? "Activate" : "Deactivate"}
+                          data-testid={`button-toggle-equipment-${equip.id}`}
+                        >
+                          <Power className={`w-4 h-4 ${isInactive ? "text-green-600" : "text-gray-400"}`} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(equip)} data-testid={`button-edit-equipment-${equip.id}`}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
                     {canDelete && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(equip.id)} data-testid={`button-delete-equipment-${equip.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteEquipmentId(equip.id)}
+                        title="Delete"
+                        data-testid={`button-delete-equipment-${equip.id}`}
+                      >
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     )}
@@ -2511,6 +2527,28 @@ function EquipmentMasterSection() {
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={deleteEquipmentId !== null} onOpenChange={(open) => { if (!open) setDeleteEquipmentId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Equipment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete this equipment record? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-equipment">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              onClick={() => { if (deleteEquipmentId !== null) deleteMutation.mutate(deleteEquipmentId); }}
+              data-testid="button-confirm-delete-equipment"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
