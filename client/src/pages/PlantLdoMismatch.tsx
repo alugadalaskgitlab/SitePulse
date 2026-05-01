@@ -607,6 +607,7 @@ export default function PlantLdoMismatch() {
     const path = `/plant/ldo-mismatch/${dateFrom}?${newSp.toString()}`;
     setLocation(path);
     setExpandedDates(new Set());
+    setShowOnlyMismatches(false);
   }
 
   const effectiveDateFrom = sp.get("dateFrom") || routeDate;
@@ -757,6 +758,16 @@ export default function PlantLdoMismatch() {
   const isMultiDay = dates.length > 1;
 
   const [cleanupPendingDate, setCleanupPendingDate] = useState<string | null>(null);
+  const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+
+  useEffect(() => {
+    if (mismatchCount === 0) setShowOnlyMismatches(false);
+  }, [mismatchCount]);
+
+  const displayedDaySummaries = useMemo(
+    () => (showOnlyMismatches ? daySummaries.filter(d => d.hasMismatch) : daySummaries),
+    [daySummaries, showOnlyMismatches],
+  );
 
   const cleanupMutation = useMutation({
     mutationFn: ({ date }: { date: string }) => {
@@ -1289,12 +1300,38 @@ export default function PlantLdoMismatch() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GitCompare className="w-5 h-5 text-amber-600" />
-                {isMultiDay
-                  ? `Day-by-day summary (${effectiveDateFrom} → ${effectiveDateTo})`
-                  : `Reconciliation detail for ${effectiveDateFrom}`}
-              </CardTitle>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <CardTitle className="flex items-center gap-2">
+                  <GitCompare className="w-5 h-5 text-amber-600" />
+                  {isMultiDay
+                    ? `Day-by-day summary (${effectiveDateFrom} → ${effectiveDateTo})`
+                    : `Reconciliation detail for ${effectiveDateFrom}`}
+                </CardTitle>
+                {daySummaries.length > 1 && (
+                  <label
+                    className={`flex items-center gap-2 text-sm cursor-pointer select-none ${mismatchCount === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                    data-testid="toggle-mismatch-filter-wrapper"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={showOnlyMismatches}
+                      onChange={e => setShowOnlyMismatches(e.target.checked)}
+                      disabled={mismatchCount === 0}
+                      className="h-4 w-4 rounded border-gray-300 accent-destructive cursor-pointer"
+                      data-testid="checkbox-show-only-mismatches"
+                    />
+                    Show only days with mismatches
+                    {mismatchCount > 0 && (
+                      <Badge
+                        className="bg-destructive text-destructive-foreground"
+                        data-testid="badge-mismatch-filter-count"
+                      >
+                        {mismatchCount}
+                      </Badge>
+                    )}
+                  </label>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="overflow-x-auto p-0">
               <table className="w-full text-sm">
@@ -1311,7 +1348,14 @@ export default function PlantLdoMismatch() {
                   </tr>
                 </thead>
                 <tbody>
-                  {daySummaries.map(day => {
+                  {displayedDaySummaries.length === 0 && showOnlyMismatches && (
+                    <tr>
+                      <td colSpan={8} className="py-6 px-4 text-center text-sm text-muted-foreground" data-testid="text-no-mismatch-rows">
+                        No days with mismatches in this range.
+                      </td>
+                    </tr>
+                  )}
+                  {displayedDaySummaries.map(day => {
                     const isExpanded = expandedDates.has(day.date);
                     return (
                       <Fragment key={day.date}>
