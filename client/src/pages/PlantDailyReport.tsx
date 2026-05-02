@@ -447,29 +447,55 @@ export default function PlantDailyReport() {
               <KV label="Theoretical Bitumen MT" value={fmt(data.production.theoreticalBitumenMT, 3)} />
               <KV label="Theoretical LDO L" value={fmt(data.production.theoreticalLdoL, 1)} />
             </CardContent>
+            {!data.shift?.noMainPlantOps && (data.ldo.consumedT1L != null || data.ldo.consumedT2L != null) && (() => {
+              const totalL = data.ldo.consumedTotalL ?? 0;
+              const shiftHrs = (totalL > 0 && data.ldo.lPerHour && data.ldo.lPerHour > 0)
+                ? totalL / data.ldo.lPerHour : null;
+              const dryerL = data.ldo.consumedT2L;
+              const boilerL = data.ldo.consumedT1L;
+              const dryerLHr = (shiftHrs && dryerL != null) ? dryerL / shiftHrs : null;
+              const boilerLHr = (shiftHrs && boilerL != null) ? boilerL / shiftHrs : null;
+              const totalLMT = (data.ldo.dryerLPerMT != null && data.ldo.boilerLPerMT != null)
+                ? data.ldo.dryerLPerMT + data.ldo.boilerLPerMT : null;
+              return (
+                <CardContent className="border-t pt-4 pb-3" data-testid="section-ldo-production-stats">
+                  <p className="text-xs font-medium text-muted-foreground mb-3">LDO Consumption</p>
+                  <div className="grid grid-cols-[5rem_1fr_1fr_1fr] gap-x-4 gap-y-2 text-sm items-baseline">
+                    <div />
+                    <div className="text-xs text-muted-foreground">Consumed (L)</div>
+                    <div className="text-xs text-muted-foreground">L / hr</div>
+                    <div className="text-xs text-muted-foreground">L / MT</div>
+
+                    <div className="text-xs text-muted-foreground">Dryer</div>
+                    <div className="font-semibold" data-testid="text-prod-dryer-l">{fmt(dryerL, 1)}</div>
+                    <div className="font-semibold" data-testid="text-prod-dryer-lhr">{dryerLHr != null ? dryerLHr.toFixed(1) : "—"}</div>
+                    <div className="font-semibold" data-testid="text-prod-dryer-lmt">{fmt(data.ldo.dryerLPerMT, 2)}</div>
+
+                    <div className="text-xs text-muted-foreground">Boiler</div>
+                    <div className="font-semibold" data-testid="text-prod-boiler-l">{fmt(boilerL, 1)}</div>
+                    <div className="font-semibold" data-testid="text-prod-boiler-lhr">{boilerLHr != null ? boilerLHr.toFixed(1) : "—"}</div>
+                    <div className="font-semibold" data-testid="text-prod-boiler-lmt">{fmt(data.ldo.boilerLPerMT, 2)}</div>
+
+                    <div className="text-xs font-semibold">Total</div>
+                    <div className="font-bold" data-testid="text-prod-total-l">{fmt(data.ldo.consumedTotalL, 1)}</div>
+                    <div className="font-bold" data-testid="text-prod-total-lhr">{fmt(data.ldo.lPerHour, 1)}</div>
+                    <div className="font-bold" data-testid="text-prod-total-lmt">{totalLMT != null ? totalLMT.toFixed(2) : "—"}</div>
+                  </div>
+                </CardContent>
+              );
+            })()}
           </Card>
 
           {!data.shift?.noMainPlantOps && (
           <Card>
             <CardHeader>
               <CardTitle>
-                LDO Consumption
+                LDO Detail
                 {data.ldo.source && data.ldo.source !== "shift_meter" ? <Badge variant="secondary" className="ml-2">Source: {data.ldo.source}</Badge> : null}
                 {data.ldo.primarySourceT1 === "sessions" ? <Badge variant="default" className="ml-2" data-testid="badge-t1-source">Boiler Meter from Heating Sessions</Badge> : null}
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">Both meters draw from the main LDO tank.</p>
+              <p className="text-xs text-muted-foreground mt-1">Dip-stick cross-check and tank stock deduction.</p>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
-              <KV label={`Boiler Meter L${data.ldo.primarySourceT1 === "sessions" ? " (sessions)" : ""}`} value={fmt(data.ldo.consumedT1L, 1)} />
-              <KV label="Dryer Meter L" value={fmt(data.ldo.consumedT2L, 1)} />
-              <KV label="Total L" value={fmt(data.ldo.consumedTotalL, 1)} />
-              <KV label="L / Hour (combined)" value={fmt(data.ldo.lPerHour, 2)} />
-              <KV label="Dryer L / MT" value={fmt(data.ldo.dryerLPerMT, 3)} />
-              <KV label="Boiler L / MT" value={fmt(data.ldo.boilerLPerMT, 3)} />
-              {data.ldo.primarySourceT1 === "sessions" && data.ldo.reconciliationT1ShiftL != null && (
-                <KV label="Boiler Meter Shift (recon)" value={fmt(data.ldo.reconciliationT1ShiftL, 1)} />
-              )}
-            </CardContent>
             {(data.ldo.dipDeltaT1L != null || data.ldo.dipDeltaT2L != null) && (() => {
               const DIP_THRESHOLD_L = 200;
               const t1Var = (data.ldo.consumedT1L != null && data.ldo.dipDeltaT1L != null)

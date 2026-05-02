@@ -103,9 +103,7 @@ export default function PlantHeatingSessions() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
-  // When true, the dialog will scroll and focus the "Dryer fed from" select
-  // after it opens (set when the user clicks a per-session dryer mismatch badge).
-  const [focusDryerOnOpen, setFocusDryerOnOpen] = useState(false);
+  const [showTemps, setShowTemps] = useState(false);
 
   const [dryerFixDialogOpen, setDryerFixDialogOpen] = useState(false);
   const [dryerFixTarget, setDryerFixTarget] = useState<DryerSourceFixTarget | null>(null);
@@ -544,8 +542,6 @@ export default function PlantHeatingSessions() {
   });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const [newGenDialogOpen, setNewGenDialogOpen] = useState(false);
-  const [newGenNameInput, setNewGenNameInput] = useState("");
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -645,17 +641,6 @@ export default function PlantHeatingSessions() {
     setDialogOpen(true);
   };
 
-  // Focus the "Dryer fed from" select when the dialog opens from a mismatch badge click.
-  useEffect(() => {
-    if (!dialogOpen || !focusDryerOnOpen) return;
-    const timer = setTimeout(() => {
-      const el = document.querySelector<HTMLElement>('[data-testid="select-dryer-fed-from"]');
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      el?.focus();
-      setFocusDryerOnOpen(false);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [dialogOpen, focusDryerOnOpen]);
 
   // Group sessions by date for the list.
   const grouped = useMemo(() => {
@@ -1131,53 +1116,51 @@ export default function PlantHeatingSessions() {
               <div><Label>Start Time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
               <div><Label>End Time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
               <div><Label>Duration (h)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-duration">{dur ?? "—"}</div></div>
-              <div>
-                <Label>Dryer fed from</Label>
-                <Select
-                  value={form.dryerFedFrom ?? "NONE"}
-                  onValueChange={v => {
-                    autoFilledDryerRef.current = null;
-                    setField("dryerFedFrom", v === "NONE" ? null : v as "TANK_1" | "TANK_2");
-                  }}
-                >
-                  <SelectTrigger data-testid="select-dryer-fed-from">
-                    <SelectValue placeholder="Not set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
-                    <SelectItem value="TANK_2">Dryer tank</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!form.id && form.dryerFedFrom && form.dryerFedFrom === autoFilledDryerRef.current && (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-dryer-autofill-hint">
-                    From shift log — change if different
-                  </p>
-                )}
-              </div>
             </div>
 
-            <Card>
-              <CardHeader className="py-3"><CardTitle className="text-base">Hot-Oil & Bitumen Temperatures</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
-                  <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
-                </div>
-                <div className="grid grid-cols-[80px_1fr_1fr] md:grid-cols-[120px_1fr_1fr] gap-3 items-end">
-                  <div className="text-sm font-medium text-muted-foreground pb-2">Tank</div>
-                  <div className="text-sm font-medium text-muted-foreground pb-2">Start °C</div>
-                  <div className="text-sm font-medium text-muted-foreground pb-2">End °C</div>
+            <div>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowTemps(v => !v)}
+                data-testid="button-toggle-temps"
+              >
+                <span className="text-xs">{showTemps ? "▼" : "▶"}</span>
+                Hot-Oil & Bitumen Temperatures
+                {!showTemps && (
+                  <span className="text-xs font-normal ml-1">
+                    {[form.hotOilTempEnd, form.bitumenTank1TempEnd, form.bitumenTank2TempEnd].some(v => v)
+                      ? `(${[form.hotOilTempEnd && `Hot-oil ${form.hotOilTempEnd}°C`, form.bitumenTank1TempEnd && `T1 ${form.bitumenTank1TempEnd}°C`, form.bitumenTank2TempEnd && `T2 ${form.bitumenTank2TempEnd}°C`].filter(Boolean).join(", ")})`
+                      : "(not entered)"}
+                  </span>
+                )}
+              </button>
+              {showTemps && (
+                <Card className="mt-2">
+                  <CardContent className="pt-4 space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
+                      <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+                      <div><Label>Hot-Oil Start °C</Label><Input type="number" step="0.1" value={form.hotOilTempStart} onChange={e => setField("hotOilTempStart", e.target.value)} data-testid="input-hot-oil-start" /></div>
+                      <div><Label>Hot-Oil End °C</Label><Input type="number" step="0.1" value={form.hotOilTempEnd} onChange={e => setField("hotOilTempEnd", e.target.value)} data-testid="input-hot-oil-end" /></div>
+                    </div>
+                    <div className="grid grid-cols-[80px_1fr_1fr] md:grid-cols-[120px_1fr_1fr] gap-3 items-end">
+                      <div className="text-sm font-medium text-muted-foreground pb-2">Tank</div>
+                      <div className="text-sm font-medium text-muted-foreground pb-2">Start °C</div>
+                      <div className="text-sm font-medium text-muted-foreground pb-2">End °C</div>
 
-                  <Label className="pb-2">Bitumen tank 1 (boiler)</Label>
-                  <Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" />
-                  <Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" />
+                      <Label className="pb-2">Bitumen tank 1 (boiler)</Label>
+                      <Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" />
+                      <Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" />
 
-                  <Label className="pb-2">Bitumen tank 2 (dryer)</Label>
-                  <Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" />
-                  <Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" />
-                </div>
-              </CardContent>
-            </Card>
+                      <Label className="pb-2">Bitumen tank 2 (dryer)</Label>
+                      <Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" />
+                      <Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
             <Card>
               <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
@@ -1196,145 +1179,6 @@ export default function PlantHeatingSessions() {
                 <div><Label>Closing Meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
                 <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
                 <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="py-3"><CardTitle className="text-base">Generator (DG) for this Session</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Label className="mr-2">DG Mode:</Label>
-                  <Select value={form.dgMode} onValueChange={v => setField("dgMode", v as DgMode)}>
-                    <SelectTrigger className="w-48" data-testid="select-dg-mode"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No DG used</SelectItem>
-                      <SelectItem value="inline">Inline (capture here, auto-create Generator Log)</SelectItem>
-                      <SelectItem value="link">Link Existing Generator Log</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {form.dgMode === "inline" && (
-                  <>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="md:col-span-2"><Label>Generator</Label>
-                        <Select
-                          value={form.dgGeneratorName || undefined}
-                          onValueChange={v => {
-                            if (v === "__new__") {
-                              setNewGenNameInput("");
-                              setNewGenDialogOpen(true);
-                            } else {
-                              setField("dgGeneratorName", v);
-                            }
-                          }}
-                        >
-                          <SelectTrigger data-testid="select-dg-generator"><SelectValue placeholder="Pick a generator" /></SelectTrigger>
-                          <SelectContent>
-                            {(generatorMasters || []).map(g => (
-                              <SelectItem key={g.name} value={g.name}>{g.name}</SelectItem>
-                            ))}
-                            {form.dgGeneratorName &&
-                              !(generatorMasters || []).some(g => g.name === form.dgGeneratorName) && (
-                                <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
-                              )}
-                            <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div><Label>DG Start</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
-                      <div><Label>DG End</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
-                      <div><Label>Hours from Time</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-time">{dgDurFromTime ?? "—"}</div></div>
-                      <div><Label>Hour-Meter Opening</Label><Input type="number" step="0.01" value={form.dgOpeningHourMeter} onChange={e => setField("dgOpeningHourMeter", e.target.value)} data-testid="input-dg-hm-open" /></div>
-                      <div><Label>Hour-Meter Closing</Label><Input type="number" step="0.01" value={form.dgClosingHourMeter} onChange={e => setField("dgClosingHourMeter", e.target.value)} data-testid="input-dg-hm-close" /></div>
-                      <div><Label>Hours from Meter</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-dg-hrs-meter">{dgDurFromMeter ?? "—"}</div></div>
-                      <div><Label>DG Hours Used</Label><div className="px-3 py-2 rounded bg-emerald-50 dark:bg-emerald-950/30 font-semibold text-sm" data-testid="text-dg-hrs-used">{dgHoursUsed != null ? dgHoursUsed.toFixed(2) : "—"}</div></div>
-                      <div>
-                        <Label>HSD Opening (L)</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          value={form.dgOpeningDiesel}
-                          onChange={e => setForm(p => ({ ...p, dgOpeningDiesel: e.target.value, autoFilledDgOpening: false }))}
-                          data-testid="input-dg-open"
-                        />
-                        {form.autoFilledDgOpening && (
-                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-dg-open-hint">
-                            Auto-filled from previous tank balance — edit to override
-                          </p>
-                        )}
-                      </div>
-                      <div><Label>HSD Issued (L)</Label><Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" /></div>
-                      <div><Label>HSD Closing (L)</Label><Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" /></div>
-                      <div><Label>HSD Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div></div>
-                      <div>
-                        <Label>Diesel Balance in Tank (last)</Label>
-                        <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-prev-balance">
-                          {selectedGeneratorEquipmentId == null
-                            ? "—"
-                            : dgPrevBalance
-                              ? `${dgPrevBalance.previousBalance.toFixed(2)} L`
-                              : "…"}
-                        </div>
-                      </div>
-                      <div>
-                        <Label>New Balance in Tank</Label>
-                        <div className="px-3 py-2 rounded bg-sky-50 dark:bg-sky-950/30 font-semibold text-sm" data-testid="text-dg-new-balance">
-                          {(() => {
-                            if (selectedGeneratorEquipmentId == null || !dgPrevBalance) return "—";
-                            const issued = parseFloat(form.dgIssuedDiesel) || 0;
-                            const consumed = dgConsumed ?? 0;
-                            const next = dgPrevBalance.previousBalance + issued - consumed;
-                            return `${next.toFixed(2)} L`;
-                          })()}
-                        </div>
-                      </div>
-                      <div><Label>HSD L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Tip: enter both clock time and hour-meter readings — the system uses the hour-meter when available and falls back to time. DG Hours Used drives the L/Hr metric. The "Diesel Balance in Tank (last)" chip is the most recent tank reading from Equipment Usage; "New Balance" is last + Issued − Consumed.
-                    </p>
-                  </>
-                )}
-
-                {form.dgMode === "link" && (
-                  <div>
-                    <Label>Existing DG Run (same date)</Label>
-                    <Select
-                      value={
-                        form.linkSelection ||
-                        (form.generatorLogId ? `gl-${form.generatorLogId}` : "")
-                      }
-                      onValueChange={v => setForm(p => ({
-                        ...p,
-                        linkSelection: v,
-                        // generator_log picks take effect immediately;
-                        // equipment_usage picks are materialized on save.
-                        generatorLogId: v.startsWith("gl-") ? parseInt(v.slice(3)) : null,
-                      }))}
-                    >
-                      <SelectTrigger data-testid="select-link-dg"><SelectValue placeholder="Pick a DG run" /></SelectTrigger>
-                      <SelectContent>
-                        {generatorOptionsForDate.map(g => {
-                          const key = optionKey(g);
-                          const labelId = g.source === "generator_log" ? `#${g.id}` : `EU#${g.equipmentUsageId}`;
-                          const suffix = g.source === "equipment_usage" ? " · from Equipment Usage" : "";
-                          return (
-                            <SelectItem key={key} value={key}>
-                              {labelId} {g.generatorName} {g.startTime || "?"}-{g.endTime || "?"} ({g.hoursRun?.toFixed(1) || "?"}h, {g.dieselConsumed?.toFixed(1) || "?"}L){suffix}
-                            </SelectItem>
-                          );
-                        })}
-                        {!generatorOptionsForDate.length && <SelectItem value="__none__" disabled>No DG runs for this date</SelectItem>}
-                      </SelectContent>
-                    </Select>
-                    {form.linkSelection?.startsWith("eu-") && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        This is an Equipment Usage entry — on Save it will be mirrored into Generator Logs and linked to this session.
-                      </p>
-                    )}
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -1379,45 +1223,6 @@ export default function PlantHeatingSessions() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <Dialog open={newGenDialogOpen} onOpenChange={setNewGenDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Add New Generator</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 py-1">
-            <Label htmlFor="phs-new-gen-name">Generator Name</Label>
-            <Input
-              id="phs-new-gen-name"
-              placeholder="e.g. 125 KVA GENERATOR"
-              value={newGenNameInput}
-              onChange={e => setNewGenNameInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter") {
-                  const name = newGenNameInput.trim();
-                  if (name) { setField("dgGeneratorName", name); setNewGenDialogOpen(false); }
-                }
-              }}
-              data-testid="input-new-gen-name"
-              autoFocus
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" size="sm" onClick={() => setNewGenDialogOpen(false)} data-testid="button-new-gen-cancel">Cancel</Button>
-            <Button
-              size="sm"
-              disabled={!newGenNameInput.trim()}
-              onClick={() => {
-                const name = newGenNameInput.trim();
-                if (name) { setField("dgGeneratorName", name); setNewGenDialogOpen(false); }
-              }}
-              data-testid="button-new-gen-confirm"
-            >
-              Add
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <DryerSourceFixDialog
         open={dryerFixDialogOpen}
