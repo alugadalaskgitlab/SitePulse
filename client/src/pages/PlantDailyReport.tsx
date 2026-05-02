@@ -459,24 +459,24 @@ export default function PlantDailyReport() {
                 ? data.ldo.dryerLPerMT + data.ldo.boilerLPerMT : null;
               return (
                 <CardContent className="border-t pt-4 pb-3" data-testid="section-ldo-production-stats">
-                  <p className="text-xs font-medium text-muted-foreground mb-3">LDO Consumption</p>
+                  <p className="text-sm font-semibold mb-3">LDO Consumption</p>
                   <div className="grid grid-cols-[5rem_1fr_1fr_1fr] gap-x-4 gap-y-2 text-sm items-baseline">
                     <div />
-                    <div className="text-xs text-muted-foreground">Consumed (L)</div>
-                    <div className="text-xs text-muted-foreground">L / hr</div>
-                    <div className="text-xs text-muted-foreground">L / MT</div>
+                    <div className="text-xs font-medium text-muted-foreground">Consumed (L)</div>
+                    <div className="text-xs font-medium text-muted-foreground">L / hr</div>
+                    <div className="text-xs font-medium text-muted-foreground">L / MT</div>
 
-                    <div className="text-xs text-muted-foreground">Dryer</div>
+                    <div className="text-sm font-medium">Dryer</div>
                     <div className="font-semibold" data-testid="text-prod-dryer-l">{fmt(dryerL, 1)}</div>
                     <div className="font-semibold" data-testid="text-prod-dryer-lhr">{dryerLHr != null ? dryerLHr.toFixed(1) : "—"}</div>
                     <div className="font-semibold" data-testid="text-prod-dryer-lmt">{fmt(data.ldo.dryerLPerMT, 2)}</div>
 
-                    <div className="text-xs text-muted-foreground">Boiler</div>
+                    <div className="text-sm font-medium">Boiler</div>
                     <div className="font-semibold" data-testid="text-prod-boiler-l">{fmt(boilerL, 1)}</div>
                     <div className="font-semibold" data-testid="text-prod-boiler-lhr">{boilerLHr != null ? boilerLHr.toFixed(1) : "—"}</div>
                     <div className="font-semibold" data-testid="text-prod-boiler-lmt">{fmt(data.ldo.boilerLPerMT, 2)}</div>
 
-                    <div className="text-xs font-semibold">Total</div>
+                    <div className="text-sm font-bold">Total</div>
                     <div className="font-bold" data-testid="text-prod-total-l">{fmt(data.ldo.consumedTotalL, 1)}</div>
                     <div className="font-bold" data-testid="text-prod-total-lhr">{fmt(data.ldo.lPerHour, 1)}</div>
                     <div className="font-bold" data-testid="text-prod-total-lmt">{totalLMT != null ? totalLMT.toFixed(2) : "—"}</div>

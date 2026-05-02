@@ -1121,14 +1121,14 @@ export default function PlantHeatingSessions() {
             <div>
               <button
                 type="button"
-                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1.5 text-sm font-semibold text-foreground hover:text-foreground/70 transition-colors"
                 onClick={() => setShowTemps(v => !v)}
                 data-testid="button-toggle-temps"
               >
                 <span className="text-xs">{showTemps ? "▼" : "▶"}</span>
                 Hot-Oil & Bitumen Temperatures
                 {!showTemps && (
-                  <span className="text-xs font-normal ml-1">
+                  <span className="text-sm font-normal text-muted-foreground ml-1">
                     {[form.hotOilTempEnd, form.bitumenTank1TempEnd, form.bitumenTank2TempEnd].some(v => v)
                       ? `(${[form.hotOilTempEnd && `Hot-oil ${form.hotOilTempEnd}°C`, form.bitumenTank1TempEnd && `T1 ${form.bitumenTank1TempEnd}°C`, form.bitumenTank2TempEnd && `T2 ${form.bitumenTank2TempEnd}°C`].filter(Boolean).join(", ")})`
                       : "(not entered)"}
