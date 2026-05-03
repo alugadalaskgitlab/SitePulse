@@ -78,7 +78,7 @@ export default function PlantShiftLog() {
   const [ldoTank2ClosingDip, setLdoTank2ClosingDip] = useState("");
   // Which physical tank fed the dryer this shift; controls which tank's
   // stock balance the dryer-meter consumption debits.
-  const [dryerFedFrom, setDryerFedFrom] = useState<"TANK_1" | "TANK_2">("TANK_2");
+  const [dryerFedFrom, setDryerFedFrom] = useState<"TANK_1" | "TANK_2" | null>(null);
   // Task #254 — operator toggle: when on, the boiler runs during production
   // and the Boiler Meter opening/closing inputs are shown (auto-fill from the
   // most recent heating session's closing meter). When off, those inputs are
@@ -268,7 +268,7 @@ export default function PlantShiftLog() {
     setLdoTank2OpeningMeter(""); setLdoTank2ClosingMeter("");
     setLdoTank1OpeningDip(""); setLdoTank1ClosingDip("");
     setLdoTank2OpeningDip(""); setLdoTank2ClosingDip("");
-    setDryerFedFrom("TANK_2");
+    setDryerFedFrom(null);
     setBoilerRunsDuringProduction(false);
     setNoMainPlantOps(false);
     setManpower([]); setIdleEvents([]);
@@ -306,7 +306,7 @@ export default function PlantShiftLog() {
     setLdoTank1ClosingDip(log.ldoTank1ClosingDip?.toString() || "");
     setLdoTank2OpeningDip(log.ldoTank2OpeningDip?.toString() || "");
     setLdoTank2ClosingDip(log.ldoTank2ClosingDip?.toString() || "");
-    setDryerFedFrom(log.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
+    setDryerFedFrom(log.dryerFedFrom === "TANK_1" || log.dryerFedFrom === "TANK_2" ? log.dryerFedFrom : null);
     // Task #254 — back-compat: rows saved before the toggle existed default
     // boilerRunsDuringProduction to 0. If they have any T1 reading recorded,
     // treat the toggle as ON so editing+saving doesn't silently null those
@@ -347,7 +347,7 @@ export default function PlantShiftLog() {
     ldoTank2OpeningMeter: string; ldoTank2ClosingMeter: string;
     ldoTank1OpeningDip: string; ldoTank1ClosingDip: string;
     ldoTank2OpeningDip: string; ldoTank2ClosingDip: string;
-    dryerFedFrom: "TANK_1" | "TANK_2"; boilerRunsDuringProduction: boolean; noMainPlantOps: boolean;
+    dryerFedFrom: "TANK_1" | "TANK_2" | null; boilerRunsDuringProduction: boolean; noMainPlantOps: boolean;
     manpower: ManpowerRow[]; idleEvents: IdleRow[];
   };
 
@@ -543,7 +543,7 @@ export default function PlantShiftLog() {
   );
 
   const saveMutation = useMutation({
-    mutationFn: async (extra?: { pin?: string }) => {
+    mutationFn: async (extra?: { pin?: string; effectiveDryerFedFrom?: "TANK_1" | "TANK_2" }) => {
       if (incompleteManpower.length > 0) {
         throw new Error(
           `${incompleteManpower.length} manpower row(s) are missing Contractor / Category / Gender. ` +
@@ -580,7 +580,7 @@ export default function PlantShiftLog() {
         ldoTank1ClosingDip: numOrNull(ldoTank1ClosingDip),
         ldoTank2OpeningDip: numOrNull(ldoTank2OpeningDip),
         ldoTank2ClosingDip: numOrNull(ldoTank2ClosingDip),
-        dryerFedFrom,
+        dryerFedFrom: extra?.effectiveDryerFedFrom ?? dryerFedFrom ?? "TANK_2",
         boilerRunsDuringProduction: boilerRunsDuringProduction ? 1 : 0,
         noMainPlantOps,
         manpower: manpower
@@ -650,15 +650,16 @@ export default function PlantShiftLog() {
       ).then(hsRes => {
         if (!hsRes.ok) return;
         return hsRes.json().then((sessions: Array<{ id?: number; dryerFedFrom?: string }>) => {
-          const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== dryerFedFrom);
+          const savedDryerFedFrom: "TANK_1" | "TANK_2" = data.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2";
+          const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== savedDryerFedFrom);
           if (mismatch && mismatch.id != null) {
-            const slLabel = dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const slLabel = savedDryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
             const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
             const fixTarget: DryerSourceFixTarget = {
               mode: "heating-session",
               recordId: mismatch.id,
               date,
-              suggestedValue: dryerFedFrom as "TANK_1" | "TANK_2",
+              suggestedValue: savedDryerFedFrom,
               currentValue: mismatch.dryerFedFrom as "TANK_1" | "TANK_2",
             };
             toast({
@@ -684,6 +685,7 @@ export default function PlantShiftLog() {
   });
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDryerMissing, setConfirmDryerMissing] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -1410,9 +1412,9 @@ export default function PlantShiftLog() {
                 }`}
               >
                 <Label htmlFor="dryer-fed-from" className="text-xs">Which tank feeds the dryer?</Label>
-                <Select value={dryerFedFrom} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
-                  <SelectTrigger id="dryer-fed-from" className="h-8 w-36" data-testid="select-dryer-fed-from">
-                    <SelectValue />
+                <Select value={dryerFedFrom ?? ""} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
+                  <SelectTrigger id="dryer-fed-from" className={`h-8 w-36 ${dryerFedFrom === null ? "border-amber-400 text-amber-600 dark:text-amber-400" : ""}`} data-testid="select-dryer-fed-from">
+                    <SelectValue placeholder="Select tank…" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="TANK_1">Boiler tank</SelectItem>
@@ -1829,7 +1831,17 @@ export default function PlantShiftLog() {
           </Button>
         )}
         <Button variant="ghost" onClick={goBackToList} data-testid="button-cancel">Cancel</Button>
-        <Button onClick={() => saveMutation.mutate(undefined)} disabled={saveMutation.isPending} data-testid="button-save">
+        <Button
+          onClick={() => {
+            if (!noMainPlantOps && dryerFedFrom === null) {
+              setConfirmDryerMissing(true);
+            } else {
+              saveMutation.mutate(undefined);
+            }
+          }}
+          disabled={saveMutation.isPending}
+          data-testid="button-save"
+        >
           {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
           Save & Close
         </Button>
@@ -1858,6 +1870,28 @@ export default function PlantShiftLog() {
               data-testid="button-delete-confirm"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDryerMissing} onOpenChange={setConfirmDryerMissing}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dryer feed tank not selected</AlertDialogTitle>
+            <AlertDialogDescription>
+              You haven't selected which tank is feeding the dryer this shift. LDO stock consumption will be recorded against Tank 2 (Dryer tank) by default, which may produce incorrect stock balances if the dryer is actually fed from Tank 1.
+              <br /><br />
+              Please go back and select the correct tank, or confirm to proceed with Tank 2 as the default.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-dryer-missing-cancel">Go back and select</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setConfirmDryerMissing(false); saveMutation.mutate({ effectiveDryerFedFrom: "TANK_2" }); }}
+              data-testid="button-dryer-missing-confirm"
+            >
+              Proceed with Tank 2
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
