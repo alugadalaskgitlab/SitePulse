@@ -342,7 +342,10 @@ export default function PlantBitumenStock() {
     for (const d of dispatches) {
       if (!dispatchByDate[d.date]) dispatchByDate[d.date] = { production: 0, theoretical: 0 };
       dispatchByDate[d.date].production += d.loadWeight || 0;
-      dispatchByDate[d.date].theoretical += d.theoreticalBitumenQty || 0;
+      // theoreticalBitumenQty is stored in MT; convert to Kg here so it
+      // matches actualKg (derived from dip-volume × density) and the
+      // display which divides both by 1000 to render as MT.
+      dispatchByDate[d.date].theoretical += (d.theoreticalBitumenQty || 0) * 1000;
     }
     return dailySummary
       .filter(day => dispatchByDate[day.date] && day.totalConsumption > 0)
