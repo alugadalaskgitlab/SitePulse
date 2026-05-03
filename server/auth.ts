@@ -548,6 +548,8 @@ export const PUBLIC_API_PATHS = new Set<string>([
   "/api/auth/device-status",
   // Estimator portal — separate auth.
   "/api/estimator/session",
+  // Estimator guide PDF — gated by estimator admin cookie inside the handler.
+  "/api/admin/estimator-guide.pdf",
 ]);
 
 export function isPublicApiPath(path: string): boolean {

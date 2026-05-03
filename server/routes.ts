@@ -7,6 +7,7 @@ import * as xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
+import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
 import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -664,6 +665,26 @@ export async function registerRoutes(
       await pipeOperatorManualPdf(res, plantName);
     } catch (err) {
       console.error('Operator manual PDF generation failed:', err);
+      if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
+    }
+  });
+
+  // Estimator Portal guide — PDF download (estimator admin cookie, not main session).
+  // Path is listed in PUBLIC_API_PATHS so requireAuth is bypassed.
+  // Role is validated directly from the estimator cookie inside the handler.
+  app.get('/api/admin/estimator-guide.pdf', async (req, res) => {
+    const cookieVal = parseCookie(req.headers.cookie, ESTIMATOR_COOKIE);
+    const role = verifyRoleCookie(cookieVal);
+    if (role !== 'admin') {
+      return res.status(401).json({ error: 'Estimator admin access required' });
+    }
+    const plantName = typeof req.query.plant === 'string' ? req.query.plant.trim() : undefined;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="estimator-portal-guide.pdf"');
+    try {
+      await pipeEstimatorGuidePdf(res, plantName);
+    } catch (err) {
+      console.error('Estimator guide PDF generation failed:', err);
       if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
     }
   });

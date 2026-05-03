@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Flame, Building2, LogOut, Home, ChevronRight, BarChart3, Plus, GitCompare } from "lucide-react";
+import { Flame, Building2, LogOut, Home, ChevronRight, BarChart3, Plus, GitCompare, FileDown } from "lucide-react";
 import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -118,7 +118,19 @@ export default function EstimatorHub() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-center gap-4">
+        <div className="flex flex-wrap justify-center gap-4">
+          {role === "admin" && (
+            <Button
+              variant="outline"
+              size="lg"
+              className="gap-2 text-base"
+              onClick={() => window.open('/api/admin/estimator-guide.pdf', '_blank')}
+              data-testid="button-estimator-guide-pdf"
+            >
+              <FileDown className="w-5 h-5" />
+              Estimator Guide (PDF)
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="lg"
