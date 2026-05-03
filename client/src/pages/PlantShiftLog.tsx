@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -91,6 +91,7 @@ export default function PlantShiftLog() {
   }, []);
   const [dryerHighlighted, setDryerHighlighted] = useState(false);
   const dryerFocusRef = useRef<HTMLDivElement | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
@@ -374,6 +375,7 @@ export default function PlantShiftLog() {
     if (d.noMainPlantOps !== undefined) setNoMainPlantOps(d.noMainPlantOps);
     if (Array.isArray(d.manpower)) setManpower(d.manpower);
     if (Array.isArray(d.idleEvents)) setIdleEvents(d.idleEvents);
+    setDraftRestored(true);
   }, []);
 
   const formData = useMemo<ShiftLogFormData>(() => ({
@@ -406,6 +408,20 @@ export default function PlantShiftLog() {
     onRestoreDraft,
     { enabled: viewMode === "edit" && !!date, initialized: !isLoading },
   );
+
+  // Auto-dismiss the "Draft restored" banner after 8 seconds.
+  useEffect(() => {
+    if (!draftRestored) return;
+    const t = setTimeout(() => setDraftRestored(false), 8000);
+    return () => clearTimeout(t);
+  }, [draftRestored]);
+
+  const discardDraft = useCallback(() => {
+    clearDraft();
+    setDraftRestored(false);
+    if (existing) populateFormFromLog(existing);
+    else resetForNew();
+  }, [clearDraft, existing, populateFormFromLog]);
 
   const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
     setDate(d);
@@ -1148,6 +1164,37 @@ export default function PlantShiftLog() {
           </Link>
         </div>
       </div>
+
+      {draftRestored && (
+        <div
+          className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 px-4 py-3 text-sm"
+          data-testid="banner-draft-restored"
+        >
+          <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="flex-1 text-amber-800 dark:text-amber-200">
+            Draft restored — your unsaved changes have been recovered. Save to keep them, or discard to reload from the server.
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 border-amber-400 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/70"
+              onClick={discardDraft}
+              data-testid="button-discard-draft"
+            >
+              Discard draft
+            </Button>
+            <button
+              className="text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-200"
+              onClick={() => setDraftRestored(false)}
+              aria-label="Dismiss"
+              data-testid="button-dismiss-draft-banner"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {isLoading && (
         <Card data-testid="loading-shift-log-form">
