@@ -3011,6 +3011,7 @@ export class DatabaseStorage implements IStorage {
     ldoConsumedL: number;
     closingStockL: number | null;
     tonsProducedMT: number;
+    hasFlowReadings: boolean;
   }> {
     // Fetch all flow readings (no date cap) so computeTankStock works correctly
     const conds: any[] = [];

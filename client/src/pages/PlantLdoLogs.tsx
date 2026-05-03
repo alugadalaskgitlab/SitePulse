@@ -49,9 +49,13 @@ export default function PlantLdoLogs() {
   const [autoFilledFields, setAutoFilledFields] = useState<AutoFilledFields>(new Set());
   const [summaryLoading, setSummaryLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // Tracks fields the user edited WHILE a summary fetch was in-flight so the
+  // response doesn't clobber values they typed before the response arrived.
+  const dirtyWhileFetchingRef = useRef<Set<string>>(new Set());
 
   const clearFieldAutoFill = (field: 'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced') => {
     setAutoFilledFields(prev => { const next = new Set(prev); next.delete(field); return next; });
+    dirtyWhileFetchingRef.current.add(field);
   };
 
   // Task #479 — Auto-fill from meter readings when dialog opens or date changes
@@ -62,6 +66,7 @@ export default function PlantLdoLogs() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    dirtyWhileFetchingRef.current = new Set();
 
     setSummaryLoading(true);
     setAutoFilledFields(new Set());
@@ -69,31 +74,32 @@ export default function PlantLdoLogs() {
     fetch(`/api/plant-module/ldo-logs/daily-summary?date=${date}`, { signal: controller.signal })
       .then(r => r.ok ? r.json() as Promise<DailySummary> : Promise.reject())
       .then((s: DailySummary) => {
+        const dirty = dirtyWhileFetchingRef.current;
         const filled = new Set<'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced'>();
         // LDO fields are only meter-derived when the date has actual flow readings
         if (s.hasFlowReadings) {
-          if (s.openingStockL !== null) {
+          if (s.openingStockL !== null && !dirty.has('openingStock')) {
             setOpeningStock(String(Math.round(s.openingStockL * 10) / 10));
             filled.add('openingStock');
-          } else { setOpeningStock(""); }
-          if (s.ldoReceivedL > 0) {
+          }
+          if (s.ldoReceivedL > 0 && !dirty.has('ldoReceived')) {
             setLdoReceived(String(Math.round(s.ldoReceivedL * 10) / 10));
             filled.add('ldoReceived');
-          } else { setLdoReceived(""); }
-          if (s.ldoConsumedL > 0) {
+          }
+          if (s.ldoConsumedL > 0 && !dirty.has('ldoConsumed')) {
             setLdoConsumed(String(Math.round(s.ldoConsumedL * 10) / 10));
             filled.add('ldoConsumed');
-          } else { setLdoConsumed(""); }
-          if (s.closingStockL !== null) {
+          }
+          if (s.closingStockL !== null && !dirty.has('closingStock')) {
             setClosingStock(String(Math.round(s.closingStockL * 10) / 10));
             filled.add('closingStock');
-          } else { setClosingStock(""); }
+          }
         }
         // Tons produced comes from dispatches (independent of flow readings)
-        if (s.tonsProducedMT > 0) {
+        if (s.tonsProducedMT > 0 && !dirty.has('tonsProduced')) {
           setTonsProduced(String(Math.round(s.tonsProducedMT * 1000) / 1000));
           filled.add('tonsProduced');
-        } else { setTonsProduced(""); }
+        }
         setAutoFilledFields(filled);
         setSummaryLoading(false);
       })
