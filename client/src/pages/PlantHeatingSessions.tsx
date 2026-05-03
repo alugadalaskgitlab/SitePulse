@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -125,6 +126,17 @@ export default function PlantHeatingSessions() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
+
+  // Draft recovery: save the new-session form to localStorage whenever any field
+  // changes so that navigating away (e.g. to fix a shift-log mismatch) and returning
+  // does not lose the operator's in-progress work.
+  const setFormForDraft = useCallback((data: FormState) => setForm(data), []);
+  const { clearDraft: clearHeatingDraft } = useFormDraft<FormState>(
+    "hs-draft-new",
+    form,
+    setFormForDraft,
+    { enabled: dialogOpen && !form.id }
+  );
   const [showTemps, setShowTemps] = useState(false);
 
   const [dryerFixDialogOpen, setDryerFixDialogOpen] = useState(false);
@@ -551,6 +563,7 @@ export default function PlantHeatingSessions() {
       return saved;
     },
     onSuccess: () => {
+      clearHeatingDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
