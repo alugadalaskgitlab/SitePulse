@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -964,6 +965,61 @@ export default function PlantShiftLog() {
     };
   }, [ldoTotal, plantRunHours, totalDispatchedMt, boilerRunsDuringProduction, todayDispatches]);
 
+  const exportShiftLogsToExcel = useCallback(() => {
+    const rows = (shiftLogs || [])
+      .filter(r => listDryerFilter === "all" || r.dryerFedFrom === listDryerFilter)
+      .sort((a, b) => b.date.localeCompare(a.date) || (a.shiftCode || "").localeCompare(b.shiftCode || ""));
+    if (!rows.length) return;
+    const data = rows.map(r => {
+      const ldo1 = (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null)
+        ? Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter) : null;
+      const ldo2 = (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null)
+        ? Math.max(0, r.ldoTank2ClosingMeter - r.ldoTank2OpeningMeter) : null;
+      const dur = (() => {
+        if (!r.plantStartTime || !r.plantStopTime) return null;
+        const [sh, sm] = r.plantStartTime.split(":").map(Number);
+        const [eh, em] = r.plantStopTime.split(":").map(Number);
+        let mins = (eh * 60 + em) - (sh * 60 + sm);
+        if (mins < 0) mins += 24 * 60;
+        return Math.round((mins / 60) * 100) / 100;
+      })();
+      const boilerLPerH = (ldo1 != null && dur && dur > 0) ? parseFloat((ldo1 / dur).toFixed(1)) : "";
+      const dryerLPerH = (ldo2 != null && dur && dur > 0) ? parseFloat((ldo2 / dur).toFixed(1)) : "";
+      return {
+        Date: r.date,
+        Plant: r.plantName || "Main Plant",
+        Shift: r.shiftCode || "",
+        "Plant Start": r.plantStartTime || "",
+        "Plant Stop": r.plantStopTime || "",
+        "Duration (h)": dur ?? "",
+        Operator: r.operatorName || "",
+        Supervisor: r.supervisorName || "",
+        Weather: r.weather || "",
+        Status: r.isFinalized ? "Finalized" : "Draft",
+        "Boiler LDO (L)": ldo1 != null ? parseFloat(ldo1.toFixed(0)) : "",
+        "Dryer LDO (L)": ldo2 != null ? parseFloat(ldo2.toFixed(0)) : "",
+        "Boiler L/h": boilerLPerH,
+        "Dryer L/h": dryerLPerH,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Plant Shift Logs");
+    const filename = `PlantShiftLogs_${listDateFrom}_to_${listDateTo}.xlsx`;
+    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    toast({ title: "Export started", description: `${rows.length} row${rows.length === 1 ? "" : "s"} exported.` });
+  }, [shiftLogs, listDryerFilter, listDateFrom, listDateTo, toast]);
+
   if (viewMode === "list") {
     const sorted = (shiftLogs || []).slice()
       .filter(r => listDryerFilter === "all" || r.dryerFedFrom === listDryerFilter)
@@ -972,6 +1028,7 @@ export default function PlantShiftLog() {
       );
     const grouped: Record<string, PlantShiftLogRow[]> = {};
     for (const r of sorted) (grouped[r.date] = grouped[r.date] || []).push(r);
+
     return (
       <>
       <div className="space-y-6">
@@ -1009,6 +1066,9 @@ export default function PlantShiftLog() {
                 <Users className="w-4 h-4 mr-1" />Review UNKNOWN
               </Button>
             </Link>
+            <Button variant="outline" size="sm" onClick={exportShiftLogsToExcel} disabled={!sorted.length} data-testid="button-export-shift-logs">
+              <Download className="w-4 h-4 mr-1" />Excel
+            </Button>
             <Button onClick={openNew} data-testid="button-new-shift-log"><Plus className="w-4 h-4 mr-1" />New Log</Button>
           </div>
         </div>
