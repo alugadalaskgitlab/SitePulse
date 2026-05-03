@@ -1491,7 +1491,7 @@ export default function PlantShiftLog() {
               </Badge>
             </CardTitle>
             {(() => {
-              const base = appendPlantContext(`/plant/heating-sessions/${date}`, { defaultTab: "operations" });
+              const base = appendPlantContext(`/plant/heating-sessions/${date}`, { forceTab: "operations" });
               const sep = base.includes("?") ? "&" : "?";
               const returnTo = `/plant/shift-log/${date}?plant=${encodeURIComponent(plantName)}`;
               return (
