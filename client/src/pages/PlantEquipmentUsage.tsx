@@ -10,8 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { useAutosave } from "@/hooks/use-autosave";
-import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, ChevronRight, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, ArrowRightLeft } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -134,12 +133,12 @@ export default function PlantEquipmentUsage() {
     setTransportDistance(data.transportDistance ?? "");
   }, []);
 
-  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<EquipmentFormData>({
-    formKey: "plant-equipment-usage-new",
-    data: formData,
-    enabled: dialogOpen && !editingUsage,
-    onRestore: handleRestoreDraft,
-  });
+  const { clearDraft, wasRestoredRef: _equipWasRestoredRef } = useFormDraft<EquipmentFormData>(
+    "plant-equipment-usage-new",
+    formData,
+    handleRestoreDraft,
+    { enabled: dialogOpen && !editingUsage }
+  );
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -193,8 +192,8 @@ export default function PlantEquipmentUsage() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest("POST", "/api/plant-module/equipment-usage", data),
-    onSuccess: async () => {
-      await clearDraft();
+    onSuccess: () => {
+      clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       setDialogOpen(false);
       resetForm();
@@ -817,13 +816,6 @@ export default function PlantEquipmentUsage() {
             <DialogHeader>
               <DialogTitle>{editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}</DialogTitle>
             </DialogHeader>
-            {hasDraft && !editingUsage && (
-              <DraftRestoreBanner
-                draftAge={draftAge}
-                onRestore={restoreDraft}
-                onDiscard={discardDraft}
-              />
-            )}
             <div className="space-y-4 pt-4">
               <div>
                 <Label>Date</Label>

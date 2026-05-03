@@ -342,7 +342,7 @@ export default function PlantShiftLog() {
     ldoTank2OpeningMeter: string; ldoTank2ClosingMeter: string;
     ldoTank1OpeningDip: string; ldoTank1ClosingDip: string;
     ldoTank2OpeningDip: string; ldoTank2ClosingDip: string;
-    dryerFedFrom: string; boilerRunsDuringProduction: boolean; noMainPlantOps: boolean;
+    dryerFedFrom: "TANK_1" | "TANK_2"; boilerRunsDuringProduction: boolean; noMainPlantOps: boolean;
     manpower: ManpowerRow[]; idleEvents: IdleRow[];
   };
 
@@ -369,7 +369,7 @@ export default function PlantShiftLog() {
     if (d.ldoTank1ClosingDip !== undefined) setLdoTank1ClosingDip(d.ldoTank1ClosingDip);
     if (d.ldoTank2OpeningDip !== undefined) setLdoTank2OpeningDip(d.ldoTank2OpeningDip);
     if (d.ldoTank2ClosingDip !== undefined) setLdoTank2ClosingDip(d.ldoTank2ClosingDip);
-    if (d.dryerFedFrom !== undefined) setDryerFedFrom(d.dryerFedFrom as "TANK_1" | "TANK_2");
+    if (d.dryerFedFrom !== undefined) setDryerFedFrom(d.dryerFedFrom);
     if (d.boilerRunsDuringProduction !== undefined) setBoilerRunsDuringProduction(d.boilerRunsDuringProduction);
     if (d.noMainPlantOps !== undefined) setNoMainPlantOps(d.noMainPlantOps);
     if (Array.isArray(d.manpower)) setManpower(d.manpower);
