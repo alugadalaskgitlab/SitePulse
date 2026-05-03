@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -276,6 +276,61 @@ export default function PlantShiftLog() {
     autoFilledLdoDipT1Ref.current = null; autoFilledLdoDipT2Ref.current = null;
   };
 
+  const populateFormFromLog = useCallback((log: PlantShiftLogWithDetails) => {
+    setSavedId(log.id);
+    setShiftCode(log.shiftCode || "DAY");
+    setPlantStartTime(log.plantStartTime || "");
+    setPlantStopTime(log.plantStopTime || "");
+    setWeather(log.weather || "");
+    setAmbientTemp(log.ambientTemp?.toString() || "");
+    setOperatorName(log.operatorName || "");
+    setSupervisorName(log.supervisorName || "");
+    setRemarks(log.remarks || "");
+    setBitumenTank1Temp(log.bitumenTank1Temp?.toString() || "");
+    setBitumenTank2Temp(log.bitumenTank2Temp?.toString() || "");
+    setBitumenTank1OpeningDip(log.bitumenTank1OpeningDip?.toString() || "");
+    setBitumenTank1ClosingDip(log.bitumenTank1ClosingDip?.toString() || "");
+    setBitumenTank2OpeningDip(log.bitumenTank2OpeningDip?.toString() || "");
+    setBitumenTank2ClosingDip(log.bitumenTank2ClosingDip?.toString() || "");
+    setLdoTank1OpeningMeter(log.ldoTank1OpeningMeter?.toString() || "");
+    setLdoTank1ClosingMeter(log.ldoTank1ClosingMeter?.toString() || "");
+    setLdoTank2OpeningMeter(log.ldoTank2OpeningMeter?.toString() || "");
+    setLdoTank2ClosingMeter(log.ldoTank2ClosingMeter?.toString() || "");
+    setLdoTank1OpeningDip(log.ldoTank1OpeningDip?.toString() || "");
+    setLdoTank1ClosingDip(log.ldoTank1ClosingDip?.toString() || "");
+    setLdoTank2OpeningDip(log.ldoTank2OpeningDip?.toString() || "");
+    setLdoTank2ClosingDip(log.ldoTank2ClosingDip?.toString() || "");
+    setDryerFedFrom(log.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
+    // Task #254 — back-compat: rows saved before the toggle existed default
+    // boilerRunsDuringProduction to 0. If they have any T1 reading recorded,
+    // treat the toggle as ON so editing+saving doesn't silently null those
+    // legacy values (the save payload nulls T1 when the toggle is OFF).
+    const legacyHasT1Reading = log.ldoTank1OpeningMeter != null || log.ldoTank1ClosingMeter != null;
+    setBoilerRunsDuringProduction(!!log.boilerRunsDuringProduction || legacyHasT1Reading);
+    setNoMainPlantOps(!!log.noMainPlantOps);
+    setAutoFillT1Source(""); setAutoFillT1ClosingSource(""); setAutoFillT2Source("");
+    autoFilledT1ValueRef.current = null;
+    autoFilledT1ClosingValueRef.current = null;
+    autoFilledT2ValueRef.current = null;
+    setAutoFillBitumenT1Source(""); setAutoFillBitumenT2Source("");
+    setAutoFillLdoDipT1Source(""); setAutoFillLdoDipT2Source("");
+    autoFilledBitumenT1Ref.current = null; autoFilledBitumenT2Ref.current = null;
+    autoFilledLdoDipT1Ref.current = null; autoFilledLdoDipT2Ref.current = null;
+    setManpower(log.manpower.map(m => ({
+      name: m.name,
+      role: m.role,
+      contractorName: m.contractorName ?? null,
+      category: m.category ?? null,
+      gender: m.gender ?? null,
+    })));
+    setIdleEvents(log.idleEvents.map(e => ({
+      startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
+    })));
+    setIsFinalized(log.isFinalized || 0);
+    setPlantName(log.plantName || "Main Plant");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
     setDate(d);
     const resolvedPlant = plant || "Main Plant";
@@ -289,51 +344,7 @@ export default function PlantShiftLog() {
     ]);
 
     if (cached) {
-      setSavedId(cached.id);
-      setShiftCode(cached.shiftCode || "DAY");
-      setPlantStartTime(cached.plantStartTime || "");
-      setPlantStopTime(cached.plantStopTime || "");
-      setWeather(cached.weather || "");
-      setAmbientTemp(cached.ambientTemp?.toString() || "");
-      setOperatorName(cached.operatorName || "");
-      setSupervisorName(cached.supervisorName || "");
-      setRemarks(cached.remarks || "");
-      setBitumenTank1Temp(cached.bitumenTank1Temp?.toString() || "");
-      setBitumenTank2Temp(cached.bitumenTank2Temp?.toString() || "");
-      setBitumenTank1OpeningDip(cached.bitumenTank1OpeningDip?.toString() || "");
-      setBitumenTank1ClosingDip(cached.bitumenTank1ClosingDip?.toString() || "");
-      setBitumenTank2OpeningDip(cached.bitumenTank2OpeningDip?.toString() || "");
-      setBitumenTank2ClosingDip(cached.bitumenTank2ClosingDip?.toString() || "");
-      setLdoTank1OpeningMeter(cached.ldoTank1OpeningMeter?.toString() || "");
-      setLdoTank1ClosingMeter(cached.ldoTank1ClosingMeter?.toString() || "");
-      setLdoTank2OpeningMeter(cached.ldoTank2OpeningMeter?.toString() || "");
-      setLdoTank2ClosingMeter(cached.ldoTank2ClosingMeter?.toString() || "");
-      setLdoTank1OpeningDip(cached.ldoTank1OpeningDip?.toString() || "");
-      setLdoTank1ClosingDip(cached.ldoTank1ClosingDip?.toString() || "");
-      setLdoTank2OpeningDip(cached.ldoTank2OpeningDip?.toString() || "");
-      setLdoTank2ClosingDip(cached.ldoTank2ClosingDip?.toString() || "");
-      setDryerFedFrom(cached.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
-      const legacyHasT1Reading =
-        cached.ldoTank1OpeningMeter != null || cached.ldoTank1ClosingMeter != null;
-      setBoilerRunsDuringProduction(!!cached.boilerRunsDuringProduction || legacyHasT1Reading);
-      setNoMainPlantOps(!!cached.noMainPlantOps);
-      setAutoFillT1Source("");
-      setAutoFillT1ClosingSource("");
-      setAutoFillT2Source("");
-      autoFilledT1ValueRef.current = null;
-      autoFilledT1ClosingValueRef.current = null;
-      autoFilledT2ValueRef.current = null;
-      setManpower(cached.manpower.map(m => ({
-        name: m.name,
-        role: m.role,
-        contractorName: m.contractorName ?? null,
-        category: m.category ?? null,
-        gender: m.gender ?? null,
-      })));
-      setIdleEvents(cached.idleEvents.map(e => ({
-        startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
-      })));
-      setIsFinalized(cached.isFinalized || 0);
+      populateFormFromLog(cached);
     } else if (row) {
       if (row.shiftCode) setShiftCode(row.shiftCode);
       if (row.plantStartTime) setPlantStartTime(row.plantStartTime);
@@ -363,64 +374,8 @@ export default function PlantShiftLog() {
       setIsFinalized(0);
       return;
     }
-    setSavedId(existing.id);
-    setShiftCode(existing.shiftCode || "DAY");
-    setPlantStartTime(existing.plantStartTime || "");
-    setPlantStopTime(existing.plantStopTime || "");
-    setWeather(existing.weather || "");
-    setAmbientTemp(existing.ambientTemp?.toString() || "");
-    setOperatorName(existing.operatorName || "");
-    setSupervisorName(existing.supervisorName || "");
-    setRemarks(existing.remarks || "");
-    setBitumenTank1Temp(existing.bitumenTank1Temp?.toString() || "");
-    setBitumenTank2Temp(existing.bitumenTank2Temp?.toString() || "");
-    setBitumenTank1OpeningDip(existing.bitumenTank1OpeningDip?.toString() || "");
-    setBitumenTank1ClosingDip(existing.bitumenTank1ClosingDip?.toString() || "");
-    setBitumenTank2OpeningDip(existing.bitumenTank2OpeningDip?.toString() || "");
-    setBitumenTank2ClosingDip(existing.bitumenTank2ClosingDip?.toString() || "");
-    setLdoTank1OpeningMeter(existing.ldoTank1OpeningMeter?.toString() || "");
-    setLdoTank1ClosingMeter(existing.ldoTank1ClosingMeter?.toString() || "");
-    setLdoTank2OpeningMeter(existing.ldoTank2OpeningMeter?.toString() || "");
-    setLdoTank2ClosingMeter(existing.ldoTank2ClosingMeter?.toString() || "");
-    setLdoTank1OpeningDip(existing.ldoTank1OpeningDip?.toString() || "");
-    setLdoTank1ClosingDip(existing.ldoTank1ClosingDip?.toString() || "");
-    setLdoTank2OpeningDip(existing.ldoTank2OpeningDip?.toString() || "");
-    setLdoTank2ClosingDip(existing.ldoTank2ClosingDip?.toString() || "");
-    setDryerFedFrom(existing.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2");
-    // Task #254 — back-compat: rows saved before the toggle existed default
-    // boilerRunsDuringProduction to 0. If they have any T1 reading recorded,
-    // treat the toggle as ON so editing+saving doesn't silently null those
-    // legacy values (the save payload nulls T1 when the toggle is OFF).
-    const legacyHasT1Reading =
-      existing.ldoTank1OpeningMeter != null || existing.ldoTank1ClosingMeter != null;
-    setBoilerRunsDuringProduction(
-      !!existing.boilerRunsDuringProduction || legacyHasT1Reading,
-    );
-    setNoMainPlantOps(!!existing.noMainPlantOps);
-    // Loading a saved record — clear any auto-fill hint state from prior new-log session.
-    setAutoFillT1Source("");
-    setAutoFillT1ClosingSource("");
-    setAutoFillT2Source("");
-    autoFilledT1ValueRef.current = null;
-    autoFilledT1ClosingValueRef.current = null;
-    autoFilledT2ValueRef.current = null;
-    setAutoFillBitumenT1Source(""); setAutoFillBitumenT2Source("");
-    setAutoFillLdoDipT1Source(""); setAutoFillLdoDipT2Source("");
-    autoFilledBitumenT1Ref.current = null; autoFilledBitumenT2Ref.current = null;
-    autoFilledLdoDipT1Ref.current = null; autoFilledLdoDipT2Ref.current = null;
-    setManpower(existing.manpower.map(m => ({
-      name: m.name,
-      role: m.role,
-      contractorName: m.contractorName ?? null,
-      category: m.category ?? null,
-      gender: m.gender ?? null,
-    })));
-    setIdleEvents(existing.idleEvents.map(e => ({
-      startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
-    })));
-    setIsFinalized(existing.isFinalized || 0);
-    setPlantName(existing.plantName || "Main Plant");
-  }, [existing]);
+    populateFormFromLog(existing);
+  }, [existing, populateFormFromLog]);
 
   // Scroll + briefly highlight the "Which tank feeds the dryer?" section when
   // navigated here via ?focus=dryerFedFrom (i.e. from a mismatch fix link).
