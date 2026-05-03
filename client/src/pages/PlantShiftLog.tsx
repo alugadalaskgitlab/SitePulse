@@ -19,8 +19,8 @@ import { ToastAction } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
-import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
+import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
@@ -184,6 +184,15 @@ export default function PlantShiftLog() {
   const autoFilledT1ClosingValueRef = useRef<string | null>(null);
   const autoFilledT2ValueRef = useRef<string | null>(null);
 
+  const [autoFillBitumenT1Source, setAutoFillBitumenT1Source] = useState<string>("");
+  const [autoFillBitumenT2Source, setAutoFillBitumenT2Source] = useState<string>("");
+  const [autoFillLdoDipT1Source, setAutoFillLdoDipT1Source] = useState<string>("");
+  const [autoFillLdoDipT2Source, setAutoFillLdoDipT2Source] = useState<string>("");
+  const autoFilledBitumenT1Ref = useRef<string | null>(null);
+  const autoFilledBitumenT2Ref = useRef<string | null>(null);
+  const autoFilledLdoDipT1Ref = useRef<string | null>(null);
+  const autoFilledLdoDipT2Ref = useRef<string | null>(null);
+
   const { data: existing, isLoading } = useQuery<PlantShiftLogWithDetails | undefined>({
     queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName],
     enabled: viewMode === "edit",
@@ -261,6 +270,10 @@ export default function PlantShiftLog() {
     autoFilledT1ValueRef.current = null;
     autoFilledT1ClosingValueRef.current = null;
     autoFilledT2ValueRef.current = null;
+    setAutoFillBitumenT1Source(""); setAutoFillBitumenT2Source("");
+    setAutoFillLdoDipT1Source(""); setAutoFillLdoDipT2Source("");
+    autoFilledBitumenT1Ref.current = null; autoFilledBitumenT2Ref.current = null;
+    autoFilledLdoDipT1Ref.current = null; autoFilledLdoDipT2Ref.current = null;
   };
 
   const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
@@ -391,6 +404,10 @@ export default function PlantShiftLog() {
     autoFilledT1ValueRef.current = null;
     autoFilledT1ClosingValueRef.current = null;
     autoFilledT2ValueRef.current = null;
+    setAutoFillBitumenT1Source(""); setAutoFillBitumenT2Source("");
+    setAutoFillLdoDipT1Source(""); setAutoFillLdoDipT2Source("");
+    autoFilledBitumenT1Ref.current = null; autoFilledBitumenT2Ref.current = null;
+    autoFilledLdoDipT1Ref.current = null; autoFilledLdoDipT2Ref.current = null;
     setManpower(existing.manpower.map(m => ({
       name: m.name,
       role: m.role,
@@ -437,17 +454,24 @@ export default function PlantShiftLog() {
     if (cm.trim() === "") return null;
     const dipNum = numOrNullSafe(cm);
     if (dipNum === null) return null;
-    const mt = getVolumeAtDepth(dipNum) * BITUMEN_DENSITY_KG_PER_LITER / 1000;
-    return `≈ ${mt.toFixed(2)} MT`;
+    const totalVol = getVolumeAtDepth(dipNum);
+    const usableVol = getUsableVolume(dipNum);
+    const deadVol = totalVol - usableVol;
+    const totalMt = totalVol * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+    const usableMt = usableVol * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+    return `Total: ${totalMt.toFixed(2)} MT (${Math.round(totalVol).toLocaleString()} L) — Usable: ${usableMt.toFixed(2)} MT — Dead stock: ${Math.round(deadVol).toLocaleString()} L`;
   };
 
   const ldoDipHint = (tank: 1 | 2, cm: string) => {
     if (cm.trim() === "") return null;
     const dipNum = numOrNullSafe(cm);
     if (dipNum === null) return null;
-    const vol = getLdoVolumeAtDepth(tank, dipNum);
-    const mt = vol * LDO_DENSITY_KG_PER_LITER / 1000;
-    return `≈ ${Math.round(vol).toLocaleString()} L / ${mt.toFixed(3)} MT`;
+    const totalVol = getLdoVolumeAtDepth(tank, dipNum);
+    const deadVol = getLdoDeadStockVolume(tank);
+    const usableVol = Math.max(0, totalVol - deadVol);
+    const totalMt = totalVol * LDO_DENSITY_KG_PER_LITER / 1000;
+    const usableMt = usableVol * LDO_DENSITY_KG_PER_LITER / 1000;
+    return `Total: ${Math.round(totalVol).toLocaleString()} L (${totalMt.toFixed(3)} MT) — Usable: ${Math.round(usableVol).toLocaleString()} L (${usableMt.toFixed(3)} MT)`;
   };
 
   const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
@@ -765,6 +789,59 @@ export default function PlantShiftLog() {
     // load and the operator would have to re-edit something to prefill.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing, date, plantName, plantStartTime, heatingSessionsForDate, boilerRunsDuringProduction]);
+
+  // Carry-forward: auto-fill opening dip readings from previous day's closing dip
+  useEffect(() => {
+    if (!date || existing) return;
+    let cancelled = false;
+    const prevDate = new Date(date);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = prevDate.toISOString().slice(0, 10);
+    fetch(`/api/plant-module/shift-logs/by-date?date=${prevDateStr}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((prev: { bitumenTank1ClosingDip?: number | null; bitumenTank2ClosingDip?: number | null; ldoTank1ClosingDip?: number | null; ldoTank2ClosingDip?: number | null } | null) => {
+        if (cancelled || !prev) return;
+        if (prev.bitumenTank1ClosingDip != null) {
+          const next = String(prev.bitumenTank1ClosingDip);
+          setBitumenTank1OpeningDip(cur => {
+            if (cur && cur !== autoFilledBitumenT1Ref.current) return cur;
+            autoFilledBitumenT1Ref.current = next;
+            setAutoFillBitumenT1Source(`${prevDateStr} closing dip`);
+            return next;
+          });
+        }
+        if (prev.bitumenTank2ClosingDip != null) {
+          const next = String(prev.bitumenTank2ClosingDip);
+          setBitumenTank2OpeningDip(cur => {
+            if (cur && cur !== autoFilledBitumenT2Ref.current) return cur;
+            autoFilledBitumenT2Ref.current = next;
+            setAutoFillBitumenT2Source(`${prevDateStr} closing dip`);
+            return next;
+          });
+        }
+        if (prev.ldoTank1ClosingDip != null) {
+          const next = String(prev.ldoTank1ClosingDip);
+          setLdoTank1OpeningDip(cur => {
+            if (cur && cur !== autoFilledLdoDipT1Ref.current) return cur;
+            autoFilledLdoDipT1Ref.current = next;
+            setAutoFillLdoDipT1Source(`${prevDateStr} closing dip`);
+            return next;
+          });
+        }
+        if (prev.ldoTank2ClosingDip != null) {
+          const next = String(prev.ldoTank2ClosingDip);
+          setLdoTank2OpeningDip(cur => {
+            if (cur && cur !== autoFilledLdoDipT2Ref.current) return cur;
+            autoFilledLdoDipT2Ref.current = next;
+            setAutoFillLdoDipT2Source(`${prevDateStr} closing dip`);
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, plantName, existing]);
 
   // Derived
   const ldoTotal = useMemo(() => {
@@ -1099,40 +1176,42 @@ export default function PlantShiftLog() {
           <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
           <div>
             <Label>Bitumen tank 1 — opening dip (cm)</Label>
-            <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => setBitumenTank1OpeningDip(e.target.value)} data-testid="input-bitumen-t1-open" />
+            <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => { setBitumenTank1OpeningDip(e.target.value); setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; }} data-testid="input-bitumen-t1-open" />
+            {autoFillBitumenT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t1-open">Auto-filled from {autoFillBitumenT1Source}</p>}
             {dipHint(bitumenTank1OpeningDip) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip)}</p>
+              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at start of shift, in cm</p>
+              !autoFillBitumenT1Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
           </div>
           <div>
             <Label>Bitumen tank 1 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
             {dipHint(bitumenTank1ClosingDip) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>
+              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at end of shift, in cm</p>
+              <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
           </div>
           <div />
           <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
           <div>
             <Label>Bitumen tank 2 — opening dip (cm)</Label>
-            <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => setBitumenTank2OpeningDip(e.target.value)} data-testid="input-bitumen-t2-open" />
+            <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => { setBitumenTank2OpeningDip(e.target.value); setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; }} data-testid="input-bitumen-t2-open" />
+            {autoFillBitumenT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t2-open">Auto-filled from {autoFillBitumenT2Source}</p>}
             {dipHint(bitumenTank2OpeningDip) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip)}</p>
+              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at start of shift, in cm</p>
+              !autoFillBitumenT2Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
           </div>
           <div>
             <Label>Bitumen tank 2 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
             {dipHint(bitumenTank2ClosingDip) ? (
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>
+              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">Dip-stick reading at end of shift, in cm</p>
+              <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
           </div>
         </CardContent>
@@ -1238,38 +1317,40 @@ export default function PlantShiftLog() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <Label>Tank 1 — opening dip (cm)</Label>
-                <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={e => setLdoTank1OpeningDip(e.target.value)} data-testid="input-ldo-dip-t1-open" />
+                <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={e => { setLdoTank1OpeningDip(e.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open" />
+                {autoFillLdoDipT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t1-open">Auto-filled from {autoFillLdoDipT1Source}</p>}
                 {ldoDipHint(1, ldoTank1OpeningDip) ? (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t1-open-hint">{ldoDipHint(1, ldoTank1OpeningDip)}</p>
+                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-open-hint">{ldoDipHint(1, ldoTank1OpeningDip)}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift start, in cm</p>
+                  !autoFillLdoDipT1Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
                 )}
               </div>
               <div>
                 <Label>Tank 1 — closing dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={e => setLdoTank1ClosingDip(e.target.value)} data-testid="input-ldo-dip-t1-close" />
                 {ldoDipHint(1, ldoTank1ClosingDip) ? (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t1-close-hint">{ldoDipHint(1, ldoTank1ClosingDip)}</p>
+                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-close-hint">{ldoDipHint(1, ldoTank1ClosingDip)}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift end, in cm</p>
+                  <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
                 )}
               </div>
               <div>
                 <Label>Tank 2 — opening dip (cm)</Label>
-                <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={e => setLdoTank2OpeningDip(e.target.value)} data-testid="input-ldo-dip-t2-open" />
+                <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={e => { setLdoTank2OpeningDip(e.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open" />
+                {autoFillLdoDipT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t2-open">Auto-filled from {autoFillLdoDipT2Source}</p>}
                 {ldoDipHint(2, ldoTank2OpeningDip) ? (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t2-open-hint">{ldoDipHint(2, ldoTank2OpeningDip)}</p>
+                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-open-hint">{ldoDipHint(2, ldoTank2OpeningDip)}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift start, in cm</p>
+                  !autoFillLdoDipT2Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
                 )}
               </div>
               <div>
                 <Label>Tank 2 — closing dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={e => setLdoTank2ClosingDip(e.target.value)} data-testid="input-ldo-dip-t2-close" />
                 {ldoDipHint(2, ldoTank2ClosingDip) ? (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-dip-t2-close-hint">{ldoDipHint(2, ldoTank2ClosingDip)}</p>
+                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-close-hint">{ldoDipHint(2, ldoTank2ClosingDip)}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Dip-stick at shift end, in cm</p>
+                  <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
                 )}
               </div>
             </div>

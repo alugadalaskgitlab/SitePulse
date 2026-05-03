@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
-import { dipCmToMt } from "@shared/bitumen-dip-chart";
+import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
@@ -3403,32 +3403,23 @@ export async function registerRoutes(
       section("Bitumen Tank Status");
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
       line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
-      // Task #253 — derive MT from dip + per-plant calibration. The dip is the
-      // single source of truth; the legacy approx-MT columns are kept for
-      // audit but no longer rendered. When calibration is missing the helper
-      // returns null and we render "—" so it's obvious calibration is needed.
-      // plantName is taken from the summary (renderer is shared by single +
-      // bulk endpoints and doesn't have access to req.query).
-      const pdfPlantName: string = summary?.plantName || summary?.shift?.plantName || "Main Plant";
-      const plantSettingsForPdf = await storage.getPlantSettings(pdfPlantName);
-      const t1Lpc = plantSettingsForPdf?.bitumenTank1LitresPerCm ?? null;
-      const t2Lpc = plantSettingsForPdf?.bitumenTank2LitresPerCm ?? null;
-      const density = plantSettingsForPdf?.bitumenDensityKgPerL ?? null;
-      const fmtMt = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)} MT`);
-      line("Tank 1 Opening Dip (cm)", summary.shift?.bitumenTank1OpeningDip);
-      line("Tank 1 Opening Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank1OpeningDip ?? null, t1Lpc, density)));
-      line("Tank 1 Closing Dip (cm)", summary.shift?.bitumenTank1ClosingDip);
-      line("Tank 1 Closing Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank1ClosingDip ?? null, t1Lpc, density)));
-      line("Tank 2 Opening Dip (cm)", summary.shift?.bitumenTank2OpeningDip);
-      line("Tank 2 Opening Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank2OpeningDip ?? null, t2Lpc, density)));
-      line("Tank 2 Closing Dip (cm)", summary.shift?.bitumenTank2ClosingDip);
-      line("Tank 2 Closing Stock (derived)", fmtMt(dipCmToMt(summary.shift?.bitumenTank2ClosingDip ?? null, t2Lpc, density)));
-      if (t1Lpc == null && t2Lpc == null) {
-        doc.fontSize(8).font("Helvetica-Oblique").fillColor("gray").text(
-          `Note: no bitumen tank calibration set for "${pdfPlantName}". Set litres/cm in Admin Settings to derive MT.`
-        );
-        doc.fillColor("black");
-      }
+      const fmtDipMt = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)} MT`);
+      const dipToRow = (label: string, dip: number | null | undefined) => {
+        if (dip == null) { line(label, "—"); return; }
+        const totalVol = getVolumeAtDepth(dip);
+        const usableVol = getUsableVolume(dip);
+        const deadVol = Math.round(totalVol - usableVol);
+        const totalMt = totalVol * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+        const usableMt = usableVol * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+        line(`${label} — Dip (cm)`, dip.toFixed(1));
+        line(`${label} — Total`, `${fmtDipMt(totalMt)} (${Math.round(totalVol).toLocaleString()} L)`);
+        line(`${label} — Usable`, `${fmtDipMt(usableMt)} (${Math.round(usableVol).toLocaleString()} L)`);
+        line(`${label} — Dead Stock`, `${deadVol.toLocaleString()} L`);
+      };
+      dipToRow("Tank 1 Opening", summary.shift?.bitumenTank1OpeningDip ?? null);
+      dipToRow("Tank 1 Closing", summary.shift?.bitumenTank1ClosingDip ?? null);
+      dipToRow("Tank 2 Opening", summary.shift?.bitumenTank2OpeningDip ?? null);
+      dipToRow("Tank 2 Closing", summary.shift?.bitumenTank2ClosingDip ?? null);
 
       if (summary.generators?.items?.length) {
         section(`Generator Logs (${summary.generators.items.length})  Total Diesel: ${summary.generators.totalDieselConsumedL?.toFixed(1) || 0} L`);

@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { LdoDipReading } from "@shared/schema";
-import { getLdoVolumeAtDepth, getLdoMaxDepth } from "@shared/ldo-dip-chart";
+import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Tank", 2: "Dryer Tank" };
@@ -137,9 +137,12 @@ function formatVolume(tank: number, depth: number | null): string {
   if (depth === null || Number.isNaN(depth) || depth <= 0) return "—";
   const max = getLdoMaxDepth(tank);
   if (depth > max) return "out of range";
-  const vol = getLdoVolumeAtDepth(tank, depth);
-  const wt = (vol * LDO_DENSITY_KG_PER_LITER) / 1000;
-  return `${vol.toFixed(0)} L / ${wt.toFixed(3)} MT`;
+  const totalVol = getLdoVolumeAtDepth(tank, depth);
+  const deadVol = getLdoDeadStockVolume(tank);
+  const usableVol = Math.max(0, totalVol - deadVol);
+  const totalMt = (totalVol * LDO_DENSITY_KG_PER_LITER) / 1000;
+  const usableMt = (usableVol * LDO_DENSITY_KG_PER_LITER) / 1000;
+  return `Total: ${Math.round(totalVol).toLocaleString()} L (${totalMt.toFixed(3)} MT) | Usable: ${Math.round(usableVol).toLocaleString()} L (${usableMt.toFixed(3)} MT)`;
 }
 
 export default function PlantLdoDipBackfill() {
