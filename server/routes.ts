@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -1261,7 +1261,8 @@ export async function registerRoutes(
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
-      const receipt = await storage.createMaterialReceipt(body);
+      const input = insertMaterialReceiptSchema.parse(body);
+      const receipt = await storage.createMaterialReceipt(input);
       
       await storage.createNotification({
         type: "info",
@@ -1284,7 +1285,8 @@ export async function registerRoutes(
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
-      const updated = await storage.updateMaterialReceipt(Number(req.params.id), body);
+      const input = insertMaterialReceiptSchema.partial().parse(body);
+      const updated = await storage.updateMaterialReceipt(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
       sendPushToAll("Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);

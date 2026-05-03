@@ -168,7 +168,7 @@ export default function PlantMaterialReceipts() {
     setQuantity(String(receipt.quantity));
     setUom(receipt.uom);
     setSupplier(receipt.supplier || "");
-    setTransporter((receipt as any).transporter || "");
+    setTransporter(receipt.transporter || "");
     setVehicleNumber(receipt.vehicleNumber || "");
     setChallanNumber(receipt.challanNumber || "");
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
@@ -319,7 +319,7 @@ export default function PlantMaterialReceipts() {
         "Vehicle No": r.vehicleNumber || "",
         "Challan No": r.challanNumber || "",
         Supplier: r.supplier || "",
-        Transporter: (r as any).transporter || "",
+        Transporter: r.transporter || "",
         "Party/Job": getPartyName(r.partyId),
       }));
       const ws = XLSX.utils.json_to_sheet(data);
@@ -378,7 +378,7 @@ export default function PlantMaterialReceipts() {
         `${r.quantity} ${r.uom}`,
         r.vehicleNumber || "-",
         r.supplier || "-",
-        (r as any).transporter || "-",
+        r.transporter || "-",
         getPartyName(r.partyId),
       ]);
       
@@ -484,7 +484,7 @@ export default function PlantMaterialReceipts() {
                   <td>${r.vehicleNumber || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
                   <td>${r.supplier || '-'}</td>
-                  <td>${(r as any).transporter || '-'}</td>
+                  <td>${r.transporter || '-'}</td>
                   <td>${getPartyName(r.partyId)}</td>
                 </tr>
               `).join('')}
@@ -855,7 +855,7 @@ export default function PlantMaterialReceipts() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Transporter</span>
-                                    <span className="font-medium">{(receipt as any).transporter || "-"}</span>
+                                    <span className="font-medium">{receipt.transporter || "-"}</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Party/Job</span>
