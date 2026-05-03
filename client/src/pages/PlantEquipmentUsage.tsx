@@ -13,7 +13,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronLeft, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, ArrowRightLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, ArrowRightLeft } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -36,6 +36,7 @@ export default function PlantEquipmentUsage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [equipmentId, setEquipmentId] = useState<string>("");
   const [openingReading, setOpeningReading] = useState("");
@@ -1532,9 +1533,51 @@ export default function PlantEquipmentUsage() {
                           ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
                           : (entry.expectedDiesel ?? 0);
                         const closingDieselVal = closingDieselEntry ?? (openingDieselVal + dieselIssuedVal - (entry.expectedDiesel ?? 0));
+                        const isExpanded = expandedIds.has(entry.id);
+                        const ownerLabel = equip ? ((equip as any).ownership === "hired" ? `HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""}` : "HLC OWN") : "";
+                        const runtimeDisplay = isPartialEntry(entry) ? "Pending"
+                          : (entry as any).totalKm > 0 && !entry.hoursOrKmRun ? `${((entry as any).totalKm || 0).toFixed(1)} km`
+                          : entry.hoursOrKmRun != null ? `${entry.hoursOrKmRun.toFixed(2)} ${equip?.meterType === "hour_meter" ? "hrs" : "km"}` : "—";
                         return (
-                          <div key={entry.id} className="p-4 rounded-lg bg-muted/50 hover-elevate">
-                          <div className="flex items-center justify-between">
+                          <div key={entry.id} className="rounded-lg bg-muted/50 overflow-hidden">
+                            <div
+                              className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                              onClick={() => setExpandedIds(prev => { const s = new Set(prev); s.has(entry.id) ? s.delete(entry.id) : s.add(entry.id); return s; })}
+                            >
+                              <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+                              <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
+                                <span className="font-semibold">{equip?.name || "Unknown"}{(equip as any)?.registrationNumber ? ` (${(equip as any).registrationNumber})` : ""}</span>
+                                {equip && <span className="text-xs text-muted-foreground">{ownerLabel}</span>}
+                                {(entry as any).entryType === "shifting"
+                                  ? <span className="text-xs text-muted-foreground">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
+                                  : <span className="text-sm font-medium">{runtimeDisplay}</span>}
+                                {!isDieselIncluded && !isPartialEntry(entry) && (entry as any).entryType !== "shifting" && consumed > 0 && (
+                                  <span className="text-sm text-muted-foreground">{consumed.toFixed(1)} L consumed</span>
+                                )}
+                                {(entry as any).entryType === "hourly" && <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
+                                {(entry as any).entryType === "daily" && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
+                                {(entry as any).entryType === "monthly" && <Badge variant="outline" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
+                                {(entry as any).entryType === "trip_based" && <Badge variant="outline" className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
+                                {(entry as any).entryType === "shifting" && <Badge variant="outline" className="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>}
+                                {isDieselIncluded && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>}
+                                {isPartialEntry(entry) && <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
+                              </div>
+                              <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                {isPartialEntry(entry) && (
+                                  <Button size="sm" variant="outline" onClick={() => handleCompleteClick(entry)} className="gap-1 text-yellow-700 dark:text-yellow-300 border-yellow-300" data-testid={`button-complete-usage-${entry.id}`}>
+                                    <Gauge className="w-3 h-3" /> Complete
+                                  </Button>
+                                )}
+                                <Button size="icon" variant="ghost" onClick={() => handleEditClick(entry)} data-testid={`button-edit-usage-${entry.id}`}>
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                            {isExpanded && (
+                            <div className="px-4 pb-4 pt-3 border-t border-border/50">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-sm block">Equipment</span>
@@ -1698,31 +1741,14 @@ export default function PlantEquipmentUsage() {
                               </>
                               )}
                             </div>
-                            <div className="flex gap-2 ml-4">
-                              {isPartialEntry(entry) && (
-                                <Button size="sm" variant="outline" onClick={() => handleCompleteClick(entry)} className="gap-1 text-yellow-700 dark:text-yellow-300 border-yellow-300" data-testid={`button-complete-usage-${entry.id}`}>
-                                  <Gauge className="w-3 h-3" /> Complete
-                                </Button>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleEditClick(entry)}
-                                data-testid={`button-edit-usage-${entry.id}`}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(entry.id)} data-testid={`button-delete-usage-${entry.id}`}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
+                            {entry.remarks?.trim() && (
+                              <div className="pt-2 mt-2 border-t border-border/30">
+                                <span className="text-xs text-muted-foreground">Remarks: </span>
+                                <span className="text-xs font-medium">{entry.remarks}</span>
+                              </div>
+                            )}
                             </div>
-                          </div>
-                          {entry.remarks?.trim() && (
-                            <div className="pt-2 -mt-1">
-                              <span className="text-xs text-muted-foreground">Remarks: </span>
-                              <span className="text-xs font-medium">{entry.remarks}</span>
-                            </div>
-                          )}
+                            )}
                           </div>
                         );
                       })}

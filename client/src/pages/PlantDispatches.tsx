@@ -14,7 +14,7 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -36,6 +36,7 @@ export default function PlantDispatches() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   
   // Filter state — persisted across visits in localStorage so the page
   // re-opens with the user's last-used filter set. URL params (if any are
@@ -1246,7 +1247,41 @@ export default function PlantDispatches() {
                       {dayDispatches.map((dispatch) => {
                         const template = templates?.find(t => t.id === dispatch.mixTemplateId);
                         return (
-                          <div key={dispatch.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
+                          <div key={dispatch.id} className="rounded-lg bg-muted/50 overflow-hidden">
+                            {(() => {
+                              const isExpanded = expandedIds.has(dispatch.id);
+                              return (
+                            <>
+                            <div
+                              className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                              onClick={() => setExpandedIds(prev => { const s = new Set(prev); s.has(dispatch.id) ? s.delete(dispatch.id) : s.add(dispatch.id); return s; })}
+                            >
+                              <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+                              <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
+                                <span className="font-semibold">{dispatch.truckNumber}</span>
+                                <span className="font-medium">{dispatch.loadWeight} MT</span>
+                                <Badge variant="outline" className="text-xs">{template?.mixType || "-"}</Badge>
+                                <span className="text-xs text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
+                                {dispatch.ownerName && <span className="text-xs text-muted-foreground">{dispatch.ownerName}</span>}
+                                {dispatch.time && <span className="text-xs text-muted-foreground">{dispatch.time}</span>}
+                                {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
+                                  (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                )}
+                              </div>
+                              {canEdit && (
+                                <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                  <Button size="icon" variant="ghost" onClick={() => handleEditClick(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                            {isExpanded && (
+                            <div className="px-4 pb-4 pt-3 border-t border-border/50">
                             <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-2 text-sm">
                               <div>
                                 <span className="text-muted-foreground text-sm block">Time</span>
@@ -1307,26 +1342,11 @@ export default function PlantDispatches() {
                                 </div>
                               )}
                             </div>
-                            {canEdit && (
-                              <div className="flex items-center gap-1 ml-4">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleEditClick(dispatch)}
-                                  data-testid={`button-edit-dispatch-${dispatch.id}`}
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleDeleteClick(dispatch.id)}
-                                  data-testid={`button-delete-dispatch-${dispatch.id}`}
-                                >
-                                  <Trash2 className="w-4 h-4 text-destructive" />
-                                </Button>
-                              </div>
+                            </div>
                             )}
+                            </>
+                            );
+                            })()}
                           </div>
                         );
                       })}

@@ -11,7 +11,7 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
-import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -33,6 +33,7 @@ export default function PlantMaterialReceipts() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   // Filter state
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -780,56 +781,76 @@ export default function PlantMaterialReceipts() {
                       </h3>
                     </div>
                     <div className="space-y-2">
-                      {dayReceipts.map((receipt) => (
-                        <div key={receipt.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover-elevate">
-                          <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Time</span>
-                              <span className="font-medium">{receipt.time || "-"}</span>
+                      {dayReceipts.map((receipt) => {
+                        const isExpanded = expandedIds.has(receipt.id);
+                        return (
+                          <div key={receipt.id} className="rounded-lg bg-muted/50 overflow-hidden">
+                            <div
+                              className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                              onClick={() => setExpandedIds(prev => { const s = new Set(prev); s.has(receipt.id) ? s.delete(receipt.id) : s.add(receipt.id); return s; })}
+                            >
+                              <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+                              <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
+                                {receipt.time && <span className="text-xs text-muted-foreground">{receipt.time}</span>}
+                                <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
+                                <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
+                                {receipt.vehicleNumber && <span className="text-xs text-muted-foreground">{receipt.vehicleNumber}</span>}
+                                {receipt.supplier && <span className="text-xs text-muted-foreground">{receipt.supplier}</span>}
+                              </div>
+                              {canEdit && (
+                                <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                  <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              )}
                             </div>
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Material</span>
-                              <span className="font-medium">{getMaterialName(receipt.materialId)}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Quantity</span>
-                              <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Vehicle</span>
-                              <span className="font-medium">{receipt.vehicleNumber || "-"}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Challan</span>
-                              <span className="font-medium">{receipt.challanNumber || "-"}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Supplier</span>
-                              <span className="font-medium">{receipt.supplier || "-"}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground text-xs block">Party/Job</span>
-                              <span className="font-medium">{getPartyName(receipt.partyId)}</span>
-                            </div>
-                            {receipt.tankNumber && (
-                              <div>
-                                <span className="text-muted-foreground text-xs block">Tank</span>
-                                <Badge variant="outline">T{receipt.tankNumber}</Badge>
+                            {isExpanded && (
+                              <div className="px-4 pb-4 pt-3 border-t border-border/50">
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Time</span>
+                                    <span className="font-medium">{receipt.time || "-"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Material</span>
+                                    <span className="font-medium">{getMaterialName(receipt.materialId)}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Quantity</span>
+                                    <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Vehicle</span>
+                                    <span className="font-medium">{receipt.vehicleNumber || "-"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Challan</span>
+                                    <span className="font-medium">{receipt.challanNumber || "-"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Supplier</span>
+                                    <span className="font-medium">{receipt.supplier || "-"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Party/Job</span>
+                                    <span className="font-medium">{getPartyName(receipt.partyId)}</span>
+                                  </div>
+                                  {receipt.tankNumber && (
+                                    <div>
+                                      <span className="text-muted-foreground text-xs block">Tank</span>
+                                      <Badge variant="outline">T{receipt.tankNumber}</Badge>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
-                          {canEdit && (
-                            <div className="flex gap-2 ml-4">
-                              <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );
