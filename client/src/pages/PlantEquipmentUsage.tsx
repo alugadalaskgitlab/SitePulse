@@ -133,7 +133,7 @@ export default function PlantEquipmentUsage() {
     setTransportDistance(data.transportDistance ?? "");
   }, []);
 
-  const { clearDraft, wasRestoredRef: _equipWasRestoredRef } = useFormDraft<EquipmentFormData>(
+  const { clearDraft } = useFormDraft<EquipmentFormData>(
     "plant-equipment-usage-new",
     formData,
     handleRestoreDraft,
