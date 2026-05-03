@@ -36,7 +36,7 @@ type IdleRow = { startTime: string; endTime?: string | null; reason: string; rem
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
-  const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
+  const { isFromPortal, appendPlantContext } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
   const today = format(new Date(), "yyyy-MM-dd");
   const dateParam = params?.date || today;
@@ -46,7 +46,9 @@ export default function PlantShiftLog() {
   const [listDateFrom, setListDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [listDateTo, setListDateTo] = useState(today);
   const [listDryerFilter, setListDryerFilter] = useState<"all" | "TANK_1" | "TANK_2">("all");
-  const backLink = getPlantBackLink({ defaultTab: "operations" });
+  // Always return to operations tab — shift logs live on the operations tab regardless
+  // of which tab the user may have arrived from.
+  const backLink = isFromPortal ? "/" : "/plant/dashboard?tab=operations";
 
   const [date, setDate] = useState(dateParam);
   const [shiftCode, setShiftCode] = useState("DAY");
@@ -1002,7 +1004,7 @@ export default function PlantShiftLog() {
                 <SelectItem value="TANK_2">Dryer tank</SelectItem>
               </SelectContent>
             </Select>
-            <Link href={appendPlantContext("/plant/shift-log-manpower-review", { defaultTab: "operations" })}>
+            <Link href={appendPlantContext("/plant/shift-log-manpower-review", { forceTab: "operations" })}>
               <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 dark:text-amber-400" data-testid="link-manpower-review">
                 <Users className="w-4 h-4 mr-1" />Review UNKNOWN
               </Button>
@@ -1117,7 +1119,7 @@ export default function PlantShiftLog() {
                               })()}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <Link href={appendPlantContext(`/plant/daily-report/${r.date}`, { defaultTab: "operations" })}>
+                              <Link href={appendPlantContext(`/plant/daily-report/${r.date}`, { forceTab: "operations" })}>
                                 <Button variant="ghost" size="sm" data-testid={`button-daily-report-${r.id}`}>
                                   <FileText className="w-4 h-4 mr-1" />Report
                                 </Button>
@@ -1159,7 +1161,7 @@ export default function PlantShiftLog() {
         </div>
         <div className="flex items-center gap-2">
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
-          <Link href={appendPlantContext(`/plant/daily-report/${date}`, { defaultTab: "operations" })}>
+          <Link href={appendPlantContext(`/plant/daily-report/${date}`, { forceTab: "operations" })}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
           </Link>
         </div>

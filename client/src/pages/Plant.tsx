@@ -297,7 +297,7 @@ function OperationsTab() {
       )}
 
       {sectionVisible("plant_shift_logs") && (
-      <Link href={opLink(`/plant/shift-log/${new Date().toISOString().slice(0, 10)}`)}>
+      <Link href={opLink("/plant/shift-log")}>
         <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800" data-testid="tile-today-shift-log">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -305,7 +305,7 @@ function OperationsTab() {
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Plant Log</h3>
-              <p className="text-sm text-muted-foreground">Open or create today's plant shift log – plant times, dips, manpower, idle</p>
+              <p className="text-sm text-muted-foreground">View plant shift logs or start a new entry</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>

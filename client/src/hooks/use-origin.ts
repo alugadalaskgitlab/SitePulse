@@ -48,11 +48,11 @@ export function useOrigin() {
   // URL has no `tab`, falls back to `defaultTab` (the page's own home tab).
   const appendPlantContext = (
     path: string,
-    opts: { defaultTab?: PlantTab } = {},
+    opts: { defaultTab?: PlantTab; forceTab?: PlantTab } = {},
   ) => {
     const withOrigin = appendOrigin(path);
-    const tab =
-      urlTab && PLANT_TAB_VALUES.has(urlTab) ? urlTab : opts.defaultTab;
+    const tab = opts.forceTab
+      ?? (urlTab && PLANT_TAB_VALUES.has(urlTab) ? urlTab : opts.defaultTab);
     const extras: string[] = [];
     if (tab) extras.push(`tab=${tab}`);
     if (urlRole) extras.push(`role=${urlRole}`);
