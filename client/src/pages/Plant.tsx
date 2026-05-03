@@ -2213,11 +2213,30 @@ function MixTemplateMaster() {
                       {templateComponents.length > 0 && (
                         <div className="mt-2 text-xs text-muted-foreground">
                           <span className="font-medium">Aggregates:</span>{" "}
-                          {templateComponents.map((c, idx) => (
-                            <span key={c.id}>
-                              {getMaterialName(c.materialId)}: {c.percent}%{idx < templateComponents.length - 1 ? ", " : ""}
-                            </span>
-                          ))}
+                          <span className="inline-flex flex-wrap gap-x-2 gap-y-1">
+                            {templateComponents.map((c) => {
+                              const mc = c.moistureContent ?? 0;
+                              const wf = c.wastageFactor ?? 0;
+                              const hasAdj = mc > 0 || wf > 0;
+                              return (
+                                <span key={c.id} className="inline-flex items-center gap-1">
+                                  <span>{getMaterialName(c.materialId)}: {c.percent}%</span>
+                                  {hasAdj && (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 rounded px-1 py-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium"
+                                      title={`MC: ${mc}%  WF: ${wf}%`}
+                                      data-testid={`badge-adj-${c.id}`}
+                                    >
+                                      {mc > 0 && <span>MC{mc}%</span>}
+                                      {mc > 0 && wf > 0 && <span>·</span>}
+                                      {wf > 0 && <span>WF{wf}%</span>}
+                                      <span className="font-mono">×{((1 + wf / 100) / (1 - mc / 100)).toFixed(3)}</span>
+                                    </span>
+                                  )}
+                                </span>
+                              );
+                            })}
+                          </span>
                         </div>
                       )}
                     </div>
