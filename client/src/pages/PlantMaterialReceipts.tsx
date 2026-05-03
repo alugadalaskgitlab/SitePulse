@@ -49,6 +49,7 @@ export default function PlantMaterialReceipts() {
   const [quantity, setQuantity] = useState("");
   const [uom, setUom] = useState("Ton");
   const [supplier, setSupplier] = useState("");
+  const [transporter, setTransporter] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
   const [tankNumber, setTankNumber] = useState<string>("");
@@ -61,14 +62,15 @@ export default function PlantMaterialReceipts() {
     quantity: string;
     uom: string;
     supplier: string;
+    transporter: string;
     vehicleNumber: string;
     challanNumber: string;
     tankNumber: string;
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber, tankNumber
-  }), [date, time, partyId, materialId, quantity, uom, supplier, vehicleNumber, challanNumber, tankNumber]);
+    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber
+  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -78,6 +80,7 @@ export default function PlantMaterialReceipts() {
     setQuantity(data.quantity);
     setUom(data.uom);
     setSupplier(data.supplier);
+    setTransporter(data.transporter || "");
     setVehicleNumber(data.vehicleNumber);
     setChallanNumber(data.challanNumber);
     setTankNumber(data.tankNumber || "");
@@ -150,6 +153,7 @@ export default function PlantMaterialReceipts() {
     setQuantity("");
     setUom("Ton");
     setSupplier("");
+    setTransporter("");
     setVehicleNumber("");
     setChallanNumber("");
     setTankNumber("");
@@ -164,6 +168,7 @@ export default function PlantMaterialReceipts() {
     setQuantity(String(receipt.quantity));
     setUom(receipt.uom);
     setSupplier(receipt.supplier || "");
+    setTransporter((receipt as any).transporter || "");
     setVehicleNumber(receipt.vehicleNumber || "");
     setChallanNumber(receipt.challanNumber || "");
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
@@ -198,6 +203,7 @@ export default function PlantMaterialReceipts() {
         quantity: parseFloat(quantity),
         uom,
         supplier,
+        transporter,
         vehicleNumber,
         challanNumber,
         tankNumber: isTankMaterial && tankNumber ? parseInt(tankNumber) : null,
@@ -213,6 +219,7 @@ export default function PlantMaterialReceipts() {
         quantity: parseFloat(quantity),
         uom,
         supplier,
+        transporter,
         vehicleNumber,
         challanNumber,
         tankNumber: isTankMaterial && tankNumber ? parseInt(tankNumber) : null,
@@ -312,6 +319,7 @@ export default function PlantMaterialReceipts() {
         "Vehicle No": r.vehicleNumber || "",
         "Challan No": r.challanNumber || "",
         Supplier: r.supplier || "",
+        Transporter: (r as any).transporter || "",
         "Party/Job": getPartyName(r.partyId),
       }));
       const ws = XLSX.utils.json_to_sheet(data);
@@ -369,16 +377,18 @@ export default function PlantMaterialReceipts() {
         getMaterialName(r.materialId),
         `${r.quantity} ${r.uom}`,
         r.vehicleNumber || "-",
+        r.supplier || "-",
+        (r as any).transporter || "-",
         getPartyName(r.partyId),
       ]);
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Party/Job"]],
+        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Supplier", "Transporter", "Party/Job"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
-        styles: { fontSize: 8 },
+        styles: { fontSize: 7 },
         margin: { left: 14, right: 14 },
       });
       
@@ -459,6 +469,7 @@ export default function PlantMaterialReceipts() {
                 <th>Vehicle</th>
                 <th>Challan</th>
                 <th>Supplier</th>
+                <th>Transporter</th>
                 <th>Party/Job</th>
               </tr>
             </thead>
@@ -473,6 +484,7 @@ export default function PlantMaterialReceipts() {
                   <td>${r.vehicleNumber || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
                   <td>${r.supplier || '-'}</td>
+                  <td>${(r as any).transporter || '-'}</td>
                   <td>${getPartyName(r.partyId)}</td>
                 </tr>
               `).join('')}
@@ -614,9 +626,15 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
-              <div>
-                <Label>Supplier</Label>
-                <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="Supplier name" data-testid="input-supplier" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Supplier</Label>
+                  <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="Who sold it" data-testid="input-supplier" />
+                </div>
+                <div>
+                  <Label>Transporter <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Input value={transporter} onChange={(e) => setTransporter(e.target.value.toUpperCase())} placeholder="Who carried it" data-testid="input-transporter" />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -834,6 +852,10 @@ export default function PlantMaterialReceipts() {
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Supplier</span>
                                     <span className="font-medium">{receipt.supplier || "-"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">Transporter</span>
+                                    <span className="font-medium">{(receipt as any).transporter || "-"}</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Party/Job</span>

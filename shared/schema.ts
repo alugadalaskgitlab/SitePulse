@@ -285,6 +285,7 @@ export const materialReceipts = pgTable("material_receipts", {
   quantity: real("quantity").notNull(),
   uom: text("uom").notNull(),
   supplier: text("supplier"),
+  transporter: text("transporter"), // Who transported the material (separate from supplier)
   vehicleNumber: text("vehicle_number"),
   challanNumber: text("challan_number"),
   tankNumber: integer("tank_number"),

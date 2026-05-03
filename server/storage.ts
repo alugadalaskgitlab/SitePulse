@@ -2018,6 +2018,7 @@ export class DatabaseStorage implements IStorage {
       const uppercased = {
         ...receipt,
         supplier: receipt.supplier?.toUpperCase(),
+        transporter: receipt.transporter?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
         challanNumber: receipt.challanNumber?.toUpperCase(),
       };
@@ -2094,6 +2095,7 @@ export class DatabaseStorage implements IStorage {
       // Uppercase text fields
       const updates = { ...receipt };
       if (updates.supplier) updates.supplier = updates.supplier.toUpperCase();
+      if (updates.transporter) updates.transporter = updates.transporter.toUpperCase();
       if (updates.vehicleNumber) updates.vehicleNumber = updates.vehicleNumber.toUpperCase();
       if (updates.challanNumber) updates.challanNumber = updates.challanNumber.toUpperCase();
       
@@ -8115,6 +8117,38 @@ export class DatabaseStorage implements IStorage {
           unit: "TRIP",
           source: "auto",
           leadDistance: null,
+        });
+      }
+
+      // Material receipts where the transporter matches the vendor — allows
+      // generating haulage bills for aggregate/material transport contractors.
+      const transportReceipts = await db.select({
+        date: materialReceipts.date,
+        materialName: plantMaterials.name,
+        quantity: materialReceipts.quantity,
+        uom: materialReceipts.uom,
+        challanNumber: materialReceipts.challanNumber,
+        vehicleNumber: materialReceipts.vehicleNumber,
+      })
+      .from(materialReceipts)
+      .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
+      .where(and(
+        vendorMatchSql(materialReceipts.transporter),
+        gte(materialReceipts.date, periodFrom),
+        lte(materialReceipts.date, periodTo),
+      ));
+
+      for (const row of transportReceipts) {
+        const challanPart = row.challanNumber ? ` — Challan ${row.challanNumber}` : "";
+        const vehiclePart = row.vehicleNumber ? ` [${row.vehicleNumber}]` : "";
+        items.push({
+          date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+          category: "transport",
+          description: `MATERIAL TRANSPORT: ${(row.materialName || "MATERIAL").toUpperCase()} (${row.quantity} ${row.uom})${challanPart}${vehiclePart}`,
+          qty: 1,
+          unit: "TRIP",
+          source: "auto",
+          siteName: "PLANT",
         });
       }
     }
