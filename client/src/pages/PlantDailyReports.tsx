@@ -738,6 +738,16 @@ export default function PlantDailyReports() {
                               <span className="text-amber-600 dark:text-amber-400">Dryer-source mismatch</span>
                             </div>
                           )}
+                          {r.dryerFedFrom === null && r.hasShiftLog && (
+                            <a
+                              href={appendPlantContext(`/plant/shift-log/${r.date}?plant=${encodeURIComponent(r.plantName)}&focus=dryerFedFrom`, { defaultTab: "reports" })}
+                              className="flex items-center gap-1.5 group w-fit"
+                              data-testid={`dryer-missing-alert-${rowKey}`}
+                            >
+                              <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                              <span className="text-amber-600 dark:text-amber-400 group-hover:underline">Dryer routing not set</span>
+                            </a>
+                          )}
                           {/* LDO line — always show all three sub-labels with — when missing */}
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5" data-testid={`ldo-row-${rowKey}`}>
                             <span data-testid={`ldo-heating-${rowKey}`}>
