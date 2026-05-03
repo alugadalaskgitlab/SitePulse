@@ -581,12 +581,12 @@ export default function PlantDailyReport() {
               <div className="md:col-span-4 text-xs text-muted-foreground">
                 Tank stock deducted today (dryer meter is routed to{" "}
                 <span className="font-medium" data-testid="text-dryer-fed-from-summary">
-                  {data.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : data.ldo.dryerFedFrom === "TANK_2" ? "Tank 2" : "Not set"}
+                  {data.ldo.dryerFedFrom === "TANK_1" ? "Boiler tank" : data.ldo.dryerFedFrom === "TANK_2" ? "Dryer tank" : "Not set"}
                 </span>
                 )
               </div>
-              <KV label="Tank 1 stock used (L)" value={fmt(data.ldo.tank1DeductedL ?? null, 1)} />
-              <KV label="Tank 2 stock used (L)" value={fmt(data.ldo.tank2DeductedL ?? null, 1)} />
+              <KV label="Boiler tank stock used (L)" value={fmt(data.ldo.tank1DeductedL ?? null, 1)} />
+              <KV label="Dryer tank stock used (L)" value={fmt(data.ldo.tank2DeductedL ?? null, 1)} />
             </CardContent>
           </Card>
           )}

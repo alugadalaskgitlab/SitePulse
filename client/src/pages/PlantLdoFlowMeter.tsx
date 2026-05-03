@@ -909,7 +909,7 @@ export default function PlantLdoFlowMeter() {
       Date: r.date,
       Time: r.time || "",
       Tank: TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
-      "Dryer Src": r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← T1" : "",
+      "Dryer Src": r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : "",
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
@@ -947,7 +947,7 @@ export default function PlantLdoFlowMeter() {
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "",
       TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
-      r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← T1" : "",
+      r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : "",
       r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
@@ -969,7 +969,7 @@ export default function PlantLdoFlowMeter() {
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← T1" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -2016,8 +2016,8 @@ export default function PlantLdoFlowMeter() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Dryer Src</SelectItem>
-                <SelectItem value="T1">← T1 only</SelectItem>
-                <SelectItem value="T2">T2 only</SelectItem>
+                <SelectItem value="T1">← Boiler tank only</SelectItem>
+                <SelectItem value="T2">Dryer tank only</SelectItem>
               </SelectContent>
             </Select>
             {(filterDateFrom || filterDateTo || filterTank !== "all" || filterSource !== "all" || filterDryerSrc !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
@@ -2079,10 +2079,10 @@ export default function PlantLdoFlowMeter() {
                           <Badge
                             variant="outline"
                             className="text-xs border-amber-500 text-amber-700 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate"
-                            title="Dryer is fed from Tank 1 stock"
+                            title="Dryer is fed from Boiler tank stock"
                             data-testid={`badge-dryer-src-${r.id}`}
                           >
-                            ← T1
+                            ← Boiler tank
                           </Badge>
                         )}
                       </td>
@@ -2193,12 +2193,12 @@ export default function PlantLdoFlowMeter() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TANK_2">Tank 2 — Dryer Tank (default)</SelectItem>
-                    <SelectItem value="TANK_1">Tank 1 — Boiler Tank</SelectItem>
+                    <SelectItem value="TANK_2">Dryer tank (default)</SelectItem>
+                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
                   </SelectContent>
                 </Select>
                 {dryerFedFrom === "TANK_1" && (
-                  <p className="text-xs text-amber-600 mt-1">Consumption will be debited from Tank-1 stock.</p>
+                  <p className="text-xs text-amber-600 mt-1">Consumption will be debited from Boiler tank stock.</p>
                 )}
               </div>
             )}

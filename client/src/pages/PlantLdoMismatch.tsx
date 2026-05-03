@@ -441,7 +441,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
           <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <BookOpen className="w-4 h-4 text-violet-600" />
-              LDO Flow Ledger rows on {date} (Tank 1 · auto-tagged)
+              LDO Flow Ledger rows on {date} (Boiler tank · auto-tagged)
             </CardTitle>
             <Link href={ldoFlowMeterLink}>
               <Button
@@ -925,7 +925,7 @@ export default function PlantLdoMismatch() {
     doc.setFontSize(14);
     doc.text("LDO Flow Ledger Reconciliation", 14, 14);
     doc.setFontSize(9);
-    doc.text(`${plant}  ·  Tank 1 (Boiler)  ·  ${dateLabel}`, 14, 21);
+    doc.text(`${plant}  ·  Boiler tank  ·  ${dateLabel}`, 14, 21);
     doc.text(`Mismatch threshold: ±${MISMATCH_THRESHOLD_L} L`, 14, 27);
 
     const summaryHead = [
@@ -1049,7 +1049,7 @@ export default function PlantLdoMismatch() {
             {isMultiDay
               ? `${effectiveDateFrom} → ${effectiveDateTo}`
               : effectiveDateFrom || "—"}{" "}
-            · {plant} · Tank 1 (Boiler)
+            · {plant} · Boiler tank
           </p>
         </div>
         {!isLoading && !isError && daySummaries.length > 0 && (
