@@ -565,10 +565,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/push/subscriptions", async (req, res) => {
+  app.get("/api/push/subscriptions", requireAuth, async (req, res) => {
+    if (!assertView(req, res, "user_management")) return;
     try {
       const subs = await storage.getAllPushSubscriptions();
-      res.json(subs);
+      res.json(subs.map((s) => ({ userId: s.userId })));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch subscriptions" });
     }

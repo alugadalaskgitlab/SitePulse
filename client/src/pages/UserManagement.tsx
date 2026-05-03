@@ -86,18 +86,33 @@ export default function UserManagement() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const usersQ = useQuery<SafeUser[]>({ queryKey: ["/api/auth/users"] });
-
-  const [createOpen, setCreateOpen] = useState(false);
-  const [permsUserId, setPermsUserId] = useState<number | null>(null);
-  const [pwUserId, setPwUserId] = useState<number | null>(null);
-  const [editUserId, setEditUserId] = useState<number | null>(null);
-
   // Matrix-based gates. Admin users implicitly have every permission.
   const userMgmt = permissions["user_management"];
   const canView = !!user?.isAdmin || !!userMgmt?.view;
   const canCreate = !!user?.isAdmin || !!userMgmt?.create;
   const canEdit = !!user?.isAdmin || !!userMgmt?.edit;
+
+  const usersQ = useQuery<SafeUser[]>({ queryKey: ["/api/auth/users"] });
+
+  const subsQ = useQuery<{ userId: number | null }[]>({
+    queryKey: ["/api/push/subscriptions"],
+    enabled: canView,
+  });
+
+  const subCountByUser = useMemo<Record<number, number>>(() => {
+    const counts: Record<number, number> = {};
+    for (const s of subsQ.data ?? []) {
+      if (s.userId != null) {
+        counts[s.userId] = (counts[s.userId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [subsQ.data]);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [permsUserId, setPermsUserId] = useState<number | null>(null);
+  const [pwUserId, setPwUserId] = useState<number | null>(null);
+  const [editUserId, setEditUserId] = useState<number | null>(null);
 
   if (!canView) {
     return (
@@ -164,6 +179,7 @@ export default function UserManagement() {
                       key={u.id}
                       user={u}
                       canEdit={canEdit}
+                      deviceCount={subCountByUser[u.id] ?? 0}
                       onEdit={() => setEditUserId(u.id)}
                       onPerms={() => setPermsUserId(u.id)}
                       onResetPw={() => setPwUserId(u.id)}
@@ -210,12 +226,14 @@ export default function UserManagement() {
 function UserRow({
   user,
   canEdit,
+  deviceCount,
   onEdit,
   onPerms,
   onResetPw,
 }: {
   user: SafeUser;
   canEdit: boolean;
+  deviceCount: number;
   onEdit: () => void;
   onPerms: () => void;
   onResetPw: () => void;
@@ -276,12 +294,24 @@ function UserRow({
         />
       </td>
       <td className="py-2 pr-4">
-        <Switch
-          checked={user.notificationsEnabled}
-          disabled={!canEdit}
-          onCheckedChange={(v) => patch.mutate({ notificationsEnabled: v })}
-          data-testid={`switch-notif-${user.id}`}
-        />
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={user.notificationsEnabled}
+            disabled={!canEdit}
+            onCheckedChange={(v) => patch.mutate({ notificationsEnabled: v })}
+            data-testid={`switch-notif-${user.id}`}
+          />
+          {deviceCount > 0 ? (
+            <span
+              className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary"
+              data-testid={`badge-devices-${user.id}`}
+            >
+              {deviceCount} device{deviceCount !== 1 ? "s" : ""}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground" data-testid={`badge-devices-${user.id}`}>—</span>
+          )}
+        </div>
       </td>
       <td className="py-2 pr-4">
         <div className="flex gap-2 flex-wrap">
