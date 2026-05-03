@@ -262,6 +262,7 @@ export interface IStorage {
     ldoConsumedL: number;
     closingStockL: number | null;
     tonsProducedMT: number;
+    hasFlowReadings: boolean;
   }>;
   
   getStockBalances(partyId?: number): Promise<StockBalance[]>;
@@ -3088,18 +3089,25 @@ export class DatabaseStorage implements IStorage {
       .filter(r => r.readingType === "receipt")
       .reduce((s, r) => s + (r.quantityLiters || 0), 0);
 
-    // LDO consumed = meter-pair diffs across both tanks for the date
+    // Whether the target date has any flow readings (determines if LDO fields
+    // are truly meter-derived vs. just opening stock from a prior baseline)
+    const hasFlowReadings = dayReadings.length > 0;
+
+    // LDO consumed = meter-pair diffs for the date, grouped by PHYSICAL
+    // tankNumber so that a shift with both boiler (tank-1) and dryer (tank-2,
+    // dryerFedFrom=TANK_1) meter pairs don't collapse into one group.
     const computeDayConsumption = (readings: LdoFlowReading[]): number => {
       type Pair = { openings: LdoFlowReading[]; closings: LdoFlowReading[] };
       const pairs = new Map<string, Pair>();
       for (const r of readings) {
         if (r.readingType !== "opening" && r.readingType !== "closing") continue;
-        const et = effectiveTank(r);
+        // Key uses physical tankNumber (r.tankNumber) — not effectiveTank — so
+        // cross-tank pairs from the same source keep separate buckets.
         const key = r.sourceShiftLogId != null
-          ? `S${r.sourceShiftLogId}::${et}`
+          ? `S${r.sourceShiftLogId}::${r.tankNumber}`
           : r.sourceHeatingSessionId != null
-            ? `H${r.sourceHeatingSessionId}::${et}`
-            : `D${r.date}::${et}`;
+            ? `H${r.sourceHeatingSessionId}::${r.tankNumber}`
+            : `D${r.date}::${r.tankNumber}`;
         let p = pairs.get(key);
         if (!p) { p = { openings: [], closings: [] }; pairs.set(key, p); }
         if (r.readingType === "opening") p.openings.push(r);
@@ -3129,7 +3137,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(...dispConds));
     const tonsProducedMT = dispatches.reduce((s, d) => s + (d.loadWeight || 0), 0);
 
-    return { openingStockL, ldoReceivedL, ldoConsumedL, closingStockL, tonsProducedMT };
+    return { openingStockL, ldoReceivedL, ldoConsumedL, closingStockL, tonsProducedMT, hasFlowReadings };
   }
 
   // Stock Balances

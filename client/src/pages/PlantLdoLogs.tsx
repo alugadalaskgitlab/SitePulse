@@ -27,7 +27,10 @@ type DailySummary = {
   ldoConsumedL: number;
   closingStockL: number | null;
   tonsProducedMT: number;
+  hasFlowReadings: boolean;
 };
+
+type AutoFilledFields = Set<'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced'>;
 
 export default function PlantLdoLogs() {
   const { toast } = useToast();
@@ -43,9 +46,13 @@ export default function PlantLdoLogs() {
   const [ldoConsumed, setLdoConsumed] = useState("");
   const [closingStock, setClosingStock] = useState("");
   const [tonsProduced, setTonsProduced] = useState("");
-  const [autoFilled, setAutoFilled] = useState(false);
+  const [autoFilledFields, setAutoFilledFields] = useState<AutoFilledFields>(new Set());
   const [summaryLoading, setSummaryLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  const clearFieldAutoFill = (field: 'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced') => {
+    setAutoFilledFields(prev => { const next = new Set(prev); next.delete(field); return next; });
+  };
 
   // Task #479 — Auto-fill from meter readings when dialog opens or date changes
   useEffect(() => {
@@ -57,20 +64,37 @@ export default function PlantLdoLogs() {
     abortRef.current = controller;
 
     setSummaryLoading(true);
-    setAutoFilled(false);
+    setAutoFilledFields(new Set());
 
     fetch(`/api/plant-module/ldo-logs/daily-summary?date=${date}`, { signal: controller.signal })
       .then(r => r.ok ? r.json() as Promise<DailySummary> : Promise.reject())
       .then((s: DailySummary) => {
-        const hasAnyData = s.openingStockL !== null || s.ldoReceivedL > 0 || s.ldoConsumedL > 0 || s.tonsProducedMT > 0;
-        if (hasAnyData) {
-          setOpeningStock(s.openingStockL !== null ? String(Math.round(s.openingStockL * 10) / 10) : "");
-          setLdoReceived(s.ldoReceivedL > 0 ? String(Math.round(s.ldoReceivedL * 10) / 10) : "");
-          setLdoConsumed(s.ldoConsumedL > 0 ? String(Math.round(s.ldoConsumedL * 10) / 10) : "");
-          setClosingStock(s.closingStockL !== null ? String(Math.round(s.closingStockL * 10) / 10) : "");
-          setTonsProduced(s.tonsProducedMT > 0 ? String(Math.round(s.tonsProducedMT * 1000) / 1000) : "");
-          setAutoFilled(true);
+        const filled = new Set<'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced'>();
+        // LDO fields are only meter-derived when the date has actual flow readings
+        if (s.hasFlowReadings) {
+          if (s.openingStockL !== null) {
+            setOpeningStock(String(Math.round(s.openingStockL * 10) / 10));
+            filled.add('openingStock');
+          } else { setOpeningStock(""); }
+          if (s.ldoReceivedL > 0) {
+            setLdoReceived(String(Math.round(s.ldoReceivedL * 10) / 10));
+            filled.add('ldoReceived');
+          } else { setLdoReceived(""); }
+          if (s.ldoConsumedL > 0) {
+            setLdoConsumed(String(Math.round(s.ldoConsumedL * 10) / 10));
+            filled.add('ldoConsumed');
+          } else { setLdoConsumed(""); }
+          if (s.closingStockL !== null) {
+            setClosingStock(String(Math.round(s.closingStockL * 10) / 10));
+            filled.add('closingStock');
+          } else { setClosingStock(""); }
         }
+        // Tons produced comes from dispatches (independent of flow readings)
+        if (s.tonsProducedMT > 0) {
+          setTonsProduced(String(Math.round(s.tonsProducedMT * 1000) / 1000));
+          filled.add('tonsProduced');
+        } else { setTonsProduced(""); }
+        setAutoFilledFields(filled);
         setSummaryLoading(false);
       })
       .catch(() => setSummaryLoading(false));
@@ -111,7 +135,7 @@ export default function PlantLdoLogs() {
     setLdoConsumed("");
     setClosingStock("");
     setTonsProduced("");
-    setAutoFilled(false);
+    setAutoFilledFields(new Set());
     setSummaryLoading(false);
   };
 
@@ -386,22 +410,15 @@ export default function PlantLdoLogs() {
                 <Input
                   type="date"
                   value={date}
-                  onChange={(e) => { setDate(e.target.value); setAutoFilled(false); }}
+                  onChange={(e) => { setDate(e.target.value); setAutoFilledFields(new Set()); }}
                   data-testid="input-ldo-date"
                 />
               </div>
 
               {summaryLoading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="status-summary-loading">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Computing values from meter readings…
-                </div>
-              )}
-
-              {autoFilled && !summaryLoading && (
-                <div className="flex items-center gap-2 p-2.5 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-300" data-testid="banner-autofilled">
-                  <Zap className="w-3.5 h-3.5 shrink-0" />
-                  Auto-filled from meter readings — adjust any value before saving.
                 </div>
               )}
 
@@ -411,20 +428,30 @@ export default function PlantLdoLogs() {
                   <Input
                     type="number" step="0.1"
                     value={openingStock}
-                    onChange={(e) => { setOpeningStock(e.target.value); setAutoFilled(false); }}
+                    onChange={(e) => { setOpeningStock(e.target.value); clearFieldAutoFill('openingStock'); }}
                     placeholder="0"
                     data-testid="input-ldo-opening"
                   />
+                  {autoFilledFields.has('openingStock') && (
+                    <p className="flex items-center gap-1 mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="hint-opening-autofill">
+                      <Zap className="w-3 h-3" /> from meter readings
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>LDO Received (L)</Label>
                   <Input
                     type="number" step="0.1"
                     value={ldoReceived}
-                    onChange={(e) => { setLdoReceived(e.target.value); setAutoFilled(false); }}
+                    onChange={(e) => { setLdoReceived(e.target.value); clearFieldAutoFill('ldoReceived'); }}
                     placeholder="0"
                     data-testid="input-ldo-received"
                   />
+                  {autoFilledFields.has('ldoReceived') && (
+                    <p className="flex items-center gap-1 mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="hint-received-autofill">
+                      <Zap className="w-3 h-3" /> from meter readings
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -434,20 +461,30 @@ export default function PlantLdoLogs() {
                   <Input
                     type="number" step="0.1"
                     value={ldoConsumed}
-                    onChange={(e) => { setLdoConsumed(e.target.value); setAutoFilled(false); }}
+                    onChange={(e) => { setLdoConsumed(e.target.value); clearFieldAutoFill('ldoConsumed'); }}
                     placeholder="0"
                     data-testid="input-ldo-consumed"
                   />
+                  {autoFilledFields.has('ldoConsumed') && (
+                    <p className="flex items-center gap-1 mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="hint-consumed-autofill">
+                      <Zap className="w-3 h-3" /> from meter readings
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Closing Stock (L)</Label>
                   <Input
                     type="number" step="0.1"
                     value={closingStock}
-                    onChange={(e) => { setClosingStock(e.target.value); setAutoFilled(false); }}
+                    onChange={(e) => { setClosingStock(e.target.value); clearFieldAutoFill('closingStock'); }}
                     placeholder="0"
                     data-testid="input-ldo-closing"
                   />
+                  {autoFilledFields.has('closingStock') && (
+                    <p className="flex items-center gap-1 mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="hint-closing-autofill">
+                      <Zap className="w-3 h-3" /> from meter readings
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -456,10 +493,15 @@ export default function PlantLdoLogs() {
                 <Input
                   type="number" step="0.1"
                   value={tonsProduced}
-                  onChange={(e) => { setTonsProduced(e.target.value); setAutoFilled(false); }}
+                  onChange={(e) => { setTonsProduced(e.target.value); clearFieldAutoFill('tonsProduced'); }}
                   placeholder="Total production for the day"
                   data-testid="input-tons-produced"
                 />
+                {autoFilledFields.has('tonsProduced') && (
+                  <p className="flex items-center gap-1 mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="hint-tons-autofill">
+                    <Zap className="w-3 h-3" /> from dispatch records
+                  </p>
+                )}
               </div>
 
               {tonsProduced && (
