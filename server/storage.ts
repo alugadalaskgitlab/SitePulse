@@ -267,6 +267,11 @@ export interface IStorage {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
     entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
   }>;
+  getHlcBorrowReconciliation(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
+    uom: string;
+    rows: { date: string; site: string; partyStatementBorrowed: number; hlcLedgerDispatched: number | null; delta: number | null; isLegacy: boolean }[];
+    totals: { partyStatementBorrowed: number; hlcLedgerDispatched: number; delta: number };
+  }>;
   addStockLedgerEntry(entry: InsertStockLedger): Promise<StockLedgerEntry>;
   
   // Material Issues (issues to sites/parties from central store)
@@ -3349,6 +3354,121 @@ export class DatabaseStorage implements IStorage {
       summary: { totalReceived, dispatchedOwn, borrowedFromHlc, replenishedToHlc, outstanding, uom },
       entries: detail,
     };
+  }
+
+  async getHlcBorrowReconciliation(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
+    uom: string;
+    rows: { date: string; site: string; partyStatementBorrowed: number; hlcLedgerDispatched: number | null; delta: number | null; isLegacy: boolean }[];
+    totals: { partyStatementBorrowed: number; hlcLedgerDispatched: number; delta: number };
+  }> {
+    // 1. Compute the full-history party statement up to dateTo (no dateFrom) so the running
+    //    balance — and therefore borrowedQty — is accurate from the very first transaction.
+    //    We filter to the requested date window manually in step 2.
+    const stmt = await this.getPartyStatement(partyId, materialId, undefined, dateTo);
+    const { uom } = stmt.summary;
+
+    // 2. Filter dispatch entries to the requested window and split by link status.
+    const dispatchEntries = stmt.entries.filter(e => {
+      if (e.displayType !== 'own_dispatch') return false;
+      if (dateFrom && e.date < dateFrom) return false;
+      return true;
+    });
+    const linkedEntries   = dispatchEntries.filter(e => e.referenceId != null);
+    const unlinkedEntries = dispatchEntries.filter(e => e.referenceId == null);
+
+    // 3. Distinct referenceIds for linked party dispatches.
+    const linkedRefIds = [...new Set(linkedEntries.map(e => e.referenceId!))];
+
+    // 4. Find HLC party.
+    const allParties = await db.select({ id: parties.id, name: parties.name }).from(parties);
+    const hlcParty =
+      allParties.find(p => p.name?.trim().toUpperCase() === 'HLC') ??
+      allParties.find(p => p.name?.trim().toUpperCase().includes('HLC') || p.name?.trim().toUpperCase().includes('HIGH LANE'));
+    const hlcPartyId = hlcParty?.id ?? null;
+
+    // 5. Fetch HLC ledger rows ONLY for linked dispatches using referenceId.
+    //    This is fully party-scoped: no cross-contamination with other parties that
+    //    borrowed the same material on the same date.
+    const hlcLinkedRaw = hlcPartyId !== null && linkedRefIds.length > 0
+      ? await db
+          .select({ date: stockLedger.date, quantityOut: stockLedger.quantityOut })
+          .from(stockLedger)
+          .where(and(
+            eq(stockLedger.partyId, hlcPartyId),
+            eq(stockLedger.materialId, materialId),
+            eq(stockLedger.transactionType, 'dispatch'),
+            inArray(stockLedger.referenceId, linkedRefIds),
+          ))
+      : [];
+
+    // 6. Aggregate HLC totals by date (linked only).
+    const hlcByDate = new Map<string, number>();
+    for (const r of hlcLinkedRaw) {
+      hlcByDate.set(r.date, (hlcByDate.get(r.date) ?? 0) + (r.quantityOut ?? 0));
+    }
+
+    // 7a. Build linked rows: aggregate borrowed and HLC by date; full-outer-join on date.
+    const linkedByDate = new Map<string, number>();
+    const siteByDate   = new Map<string, string[]>();
+    const extractSite  = (notes: string | null) => {
+      const m = (notes ?? '').match(/Material Consumed\s*[—\-]\s*(.+?)(?:\s*\(was |\s*$)/);
+      return m ? m[1].trim() : null;
+    };
+    for (const e of linkedEntries) {
+      linkedByDate.set(e.date, (linkedByDate.get(e.date) ?? 0) + (e.borrowedQty ?? 0));
+      const site = extractSite(e.notes ?? null);
+      if (site) {
+        const bucket = siteByDate.get(e.date) ?? [];
+        if (!bucket.includes(site)) bucket.push(site);
+        siteByDate.set(e.date, bucket);
+      }
+    }
+    const linkedDates = new Set([...linkedByDate.keys(), ...hlcByDate.keys()]);
+    const linkedRows = [...linkedDates].sort().map(date => {
+      const partyStatementBorrowed = linkedByDate.get(date) ?? 0;
+      const hlcLedgerDispatched    = hlcByDate.get(date)   ?? 0;
+      const delta = partyStatementBorrowed - hlcLedgerDispatched;
+      const sites = siteByDate.get(date) ?? [];
+      const site  = sites.length > 1 ? `${sites[0]} (+${sites.length - 1} more)` : (sites[0] ?? '');
+      return { date, site, partyStatementBorrowed, hlcLedgerDispatched: hlcLedgerDispatched as number | null, delta: delta as number | null, isLegacy: false };
+    });
+
+    // 7b. Build legacy (unlinked) rows: these cannot be reliably matched to HLC ledger entries
+    //     because the original dispatch lacked a referenceId and matching by date/material alone
+    //     would include other parties' HLC rows. Surface them with hlcLedgerDispatched = null
+    //     so the admin knows they require manual verification.
+    const unlinkedByDate = new Map<string, number>();
+    const unlinkedSiteByDate = new Map<string, string[]>();
+    for (const e of unlinkedEntries) {
+      unlinkedByDate.set(e.date, (unlinkedByDate.get(e.date) ?? 0) + (e.borrowedQty ?? 0));
+      const site = extractSite(e.notes ?? null);
+      if (site) {
+        const bucket = unlinkedSiteByDate.get(e.date) ?? [];
+        if (!bucket.includes(site)) bucket.push(site);
+        unlinkedSiteByDate.set(e.date, bucket);
+      }
+    }
+    const legacyRows = [...unlinkedByDate.keys()].sort().map(date => {
+      const partyStatementBorrowed = unlinkedByDate.get(date)!;
+      const sites = unlinkedSiteByDate.get(date) ?? [];
+      const site  = sites.length > 1 ? `${sites[0]} (+${sites.length - 1} more)` : (sites[0] ?? '');
+      return { date, site, partyStatementBorrowed, hlcLedgerDispatched: null as number | null, delta: null as number | null, isLegacy: true };
+    });
+
+    // 8. Merge and sort all rows.
+    const rows = [...linkedRows, ...legacyRows].sort((a, b) => a.date.localeCompare(b.date));
+
+    // 9. Totals: sum only reconcilable (non-legacy) rows.
+    const totals = linkedRows.reduce(
+      (acc, r) => ({
+        partyStatementBorrowed: acc.partyStatementBorrowed + r.partyStatementBorrowed,
+        hlcLedgerDispatched:    acc.hlcLedgerDispatched    + (r.hlcLedgerDispatched ?? 0),
+        delta:                  acc.delta                  + (r.delta ?? 0),
+      }),
+      { partyStatementBorrowed: 0, hlcLedgerDispatched: 0, delta: 0 },
+    );
+
+    return { uom, rows, totals };
   }
 
   async postStockCorrection(data: {

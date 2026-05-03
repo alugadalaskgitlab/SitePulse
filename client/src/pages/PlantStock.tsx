@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -151,6 +151,9 @@ export default function PlantStock() {
   const [stmtDateTo, setStmtDateTo] = useState<string>("");
   const [stmtEnabled, setStmtEnabled] = useState(false);
 
+  // HLC Reconciliation state — shares selectors with Party Statement
+  const [reconEnabled, setReconEnabled] = useState(false);
+
   const buildStmtUrl = () => {
     if (!stmtEnabled || stmtPartyId === "all" || stmtMaterialId === "all") return null;
     const p = new URLSearchParams({ partyId: stmtPartyId, materialId: stmtMaterialId });
@@ -160,13 +163,31 @@ export default function PlantStock() {
   };
   const stmtUrl = buildStmtUrl();
 
+  const buildReconUrl = () => {
+    if (!reconEnabled || stmtPartyId === "all" || stmtMaterialId === "all") return null;
+    const p = new URLSearchParams({ partyId: stmtPartyId, materialId: stmtMaterialId });
+    if (stmtDateFrom) p.set("dateFrom", stmtDateFrom);
+    if (stmtDateTo) p.set("dateTo", stmtDateTo);
+    return `/api/plant-module/hlc-borrow-reconciliation?${p.toString()}`;
+  };
+  const reconUrl = buildReconUrl();
+
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
     entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
   };
+  type HlcReconResult = {
+    uom: string;
+    rows: { date: string; site: string; partyStatementBorrowed: number; hlcLedgerDispatched: number | null; delta: number | null; isLegacy: boolean }[];
+    totals: { partyStatementBorrowed: number; hlcLedgerDispatched: number; delta: number };
+  };
   const { data: stmtData, isLoading: stmtLoading, refetch: refetchStmt } = useQuery<PartyStatementResult>({
     queryKey: [stmtUrl],
     enabled: !!stmtUrl,
+  });
+  const { data: reconData, isLoading: reconLoading, refetch: refetchRecon } = useQuery<HlcReconResult>({
+    queryKey: [reconUrl],
+    enabled: !!reconUrl,
   });
 
   const { data: ledger, isLoading: ledgerLoading } = useQuery<StockLedgerEntry[]>({ 
@@ -1183,7 +1204,7 @@ export default function PlantStock() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-5' : (isAdmin || canExport) ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <TabsTrigger value="summary" className="gap-2 text-xs sm:text-sm">
             <Layers className="w-4 h-4" />
             <span className="hidden sm:inline">Stock Summary</span>
@@ -1204,6 +1225,13 @@ export default function PlantStock() {
               <ClipboardList className="w-4 h-4" />
               <span className="hidden sm:inline">Party Statement</span>
               <span className="sm:hidden">Statement</span>
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger value="hlc-recon" className="gap-2 text-xs sm:text-sm" data-testid="tab-hlc-recon">
+              <GitCompare className="w-4 h-4" />
+              <span className="hidden sm:inline">HLC Reconciliation</span>
+              <span className="sm:hidden">Recon</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -1545,6 +1573,309 @@ export default function PlantStock() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── HLC Borrow Reconciliation ── */}
+        {isAdmin && (
+        <TabsContent value="hlc-recon" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitCompare className="w-5 h-5" />
+                HLC Borrow Reconciliation
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Compares "borrowed from HLC" as computed by the Party Statement against what HLC's own stock ledger recorded at dispatch time. Any mismatch (delta ≠ 0) may require a stock correction.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {/* Selectors — shared with Party Statement */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <Label>Party</Label>
+                  <Select value={stmtPartyId} onValueChange={(v) => { setStmtPartyId(v); setReconEnabled(false); }}>
+                    <SelectTrigger data-testid="recon-select-party"><SelectValue placeholder="Select party" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">— Select party —</SelectItem>
+                      {parties?.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Material</Label>
+                  <Select value={stmtMaterialId} onValueChange={(v) => { setStmtMaterialId(v); setReconEnabled(false); }}>
+                    <SelectTrigger data-testid="recon-select-material"><SelectValue placeholder="Select material" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">— Select material —</SelectItem>
+                      {materials?.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>From Date</Label>
+                  <Input type="date" value={stmtDateFrom} onChange={e => { setStmtDateFrom(e.target.value); setReconEnabled(false); }} data-testid="recon-input-date-from" />
+                </div>
+                <div>
+                  <Label>To Date</Label>
+                  <Input type="date" value={stmtDateTo} onChange={e => { setStmtDateTo(e.target.value); setReconEnabled(false); }} data-testid="recon-input-date-to" />
+                </div>
+              </div>
+              <Button
+                disabled={stmtPartyId === "all" || stmtMaterialId === "all" || reconLoading}
+                onClick={() => { setReconEnabled(true); if (reconEnabled) refetchRecon(); }}
+                data-testid="btn-generate-recon"
+                className="mb-6"
+              >
+                {reconLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Run Reconciliation
+              </Button>
+
+              {reconData && (() => {
+                const { uom, rows, totals } = reconData;
+                const partyName = parties?.find(p => String(p.id) === stmtPartyId)?.name ?? "Party";
+                const materialName = materials?.find(m => String(m.id) === stmtMaterialId)?.name ?? "Material";
+                const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
+                const hasMismatches = rows.some(r => r.delta != null && Math.abs(r.delta) > 0.001);
+                const hasLegacy = rows.some(r => r.isLegacy);
+                const PROJECT_NAME = "High Lane Constructions Pvt Ltd";
+
+                const escapeHtml = (s: string) =>
+                  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+                const handlePrintRecon = () => {
+                  const tableRows = rows.map(r => {
+                    const isMismatch = r.delta != null && Math.abs(r.delta) > 0.001;
+                    const deltaStr = r.delta != null
+                      ? (r.delta >= 0 ? `+${r.delta.toFixed(3)}` : r.delta.toFixed(3))
+                      : 'N/A';
+                    const hlcStr = r.hlcLedgerDispatched != null ? r.hlcLedgerDispatched.toFixed(3) : 'unlinked';
+                    const rowBg = r.isLegacy ? '#f8fafc' : isMismatch ? '#fef3c7' : '';
+                    return `<tr${rowBg ? ` style="background:${rowBg}"` : ''}>
+                      <td>${escapeHtml(r.date)}</td>
+                      <td>${escapeHtml(r.site || '-')}</td>
+                      <td style="text-align:right">${r.partyStatementBorrowed.toFixed(3)}</td>
+                      <td style="text-align:right">${escapeHtml(hlcStr)}</td>
+                      <td style="text-align:right;font-weight:${isMismatch ? 'bold' : 'normal'};color:${isMismatch ? (r.delta! > 0 ? '#b45309' : '#dc2626') : 'inherit'}">${escapeHtml(deltaStr)}</td>
+                    </tr>`;
+                  }).join('');
+                  const w = window.open('', '_blank');
+                  if (!w) return;
+                  w.document.write(`<!DOCTYPE html><html><head><title>HLC Borrow Reconciliation &#8212; ${escapeHtml(partyName)}</title>
+                    <style>body{font-family:sans-serif;padding:20px;font-size:11px}
+                    h1{margin-bottom:2px;font-size:16px}h2{margin-bottom:4px;font-size:13px}p{margin:2px 0}
+                    table{width:100%;border-collapse:collapse;margin-top:12px}
+                    th,td{border:1px solid #ddd;padding:5px 7px;text-align:left}
+                    th{background:#f5f5f5;font-size:10px}
+                    .note{font-size:10px;color:#555;margin-top:6px}
+                    .mismatch-banner{background:#fef3c7;border:1px solid #fbbf24;border-radius:4px;padding:6px 10px;margin:8px 0;font-weight:bold}</style></head><body>
+                    <h1>${escapeHtml(PROJECT_NAME)}</h1>
+                    <h2>HLC Borrow Reconciliation</h2>
+                    <p><strong>Party:</strong> ${escapeHtml(partyName)} &nbsp;|&nbsp; <strong>Material:</strong> ${escapeHtml(materialName)} &nbsp;|&nbsp; <strong>Period:</strong> ${escapeHtml(dateRange)}</p>
+                    ${hasMismatches ? '<div class="mismatch-banner">&#9888; Mismatches detected &#8212; highlighted rows require review</div>' : '<p style="color:#059669;font-weight:bold">&#10003; No mismatches detected &#8212; ledgers are reconciled</p>'}
+                    <table><thead><tr>
+                      <th>Date</th><th>Dispatch Site</th>
+                      <th style="text-align:right">Party Stmt Borrowed (${escapeHtml(uom)})</th>
+                      <th style="text-align:right">HLC Ledger Dispatched (${escapeHtml(uom)})</th>
+                      <th style="text-align:right">Delta (${escapeHtml(uom)})</th>
+                    </tr></thead>
+                    <tbody>${tableRows}</tbody>
+                    <tfoot><tr>
+                      <td colspan="2"><strong>Totals</strong></td>
+                      <td style="text-align:right"><strong>${totals.partyStatementBorrowed.toFixed(3)}</strong></td>
+                      <td style="text-align:right"><strong>${totals.hlcLedgerDispatched.toFixed(3)}</strong></td>
+                      <td style="text-align:right"><strong>${escapeHtml((totals.delta >= 0 ? '+' : '') + totals.delta.toFixed(3))}</strong></td>
+                    </tr></tfoot>
+                    </table>
+                    <p class="note">* Delta = Party Statement Borrowed &#8722; HLC Ledger Dispatched. Positive = party owes more than HLC ledger shows; Negative = HLC ledger over-charges.</p>
+                    </body></html>`);
+                  w.document.close();
+                  w.print();
+                };
+
+                const handlePdfRecon = () => {
+                  const doc = new jsPDF({ orientation: 'landscape' });
+                  doc.setFontSize(16);
+                  doc.text(PROJECT_NAME, 14, 13);
+                  doc.setFontSize(12);
+                  doc.text('HLC Borrow Reconciliation', 14, 20);
+                  doc.setFontSize(9);
+                  doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
+                  doc.text(hasMismatches ? '⚠ Mismatches detected — highlighted rows require review' : '✓ No mismatches — ledgers are reconciled', 14, 33);
+                  autoTable(doc, {
+                    startY: 38,
+                    head: [['Date', 'Dispatch Site', `Party Stmt Borrowed\n(${uom})`, `HLC Ledger Dispatched\n(${uom})`, `Delta\n(${uom})`, 'Status']],
+                    body: rows.map(r => [
+                      r.date,
+                      r.site || '-',
+                      r.partyStatementBorrowed.toFixed(3),
+                      r.hlcLedgerDispatched != null ? r.hlcLedgerDispatched.toFixed(3) : 'unlinked',
+                      r.delta != null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)) : 'N/A',
+                      r.isLegacy ? 'Legacy' : (r.delta != null && Math.abs(r.delta) > 0.001 ? (r.delta > 0 ? 'Party owes more' : 'HLC over-charges') : 'Match'),
+                    ]),
+                    foot: [['', 'Totals (reconcilable)',
+                      totals.partyStatementBorrowed.toFixed(3),
+                      totals.hlcLedgerDispatched.toFixed(3),
+                      (totals.delta >= 0 ? '+' : '') + totals.delta.toFixed(3),
+                      '',
+                    ]],
+                    theme: 'striped',
+                    headStyles: { fillColor: [99, 102, 241] },
+                    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+                    styles: { fontSize: 7.5 },
+                    margin: { left: 10, right: 10 },
+                    didParseCell: (data) => {
+                      if (data.section === 'body') {
+                        const row = rows[data.row.index];
+                        if (row?.isLegacy) {
+                          data.cell.styles.fillColor = [248, 250, 252];
+                        } else if (row && row.delta != null && Math.abs(row.delta) > 0.001) {
+                          data.cell.styles.fillColor = [254, 243, 199];
+                        }
+                      }
+                    },
+                  });
+                  const ts = format(new Date(), 'yyyyMMdd_HHmm');
+                  const blob = doc.output('blob');
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `HLCRecon_${partyName.replace(/\s+/g, '')}_${materialName}_${ts}.pdf`;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  setTimeout(() => URL.revokeObjectURL(url), 100);
+                  toast({ title: "PDF download started" });
+                };
+
+                return (
+                  <div>
+                    {/* Status banner */}
+                    {hasMismatches ? (
+                      <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-2 text-amber-700 dark:text-amber-300 text-sm font-medium">
+                        <span className="text-base">⚠</span>
+                        Mismatches detected — {rows.filter(r => r.delta != null && Math.abs(r.delta) > 0.001).length} dispatch(es) have a discrepancy between the party statement and HLC ledger.
+                      </div>
+                    ) : !hasLegacy ? (
+                      <div className="mb-2 flex items-center gap-2 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-2 text-green-700 dark:text-green-300 text-sm font-medium">
+                        <span className="text-base">✓</span>
+                        No mismatches — party statement and HLC ledger are fully reconciled for this selection.
+                      </div>
+                    ) : (
+                      <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/20 px-4 py-2 text-slate-600 dark:text-slate-400 text-sm font-medium">
+                        <span className="text-base">✓</span>
+                        No mismatches in linked dispatches — reconciliation complete for trackable entries.
+                      </div>
+                    )}
+                    {hasLegacy && (
+                      <div className="mb-4 flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/20 px-4 py-2 text-slate-600 dark:text-slate-400 text-sm">
+                        <span>ℹ</span>
+                        {rows.filter(r => r.isLegacy).length} legacy (unlinked) dispatch(es) require manual verification — these predate referenceId tracking and cannot be automatically matched to HLC ledger entries.
+                      </div>
+                    )}
+
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-3 gap-3 mb-5">
+                      <div className="rounded-lg border p-3 text-center border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+                        <p className="text-xs text-muted-foreground mb-1">Party Stmt Borrowed</p>
+                        <p className="text-lg font-bold text-red-700 dark:text-red-300">{totals.partyStatementBorrowed.toFixed(3)}</p>
+                        <p className="text-xs text-muted-foreground">{uom}</p>
+                      </div>
+                      <div className="rounded-lg border p-3 text-center border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20">
+                        <p className="text-xs text-muted-foreground mb-1">HLC Ledger Dispatched</p>
+                        <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300">{totals.hlcLedgerDispatched.toFixed(3)}</p>
+                        <p className="text-xs text-muted-foreground">{uom}</p>
+                      </div>
+                      <div className={`rounded-lg border p-3 text-center ${Math.abs(totals.delta) > 0.001 ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20' : 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20'}`}>
+                        <p className="text-xs text-muted-foreground mb-1">Net Delta</p>
+                        <p className={`text-lg font-bold ${Math.abs(totals.delta) > 0.001 ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'}`}>
+                          {(totals.delta >= 0 ? '+' : '')}{totals.delta.toFixed(3)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{uom}</p>
+                      </div>
+                    </div>
+
+                    {/* Export buttons */}
+                    <div className="flex gap-2 mb-4">
+                      <Button variant="outline" size="sm" onClick={handlePdfRecon} data-testid="btn-recon-pdf">
+                        <Download className="w-4 h-4 mr-1" /> PDF
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handlePrintRecon} data-testid="btn-recon-print">
+                        <Printer className="w-4 h-4 mr-1" /> Print
+                      </Button>
+                    </div>
+
+                    {/* Reconciliation table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="text-left p-3 font-semibold">Date</th>
+                            <th className="text-left p-3 font-semibold">Dispatch Site</th>
+                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Party Stmt Borrowed ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-indigo-600 dark:text-indigo-400">HLC Ledger Dispatched ({uom})</th>
+                            <th className="text-right p-3 font-semibold">Delta ({uom})</th>
+                            <th className="text-left p-3 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r, idx) => {
+                            const isMismatch = r.delta != null && Math.abs(r.delta) > 0.001;
+                            const deltaPositive = r.delta != null && r.delta > 0.001;
+                            const deltaStr = r.delta != null
+                              ? (r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)
+                              : 'N/A';
+                            return (
+                              <tr key={idx} className={`border-b hover:bg-muted/30 ${r.isLegacy ? 'bg-slate-50/60 dark:bg-slate-900/20' : isMismatch ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`} data-testid={`recon-row-${idx}`}>
+                                <td className="p-3 whitespace-nowrap">{r.date}</td>
+                                <td className="p-3 text-muted-foreground">{r.site || '-'}</td>
+                                <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
+                                  {r.partyStatementBorrowed.toFixed(3)}
+                                </td>
+                                <td className="p-3 text-right text-indigo-600 dark:text-indigo-400 font-medium">
+                                  {r.hlcLedgerDispatched != null ? r.hlcLedgerDispatched.toFixed(3) : <span className="text-muted-foreground italic text-xs">unlinked</span>}
+                                </td>
+                                <td className={`p-3 text-right font-medium ${r.isLegacy ? 'text-muted-foreground' : isMismatch ? (deltaPositive ? 'text-amber-700 dark:text-amber-300' : 'text-red-600 dark:text-red-400') : 'text-green-600 dark:text-green-400'}`}>
+                                  {r.isLegacy ? <span className="italic text-xs">N/A</span> : (isMismatch ? <strong>{deltaStr}</strong> : deltaStr)}
+                                </td>
+                                <td className="p-3">
+                                  {r.isLegacy ? (
+                                    <span className="px-2 py-0.5 text-xs rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Legacy — verify manually</span>
+                                  ) : isMismatch ? (
+                                    <span className="px-2 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                      {deltaPositive ? 'Party owes more' : 'HLC over-charges'}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">Match</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {rows.length === 0 && (
+                            <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No dispatch entries found for this selection.</td></tr>
+                          )}
+                        </tbody>
+                        <tfoot className="bg-muted/70 border-t-2">
+                          <tr>
+                            <td colSpan={2} className="p-3 font-bold">Totals</td>
+                            <td className="p-3 text-right text-red-600 dark:text-red-400 font-bold">{totals.partyStatementBorrowed.toFixed(3)}</td>
+                            <td className="p-3 text-right text-indigo-600 dark:text-indigo-400 font-bold">{totals.hlcLedgerDispatched.toFixed(3)}</td>
+                            <td className={`p-3 text-right font-bold ${Math.abs(totals.delta) > 0.001 ? 'text-amber-700 dark:text-amber-300' : 'text-green-600 dark:text-green-400'}`}>
+                              {(totals.delta >= 0 ? '+' : '')}{totals.delta.toFixed(3)}
+                            </td>
+                            <td />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-3">
+                      * Delta = Party Statement Borrowed − HLC Ledger Dispatched (reconcilable rows only). <strong>Positive</strong> = party owes more than HLC's ledger shows; <strong>Negative</strong> = HLC ledger over-charges the party. Totals exclude legacy/unlinked rows. Any non-zero delta should be investigated and corrected via a stock correction.
+                    </p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        )}
 
         {/* ── Party Supply Obligation Statement ── */}
         {(isAdmin || canExport) && (

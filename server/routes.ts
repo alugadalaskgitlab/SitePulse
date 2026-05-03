@@ -2721,6 +2721,22 @@ export async function registerRoutes(
     }
   });
 
+  // HLC Borrow Reconciliation — admin only
+  app.get("/api/plant-module/hlc-borrow-reconciliation", requireAuth, async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const partyId = Number(req.query.partyId);
+      const materialId = Number(req.query.materialId);
+      if (!partyId || !materialId) return res.status(400).json({ message: "partyId and materialId are required" });
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      const result = await storage.getHlcBorrowReconciliation(partyId, materialId, dateFrom, dateTo);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to generate HLC borrow reconciliation" });
+    }
+  });
+
   // Aggregate balance as-of a given date (for efficient opening-balance computation)
   app.get("/api/plant-module/stock-balance-as-of", async (req, res) => {
     try {
