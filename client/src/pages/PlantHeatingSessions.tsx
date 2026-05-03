@@ -102,11 +102,25 @@ export default function PlantHeatingSessions() {
   }, []);
   // When opened from a shift log's "Add/Edit Sessions" button, a returnTo URL
   // is passed so we can navigate back to that shift log after saving.
+  // Only internal /plant/shift-log/... paths are accepted to prevent open-redirect.
   const returnToFromUrl = useMemo(() => {
     if (typeof window === "undefined") return null;
     const sp = new URLSearchParams(window.location.search);
-    return sp.get("returnTo") || null;
+    const raw = sp.get("returnTo");
+    if (!raw) return null;
+    // Accept only same-origin paths starting with /plant/shift-log/
+    if (!raw.startsWith("/plant/shift-log/")) return null;
+    return raw;
   }, []);
+  // Extract the originating plant from the returnTo URL so new sessions are
+  // pre-seeded with the correct plant (not always "Main Plant").
+  const originPlantFromUrl = useMemo(() => {
+    if (!returnToFromUrl) return null;
+    try {
+      const url = new URL(returnToFromUrl, window.location.origin);
+      return url.searchParams.get("plant");
+    } catch { return null; }
+  }, [returnToFromUrl]);
   const autoOpenedRef = useRef(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -609,7 +623,11 @@ export default function PlantHeatingSessions() {
   });
 
   const openNew = () => {
-    setForm(emptyForm(today));
+    // When arriving from a shift log, seed the new session with the originating
+    // date and plant so it is immediately attributed to the right production day.
+    const seedDate = dateParam || today;
+    const seedPlant = originPlantFromUrl || "Main Plant";
+    setForm({ ...emptyForm(seedDate), plantName: seedPlant });
     setDialogOpen(true);
   };
 
